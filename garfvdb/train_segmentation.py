@@ -4,18 +4,20 @@
 #
 import itertools
 import logging
-import math
 import os
-from contextlib import contextmanager
+import sys
+import time
 from datetime import datetime
-from typing import Dict, Union
+from typing import Optional, Tuple, Union
 
+import numpy as np
 import torch
-import torch.nn.functional as F
 import tqdm
 import tyro
+import viser
 from garfvdb.config import Config
 from garfvdb.dataset import (
+    GARfVDBInput,
     GARfVDBInputCollateFn,
     RandomSamplePixels,
     RandomSelectMaskIDAndScale,
@@ -23,14 +25,18 @@ from garfvdb.dataset import (
     SegmentationDataset,
     TransformDataset,
 )
+from garfvdb.loss import calculate_loss
 from garfvdb.model import GARfVDBModel
 from garfvdb.optim import ExponentaLRWithRampUpScheduler
-from garfvdb.util import pca_projection_fast
+from garfvdb.util import calculate_pca_projection, pca_projection_fast
 from torch.utils.data import DataLoader, random_split
 from torch.utils.tensorboard import SummaryWriter
 from torchvision.transforms import Compose
 
-logging.basicConfig(level=logging.INFO)
+sys.path.append("..")
+from viz import CameraState, Viewer
+
+logging.basicConfig(level=logging.DEBUG)
 logging.getLogger().name = "garfvdb"
 
 
@@ -41,12 +47,13 @@ class Runner:
         checkpoint_path: str,
         segmentation_dataset_path: str,
         device: Union[str, torch.device] = "cuda",
+        disable_viewer: bool = False,
     ):
         self.config = cfg
         self.device = device
 
         self.val_every_n_steps = 500
-        self._test_mode = False  # Private flag for test mode
+        self.disable_viewer = disable_viewer
 
         # Create tensorboard writer with timestamp for unique runs
         os.makedirs("logs", exist_ok=True)
@@ -76,7 +83,7 @@ class Runner:
             Compose([RandomSamplePixels(self.config.sample_pixels_per_image), RandomSelectMaskIDAndScale()]),
         )
         # For testing, use the full image
-        self.test_dataset = TransformDataset(self.test_dataset, Compose([Resize(1 / 5), RandomSelectMaskIDAndScale()]))
+        self.test_dataset = TransformDataset(self.test_dataset, Compose([Resize(1 / 6), RandomSelectMaskIDAndScale()]))
 
         ### Model ###
         # Scale grouping stats
@@ -126,201 +133,188 @@ class Runner:
             max_steps=self.config.num_train_iters,
         )
 
-    @contextmanager
-    def test_mode(self):
-        """Context manager for test mode.
+        # Store the full dataset for viewer
+        self.full_dataset = full_dataset
 
-        Usage:
-            with self.test_mode():
-                # Code that should run in validation mode
-                pass
-        """
-        previous_mode = self._test_mode
-        self._test_mode = True
-        self.model.eval()
-        try:
-            yield
-        finally:
-            self._test_mode = previous_mode
-            if not previous_mode:
-                self.model.train()
+        # Calculate max scale from dataset
+        self.max_scale = float(torch.max(grouping_scale_stats).item())
 
-    def is_test_mode(self) -> bool:
-        """Check if we're currently in test mode."""
-        return self._test_mode
+        # Initialize viewer sliders to default values
+        self.viewer_scale = self.max_scale * 0.1  # Start at 10% of max scale
+        self.viewer_mask_blend = 0.5  # Start with 50% blending
 
-    def calc_loss(self, enc_feats: torch.Tensor, input: Dict[str, torch.Tensor], step: int = -1) -> torch.Tensor:
-        dtype = enc_feats.dtype
-        if self.is_test_mode():
-            # reduce memory usage by using float16 to accomodate computing loss across the whole image
-            dtype = torch.float16
+        # PCA freezing variables
+        self.freeze_pca = False
+        self.frozen_pca_projection = None  # Store the V matrix from calculate_pca_projection
 
-        margin = 1.0
+        # Viewer
+        if not self.disable_viewer:
+            self.server = viser.ViserServer(port=8080, verbose=False)
 
-        # Using a product of this form to accomodate 'image' inputs of the form [B, num_samples, C] and [B, H, W, C]
-        samples_per_img = math.prod(input["image"].shape[1:-1])
+            # Set default up axis
+            self.current_up_axis = "+z"
+            self.server.scene.set_up_direction(self.current_up_axis)
+            self.client_up_axis_dropdowns = {}
+            self.client_scale_sliders = {}
+            self.client_mask_blend_sliders = {}
+            self.client_freeze_pca_checkboxes = {}
 
-        num_chunks = enc_feats.shape[0]
+            @self.server.on_client_connect
+            def _(client: viser.ClientHandle) -> None:
+                # up axis dropdown
+                up_axis_dropdown = client.gui.add_dropdown(
+                    "Up Axis",
+                    options=["+x", "-x", "+y", "-y", "+z", "-z"],
+                    initial_value=self.current_up_axis,
+                )
 
-        if input["mask_id"].is_nested:
-            for t in input["mask_id"]:
-                print(f"mask id dim: {t.shape}")
-        input_id1 = input_id2 = input["mask_id"].flatten().to(dtype)
+                # scale slider
+                scale_slider = client.gui.add_slider(
+                    "Scale",
+                    min=0.0,
+                    max=self.max_scale,
+                    step=0.01,
+                    initial_value=self.viewer_scale,
+                )
 
-        # Debug prints
-        logging.debug(
-            f"calc_loss shapes: enc_feats={enc_feats.shape}, input_id1={input_id1.shape}, mask_id={input['mask_id'].shape}"
-        )
+                # mask blend slider
+                mask_blend_slider = client.gui.add_slider(
+                    "Mask Blend",
+                    min=0.0,
+                    max=1.0,
+                    step=0.01,
+                    initial_value=self.viewer_mask_blend,
+                )
 
-        # Expand labels
-        labels1_expanded = input_id1.unsqueeze(1).expand(-1, input_id1.shape[0])
-        labels2_expanded = input_id2.unsqueeze(0).expand(input_id2.shape[0], -1)
+                # freeze PCA checkbox
+                freeze_pca_checkbox = client.gui.add_checkbox(
+                    "Freeze PCA Projection",
+                    initial_value=self.freeze_pca,
+                )
 
-        # Mask for positive/negative pairs across the entire matrix
-        mask_full_positive = labels1_expanded == labels2_expanded
-        mask_full_negative = ~mask_full_positive
+                self.client_up_axis_dropdowns[client.client_id] = up_axis_dropdown
+                self.client_scale_sliders[client.client_id] = scale_slider
+                self.client_mask_blend_sliders[client.client_id] = mask_blend_slider
+                self.client_freeze_pca_checkboxes[client.client_id] = freeze_pca_checkbox
 
-        # # Debug print
-        logging.debug(
-            f"num_chunks = {num_chunks}, input_id1.shape[0] = {input_id1.shape[0]}, samples_per_img = {samples_per_img}"
-        )
+                # Add callback for up axis changes
+                @up_axis_dropdown.on_update
+                def _on_up_axis_change(event) -> None:
+                    self.viewer.set_up_axis(client.client_id, event.target.value)
 
-        # Create a block mask to only consider pairs within the same image -- no cross-image pairs
-        block_mask = torch.kron(  # [samples_per_img*num_chunks, samples_per_img*num_chunks] dtype: torch.bool
-            torch.eye(num_chunks, device=labels1_expanded.device, dtype=torch.bool),
-            torch.ones(
-                (samples_per_img, samples_per_img),
-                device=labels1_expanded.device,
-                dtype=torch.bool,
-            ),
-        )  # block-diagonal matrix, to consider only pairs within the same image
+                # Add callback for scale changes
+                @scale_slider.on_update
+                def _on_scale_change(event) -> None:
+                    self.viewer_scale = event.target.value
+                    # Trigger re-render when scale changes
+                    self.viewer.rerender(None)
 
-        logging.debug(f"block_mask.shape = {block_mask.shape}")
+                # Add callback for mask blend changes
+                @mask_blend_slider.on_update
+                def _on_mask_blend_change(event) -> None:
+                    self.viewer_mask_blend = event.target.value
+                    # Trigger re-render when mask blend changes
+                    self.viewer.rerender(None)
 
-        # Only consider upper triangle to avoid double-counting
-        block_mask = torch.triu(
-            block_mask, diagonal=0
-        )  # [samples_per_img*num_chunks, samples_per_img*num_chunks] dtype: torch.bool
-        # Only consider pairs where both points are valid (-1 means not in mask / invalid)
-        block_mask = block_mask * (labels1_expanded != -1) * (labels2_expanded != -1)
+                # Add callback for freeze PCA checkbox
+                @freeze_pca_checkbox.on_update
+                def _on_freeze_pca_change(event) -> None:
+                    self.freeze_pca = event.target.value
+                    if not self.freeze_pca:
+                        # Clear frozen PCA parameters when unfreezing
+                        self.frozen_pca_projection = None
+                    # Trigger re-render when freeze state changes
+                    self.viewer.rerender(None)
 
-        # Mask for diagonal elements (i.e., pairs of the same point).
-        # Don't consider these pairs for grouping supervision (pulling), since they are trivially similar.
-        diag_mask = torch.eye(block_mask.shape[0], device=block_mask.device, dtype=torch.bool)
+            # Add client disconnect handler to clean up
+            @self.server.on_client_disconnect
+            def _(client: viser.ClientHandle) -> None:
+                if client.client_id in self.client_up_axis_dropdowns:
+                    del self.client_up_axis_dropdowns[client.client_id]
+                if client.client_id in self.client_scale_sliders:
+                    del self.client_scale_sliders[client.client_id]
+                if client.client_id in self.client_mask_blend_sliders:
+                    del self.client_mask_blend_sliders[client.client_id]
+                if client.client_id in self.client_freeze_pca_checkboxes:
+                    del self.client_freeze_pca_checkboxes[client.client_id]
 
-        scales = input["scales"]
-
-        ####################################################################################
-        # Grouping supervision
-        ####################################################################################
-        total_loss = 0
-
-        # Get instance features - will return a 3D tensor [batch_size, samples_per_img, feat_dim]
-        instance_features = self.model.get_mlp_output(enc_feats, scales)
-
-        # Flatten the instance features to match the masking operations
-        # [batch_size, samples_per_img, feat_dim] -> [batch_size*samples_per_img, feat_dim]
-        instance_features_flat = instance_features.reshape(-1, instance_features.shape[-1])
-
-        # 1. If (A, s_A) and (A', s_A) in same group, then supervise the features to be similar
-        mask = torch.where(mask_full_positive * block_mask * (~diag_mask))
-
-        instance_loss_1 = torch.norm(instance_features_flat[mask[0]] - instance_features_flat[mask[1]], p=2, dim=-1)
-        if not (mask[0] // samples_per_img == mask[1] // samples_per_img).all():
-            logging.error("Loss Function: There's a camera cross-talk issue")
-
-        instance_loss_1_sum = instance_loss_1.nansum()
-        total_loss += instance_loss_1_sum
-        logging.debug(f"Loss 1: {instance_loss_1_sum.item()}, using {mask[0].shape[0]} pairs")
-
-        if self.is_test_mode():
-            # log instance_loss_1
-            self.writer.add_scalar("test/instance_loss_1", instance_loss_1.nansum().item(), step)
-            # log image of instance_loss_1
-            loss_1_img = torch.zeros(input["image"].shape[:-1], device=instance_loss_1.device)
-            # Use scatter_reduce_ to accumulate values
-            loss_1_img.view(-1).scatter_reduce_(
-                0,  # dim to reduce along
-                mask[0],  # indices
-                instance_loss_1,  # values to scatter
-                reduce="sum",  # reduction operation
-                include_self=True,  # include values in the output
+            self.viewer = Viewer(
+                server=self.server,
+                render_fn=self._viewer_render_fn,
+                mode="training",
             )
-            # rescale loss_1_img to [0, 1]
-            logging.debug("loss_1_img.max() ", loss_1_img.max())
-            loss_1_img = loss_1_img / loss_1_img.max()
-            self.writer.add_image("test/instance_loss_1_img", loss_1_img, step)
-            del loss_1_img
 
-        # 2. If ", then also supervise them to be similar at s > s_A
-        # if self.config.use_hierarchy_losses and (not self.config.use_single_scale):
+    def _apply_pca_projection(
+        self, features: torch.Tensor, n_components: int = 3, valid_feature_mask: Optional[torch.Tensor] = None
+    ) -> torch.Tensor:
+        """Apply PCA projection, either using frozen parameters or computing fresh ones."""
+        if valid_feature_mask is not None:
+            filtered_features = self._filter_features_for_robust_pca(features, valid_feature_mask)
+        else:
+            filtered_features = features
 
-        scale_diff = torch.max(torch.zeros_like(scales), (self.model.model_config.max_grouping_scale - scales))
-        larger_scale = scales + scale_diff * torch.rand(size=(1,), device=scales.device)
+        if self.freeze_pca and self.frozen_pca_projection is not None:
+            # Use frozen PCA projection matrix
+            return pca_projection_fast(filtered_features, n_components, V=self.frozen_pca_projection)
+        else:
+            # Compute fresh PCA
+            try:
+                result = pca_projection_fast(filtered_features, n_components)
 
-        # Get larger scale features and flatten
-        larger_scale_instance_features = self.model.get_mlp_output(enc_feats, larger_scale)
-        larger_scale_instance_features_flat = larger_scale_instance_features.reshape(
-            -1, larger_scale_instance_features.shape[-1]
-        )
+                # Store projection matrix if freezing is enabled
+                if self.freeze_pca:
+                    self.frozen_pca_projection = calculate_pca_projection(filtered_features, n_components, center=True)
 
-        instance_loss_2 = torch.norm(
-            larger_scale_instance_features_flat[mask[0]] - larger_scale_instance_features_flat[mask[1]], p=2, dim=-1
-        )
-        instance_loss_2_nansum = instance_loss_2.nansum()
-        total_loss += instance_loss_2_nansum
-        logging.debug(f"Loss 2: {instance_loss_2_nansum.item()}, using {mask[0].shape[0]} pairs")
+                return result
+            except RuntimeError as e:
+                if "failed to converge" in str(e):
+                    # Fallback: return zeros with correct shape
+                    logging.warning("PCA failed to converge, returning zero projection")
+                    B, H, W, C = features.shape
+                    return torch.zeros(B, H, W, n_components, device=features.device, dtype=features.dtype)
+                else:
+                    raise e
 
-        if self.is_test_mode():
-            # log instance_loss_2
-            self.writer.add_scalar("test/instance_loss_2", instance_loss_2_nansum.item(), step)
-            # log image of instance_loss_2
-            loss_2_img = torch.zeros(input["image"].shape[:-1], device=instance_loss_2.device)
-            # Use scatter_reduce_ to accumulate values, using 'sum' as the reduction operation
-            loss_2_img.view(-1).scatter_reduce_(
-                0,  # dim to reduce along
-                mask[0],  # indices
-                instance_loss_2,  # values to scatter
-                reduce="sum",  # reduction operation
-                include_self=True,  # include values in the output
-            )
-            print("loss_2_img.max() ", loss_2_img.max())
-            loss_2_img = loss_2_img / loss_2_img.max()
-            self.writer.add_image("test/instance_loss_2_img", loss_2_img, step)
-            del loss_2_img
+    def _filter_features_for_robust_pca(self, features: torch.Tensor, valid_feature_mask: torch.Tensor) -> torch.Tensor:
+        """Filter features using valid_feature_mask to replace invalid areas with noise."""
+        B, H, W, C = features.shape
 
-        # 4. Also supervising A, B to be dissimilar at scales s_A, s_B respectively seems to help.
-        mask = torch.where(mask_full_negative * block_mask)
+        # Expand to match feature
+        if valid_feature_mask.dim() == 2:
+            valid_mask = valid_feature_mask.unsqueeze(0).expand(B, -1, -1)  # [B, H, W]
+        else:
+            valid_mask = valid_feature_mask
 
-        if self.is_test_mode():
-            instance_features_flat = instance_features_flat.to(torch.float16)
+        invalid_mask = ~valid_mask
 
-        instance_loss_4 = F.relu(
-            margin - torch.norm(instance_features_flat[mask[0]] - instance_features_flat[mask[1]], p=2, dim=-1)
-        )
-        instance_loss_4_nansum = instance_loss_4.to(torch.float32).nansum()
-        total_loss += instance_loss_4_nansum
-        logging.debug(f"Loss 4: {instance_loss_4_nansum.item()}, using {mask[0].shape[0]} pairs")
-        if self.is_test_mode():
-            # log instance_loss_4
-            self.writer.add_scalar("test/instance_loss_4", instance_loss_4_nansum.item(), step)
-            # log image of instance_loss_4
-            loss_4_img = torch.zeros(
-                input["image"].shape[:-1], device=instance_loss_4.device, dtype=instance_loss_4.dtype
-            )
-            # Use scatter_reduce_ to accumulate values, using 'sum' as the reduction operation
-            loss_4_img.view(-1).scatter_reduce_(
-                0,  # dim to reduce along
-                mask[0],  # indices
-                instance_loss_4,  # values to scatter
-                reduce="sum",  # reduction operation
-                include_self=True,  # include values in the output
-            )
-            logging.debug("loss_4_img.max() ", loss_4_img.max())
-            loss_4_img = loss_4_img / loss_4_img.max()
-            self.writer.add_image("test/instance_loss_4_img", loss_4_img, step)
+        # Count invalid pixels
+        num_invalid = invalid_mask.sum()
+        total_pixels = invalid_mask.numel()
 
-        return total_loss / torch.sum(block_mask * (~diag_mask)).float()
+        if num_invalid > 0:
+            logging.debug(f"Replacing {num_invalid} invalid features out of {total_pixels} with noise")
+
+            filtered_features = features.clone()
+
+            # Generate noise with appropriate scale based on valid features
+            if valid_mask.any():
+                # Use std of valid features to scale noise
+                valid_features = features[valid_mask.unsqueeze(-1).expand(-1, -1, -1, C)]
+                if len(valid_features) > 0:
+                    noise_scale = max(valid_features.std().item() * 0.1, 1e-4)
+                else:
+                    noise_scale = 1e-4
+            else:
+                noise_scale = 1e-4
+
+            # Replace invalid areas with noise
+            noise = torch.randn_like(features) * noise_scale
+            invalid_mask_expanded = invalid_mask.unsqueeze(-1).expand(-1, -1, -1, C)
+            filtered_features[invalid_mask_expanded] = noise[invalid_mask_expanded]
+        else:
+            filtered_features = features
+
+        return filtered_features
 
     def train(self):
         trainloader = itertools.cycle(
@@ -364,6 +358,12 @@ class Runner:
         accumulated_loss = 0.0
 
         for step in pbar:
+            if not self.disable_viewer:
+                while self.viewer.state.status == "paused":
+                    time.sleep(0.01)
+                self.viewer.lock.acquire()
+                tic = time.time()
+
             minibatch = next(trainloader)
 
             # Move to device
@@ -382,9 +382,15 @@ class Runner:
                 logging.info(f"Using gradient accumulation over {gradient_accumulation_steps} steps")
 
             ### Forward pass ###
-            cam_enc_feats = self.model.get_enc_feats(minibatch)
+            cam_enc_feats = self.model.get_encoded_features(minibatch)
 
-            loss = self.calc_loss(cam_enc_feats, minibatch, step)
+            # loss = self.model.calc_loss(cam_enc_feats, minibatch, step)
+            loss_dict = calculate_loss(self.model, cam_enc_feats, minibatch)
+            loss = loss_dict["total_loss"]
+
+            # Log loss components to tensorboard
+            for key, value in loss_dict.items():
+                self.writer.add_scalar(f"train/{key}", value.item(), step)
 
             # Scale loss by accumulation steps to maintain same effective learning rate
             loss = loss / gradient_accumulation_steps
@@ -401,10 +407,6 @@ class Runner:
                 torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=1.0)
                 self.optimizer.step()
                 # self.scheduler.step()
-
-                # Log accumulated training loss to tensorboard
-                self.writer.add_scalar("train/loss", accumulated_loss, step)
-                self.writer.add_scalar("train/learning_rate", self.scheduler.get_last_lr()[0], step)
 
                 # Reset accumulated loss
                 accumulated_loss = 0.0
@@ -423,8 +425,9 @@ class Runner:
                     for val_batch in valloader:
                         for k, v in val_batch.items():
                             val_batch[k] = v.to(self.device)
-                        val_enc_feats = self.model.get_enc_feats(val_batch)
-                        val_loss += self.calc_loss(val_enc_feats, val_batch, step).item()
+                        val_enc_feats = self.model.get_encoded_features(val_batch)
+                        val_loss_dict = calculate_loss(self.model, val_enc_feats, val_batch)
+                        val_loss += val_loss_dict["total_loss"].item()
                 val_loss /= len(valloader)
 
                 # Log validation loss to tensorboard
@@ -449,8 +452,7 @@ class Runner:
 
                 # Log test loss images
                 if self.config.model.log_test_images:
-                    with self.test_mode(), torch.no_grad():
-                        test_loss = 0
+                    with torch.no_grad():
                         for test_batch_idx, test_batch in enumerate(testloader):
                             if test_batch_idx != 0:
                                 break
@@ -459,18 +461,21 @@ class Runner:
                             # Permute from [H, W, C] to [C, H, W] for TensorBoard
                             test_image = test_batch["image"][0].cpu().permute(2, 0, 1)
                             self.writer.add_image("test/sample_image", test_image, step)
+                            # Move input to device
                             for k, v in test_batch.items():
                                 test_batch[k] = v.to(self.device)
                             # Set scales to 0.1
                             test_batch["scales"] = torch.full_like(test_batch["scales"], 0.05)
-                            test_enc_feats = self.model.get_enc_feats(test_batch)
+                            test_enc_feats = self.model.get_encoded_features(test_batch)
 
-                            # Calculate loss on the CPU for memory issues on large images
-                            for k, v in test_batch.items():
-                                test_batch[k] = v.to("cpu")
-                            self.model.to("cpu")
-                            test_loss += self.calc_loss(test_enc_feats.to("cpu"), test_batch, step).item()
-
+                            # NOTE: If this starts using too much memory, we can move the image loss calculation to the CPU
+                            test_loss_dict = calculate_loss(
+                                self.model, test_enc_feats, test_batch, return_loss_images=True
+                            )
+                            for key in ("instance_loss_1", "instance_loss_2", "instance_loss_4"):
+                                self.writer.add_image(
+                                    f"test/{key}_img", test_loss_dict[f"{key}_img"].detach().cpu(), step
+                                )
                             self.model.to(self.device)
 
                 # Save model
@@ -482,15 +487,89 @@ class Runner:
                         dict_to_save["sh0"] = self.model.gs_model.sh0.detach().cpu()
                     torch.save(dict_to_save, f"checkpoints/checkpoint_{step}.pt")
 
+            # Update the viewer
+            if not self.disable_viewer:
+                self.viewer.lock.release()
+                num_train_steps_per_sec = 1.0 / (time.time() - tic)
+                num_pixels_in_minibatch = (
+                    minibatch["image"].shape[0] * minibatch["image"].shape[1] * minibatch["image"].shape[2]
+                )
+                num_train_rays_per_sec = num_pixels_in_minibatch * num_train_steps_per_sec
+                # Update the viewer state.
+                self.viewer.state.num_train_rays_per_sec = num_train_rays_per_sec
+                # Update the scene.
+                self.viewer.update(step, num_pixels_in_minibatch)
+
         # Close tensorboard writer
         self.writer.close()
 
+    @torch.no_grad()
+    def _viewer_render_fn(self, camera_state: CameraState, img_wh: Tuple[int, int]):
+        """Callable function for the viewer that renders a blend of the image and mask."""
+        img_w, img_h = img_wh
+        cam_to_world_matrix = camera_state.c2w
+        projection_matrix = camera_state.get_K(img_wh)
+        world_to_cam_matrix = torch.linalg.inv(
+            torch.from_numpy(cam_to_world_matrix).float().to(self.device)
+        ).contiguous()
+        projection_matrix = torch.from_numpy(projection_matrix).float().to(self.device)
 
-def main(checkpoint_path: str, segmentation_dataset_path: str, config: Config = Config()):
+        # Create a mock input for the model
+        mock_input = GARfVDBInput(
+            {
+                "intrinsics": projection_matrix.unsqueeze(0),
+                "cam_to_world": torch.from_numpy(cam_to_world_matrix).float().to(self.device).unsqueeze(0),
+                "image_w": torch.tensor([img_w]).to(self.device),
+                "image_h": torch.tensor([img_h]).to(self.device),
+            }
+        )
+
+        try:
+            # Render the beauty image
+            beauty_colors, _ = self.model.gs_model.render_images(
+                world_to_cam_matrix[None],
+                projection_matrix[None],
+                img_w,
+                img_h,
+                0.01,
+                1e10,
+                "perspective",
+                0,  # sh_degree_to_use
+            )
+            beauty_rgb = beauty_colors[0, ..., :3]
+
+            # Render the mask features
+            mask_features_output, _ = self.model.get_mask_output(mock_input, self.viewer_scale)
+
+            # Apply PCA projection
+            # valid_feature_mask will replace areas of empty gaussians with noise… without this, PCA can fail to converge
+            mask_pca = self._apply_pca_projection(mask_features_output, 3, valid_feature_mask=beauty_rgb.any(dim=-1))[0]
+
+            # Blend between beauty image and mask based on slider value
+            alpha = self.viewer_mask_blend
+            blended_rgb = beauty_rgb * (1 - alpha) + mask_pca * alpha
+
+            return np.clip(blended_rgb.cpu().numpy(), 0.0, 1.0)
+
+        except Exception as e:
+            logging.warning(f"Error in viewer render function: {e}")
+            # Return a fallback image on error
+            return np.zeros((img_h, img_w, 3), dtype=np.float32)
+
+
+def train_segmentation(
+    checkpoint_path: str,
+    segmentation_dataset_path: str,
+    config: Config = Config(),
+    disable_viewer: bool = False,
+):
     torch.manual_seed(0)
-    runner = Runner(config, checkpoint_path, segmentation_dataset_path)
+    runner = Runner(config, checkpoint_path, segmentation_dataset_path, disable_viewer=disable_viewer)
     runner.train()
+    if not disable_viewer:
+        logging.info("Viewer running... Ctrl+C to exit.")
+        time.sleep(1000000)
 
 
 if __name__ == "__main__":
-    tyro.cli(main)
+    tyro.cli(train_segmentation)

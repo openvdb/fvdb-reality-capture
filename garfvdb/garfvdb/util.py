@@ -1,10 +1,43 @@
 # Copyright Contributors to the OpenVDB Project
 # SPDX-License-Identifier: Apache-2.0
 #
+from typing import Optional
+
 import torch
 
 
-def pca_projection_fast(features: torch.Tensor, n_components: int = 3) -> torch.Tensor:
+def center_features(features: torch.Tensor) -> torch.Tensor:
+    """Center the features."""
+    mean = torch.mean(features, dim=0, keepdim=True)
+    return features - mean
+
+
+def calculate_pca_projection(features: torch.Tensor, n_components: int = 3, center: bool = True) -> torch.Tensor:
+    """Calculate the PCA projection matrix.
+
+    Args:
+        features: A 4D tensor of shape [B, H, W, C] containing features to project
+        n_components: The number of principal components to use
+
+    Returns:
+        A 2D tensor of shape [C, n_components] containing the PCA projection matrix
+    """
+    features_flat = features.reshape(-1, features.shape[-1])
+
+    # Center the data
+    if center:
+        features_centered = center_features(features_flat)
+    else:
+        features_centered = features_flat
+
+    _, _, V = torch.pca_lowrank(features_centered, q=n_components, center=False)
+
+    return V
+
+
+def pca_projection_fast(
+    features: torch.Tensor, n_components: int = 3, V: Optional[torch.Tensor] = None
+) -> torch.Tensor:
     """Project features using PCA to a lower dimension.
 
     Args:
@@ -18,14 +51,13 @@ def pca_projection_fast(features: torch.Tensor, n_components: int = 3) -> torch.
     features_flat = features.reshape(-1, C)
 
     # Center the data
-    mean = torch.mean(features_flat, dim=0, keepdim=True)
-    features_centered = features_flat - mean
+    features_centered = center_features(features_flat)
 
-    # Use torch.pca_lowrank
-    U, S, V = torch.pca_lowrank(features_centered, q=n_components)
+    if V is None:
+        V = calculate_pca_projection(features_centered, n_components, center=False)
 
     # Project data onto principal components
-    projected = torch.mm(features_centered, V)
+    projected = torch.mm(features_centered, V.to(features.device))
 
     # Normalize to [0, 1] range
     mins = projected.min(dim=0, keepdim=True)[0]

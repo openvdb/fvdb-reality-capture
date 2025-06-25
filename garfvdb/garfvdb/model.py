@@ -3,11 +3,14 @@
 #
 import itertools
 import logging
-from typing import Callable, Iterator, Literal, Union
+import math
+from typing import Callable, Dict, Iterator, Literal, Optional, Union
 
 import numpy as np
 import torch
 from sklearn.preprocessing import QuantileTransformer
+from torch.nn import functional as F
+from torch.utils.tensorboard import SummaryWriter
 
 import fvdb
 from fvdb import GaussianSplat3d
@@ -207,6 +210,14 @@ class GARfVDBModel(torch.nn.Module):
             if isinstance(layer, torch.nn.Linear):
                 torch.nn.init.xavier_uniform_(layer.weight)
 
+    def get_max_grouping_scale(self) -> float:
+        """Get the maximum grouping scale.
+
+        Returns:
+            float: The maximum grouping world space scale
+        """
+        return self.model_config.max_grouping_scale
+
     def parameters(self, recurse: bool = True) -> Iterator[torch.nn.Parameter]:
         """Return an iterator over module parameters.
 
@@ -262,7 +273,7 @@ class GARfVDBModel(torch.nn.Module):
             Callable: The quantile transformer
         """
         scales = scales.flatten()
-        scales = scales[(scales > 0) & (scales < self.model_config.max_grouping_scale)]
+        scales = scales[(scales > 0) & (scales < self.get_max_grouping_scale())]
 
         scales = scales.detach().cpu().numpy()  # type: ignore
 
@@ -386,12 +397,12 @@ class GARfVDBModel(torch.nn.Module):
             # Convert weights to probabilities if they aren't already normalized
 
             # Check for rays where all weights are -1
-            zero_mask = weights.sum(dim=-1) == 0  # [B, R]
+            zero_mask = weights.sum(dim=-1) == 0  # [B, R] or [B, H, W]
             if zero_mask.any():
                 print(f"WARNING: Found {zero_mask.sum().item()} rays with all 0 weights")
                 # For each ray with all zeros, set the first depth sample to 1e-10
                 weights = torch.where(
-                    zero_mask.unsqueeze(-1),  # [B, R, 1]
+                    zero_mask.unsqueeze(-1),  # [B, R, 1] or [B, H, W, 1]
                     torch.cat([torch.full_like(weights[..., :1], 1e-10), weights[..., 1:]], dim=-1),
                     weights,
                 )
@@ -400,12 +411,12 @@ class GARfVDBModel(torch.nn.Module):
 
             # Sample one index per ray based on probabilities
             # shape: [B, R]
-            depth_sample_indices = torch.multinomial(probs.view(-1, probs.shape[-1]), num_samples=1).view(
-                probs.shape[0], probs.shape[1]
+            depth_sample_indices = torch.multinomial(probs.view(-1, probs.shape[-1]), num_samples=1).reshape(
+                probs.shape[:-1]
             )
-            depth_sample_indices = depth_sample_indices.unsqueeze(-1)  # [B, R, 1]
+            depth_sample_indices = depth_sample_indices.unsqueeze(-1)  # [B, R, 1] or [B, H, W, 1]
             # get 1 id per ray based on the depth_sample_indices
-            selected_ids = torch.gather(ids.squeeze(-1), dim=2, index=depth_sample_indices)  # [B, R, 1]
+            selected_ids = torch.gather(ids.squeeze(-1), dim=2, index=depth_sample_indices)  # [B, R, 1] or [B, H, W, 1]
 
             # unique ids
             ids_3dgs = selected_ids % self.gs_model.means.shape[0]
