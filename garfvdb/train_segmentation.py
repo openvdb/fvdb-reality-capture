@@ -36,7 +36,7 @@ from torchvision.transforms import Compose
 sys.path.append("..")
 from viz import CameraState, Viewer
 
-logging.basicConfig(level=logging.DEBUG)
+logging.basicConfig(level=logging.INFO)
 logging.getLogger().name = "garfvdb"
 
 
@@ -372,14 +372,14 @@ class Runner:
 
             # Debug prints for first iteration
             if step == 0:
-                logging.info(f"Training with sample_pixels_per_image={self.config.sample_pixels_per_image}")
-                logging.info(f"Image size: {minibatch['image_full'].shape}")
-                logging.info(f"Batch size: {minibatch['image'].shape[0]}")
-                logging.info(f"scales shape: {minibatch['scales'].shape}")
-                logging.info(f"mask_id shape: {minibatch['mask_id'].shape}")
-                logging.info(f"pixel_coords shape: {minibatch['pixel_coords'].shape}")
-                logging.info(f"mean2d shape: {self.model.gs_model.means.shape}")
-                logging.info(f"Using gradient accumulation over {gradient_accumulation_steps} steps")
+                logging.debug(f"Training with sample_pixels_per_image={self.config.sample_pixels_per_image}")
+                logging.debug(f"Image size: {minibatch['image_full'].shape}")
+                logging.debug(f"Batch size: {minibatch['image'].shape[0]}")
+                logging.debug(f"scales shape: {minibatch['scales'].shape}")
+                logging.debug(f"mask_id shape: {minibatch['mask_id'].shape}")
+                logging.debug(f"pixel_coords shape: {minibatch['pixel_coords'].shape}")
+                logging.debug(f"mean2d shape: {self.model.gs_model.means.shape}")
+                logging.debug(f"Using gradient accumulation over {gradient_accumulation_steps} steps")
 
             ### Forward pass ###
             cam_enc_feats = self.model.get_encoded_features(minibatch)

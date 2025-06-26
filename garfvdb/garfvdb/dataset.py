@@ -1,6 +1,7 @@
 # Copyright Contributors to the OpenVDB Project
 # SPDX-License-Identifier: Apache-2.0
 #
+import logging
 import random
 from typing import Dict, List, NotRequired, TypedDict, Union, cast
 
@@ -38,7 +39,7 @@ class SegmentationDataset(Dataset):
         Args:
             segmentation_dataset_path: Path to the segmentation dataset.
         """
-        print(f"Loading segmentation dataset from {segmentation_dataset_path}")
+        logging.info(f"Loading segmentation dataset from {segmentation_dataset_path}")
         data = torch.load(segmentation_dataset_path)
 
         # NM = num_masks, MM=max_masks

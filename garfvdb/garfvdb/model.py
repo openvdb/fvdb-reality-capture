@@ -299,7 +299,6 @@ class GARfVDBModel(torch.nn.Module):
             ascii: If True, write in ASCII format, otherwise binary
         """
         points_np = points.detach().cpu().numpy()
-        print("points_np", points_np.shape)
         with open(filename, "w") as f:
             f.write("ply\n")
             f.write(f"format {'ascii' if ascii else 'binary_little_endian'} 1.0\n")
@@ -384,7 +383,7 @@ class GARfVDBModel(torch.nn.Module):
                 # TOOD:  There are Nans coming out of weights, need to fix this
                 # if there's any nans print a warning
                 if torch.isnan(weights).any():
-                    print("WARNING: Nans in weights")
+                    logging.warning("WARNING: Nans in weights")
                     weights = torch.where(torch.isnan(weights), torch.zeros_like(weights), weights)
 
             # select just the ids/weights that we need from the whole image if pixel_coords is specified
@@ -399,7 +398,7 @@ class GARfVDBModel(torch.nn.Module):
             # Check for rays where all weights are -1
             zero_mask = weights.sum(dim=-1) == 0  # [B, R] or [B, H, W]
             if zero_mask.any():
-                print(f"WARNING: Found {zero_mask.sum().item()} rays with all 0 weights")
+                logging.warning(f"WARNING: Found {zero_mask.sum().item()} rays with all 0 weights")
                 # For each ray with all zeros, set the first depth sample to 1e-10
                 weights = torch.where(
                     zero_mask.unsqueeze(-1),  # [B, R, 1] or [B, H, W, 1]
