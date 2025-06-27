@@ -17,6 +17,8 @@ def make_mesh_from_splat(
     dataset: ColmapDataset,
     voxel_size: float,
     voxel_trunc_margin: float = 2.0,
+    near_plane: float = 0.1,
+    far_plane: float = 1e10,
     device: str = "cuda",
     dtype: torch.dtype = torch.float16,
 ):
@@ -30,8 +32,10 @@ def make_mesh_from_splat(
         dataset: A ColmapDataset.
         voxel_size: Size of the voxels in the TSDF grid.
         voxel_trunc_margin: Margin for truncating the TSDF. Units are in voxels.
-        dtype: Data type for the TSDF and weights. Default is torch.float16.
+        near_plane: Near plane distance for the depth images.
+        far_plane: Far plane distance for the depth images.
         device: Device to use.
+        dtype: Data type for the TSDF and weights. Default is torch.float16.
 
     Returns:
         mesh_vertices: A [num_vertices, 3] shaped tensor of mesh vertices.
@@ -54,7 +58,7 @@ def make_mesh_from_splat(
         world_to_cam = torch.linalg.inv(cam_to_world_mats).contiguous()
 
         rgbd, alphas = model.render_images_and_depths(
-            world_to_cam, projection_mats, img.shape[1], img.shape[0], 0.1, 50.0
+            world_to_cam, projection_mats, img.shape[1], img.shape[0], near_plane, far_plane
         )
         rgb_images = (rgbd[..., :3].clip_(min=0.0, max=1.0) * 255.0).to(torch.uint8)
         depth_images = (rgbd[..., -1].unsqueeze(-1) / alphas.clamp(min=1e-10)).to(dtype)
@@ -94,7 +98,11 @@ def main(
     data_path: str,
     voxel_size: float,
     voxel_trunc_margin: float = 2.0,
-    data_scale_factor: int = 4,
+    near_plane: float = 0.1,
+    far_plane: float = 1e10,
+    normalization_type: str = "pca",
+    output_path: str = "mesh.ply",
+    image_downsample_factor: int = 4,
     device: str = "cuda",
 ):
     """
@@ -106,7 +114,11 @@ def main(
         checkpoint_path: Path to the GaussianSplat3d checkpoint.
         data_path: Path to the dataset.
         voxel_size: Size of the voxels in the TSDF grid.
-        data_scale_factor: Downsample factor for the depth images.
+        voxel_trunc_margin: Margin for truncating the TSDF. Units are in voxels.
+        near_plane: Near plane distance for the depth images.
+        far_plane: Far plane distance for the depth images.
+        normalization_type: Normalization type for the dataset. Options are "pca", "similarity", "ecef2enu", or "none".
+        image_downsample_factor: Downsample factor for the depth images.
         device: Device to use
 
     Returns:
@@ -115,11 +127,21 @@ def main(
     checkpoint = torch.load(checkpoint_path, map_location=device)
     model = GaussianSplat3d.from_state_dict(checkpoint["splats"])
 
-    dataset = ColmapDataset(data_path, split="all", image_downsample_factor=data_scale_factor)
+    dataset = ColmapDataset(
+        data_path, split="all", image_downsample_factor=image_downsample_factor, normalization_type=normalization_type
+    )
 
-    v, f, c = make_mesh_from_splat(model, dataset, voxel_size, voxel_trunc_margin=voxel_trunc_margin, device=device)
+    v, f, c = make_mesh_from_splat(
+        model,
+        dataset,
+        voxel_size,
+        voxel_trunc_margin=voxel_trunc_margin,
+        near_plane=near_plane,
+        far_plane=far_plane,
+        device=device,
+    )
 
-    pcu.save_mesh_vfc("mesh.ply", v, f, c)
+    pcu.save_mesh_vfc(output_path, v, f, c)
 
 
 if __name__ == "__main__":
