@@ -108,8 +108,8 @@ def filter_splat_means(splats, percentile=[0.98, 0.98, 0.98, 0.98, 0.98, 0.98], 
     splats["logit_opacities"] = splats["logit_opacities"][good_inds]
     splats["quats"] = splats["quats"][good_inds, :]
     splats["log_scales"] = splats["log_scales"][good_inds, :]
-    splats["sh0"] = splats["sh0"][:, good_inds, :]
-    splats["shN"] = splats["shN"][:, good_inds, :]
+    splats["sh0"] = splats["sh0"][good_inds, :]
+    splats["shN"] = splats["shN"][good_inds, :]
     splats["accumulated_gradient_step_counts_for_grad"] = splats["accumulated_gradient_step_counts_for_grad"][good_inds]
     splats["accumulated_mean_2d_gradient_norms_for_grad"] = splats["accumulated_mean_2d_gradient_norms_for_grad"][
         good_inds
@@ -140,8 +140,8 @@ def prune_large(splats, prune_scale3d_threshold=0.05):
     splats["logit_opacities"] = splats["logit_opacities"][good_inds]
     splats["quats"] = splats["quats"][good_inds, :]
     splats["log_scales"] = splats["log_scales"][good_inds, :]
-    splats["sh0"] = splats["sh0"][:, good_inds, :]
-    splats["shN"] = splats["shN"][:, good_inds, :]
+    splats["sh0"] = splats["sh0"][good_inds, :]
+    splats["shN"] = splats["shN"][good_inds, :]
     splats["accumulated_gradient_step_counts_for_grad"] = splats["accumulated_gradient_step_counts_for_grad"][good_inds]
     splats["accumulated_mean_2d_gradient_norms_for_grad"] = splats["accumulated_mean_2d_gradient_norms_for_grad"][
         good_inds
@@ -168,8 +168,8 @@ def filter_splat_opacities(splats, percentile=0.98, decimate=4):
     splats["logit_opacities"] = splats["logit_opacities"][good_inds]
     splats["quats"] = splats["quats"][good_inds, :]
     splats["log_scales"] = splats["log_scales"][good_inds, :]
-    splats["sh0"] = splats["sh0"][:, good_inds, :]
-    splats["shN"] = splats["shN"][:, good_inds, :]
+    splats["sh0"] = splats["sh0"][good_inds, :]
+    splats["shN"] = splats["shN"][good_inds, :]
     splats["accumulated_gradient_step_counts_for_grad"] = splats["accumulated_gradient_step_counts_for_grad"][good_inds]
     splats["accumulated_mean_2d_gradient_norms_for_grad"] = splats["accumulated_mean_2d_gradient_norms_for_grad"][
         good_inds
@@ -202,8 +202,8 @@ def apply_bounds(splats, bounds):
     splats["logit_opacities"] = splats["logit_opacities"][good_inds]
     splats["quats"] = splats["quats"][good_inds, :]
     splats["log_scales"] = splats["log_scales"][good_inds, :]
-    splats["sh0"] = splats["sh0"][:, good_inds, :]
-    splats["shN"] = splats["shN"][:, good_inds, :]
+    splats["sh0"] = splats["sh0"][good_inds, :]
+    splats["shN"] = splats["shN"][good_inds, :]
     splats["accumulated_gradient_step_counts_for_grad"] = splats["accumulated_gradient_step_counts_for_grad"][good_inds]
     splats["accumulated_mean_2d_gradient_norms_for_grad"] = splats["accumulated_mean_2d_gradient_norms_for_grad"][
         good_inds
