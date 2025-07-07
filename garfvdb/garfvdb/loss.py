@@ -1,3 +1,6 @@
+# Copyright Contributors to the OpenVDB Project
+# SPDX-License-Identifier: Apache-2.0
+#
 import logging
 import math
 from typing import Dict
