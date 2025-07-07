@@ -57,24 +57,33 @@ def make_mesh_from_splat(
         cam_to_world_mats = data["camtoworld"].to(device)
         world_to_cam = torch.linalg.inv(cam_to_world_mats).contiguous()
 
+        # We set near and far planes to 0.0 and 1e10 respectively to avoid clipping
+        # in the rendering process. Instead, we will use the provided near and far planes
+        # to filter the depth images after rendering so pixels out of range will not be integrated
+        # into the TSDF.
         rgbd, alphas = model.render_images_and_depths(
-            world_to_cam, projection_mats, img.shape[1], img.shape[0], near_plane, far_plane
+            world_to_cam, projection_mats, img.shape[1], img.shape[0], near=0.0, far=1e10
         )
         rgb_images = (rgbd[..., :3].clip_(min=0.0, max=1.0) * 255.0).to(torch.uint8)
         depth_images = (rgbd[..., -1].unsqueeze(-1) / alphas.clamp(min=1e-10)).to(dtype)
+        weight_images = ((depth_images > near_plane) & (depth_images < far_plane)).to(dtype)
 
         accum_grid, tsdf, weights, colors = accum_grid.integrate_tsdf_with_features(
-            tsdf,
-            weights,
-            colors,
-            depth_images,
-            rgb_images,
+            trunc_margin,
             projection_mats.to(dtype),
             cam_to_world_mats.to(dtype),
-            trunc_margin,
+            tsdf,
+            colors,
+            weights,
+            depth_images,
+            rgb_images,
+            weight_images.squeeze(-1),
         )
         pbar.set_postfix({"accumulated_voxels": accum_grid.total_voxels})
 
+    # After integrating all the images, we prune the grid to remove empty voxels which have no weights.
+    # This is done to reduce the size of the grid and speed up the marching cubes algorithm
+    # which will be used to extract the mesh.
     new_grid = accum_grid.pruned_grid(weights > 0.0)
     filter_tsdf = new_grid.jagged_like(torch.zeros(new_grid.total_voxels, device=new_grid.device, dtype=dtype))
     filter_colors = new_grid.jagged_like(
@@ -84,13 +93,13 @@ def make_mesh_from_splat(
     new_grid.inject_from(accum_grid, colors, filter_colors)
     # print("NEW GRID VOXELS", new_grid.total_voxels)
 
-    v, f, u = new_grid.marching_cubes(filter_tsdf, 0.0)
-    v = v.jdata
-    f = f.jdata
-    c = new_grid.sample_trilinear(v, filter_colors.to(dtype)).jdata / 255.0
-    c.clip_(min=0.0, max=1.0)
+    mesh_vertices, mesh_faces, _ = new_grid.marching_cubes(filter_tsdf, 0.0)
+    mesh_vertices = mesh_vertices.jdata
+    mesh_faces = mesh_faces.jdata
+    mesh_colors = new_grid.sample_trilinear(mesh_vertices, filter_colors.to(dtype)).jdata / 255.0
+    mesh_colors.clip_(min=0.0, max=1.0)
 
-    return v.cpu().numpy(), f.cpu().numpy(), c.cpu().numpy()
+    return mesh_vertices.cpu().numpy(), mesh_faces.cpu().numpy(), mesh_colors.cpu().numpy()
 
 
 def main(
