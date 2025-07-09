@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 import os
+from collections.abc import Iterable
 from typing import Any, Dict, List, Optional
 
 import cv2
@@ -590,7 +591,7 @@ class ColmapScene:
             return camtoworlds, T1
 
 
-class ColmapDataset(torch.utils.data.Dataset):
+class ColmapDataset(torch.utils.data.Dataset, Iterable):
     __colmap_scene_cache: Dict[str, ColmapScene] = dict()
 
     def __colmap_scene_unique_id(self):
@@ -714,6 +715,16 @@ class ColmapDataset(torch.utils.data.Dataset):
     @property
     def points_rgb(self) -> np.ndarray:
         return self.colmap_scene.points_rgb
+
+    def __iter__(self):
+        """
+        Iterate over the dataset
+
+        Yields:
+            The next image in the dataset.
+        """
+        for i in range(len(self)):
+            yield self[i]
 
     def __len__(self):
         return len(self.indices)

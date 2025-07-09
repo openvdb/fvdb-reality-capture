@@ -9,7 +9,7 @@ import os
 import random
 import time
 from dataclasses import dataclass, field
-from typing import List, Literal, Optional, Tuple, Union
+from typing import List, Literal, Optional, Union
 
 import imageio
 import numpy as np
@@ -18,7 +18,6 @@ import torch.nn.functional as F
 import torch.utils.data
 import tqdm
 import tyro
-import viser
 import yaml
 from datasets import ColmapDataset
 from fvdb.optim import GaussianSplatOptimizer
@@ -27,7 +26,7 @@ from torch.utils.tensorboard import SummaryWriter
 from torchmetrics.image import PeakSignalNoiseRatio, StructuralSimilarityIndexMeasure
 from torchmetrics.image.lpip import LearnedPerceptualImagePatchSimilarity
 from utils import CameraOptModule, gaussian_means_outside_bbox
-from viz import CameraState, Viewer
+from viewer import Viewer
 
 from fvdb import GaussianSplat3d
 
@@ -100,7 +99,7 @@ class Config:
     refine_using_scale2d_stop_iter: int = 0
 
     # Flag to enable camera pose optimization.
-    pose_opt: bool = False
+    pose_opt: bool = True
     # Learning rate for camera pose optimization.
     pose_opt_lr: float = 1e-5
 
@@ -153,6 +152,257 @@ def crop_image_batch(image: torch.Tensor, mask: Optional[torch.Tensor], ncrops: 
         yield image_patch, mask_patch, crop, is_last
 
 
+class TensorboardLogger:
+    """
+    A utility class to log training metrics to TensorBoard.
+    """
+
+    def __init__(self, log_dir: str, log_every: int = 100):
+        """
+        Create a new `TensorboardLogger` instance which is used to track training and evaluation progress in tensorboard.
+
+        Args:
+            log_dir: Directory to save TensorBoard logs.
+            log_every: Log every `log_every` steps.
+        """
+        self._log_every = log_every
+        self._log_dir = log_dir
+        self._tb_writer = SummaryWriter(log_dir=log_dir)
+
+    def log_training_iteration(
+        self,
+        step: int,
+        num_gaussians: int,
+        loss: float,
+        l1loss: float,
+        ssimloss: float,
+        mem: float,
+        gt_img: torch.Tensor,
+        pred_img: torch.Tensor,
+        pose_loss: float | None,
+        show_images_in_tensorboard: bool = False,
+    ):
+        """
+        Log training metrics to TensorBoard.
+
+        Args:
+            step: Current training step.
+            num_gaussians: Number of Gaussians in the model.
+            loss: Total loss value.
+            l1loss: L1 loss value.
+            ssimloss: SSIM loss value.
+            mem: Maximum GPU memory allocated in GB.
+            pose_loss: Pose optimization loss, if applicable.
+            gt_img: Ground truth image for visualization.
+            pred_img: Predicted image for visualization.
+            show_images_in_tensorboard: Whether to show images in TensorBoard.
+        """
+        if self._log_every > 0 and step % self._log_every == 0 and self._tb_writer is not None:
+            mem = torch.cuda.max_memory_allocated() / 1024**3
+            self._tb_writer.add_scalar("train/loss", loss, step)
+            self._tb_writer.add_scalar("train/l1loss", l1loss, step)
+            self._tb_writer.add_scalar("train/ssimloss", ssimloss, step)
+            self._tb_writer.add_scalar("train/num_gaussians", num_gaussians, step)
+            self._tb_writer.add_scalar("train/mem", mem, step)
+            # Log pose optimization metrics
+            if pose_loss is not None:
+                # Log individual components of pose parameters
+                self._tb_writer.add_scalar("train/pose_reg_loss", pose_loss, step)
+            if show_images_in_tensorboard:
+                canvas = torch.cat([gt_img, pred_img], dim=2).detach().cpu().numpy()
+                canvas = canvas.reshape(-1, *canvas.shape[2:])
+                self._tb_writer.add_image("train/render", canvas, step)
+            self._tb_writer.flush()
+
+    def log_evaluation_iteration(
+        self,
+        step: int,
+        psnr: float,
+        ssim: float,
+        lpips: float,
+        ellapsed_time: float,
+        num_gaussians: int,
+    ):
+
+        self._tb_writer.add_scalar("eval/psnr", psnr, step)
+        self._tb_writer.add_scalar("eval/ssim", ssim, step)
+        self._tb_writer.add_scalar("eval/lpips", lpips, step)
+        self._tb_writer.add_scalar("eval/ellapsed_time", ellapsed_time, step)
+        self._tb_writer.add_scalar("eval/num_gaussians", num_gaussians, step)
+
+
+class ViewerLogger:
+    """
+    A utility class to visualize the scene being trained and log training statistics and model state to the viewer.
+    """
+
+    def __init__(
+        self,
+        splat_scene: GaussianSplat3d,
+        train_dataset: ColmapDataset,
+        viewer_port: int = 8080,
+        verbose: bool = False,
+    ):
+        """
+        Create a new `ViewerLogger` instance which is used to track training and evaluation progress through the viewer.
+
+        Args:
+            splat_scene: The GaussianSplat3d scene to visualize.
+            train_dataset: The dataset containing camera frames and images.
+            viewer_port: The port on which the viewer will run.
+            verbose: If True, print additional information about the viewer.
+        """
+
+        cam_to_world_matrices, projection_matrices, images = [], [], []
+        camera_positions = []
+        for data in train_dataset:
+            cam_to_world_matrices.append(data["camtoworld"])
+            projection_matrices.append(data["K"])
+            camera_positions.append(data["camtoworld"][:3, 3].cpu().numpy())
+            images.append(data["image"])
+
+        scene_center = np.mean(camera_positions, axis=0)
+        scene_radius = np.max(np.linalg.norm(camera_positions - scene_center, axis=1))
+
+        cam_to_world_matrices = np.stack(cam_to_world_matrices, axis=0)
+        projection_matrices = np.stack(projection_matrices, axis=0)
+        images = np.stack(images, axis=0)
+
+        self.viewer = Viewer(port=viewer_port, verbose=verbose)
+
+        self._splat_model_view = self.viewer.register_gaussian_splat_3d(name="Model", gaussian_scene=splat_scene)
+
+        self._train_camera_view = self.viewer.register_camera_view(
+            name="Training Cameras",
+            cam_to_world_matrices=cam_to_world_matrices,
+            projection_matrices=projection_matrices,
+            images=images,
+            axis_length=0.05 * scene_radius,
+            axis_thickness=0.1 * 0.05 * scene_radius,
+            show_images=False,
+            enabled=False,
+        )
+
+        self._training_metrics_view = self.viewer.register_dictionary_label(
+            "Training Metrics",
+            {
+                "Current Iteration": 0,
+                "Current SH Degree": 0,
+                "Num Gaussians": 0,
+                "Loss": 0.0,
+                "SSIM Loss": 0.0,
+                "LPIPS Loss": 0.0,
+                "GPU Memory Usage": 0,
+                "Pose Loss": 0.0,
+            },
+        )
+
+        self._evaluation_metrics_view = self.viewer.register_dictionary_label(
+            "Evaluation Metrics",
+            {
+                "Last Evaluation Step": 0,
+                "PSNR": 0.0,
+                "SSIM": 0.0,
+                "LPIPS": 0.0,
+                "Evaluation Time": 0.0,
+                "Num Gaussians": 0,
+            },
+        )
+
+    @torch.no_grad
+    def pause_for_eval(self):
+        self._splat_model_view.allow_enable_in_viewer = False
+        self._splat_model_view.enabled = False
+        self._training_metrics_view["Status"] = "**Paused for Evaluation**"
+
+    @torch.no_grad
+    def resume_after_eval(self):
+        self._splat_model_view.allow_enable_in_viewer = True
+        self._splat_model_view.enabled = True
+        del self._training_metrics_view["Status"]
+
+    @torch.no_grad
+    def set_sh_basis_to_view(self, sh_degree: int):
+        """
+        Set the degree of the spherical harmonics to use in the viewer.
+
+        Args:
+            sh_degree: The spherical harmonics degree to view.
+        """
+        self._splat_model_view.sh_degree = sh_degree
+
+    @torch.no_grad
+    def update_camera_poses(self, cam_to_world_matrices: torch.Tensor, image_ids: torch.Tensor):
+        """
+        Update camera poses in the viewer corresponding to the given image IDs
+
+        Args:
+            cam_to_world_matrices: A tensor of shape (B, 4, 4) containing camera-to-world matrices.
+            image_ids: A tensor of shape (B,) containing image IDs of the cameras in the training set to update.
+        """
+        for i in range(len(cam_to_world_matrices)):
+            cam_to_world_matrix = cam_to_world_matrices[i].cpu().numpy()
+            image_id = int(image_ids[i].item())
+            self._train_camera_view[image_id].cam_to_world_matrix = cam_to_world_matrix
+
+    @torch.no_grad
+    def log_evaluation_iteration(
+        self, step: int, psnr: float, ssim: float, lpips: float, evaluation_time: float, num_gaussians: int
+    ):
+        """
+        Log data for a single evaluation step to the viewer.
+
+        Args:
+            step: The training step after which the evaluation was performed.
+            psnr: Peak Signal-to-Noise Ratio for the evaluation (averaged over all images in the validation set).
+            ssim: Structural Similarity Index Measure for the evaluation (averaged over all images in the validation set).
+            lpips: Learned Perceptual Image Patch Similarity for the evaluation (averaged over all images in the validation set).
+            evaluation_time: Time taken for the evaluation in seconds.
+            num_gaussians: Number of Gaussians in the model at this evaluation step.
+        """
+        self._evaluation_metrics_view["Last Evaluation Step"] = step
+        self._evaluation_metrics_view["PSNR"] = psnr
+        self._evaluation_metrics_view["SSIM"] = ssim
+        self._evaluation_metrics_view["LPIPS"] = lpips
+        self._evaluation_metrics_view["Evaluation Time"] = evaluation_time
+        self._evaluation_metrics_view["Num Gaussians"] = num_gaussians
+
+    @torch.no_grad
+    def log_training_iteration(
+        self,
+        step: int,
+        loss: float,
+        l1loss: float,
+        ssimloss: float,
+        mem: float,
+        num_gaussians: int,
+        current_sh_degree: int,
+        pose_loss: float | None,
+    ):
+        """
+        Log data for a single training step to the viewer.
+
+        Args:
+            step: The current training step.
+            loss: Total loss value for the training step.
+            l1loss: L1 loss value for the training step.
+            ssimloss: SSIM loss value for the training step.
+            mem: Maximum GPU memory allocated in GB during this step.
+            num_gaussians: Number of Gaussians in the model at this training step.
+            current_sh_degree: Current degree of spherical harmonics used in the
+        """
+
+        self._training_metrics_view["Current Iteration"] = step
+        self._training_metrics_view["Current SH Degree"] = current_sh_degree
+        self._training_metrics_view["Num Gaussians"] = num_gaussians
+        self._training_metrics_view["Loss"] = loss
+        self._training_metrics_view["SSIM Loss"] = ssimloss
+        self._training_metrics_view["LPIPS Loss"] = l1loss
+        self._training_metrics_view["GPU Memory Usage"] = f"{mem:3.2f} GiB"
+        if pose_loss is not None:
+            self._training_metrics_view["Pose Loss"] = pose_loss
+
+
 class Runner:
     """Engine for training and testing."""
 
@@ -181,65 +431,14 @@ class Runner:
 
         # pose optimization
         if self.cfg.pose_opt:
+            assert (
+                self.pose_optimizer is not None
+            ), "Pose optimizer should be initialized if pose optimization is enabled."
             data["pose_adjust"] = self.pose_adjust.state_dict()
             data["pose_optimizer"] = self.pose_optimizer.state_dict()
 
         torch.save(data, f"{self.checkpoint_dir}/ckpt_{step:04d}.pt")
         self.model.save_ply(f"{self.checkpoint_dir}/ckpt_{step:04d}.ply")
-
-    # pose optimization
-    def _matrix_to_quaternion(self, R):
-        """Convert rotation matrix to quaternion."""
-        # Ensure R is a proper rotation matrix
-        U, _, Vt = np.linalg.svd(R)
-        R = U @ Vt
-        if np.linalg.det(R) < 0:
-            R = -R
-
-        # Convert to quaternion
-        q = np.zeros(4)
-        tr = np.trace(R)
-        if tr > 0:
-            S = np.sqrt(tr + 1.0) * 2
-            q[0] = 0.25 * S
-            q[1] = (R[2, 1] - R[1, 2]) / S
-            q[2] = (R[0, 2] - R[2, 0]) / S
-            q[3] = (R[1, 0] - R[0, 1]) / S
-        elif R[0, 0] > R[1, 1] and R[0, 0] > R[2, 2]:
-            S = np.sqrt(1.0 + R[0, 0] - R[1, 1] - R[2, 2]) * 2
-            q[0] = (R[2, 1] - R[1, 2]) / S
-            q[1] = 0.25 * S
-            q[2] = (R[0, 1] + R[1, 0]) / S
-            q[3] = (R[0, 2] + R[2, 0]) / S
-        elif R[1, 1] > R[2, 2]:
-            S = np.sqrt(1.0 + R[1, 1] - R[0, 0] - R[2, 2]) * 2
-            q[0] = (R[0, 2] - R[2, 0]) / S
-            q[1] = (R[0, 1] + R[1, 0]) / S
-            q[2] = 0.25 * S
-            q[3] = (R[1, 2] + R[2, 1]) / S
-        else:
-            S = np.sqrt(1.0 + R[2, 2] - R[0, 0] - R[1, 1]) * 2
-            q[0] = (R[1, 0] - R[0, 1]) / S
-            q[1] = (R[0, 2] + R[2, 0]) / S
-            q[2] = (R[1, 2] + R[2, 1]) / S
-            q[3] = 0.25 * S
-        return q
-
-    def update_poses_for_visualization(self, cam_to_world_mats: torch.Tensor, image_ids: torch.Tensor):
-        """
-        Update camera poses for visualization in the viewer.
-
-        Args:
-            cam_to_world_mats: Updated camera-to-world matrices from pose optimization
-            image_ids: Batch of camera indices that were updated
-        """
-
-        for i, frame in enumerate(self.camera_frames):
-            if i in image_ids:
-                idx = (image_ids == i).nonzero().item()
-                cam_to_world = cam_to_world_mats[idx].detach().cpu().numpy()
-                frame.wxyz = self._matrix_to_quaternion(cam_to_world[:3, :3])
-                frame.position = cam_to_world[:3, 3]
 
     def load_checkpoint(self, checkpoint_path: str, load_optimizer: bool = True):
         checkpoint = torch.load(checkpoint_path)
@@ -248,13 +447,11 @@ class Runner:
             self.optimizer.load_state_dict(checkpoint["optimizer"])
             ##pose optimization
             if self.cfg.pose_opt and "pose_optimizer" in checkpoint:
-                self.pose_optimizers[0].load_state_dict(checkpoint["pose_optimizer"])
+                assert (
+                    self.pose_optimizer is not None
+                ), "Pose optimizer should be initialized if pose optimization is enabled."
+                self.pose_optimizer.load_state_dict(checkpoint["pose_optimizer"])
         self.config = Config(*checkpoint["config"])
-
-        if not self.disable_viewer:
-            self.viewer.lock.release_lock
-            self.viewer.state.status = "rendering"
-            self.viewer.update(checkpoint["step"], 0)
 
         return checkpoint["step"]
 
@@ -373,7 +570,12 @@ class Runner:
         self.make_results_dir()
 
         # Tensorboard
-        self.writer = SummaryWriter(log_dir=self.tensorboard_dir) if not self.no_save else None
+        assert self.tensorboard_dir is not None, "Tensorboard directory should be set."
+        self.tensorboard_logger = (
+            TensorboardLogger(log_dir=self.tensorboard_dir, log_every=log_tensorboard_every)
+            if not self.no_save
+            else None
+        )
 
         # Load data: Training data should contain initial points and colors.
         normalization_type = "ecef2enu" if normalize_ecef2enu else "pca"
@@ -484,83 +686,7 @@ class Runner:
             raise ValueError(f"Unknown LPIPS network: {cfg.lpips_net}")
 
         # Viewer
-        if not self.disable_viewer:
-            self.server = viser.ViserServer(port=8080, verbose=False)
-
-            # Set default up axis
-            self.current_up_axis = "+z"
-            self.server.scene.set_up_direction(self.current_up_axis)
-
-            # Store per-client up axis dropdowns
-            self.client_up_axis_dropdowns = {}
-
-            # Add client connect handler for per-client GUI elements
-            @self.server.on_client_connect
-            def _(client: viser.ClientHandle) -> None:
-                # Create per-client up axis dropdown
-                up_axis_dropdown = client.gui.add_dropdown(
-                    "Up Axis",
-                    options=["+x", "-x", "+y", "-y", "+z", "-z"],
-                    initial_value=self.current_up_axis,
-                )
-
-                # Store the dropdown for this client
-                self.client_up_axis_dropdowns[client.client_id] = up_axis_dropdown
-
-                # Add callback for up axis changes for this specific client
-                @up_axis_dropdown.on_update
-                def _on_up_axis_change(event) -> None:
-                    self.viewer.set_up_axis(client.client_id, event.target.value)
-
-            # Add client disconnect handler to clean up
-            @self.server.on_client_disconnect
-            def _(client: viser.ClientHandle) -> None:
-                if client.client_id in self.client_up_axis_dropdowns:
-                    del self.client_up_axis_dropdowns[client.client_id]
-
-            self.viewer = Viewer(
-                server=self.server,
-                render_fn=self._viewer_render_fn,
-                mode="training",
-            )
-            # Add camera frames to the viewer
-            self.camera_frames = []
-            self.camera_labels = []
-
-            # Calculate scene scale from camera positions
-            camera_positions = []
-            for i, data in enumerate(self.trainset):
-                cam_to_world = data["camtoworld"].cpu().numpy()
-                camera_positions.append(cam_to_world[:3, 3])
-            camera_positions = np.array(camera_positions)
-
-            # Calculate scene bounds and scale
-            scene_center = np.mean(camera_positions, axis=0)
-            scene_radius = np.max(np.linalg.norm(camera_positions - scene_center, axis=1))
-            # Scale factors for axes - adjust these multipliers to change relative size
-            axes_length = scene_radius * 0.05  # 5% of scene radius
-            axes_radius = axes_length * 0.1  # 10% of axes length
-
-            for i, data in enumerate(self.trainset):
-                cam_to_world = data["camtoworld"].cpu().numpy()
-                # Create a frame for each camera with scaled axes
-                frame = self.server.scene.add_frame(
-                    f"camera_{i}",
-                    wxyz=self._matrix_to_quaternion(cam_to_world[:3, :3]),
-                    position=cam_to_world[:3, 3],
-                    axes_length=axes_length,  # Scaled based on scene size
-                    axes_radius=axes_radius,  # Scaled based on scene size
-                )
-                K = data["K"].cpu().numpy()
-                H, W = data["image"].shape[:2]
-                fy = K[1, 1]
-                frustum = self.server.scene.add_camera_frustum(
-                    f"camera_{i}/frustum",
-                    fov=2 * np.arctan2(H / 2, fy),
-                    aspect=W / H,
-                    image=data["image"],
-                )
-                self.camera_frames.append(frame)
+        self.viewer_logger = ViewerLogger(self.model, self.trainset) if not self.disable_viewer else None
 
     def train(self, start_step: int = 0):
         # We keep cycling through every image in a random order until we reach
@@ -583,30 +709,20 @@ class Runner:
             )
         )
 
-        # Training loop.
-        cnt = 0
-
         self.train_start_time = time.time()
         pbar = tqdm.tqdm(range(start_step, self.cfg.max_steps))
         for step in pbar:
-            if not self.disable_viewer:
-                while self.viewer.state.status == "paused":
-                    time.sleep(0.01)
-                self.viewer.lock.acquire()
-                tic = time.time()
+            if self.viewer_logger is not None:
+                self.viewer_logger.viewer.acquire_lock()
 
             minibatch = next(trainloader)
             cam_to_world_mats = minibatch["camtoworld"].to(self.device)  # [B, 4, 4]
             world_to_cam_mats = minibatch["worldtocam"].to(self.device)  # [B, 4, 4]
 
-            # CAMERA pose optimization
+            # Camera pose optimization
             image_ids = minibatch["image_id"].to(self.device)  # [B]
             if self.cfg.pose_opt and step < self.cfg.pose_opt_stop_iter:
-                # Update camera frames in viewer
                 cam_to_world_mats = self.pose_adjust(cam_to_world_mats, image_ids)
-
-                if not self.disable_viewer:
-                    self.update_poses_for_visualization(cam_to_world_mats, image_ids)
             else:
                 # After pose_opt_stop_iter, use original camera poses
                 cam_to_world_mats = minibatch["camtoworld"].to(self.device)
@@ -614,7 +730,6 @@ class Runner:
             image = minibatch["image"]  # [B, H, W, 3]
             mask = minibatch["mask"] if "mask" in minibatch else None
             image_height, image_width = image.shape[1:3]
-            num_pixels_in_minibatch = image.shape[0] * image.shape[1] * image.shape[2]
 
             # Progressively use higher spherical harmonic degree as we optimize
             sh_degree_to_use = min(step // self.cfg.increase_sh_degree_every, self.cfg.sh_degree)
@@ -653,22 +768,8 @@ class Runner:
                         raise ValueError("use masks set, but no mask images available")
                     else:
                         # set the ground truth pixel values to match render, thus loss is zero at mask pixels and not updated
-                        # if minibatch["image_id"].cpu().numpy()[0] == 95:
-                        # mask_img = np.ones(mask_pixels.squeeze().shape,dtype=np.uint8)
-                        #     mask_img[mask_pixels.squeeze()] = 0
-                        #     mask_img = mask_img * 255
-                        #     imageio.imwrite(mask_debug_path+str(cnt).zfill(8)+"_mask_img.jpg", mask_img)
                         mask_pixels = mask_pixels.to(self.device)
                         pixels[mask_pixels] = colors.detach()[mask_pixels]
-
-                        # if minibatch["image_id"].cpu().numpy()[0] == 95:
-                        #     canvas = torch.cat([pixels, colors], dim=2).squeeze(0).detach().cpu().numpy()
-
-                        #     imageio.imwrite(
-                        #         mask_debug_path + str(cnt).zfill(8)+"_train_canvas.jpg",
-                        #         (canvas * 255).astype(np.uint8),
-                        #     )
-                    cnt += 1
 
                 # Image losses
                 l1loss = F.l1_loss(colors, pixels)
@@ -688,31 +789,31 @@ class Runner:
                 # If we're splitting into crops, accumulate gradients
                 loss.backward(retain_graph=not is_last)
 
-            # Log to tensorboard and update progress bar
+            # Update the log in the progress bar
             pbar.set_description(f"loss={loss.item():.3f}| " f"sh degree={sh_degree_to_use}| ")
-            if self.log_tensorboard_every > 0 and step % self.log_tensorboard_every == 0 and self.writer is not None:
-                mem = torch.cuda.max_memory_allocated() / 1024**3
-                self.writer.add_scalar("train/loss", loss.item(), step)
-                self.writer.add_scalar("train/l1loss", l1loss.item(), step)
-                self.writer.add_scalar("train/ssimloss", ssimloss.item(), step)
-                self.writer.add_scalar("train/num_GS", self.model.num_gaussians, step)
-                self.writer.add_scalar("train/mem", mem, step)
-                # Log pose optimization metrics
-                if self.cfg.pose_opt:
-                    pose_params = self.pose_adjust.pose_embeddings(image_ids)
-                    pose_reg = torch.mean(torch.abs(pose_params))
-                    # Log individual components of pose parameters
-                    self.writer.add_scalar("train/pose_reg_loss", pose_reg.item(), step)
-                    self.writer.add_scalar("train/pose_total_loss", (self.cfg.pose_opt_reg * pose_reg).item(), step)
-                if self.log_images_to_tensorboard:
-                    canvas = torch.cat([pixels, colors], dim=2).detach().cpu().numpy()
-                    canvas = canvas.reshape(-1, *canvas.shape[2:])
-                    self.writer.add_image("train/render", canvas, step)
-                self.writer.flush()
+
+            # Log to tensorboard if you requested it
+            if self.tensorboard_logger is not None:
+                self.tensorboard_logger.log_training_iteration(
+                    step,
+                    self.model.num_gaussians,
+                    loss.item(),
+                    l1loss.item(),
+                    ssimloss.item(),
+                    torch.cuda.max_memory_allocated() / 1024**3,
+                    pose_loss=pose_reg.item() if self.cfg.pose_opt else None,
+                    gt_img=pixels,
+                    pred_img=colors,
+                    show_images_in_tensorboard=self.log_images_to_tensorboard,
+                )
 
             # save checkpoint before updating the model; clip if provided cliping bounds
             if step in [i - 1 for i in self.cfg.save_steps] or step == self.cfg.max_steps - 1:
+                if self.viewer_logger is not None:
+                    self.viewer_logger.pause_for_eval()
                 self.save_checkpoint(step)
+                if self.viewer_logger is not None:
+                    self.viewer_logger.resume_after_eval()
 
             # Refine the gaussians via splitting/duplication/pruning
             if (
@@ -745,28 +846,42 @@ class Runner:
                 self.optimizer.reset_opacities()
             self.optimizer.step()
             self.optimizer.zero_grad(set_to_none=True)
+
             # pose optimization
             if self.cfg.pose_opt and step < self.cfg.pose_opt_stop_iter:
+                assert (
+                    self.pose_optimizer is not None
+                ), "Pose optimizer should be initialized if pose optimization is enabled."
                 self.pose_optimizer.step()
                 self.pose_optimizer.zero_grad(set_to_none=True)
                 # Step the scheduler
                 self.pose_scheduler.step()
 
-            # After optimizer step, check if poses were updated
-
             # Run evaluation every eval_steps
             if step in [i - 1 for i in self.cfg.eval_steps]:
+                if self.viewer_logger is not None:
+                    self.viewer_logger.pause_for_eval()
                 self.eval(step)
+                if self.viewer_logger is not None:
+                    self.viewer_logger.resume_after_eval()
 
             # Update the viewer
-            if not self.disable_viewer:
-                self.viewer.lock.release()
-                num_train_steps_per_sec = 1.0 / (time.time() - tic)
-                num_train_rays_per_sec = num_pixels_in_minibatch * num_train_steps_per_sec
-                # Update the viewer state.
-                self.viewer.state.num_train_rays_per_sec = num_train_rays_per_sec
-                # Update the scene.
-                self.viewer.update(step, num_pixels_in_minibatch)
+            if self.viewer_logger is not None:
+                self.viewer_logger.viewer.release_lock()
+                self.viewer_logger.log_training_iteration(
+                    step,
+                    loss=loss.item(),
+                    l1loss=l1loss.item(),
+                    ssimloss=ssimloss.item(),
+                    mem=torch.cuda.max_memory_allocated() / 1024**3,
+                    num_gaussians=self.model.num_gaussians,
+                    current_sh_degree=sh_degree_to_use,
+                    pose_loss=pose_reg.item() if self.cfg.pose_opt else None,
+                )
+                if self.cfg.pose_opt:
+                    self.viewer_logger.update_camera_poses(cam_to_world_mats, image_ids)
+                if step % self.cfg.increase_sh_degree_every == 0 and sh_degree_to_use < self.cfg.sh_degree:
+                    self.viewer_logger.set_sh_basis_to_view(sh_degree_to_use)
 
     @torch.no_grad()
     def eval(self, step: int, stage: str = "val"):
@@ -776,7 +891,7 @@ class Runner:
         device = self.device
 
         valloader = torch.utils.data.DataLoader(self.valset, batch_size=1, shuffle=False, num_workers=1)
-        ellapsed_time = 0
+        evaluation_time = 0
         metrics = {"psnr": [], "ssim": [], "lpips": []}
         for i, data in enumerate(valloader):
             world_to_cam_mats = data["worldtocam"].to(device)
@@ -810,7 +925,7 @@ class Runner:
 
             torch.cuda.synchronize()
 
-            ellapsed_time += time.time() - tic
+            evaluation_time += time.time() - tic
 
             if self.use_masks:
                 if mask_pixels is None:
@@ -835,63 +950,39 @@ class Runner:
             metrics["ssim"].append(self.ssim(colors, pixels))
             metrics["lpips"].append(self.lpips(colors, pixels))
 
-        ellapsed_time /= len(valloader)
+        evaluation_time /= len(valloader)
 
         psnr = torch.stack(metrics["psnr"]).mean()
         ssim = torch.stack(metrics["ssim"]).mean()
         lpips = torch.stack(metrics["lpips"]).mean()
         self.logger.info(
             f"PSNR: {psnr.item():.3f}, SSIM: {ssim.item():.4f}, LPIPS: {lpips.item():.3f} "
-            f"Time: {ellapsed_time:.3f}s/image "
-            f"Number of GS: {self.model.num_gaussians}"
+            f"Time: {evaluation_time:.3f}s/image "
+            f"Number of Gaussians: {self.model.num_gaussians}"
         )
-        # save stats as json
+        # Save stats as json
         stats = {
             "psnr": psnr.item(),
             "ssim": ssim.item(),
             "lpips": lpips.item(),
-            "ellapsed_time": ellapsed_time,
-            "num_GS": self.model.num_gaussians,
+            "evaluation_time": evaluation_time,
+            "num_gaussians": self.model.num_gaussians,
         }
         if not self.no_save:
             with open(f"{self.stats_dir}/{stage}_step{step:04d}.json", "w") as f:
                 json.dump(stats, f)
-        # save stats to tensorboard
-        if self.writer is not None:
-            for k, v in stats.items():
-                self.writer.add_scalar(f"{stage}/{k}", v, step)
-            self.writer.flush()
 
-    @torch.no_grad()
-    def _viewer_render_fn(self, camera_state: CameraState, img_wh: Tuple[int, int]):
-        """Callable function for the viewer."""
-        img_w, img_h = img_wh
-        cam_to_world_matrix = camera_state.c2w
-        projection_matrix = camera_state.get_K(img_wh)
-        world_to_cam_matrix = torch.linalg.inv(
-            torch.from_numpy(cam_to_world_matrix).float().to(self.device)
-        ).contiguous()
-        projection_matrix = torch.from_numpy(projection_matrix).float().to(self.device)
+        # Log to tensorboard if enabled
+        if self.tensorboard_logger is not None:
+            self.tensorboard_logger.log_evaluation_iteration(
+                step, psnr.item(), ssim.item(), lpips.item(), evaluation_time, self.model.num_gaussians
+            )
 
-        render_colors, _ = self.model.render_images(
-            world_to_cam_matrix[None],
-            projection_matrix[None],
-            img_w,
-            img_h,
-            self.cfg.near_plane,
-            self.cfg.far_plane,
-            "perspective",
-            self.cfg.sh_degree,
-            self.cfg.tile_size,
-            self.cfg.min_radius_2d,
-            self.cfg.eps_2d,
-            self.cfg.antialias,
-        )
-        rgb = render_colors[0, ..., :3].cpu().numpy()
-        return rgb
-        # depth = render_colors[0][..., -1:].cpu().numpy() / alphas[0].clamp(min=1e-10).cpu().numpy()
-        # depth = (depth - depth.min()) / (depth.max() - depth.min())
-        # return depth.repeat(3, axis=-1)
+        # Upate the viewer with evaluation results
+        if self.viewer_logger is not None:
+            self.viewer_logger.log_evaluation_iteration(
+                step, psnr.item(), ssim.item(), lpips.item(), evaluation_time, self.model.num_gaussians
+            )
 
 
 def train(

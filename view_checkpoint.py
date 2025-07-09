@@ -1,50 +1,34 @@
 # Copyright Contributors to the OpenVDB Project
 # SPDX-License-Identifier: Apache-2.0
 #
-
-
-import sys
 import time
-from typing import Tuple
 
-import numpy as np
 import torch
+import tyro
 from utils import filter_splat_means, prune_large
-from viz import CameraState, Viewer
+from viewer import Viewer
 
 from fvdb import GaussianSplat3d
 
-np.set_printoptions(suppress=True)
-import viser
 
-checkpoint_path = sys.argv[1]
-checkpoint = torch.load(checkpoint_path, map_location="cuda")
-splats = prune_large(checkpoint["splats"])
-splats = filter_splat_means(splats, [0.95, 0.95, 0.95, 0.95, 0.89, 0.999])
-model = GaussianSplat3d.from_state_dict(splats)
+def main(checkpoint_path: str):
+    """
+    Visualize a Gaussian Splat 3D model from a checkpoint file.
 
+    Args:
+        checkpoint_path (str): Path to the checkpoint file containing the Gaussian Splat 3D model.
+    """
+    checkpoint = torch.load(checkpoint_path, map_location="cuda")
+    splats = prune_large(checkpoint["splats"])
+    splats = filter_splat_means(splats, [0.95, 0.95, 0.95, 0.95, 0.89, 0.999])
+    model = GaussianSplat3d.from_state_dict(splats)
 
-@torch.no_grad()
-def _viewer_render_fn(camera_state: CameraState, img_wh: Tuple[int, int]):
-    """Callable function for the viewer."""
-    W, H = img_wh
-    c2w = camera_state.c2w
-    K = camera_state.get_K(img_wh)
+    viewer = Viewer()
+    viewer.register_gaussian_splat_3d("Visualized Model", model)
 
-    w2c = torch.linalg.inv(torch.from_numpy(c2w).float().to("cuda")).contiguous()
-    K = torch.from_numpy(K).float().to("cuda")
-
-    render_colors, _ = model.render_images(w2c[None], K[None], W, H, 0.01, 1e10)
-    rgb = render_colors[0, ..., :3].cpu().numpy()
-    return rgb
+    print("Viewer running... Ctrl+C to exit.")
+    time.sleep(100000000)  # Keep the viewer running
 
 
-server = viser.ViserServer(port=8080, verbose=False)
-server.scene.set_up_direction("-z")
-viewer = Viewer(
-    server=server,
-    render_fn=_viewer_render_fn,
-    mode="training",
-)
-print("Viewer running... Ctrl+C to exit.")
-time.sleep(1000000)
+if __name__ == "__main__":
+    tyro.cli(main)
