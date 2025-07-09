@@ -164,12 +164,12 @@ class RandomSamplePixels:
         # sample random pixels
         h, w = int(cast(torch.Tensor, item["image_h"]).item()), int(cast(torch.Tensor, item["image_w"]).item())
         flat_indices = random.sample(range(h * w), k=self.num_samples_per_image)
-        pixels = torch.tensor([(idx % w, idx // w) for idx in flat_indices])  # (x, y) format
+        pixels = torch.tensor([(idx // w, idx % w) for idx in flat_indices])  # (x, y) format
 
         item["image_full"] = item["image"]
-        item["image"] = item["image"][pixels[:, 1], pixels[:, 0]]
-        item["mask_ids"] = item["mask_ids"][pixels[:, 1], pixels[:, 0]]
-        item["mask_cdf"] = item["mask_cdf"][pixels[:, 1], pixels[:, 0]]
+        item["image"] = item["image"][pixels[:, 0], pixels[:, 1]]
+        item["mask_ids"] = item["mask_ids"][pixels[:, 0], pixels[:, 1]]
+        item["mask_cdf"] = item["mask_cdf"][pixels[:, 0], pixels[:, 1]]
         item["pixel_coords"] = pixels
 
         return item

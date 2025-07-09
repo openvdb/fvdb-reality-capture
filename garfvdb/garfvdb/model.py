@@ -353,8 +353,8 @@ class GARfVDBModel(torch.nn.Module):
             # # select just the cam_pts that we need from the whole image if pixel_coords is specified
             if pixel_coords is not None:
                 batch_indices = torch.arange(features.shape[0]).view(-1, 1).expand(-1, pixel_coords.shape[1])
-                features = features[batch_indices, pixel_coords[:, :, 1], pixel_coords[:, :, 0]]
-                opacity = opacity[batch_indices, pixel_coords[:, :, 1], pixel_coords[:, :, 0]]
+                features = features[batch_indices, pixel_coords[:, :, 0], pixel_coords[:, :, 1]]
+                opacity = opacity[batch_indices, pixel_coords[:, :, 0], pixel_coords[:, :, 1]]
             return features
         else:
             intrinsics = input["intrinsics"]
@@ -369,28 +369,38 @@ class GARfVDBModel(torch.nn.Module):
             # TODO: Sparse/masked rendering is not implemented yet, so we are rendering the entire image and then selecting
             #       only the samples required for each pixel
             with torch.no_grad():
-                ids, weights = self.gs_model.render_top_contributing_gaussian_ids(
-                    num_samples=self.model_config.depth_samples,
-                    image_width=img_w,
-                    image_height=img_h,
-                    world_to_camera_matrices=world_to_cam,
-                    projection_matrices=intrinsics,
-                    near=0.01,
-                    far=1e10,
-                    projection_type="perspective",
-                )
+                if pixel_coords is not None:
+                    ids, weights = self.gs_model.sparse_render_top_contributing_gaussian_ids(
+                        pixels_to_render=fvdb.JaggedTensor(pixel_coords.unbind()),
+                        num_samples=self.model_config.depth_samples,
+                        image_width=img_w,
+                        image_height=img_h,
+                        world_to_camera_matrices=world_to_cam,
+                        projection_matrices=intrinsics,
+                        near=0.01,
+                        far=1e10,
+                        projection_type="perspective",
+                    )
+                    ids = torch.stack(ids.unbind())  # [B, R, depth_samples]
+                    weights = torch.stack(weights.unbind())  # [B, R, depth_samples]
+
+                else:
+                    ids, weights = self.gs_model.render_top_contributing_gaussian_ids(
+                        num_samples=self.model_config.depth_samples,
+                        image_width=img_w,
+                        image_height=img_h,
+                        world_to_camera_matrices=world_to_cam,
+                        projection_matrices=intrinsics,
+                        near=0.01,
+                        far=1e10,
+                        projection_type="perspective",
+                    )
 
                 # TOOD:  There are Nans coming out of weights, need to fix this
                 # if there's any nans print a warning
                 if torch.isnan(weights).any():
                     logging.warning("WARNING: Nans in weights")
                     weights = torch.where(torch.isnan(weights), torch.zeros_like(weights), weights)
-
-            # select just the ids/weights that we need from the whole image if pixel_coords is specified
-            if pixel_coords is not None:
-                batch_indices = torch.arange(ids.shape[0]).view(-1, 1).expand(-1, pixel_coords.shape[1])
-                ids = ids[batch_indices, pixel_coords[:, :, 1], pixel_coords[:, :, 0]]  # [B, R, depth_samples, 1]
-                weights = weights[batch_indices, pixel_coords[:, :, 1], pixel_coords[:, :, 0]]  # [B, R, depth_samples]
 
             # stochastically pick the depth_sample for each pixel based on the weights as probabilities
             # Convert weights to probabilities if they aren't already normalized
