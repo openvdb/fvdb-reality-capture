@@ -527,9 +527,10 @@ class Runner:
         sh_n = torch.zeros((num_gaussians, (self.cfg.sh_degree + 1) ** 2 - 1, 3), device=self.device)  # [N, K-1, 3]
 
         self.model = GaussianSplat3d(means, quats, log_scales, logit_opacities, sh_0, sh_n, True)
+        self.model.requires_grad = True
 
         if self.cfg.refine_using_scale2d_stop_iter > 0:
-            self.model.track_max_2d_radii_for_grad = True
+            self.model.accumulate_max_2d_radii = True
 
     def __init__(
         self,
@@ -825,7 +826,7 @@ class Runner:
                 use_scales_for_refinement = step > self.cfg.reset_opacities_every
                 use_screen_space_scales_for_refinement = step < self.cfg.refine_using_scale2d_stop_iter
                 if not use_screen_space_scales_for_refinement:
-                    self.model.track_max_2d_radii_for_grad = False
+                    self.model.accumulate_max_2d_radii = False
                 num_dup, num_split, num_prune = self.optimizer.refine_gaussians(
                     use_scales=use_scales_for_refinement, use_screen_space_scales=use_screen_space_scales_for_refinement
                 )
