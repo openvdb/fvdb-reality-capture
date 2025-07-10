@@ -4,6 +4,8 @@
 import torch
 
 """
+The turbo colormap is released by Google LLC. in 2019 under the Apach-2.0 license.
+
 This is the raw data for the Turbo colormap, which is a perceptually uniform colormap
 designed for scientific visualization. It is often used for depth maps.
 See https://research.google/blog/turbo-an-improved-rainbow-colormap-for-visualization/
