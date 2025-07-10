@@ -25,7 +25,7 @@ from sklearn.neighbors import NearestNeighbors
 from torch.utils.tensorboard import SummaryWriter
 from torchmetrics.image import PeakSignalNoiseRatio, StructuralSimilarityIndexMeasure
 from torchmetrics.image.lpip import LearnedPerceptualImagePatchSimilarity
-from utils import CameraOptModule, gaussian_means_outside_bbox
+from utils import gaussian_means_outside_bbox
 from viewer import Viewer
 
 from fvdb import GaussianSplat3d
@@ -150,6 +150,117 @@ def crop_image_batch(image: torch.Tensor, mask: Optional[torch.Tensor], ncrops: 
         assert (x2 - x1) == patch_w and (y2 - y1) == patch_h
         is_last = patch_id == (patches.shape[0] - 1)
         yield image_patch, mask_patch, crop, is_last
+
+
+class CameraPoseAdjustment(torch.nn.Module):
+    """Camera pose optimization module for 3D Gaussian Splatting.
+
+    This module enables optimization of camera poses defined by their Camera-to-World
+    transform. It's generally used to jointly optimize camera poses during training of a
+    3D Gaussian Splatting model.
+
+    The model learns a transformation *delta* which applies to the original camera-to-world
+    transforms in a dataset.
+
+    The delta is represented as a 9D vector `[dx, dy, dz, r1, r2, r3, r4, r5, r6]`
+    which encodes a change in translation and a change in rotation.
+    The nine components of the vector are:
+    - `[dx, dy, dz]`: translation deltas in world coordinates
+    - `[r1, r2, r3, r4, r5, r6]`: 6D rotation representation for stable optimization in machine
+    learning, as described in "On the Continuity of Rotation Representations in Neural Networks"
+    (Zhou et al., 2019). This representation is preferred over Euler angles or quaternions for
+    optimization stability and avoids singularities.
+
+    The module uses an embedding layer to learn these deltas for a fixed number of cameras
+    specified at initialization. Generally, this is the number of cameras in the training dataset.\
+
+    You apply this module to a batch of camera-to-world transforms by passing the transforms
+    and their corresponding camera indices (in the range `[0, num_cameras-1]`() to the
+    `forward` method. The module will return the updated camera-to-world transforms
+    after applying the learned deltas.
+
+    Attributes:
+        pose_embeddings (torch.nn.Embedding): Embedding layer for learning camera pose deltas.
+    """
+
+    def __init__(self, num_cameras: int, init_std: float = 1e-4):
+        """
+        Create a new `CameraPoseAdjustment` module for storing changes in camera-to-world transforms
+        for a fixed number of cameras (`num_cameras`).
+
+        Args:
+            num_cameras (int): Number of cameras to learn deltas for.
+            init_std (float): Standard deviation for the normal distribution used to initialize
+                the pose embeddings.
+        """
+        super().__init__()
+
+        # Change in positions (3D) + Change in rotations (6D)
+        self.pose_embeddings: torch.nn.Embedding = torch.nn.Embedding(num_cameras, 9)
+
+        torch.nn.init.normal_(self.pose_embeddings.weight, std=init_std)
+
+        # Identity rotation in 6D representation
+        self.register_buffer("_identity", torch.tensor([1.0, 0.0, 0.0, 0.0, 1.0, 0.0]))
+
+    @property
+    def num_cameras(self) -> int:
+        """Number of cameras this module is initialized for."""
+        return self.pose_embeddings.num_embeddings
+
+    @staticmethod
+    def _rotation_6d_to_matrix(d6: torch.Tensor) -> torch.Tensor:
+        """
+        Converts 6D rotation representation described in [1] to a rotation matrix.
+
+        This method uses the Gram-Schmid orthogonalization schemed described in Section B of [1].
+
+        [1] Zhou, Y., Barnes, C., Lu, J., Yang, J., & Li, H.
+        On the Continuity of Rotation Representations in Neural Networks.
+        IEEE Conference on Computer Vision and Pattern Recognition, 2019.
+        Retrieved from http://arxiv.org/abs/1812.07035
+
+        Args:
+            d6 (torch.Tensor): 6D rotation representation tensor with shape (*, 6)
+
+        Returns:
+            torch.Tensor: batch of rotation matrices with shape (*, 3, 3)
+        """
+
+        a1, a2 = d6[..., :3], d6[..., 3:]
+        b1 = F.normalize(a1, dim=-1)
+        b2 = a2 - (b1 * a2).sum(-1, keepdim=True) * b1
+        b2 = F.normalize(b2, dim=-1)
+        b3 = torch.cross(b1, b2, dim=-1)
+        return torch.stack((b1, b2, b3), dim=-2)
+
+    def forward(self, cam_to_world_matrices: torch.Tensor, camera_ids: torch.Tensor) -> torch.Tensor:
+        """Adjust camera pose based on deltas.
+
+        Args:
+            cam_to_world_matrices (torch.Tensor): A batch of camera to world transformations
+                to adjust. Tnsor of shape (*, 4, 4) where B is the batch size.
+            camera_ids (torch.Tensor): Indices of cameras in the batch in the range
+            `[0, self.num_cameras -1]`. Tensor of shape (*,).
+
+        Returns:
+            torch.Tensor: A batch of updated cam_to_world_matrices where we've applied the
+                learned deltas for camera ids to the input camera-to-world transforms.
+                i.e. `output[i] = cam_to_world_matrices[i] @ transform[camera_ids[i]]`
+        """
+        if cam_to_world_matrices.shape[:-2] != camera_ids.shape:
+            raise ValueError("`cam_to_world_matrices` and `camera_ids` must have the same batch shape.")
+        if cam_to_world_matrices.shape[-2:] != (4, 4):
+            raise ValueError("`cam_to_world_matrices` must have shape (..., 4, 4).")
+
+        batch_shape = cam_to_world_matrices.shape[:-2]
+        pose_deltas = self.pose_embeddings(camera_ids)  # (..., 9)
+        dx, drot = pose_deltas[..., :3], pose_deltas[..., 3:]
+        rot = self._rotation_6d_to_matrix(drot + self._identity.expand(*batch_shape, -1))  # (..., 3, 3)
+        transform = torch.eye(4, device=pose_deltas.device).repeat((*batch_shape, 1, 1))
+        transform[..., :3, :3] = rot
+        transform[..., :3, 3] = dx
+        return torch.matmul(cam_to_world_matrices, transform)
 
 
 class TensorboardLogger:
@@ -293,7 +404,7 @@ class ViewerLogger:
                 "SSIM Loss": 0.0,
                 "LPIPS Loss": 0.0,
                 "GPU Memory Usage": 0,
-                "Pose Loss": 0.0,
+                "Pose Regularization": 0.0,
             },
         )
 
@@ -377,7 +488,7 @@ class ViewerLogger:
         mem: float,
         num_gaussians: int,
         current_sh_degree: int,
-        pose_loss: float | None,
+        pose_regulation: float | None,
     ):
         """
         Log data for a single training step to the viewer.
@@ -390,6 +501,7 @@ class ViewerLogger:
             mem: Maximum GPU memory allocated in GB during this step.
             num_gaussians: Number of Gaussians in the model at this training step.
             current_sh_degree: Current degree of spherical harmonics used in the
+            pose_regulation: Pose optimization regularization loss, if applicable.
         """
 
         self._training_metrics_view["Current Iteration"] = step
@@ -399,8 +511,12 @@ class ViewerLogger:
         self._training_metrics_view["SSIM Loss"] = ssimloss
         self._training_metrics_view["LPIPS Loss"] = l1loss
         self._training_metrics_view["GPU Memory Usage"] = f"{mem:3.2f} GiB"
-        if pose_loss is not None:
-            self._training_metrics_view["Pose Loss"] = pose_loss
+        if pose_regulation is not None:
+            self._training_metrics_view["Pose Regularization"] = f"{pose_regulation:.3e}"
+        else:
+            if "Pose Regularization" in self._training_metrics_view:
+                # Remove the pose regularization key if it was previously set
+                del self._training_metrics_view["Pose Regularization"]
 
 
 class Runner:
@@ -434,7 +550,7 @@ class Runner:
             assert (
                 self.pose_optimizer is not None
             ), "Pose optimizer should be initialized if pose optimization is enabled."
-            data["pose_adjust"] = self.pose_adjust.state_dict()
+            data["pose_adjust"] = self.adjust_camera_poses.state_dict()
             data["pose_optimizer"] = self.pose_optimizer.state_dict()
 
         torch.save(data, f"{self.checkpoint_dir}/ckpt_{step:04d}.pt")
@@ -657,18 +773,20 @@ class Runner:
         # camera position optimizer
         self.pose_optimizer = None
         if self.cfg.pose_opt:
-            self.pose_adjust = CameraOptModule(len(self.trainset)).to(self.device)
-            # Initialize with small random values instead of zeros
-            self.pose_adjust.random_init(std=cfg.pose_opt_init_std)  # Small initial values to start with
+            # Module to adjust camera poses during training
+            self.adjust_camera_poses = CameraPoseAdjustment(len(self.trainset), init_std=cfg.pose_opt_init_std).to(
+                self.device
+            )
+
             # Increase learning rate for pose optimization and add gradient clipping
             self.pose_optimizer = torch.optim.Adam(
-                self.pose_adjust.parameters(),
+                self.adjust_camera_poses.parameters(),
                 lr=self.cfg.pose_opt_lr * 100.0,
                 weight_decay=self.cfg.pose_opt_reg,
             )
 
             # Add gradient clipping
-            torch.nn.utils.clip_grad_norm_(self.pose_adjust.parameters(), max_norm=1.0)
+            torch.nn.utils.clip_grad_norm_(self.adjust_camera_poses.parameters(), max_norm=1.0)
 
             # Add learning rate scheduler for pose optimization
             self.pose_scheduler = torch.optim.lr_scheduler.ExponentialLR(
@@ -723,7 +841,7 @@ class Runner:
             # Camera pose optimization
             image_ids = minibatch["image_id"].to(self.device)  # [B]
             if self.cfg.pose_opt and step < self.cfg.pose_opt_stop_iter:
-                cam_to_world_mats = self.pose_adjust(cam_to_world_mats, image_ids)
+                cam_to_world_mats = self.adjust_camera_poses(cam_to_world_mats, image_ids)
             else:
                 # After pose_opt_stop_iter, use original camera poses
                 cam_to_world_mats = minibatch["camtoworld"].to(self.device)
@@ -784,7 +902,7 @@ class Runner:
                     loss = loss + self.cfg.scale_reg * torch.abs(self.model.scales).mean()
                     # Add pose regularization to encourage small pose changes
                 if self.cfg.pose_opt and step < self.cfg.pose_opt_stop_iter:
-                    pose_params = self.pose_adjust.pose_embeddings(image_ids)
+                    pose_params = self.adjust_camera_poses.pose_embeddings(image_ids)
                     pose_reg = torch.mean(torch.abs(pose_params))
                     loss = loss + self.cfg.pose_opt_reg * pose_reg
                 # If we're splitting into crops, accumulate gradients
@@ -877,7 +995,7 @@ class Runner:
                     mem=torch.cuda.max_memory_allocated() / 1024**3,
                     num_gaussians=self.model.num_gaussians,
                     current_sh_degree=sh_degree_to_use,
-                    pose_loss=pose_reg.item() if self.cfg.pose_opt else None,
+                    pose_regulation=pose_reg.item() if self.cfg.pose_opt else None,
                 )
                 if self.cfg.pose_opt:
                     self.viewer_logger.update_camera_poses(cam_to_world_mats, image_ids)

@@ -94,6 +94,18 @@ class DictLabelView:
         """
         return len(self._label_dict)
 
+    def __contains__(self, key: str) -> bool:
+        """
+        Checks if a key is in the label_dict.
+
+        Args:
+            key (str): The key to check for existence in the label_dict.
+
+        Returns:
+            bool: True if the key exists, False otherwise.
+        """
+        return key in self._label_dict
+
     def items(self):
         """
         Returns an iterable view of the key-value pairs in the label_dict.
