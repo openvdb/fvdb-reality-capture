@@ -5,13 +5,16 @@ from typing import Literal
 
 import torch
 import viser
+from torchvision.transforms.functional import resize
 
 from fvdb import GaussianSplat3d
 
+from .client_thread_view import ClientThreadRenderingView
+from .turbo_colormap import turbo_colormap_data
 from .viewer_handle import ViewerHandle
 
 
-class GaussianSplat3dView:
+class GaussianSplat3dView(ClientThreadRenderingView):
     """
     A view that tracks a single `GaussianSplat3d` instance in the viewer.
 
@@ -26,11 +29,6 @@ class GaussianSplat3dView:
         min_radius_2d (float): The minimum projected pixel radius below which Gaussians will not be rendered.
         eps_2d (float): The 2D epsilon value for this Gaussian scene.
         antialias (bool): Whether to enable antialiasing for this Gaussian scene.
-        max_image_width (int): The maximum image width for rendering this Gaussian scene in the viewer.
-        target_pixels_per_frame (float): The target number of pixels to render per frame for this Gaussian scene.
-            The viewer will dynamically adjust the rendering resolution to achieve this target.
-        target_framerate (float): The target framerate for rendering this Gaussian scene.
-            The viewer will dynamically adjust the rendering resolution to achieve this target.
         gaussian_scene (GaussianSplat3d): The `GaussianSplat3d` instance to be tracked by this view.
             This is the scene that will be rendered in the viewer.
         render_output_type (Literal["rgb", "depth"]): The type of output to render.
@@ -41,6 +39,8 @@ class GaussianSplat3dView:
         `register_gaussian_splat_3d` method to request one from the viewer.
     """
 
+    _cmap_dict: dict[torch.device, torch.Tensor] = {}
+
     def __init__(
         self,
         name: str,
@@ -50,9 +50,6 @@ class GaussianSplat3dView:
         min_radius_2d: float,
         eps_2d: float,
         antialias: bool,
-        max_image_width: int,
-        target_pixels_per_frame: float,
-        target_framerate: float,
         gaussian_scene: GaussianSplat3d,
         render_output_type: Literal["rgb", "depth"],
         enable_depth_compositing: bool,
@@ -73,11 +70,6 @@ class GaussianSplat3dView:
             min_radius_2d (float): The minimum projected pixel radius below which Gaussians will not be rendered.
             eps_2d (float): The 2D epsilon value for this Gaussian scene.
             antialias (bool): Whether to enable antialiasing for this Gaussian scene.
-            max_image_width (int): The maximum image width for rendering this Gaussian scene in the viewer.
-            target_pixels_per_frame (float): The target number of pixels to render per frame for this Gaussian scene.
-                The viewer will dynamically adjust the rendering resolution to achieve this target.
-            target_framerate (float): The target framerate for rendering this Gaussian scene.
-                The viewer will dynamically adjust the rendering resolution to achieve this target.
             gaussian_scene (GaussianSplat3d): The `GaussianSplat3d` instance to be tracked by this view.
                 This is the scene that will be rendered in the viewer.
             render_output_type (Literal["rgb", "depth"]): The type of output to render.
@@ -93,9 +85,6 @@ class GaussianSplat3dView:
         self._min_radius_2d: float = min_radius_2d
         self._eps_2d: float = eps_2d
         self._antialias: bool = antialias
-        self._max_image_width: int = max_image_width
-        self._target_pixels_per_frame: float = target_pixels_per_frame
-        self._target_framerate: float = target_framerate
         self._gaussian_scene: GaussianSplat3d = gaussian_scene
         if render_output_type not in ["rgb", "depth"]:
             raise ValueError(f"Invalid render output type: {render_output_type}")
@@ -103,6 +92,15 @@ class GaussianSplat3dView:
         self._enable_depth_compositing: bool = enable_depth_compositing
         self._enabled = enabled
         self._allow_enable_in_gui = True
+
+        # Cache colormap globally for each device
+        device = self._gaussian_scene.device
+        dtype = self._gaussian_scene.dtype
+        if device not in GaussianSplat3dView._cmap_dict:
+            GaussianSplat3dView._cmap_dict[device] = turbo_colormap_data.to(device=device, dtype=dtype)
+        self._turbo_colormap = GaussianSplat3dView._cmap_dict[device]
+
+        self._last_rendered_image: torch.Tensor | None = None  # Used to store the last rendered image for compositing
 
     def layout_gui(self):
         gui = self._viewer_handle.gui
@@ -125,9 +123,6 @@ class GaussianSplat3dView:
             self._min_radius_2d_gui_handle = gui.add_number(
                 "Min Projected Pixel Radius", self._min_radius_2d, 0.0, 3.0, 0.1, disabled=disabled
             )
-            self._max_image_width_gui_handle = gui.add_slider(
-                "Max Image Width", min=64, max=2048, step=1, initial_value=2048, disabled=disabled
-            )
             self._render_output_type_gui_handle = gui.add_dropdown(
                 "Render Output Type", ["rgb", "depth"], initial_value="rgb", disabled=disabled
             )
@@ -140,10 +135,131 @@ class GaussianSplat3dView:
         self._tile_size_gui_handle.on_update(self._tile_size_update)
         self._antialias_gui_handle.on_update(self._antialias_update)
         self._min_radius_2d_gui_handle.on_update(self._min_radius_2d_update)
-        self._max_image_width_gui_handle.on_update(self._max_image_width_update)
         self._render_output_type_gui_handle.on_update(self._render_output_type_update)
         self._depth_compositing_update_handle.on_update(self._depth_compositing_update)
         self._sh_degree_gui_handle.on_update(self._sh_degree_update)
+
+    def _render(
+        self,
+        current_frame: torch.Tensor | None,
+        current_depth: torch.Tensor | None,
+        world_to_cam_matrix: torch.Tensor,
+        projection_matrix: torch.Tensor,
+        img_width: int,
+        img_height: int,
+        near: float,
+        far: float,
+        camera_model: str,
+    ) -> tuple[torch.Tensor | None, torch.Tensor | None]:
+        """
+        Render the Gaussian scene associated with this view.
+
+        Args:
+            frame (torch.Tensor): The frame to render.
+            camera (torch.Tensor): The camera parameters.
+            light (torch.Tensor): The light parameters.
+            parameters (dict[str, str | int | float | bool]): Additional rendering parameters.
+
+        Returns:
+            torch.Tensor: The rendered image tensor.
+        """
+        if not self.enabled:
+            if self._last_rendered_image is not None:
+                # If the UI is disabled, return the last rendered image at half resolution
+                last_img = self._last_rendered_image
+                if self._last_rendered_image.shape[1] != img_width or self._last_rendered_image.shape[0] != img_height:
+                    # Resize the last rendered image to the current dimensions
+                    last_img = resize(self._last_rendered_image.permute(2, 0, 1), [img_height, img_width]).permute(
+                        1, 2, 0
+                    )
+                return last_img * 0.5, None
+            return None, None
+
+        world_to_cam_matrix = world_to_cam_matrix.to(self._gaussian_scene.device)
+        projection_matrix = projection_matrix.to(self._gaussian_scene.device)
+        if self.render_output_type == "rgb" and self.enable_depth_compositing:
+            # Render RGB and depth for compositing
+            rgbd, alpha = self.gaussian_scene.render_images_and_depths(
+                world_to_cam_matrix[None],
+                projection_matrix[None],
+                img_width,
+                img_height,
+                near,
+                far,
+                camera_model,  # Always "perspective" for now.
+                self.sh_degree,
+                self.tile_size,
+                self.min_radius_2d,
+                self.eps_2d,
+                self.antialias,
+            )
+            ret_rgb = rgbd[0, ..., :3]
+            ret_depth = rgbd[0, ..., -1].unsqueeze(-1) / alpha[0].clamp_(min=1e-10)
+
+            self._last_rendered_image = ret_rgb
+
+            return ret_rgb, ret_depth
+        elif self.render_output_type == "rgb" and not self.enable_depth_compositing:
+            # Render RGB without depth since we're not doing compositing
+            rgb, alpha = self.gaussian_scene.render_images(
+                world_to_cam_matrix[None],
+                projection_matrix[None],
+                img_width,
+                img_height,
+                near,
+                far,
+                camera_model,  # Always "perspective" for now.
+                self.sh_degree,
+                self.tile_size,
+                self.min_radius_2d,
+                self.eps_2d,
+                self.antialias,
+            )
+            ret_rgb = rgb[0, ..., :3]
+            self._last_rendered_image = ret_rgb
+            return ret_rgb, None
+        elif self.render_output_type == "depth":
+            # Render depth maps only
+            depth, alpha = self.gaussian_scene.render_images(
+                world_to_cam_matrix[None],
+                projection_matrix[None],
+                img_width,
+                img_height,
+                near,
+                far,
+                camera_model,  # Always "perspective" for now.
+                self.sh_degree,
+                self.tile_size,
+                self.min_radius_2d,
+                self.eps_2d,
+                self.antialias,
+            )
+            ret_depth = depth[0, ..., -1].unsqueeze(-1) / alpha[0].clamp_(min=1e-10)
+
+            # Colorize the depth map using the turbo colormap which is the best option for depth visualization.
+            # See https://research.google/blog/turbo-an-improved-rainbow-colormap-for-visualization/
+            depth_flat = depth.view(-1)
+            depth_min = depth_flat.min()
+            depth_max = depth_flat.max()
+            normalized_depth = (ret_depth - depth_min) / (depth_max - depth_min)
+            quantized = (
+                (normalized_depth * turbo_colormap_data.shape[0])
+                .clamp_(min=0, max=turbo_colormap_data.shape[0] - 1)
+                .long()
+            )
+            ret_rgb = self._turbo_colormap[quantized].to(depth).view(*ret_depth.shape[:2], 3)
+
+            self._last_rendered_image = ret_rgb
+
+            # Return the actual depth as the last argument if we're doing compositing, otherwise
+            # only return the colorized depth map and alpha channel.
+            if self.enable_depth_compositing:
+                return ret_rgb, ret_depth
+            else:
+                return ret_rgb, None
+
+        else:
+            raise ValueError(f"Unknown render output type: {self.render_output_type}.")
 
     @property
     def allow_enable_in_viewer(self) -> bool:
@@ -188,10 +304,6 @@ class GaussianSplat3dView:
             raise TypeError("enabled must be a boolean value.")
         self._enabled = value
         self._enabled_gui_handle.value = value
-        if not value:
-            self._viewer_handle.pause_gaussian_render_threads()
-        else:
-            self._viewer_handle.resume_gaussian_render_threads()
 
     @property
     def viewer_handle(self) -> ViewerHandle:
@@ -226,7 +338,7 @@ class GaussianSplat3dView:
             raise ValueError(f"Invalid render output type: {value}")
         self._render_output_type = value
         self._render_output_type_gui_handle.value = value
-        self._viewer_handle.notify_gaussian_render_threads()
+        self._viewer_handle.notify_render_threads()
 
     @property
     def enable_depth_compositing(self) -> bool:
@@ -258,7 +370,7 @@ class GaussianSplat3dView:
             raise TypeError("enable_depth_compositing must be a boolean value.")
         self._enable_depth_compositing = value
         self._depth_compositing_update_handle.value = value
-        self._viewer_handle.notify_gaussian_render_threads()
+        self._viewer_handle.notify_render_threads()
 
     @property
     def name(self) -> str:
@@ -298,7 +410,7 @@ class GaussianSplat3dView:
             )
         self._sh_degree = value
         self._sh_degree_gui_handle.value = value
-        self._viewer_handle.notify_gaussian_render_threads()
+        self._viewer_handle.notify_render_threads()
 
     @property
     def tile_size(self) -> int:
@@ -326,7 +438,7 @@ class GaussianSplat3dView:
             raise ValueError("tile_size cannot be greater than 64 pixels.")
         self._tile_size = value
         self._tile_size_gui_handle.value = value
-        self._viewer_handle.notify_gaussian_render_threads()
+        self._viewer_handle.notify_render_threads()
 
     @property
     def min_radius_2d(self) -> float:
@@ -352,7 +464,7 @@ class GaussianSplat3dView:
             raise ValueError("min_radius_2d must be greater than or equal to 0.")
         self._min_radius_2d = value
         self._min_radius_2d_gui_handle.value = value
-        self._viewer_handle.notify_gaussian_render_threads()
+        self._viewer_handle.notify_render_threads()
 
     @property
     def eps_2d(self) -> float:
@@ -378,7 +490,7 @@ class GaussianSplat3dView:
             raise ValueError("eps_2d must be greater than 0.")
         self._eps_2d = value
         self._eps_2d_gui_handle.value = value
-        self._viewer_handle.notify_gaussian_render_threads()
+        self._viewer_handle.notify_render_threads()
 
     @property
     def antialias(self) -> bool:
@@ -401,7 +513,7 @@ class GaussianSplat3dView:
             raise TypeError("antialias must be a boolean value.")
         self._antialias = value
         self._antialias_gui_handle.value = value
-        self._viewer_handle.notify_gaussian_render_threads()
+        self._viewer_handle.notify_render_threads()
 
     @property
     def device(self) -> torch.device:
@@ -412,92 +524,6 @@ class GaussianSplat3dView:
             torch.device: The device of the Gaussian scene.
         """
         return self._gaussian_scene.device
-
-    @property
-    def max_image_width(self) -> int:
-        """
-        Returns the maximum image width for rendering this Gaussian scene in the viewer.
-
-        Returns:
-            int: The maximum image width.
-        """
-        return self._max_image_width
-
-    @max_image_width.setter
-    def max_image_width(self, value: int):
-        """
-        Sets the maximum image width for rendering this Gaussian scene in the viewer and updates the UI.
-
-        Args:
-            value (int): The new maximum image width.
-        """
-        if not isinstance(value, int):
-            raise TypeError("max_image_width must be an integer.")
-        if value <= 0:
-            raise ValueError("max_image_width must be greater than 0.")
-        if value < 64:
-            raise ValueError("max_image_width cannot be less than 64 pixels.")
-        if value > 8192:
-            raise ValueError("max_image_width cannot be greater than 8192 pixels.")
-        self._max_image_width = value
-        self._max_image_width_gui_handle.value = value
-        self._viewer_handle.notify_gaussian_render_threads()
-
-    @property
-    def target_pixels_per_frame(self) -> float:
-        """
-        Returns the target number of pixels to render per frame for this Gaussian scene.
-        The viewer will dynamically adjust the rendering resolution to achieve this target.
-
-        Returns:
-            float: The target number of pixels to render per frame.
-        """
-        return self._target_pixels_per_frame
-
-    @target_pixels_per_frame.setter
-    def target_pixels_per_frame(self, value: float):
-        """
-        Sets the target number of pixels to render per frame for this Gaussian scene and updates the UI.
-        The viewer will dynamically adjust the rendering resolution to achieve this target.
-
-        Args:
-            value (float): The new target number of pixels to render per frame.
-        """
-        if not isinstance(value, (int, float)):
-            raise TypeError("target_pixels_per_frame must be a number.")
-        if value <= 0:
-            raise ValueError("target_pixels_per_frame must be greater than 0.")
-        self._target_pixels_per_frame = value
-        self._viewer_handle.notify_gaussian_render_threads()
-
-    @property
-    def target_framerate(self) -> float:
-        """
-        Returns the target framerate for rendering this Gaussian scene.
-        The viewer will dynamically adjust the rendering resolution to achieve this target framerate.
-
-        Returns:
-            float: The target framerate.
-        """
-        return self._target_framerate
-
-    @target_framerate.setter
-    def target_framerate(self, value: float):
-        """
-        Sets the target framerate for rendering this Gaussian scene and updates the UI.
-        The viewer will dynamically adjust the rendering resolution to achieve this target framerate.
-
-        Args:
-            value (float): The new target framerate.
-        """
-        if not isinstance(value, (int, float)):
-            raise TypeError("target_framerate must be a number.")
-        if value <= 0:
-            raise ValueError("target_framerate must be greater than 0.")
-        if value > 60:
-            raise ValueError("target_framerate cannot be greater than 60 FPS.")
-        self._target_framerate = value
-        self._viewer_handle.notify_gaussian_render_threads()
 
     @property
     def gaussian_scene(self) -> GaussianSplat3d:
@@ -521,7 +547,7 @@ class GaussianSplat3dView:
             raise TypeError("gaussian_scene must be an instance of GaussianSplat3d.")
         self._gaussian_scene = value
         self._viewer_handle.rerender_gui()
-        self._viewer_handle.notify_gaussian_render_threads()
+        self._viewer_handle.notify_render_threads()
 
     def _eps2d_update(self, event: viser.GuiEvent):
         """
@@ -533,7 +559,7 @@ class GaussianSplat3dView:
         target_handle = event.target
         assert isinstance(target_handle, viser.GuiNumberHandle)
         self._eps_2d = target_handle.value
-        self._viewer_handle.notify_gaussian_render_threads()
+        self._viewer_handle.notify_render_threads()
 
     def _tile_size_update(self, event: viser.GuiEvent):
         """
@@ -545,7 +571,7 @@ class GaussianSplat3dView:
         target_handle = event.target
         assert isinstance(target_handle, viser.GuiNumberHandle)
         self._tile_size = int(target_handle.value)
-        self._viewer_handle.notify_gaussian_render_threads()
+        self._viewer_handle.notify_render_threads()
 
     def _antialias_update(self, event: viser.GuiEvent):
         """
@@ -557,7 +583,7 @@ class GaussianSplat3dView:
         target_handle = event.target
         assert isinstance(target_handle, viser.GuiCheckboxHandle)
         self._antialias = target_handle.value
-        self._viewer_handle.notify_gaussian_render_threads()
+        self._viewer_handle.notify_render_threads()
 
     def _min_radius_2d_update(self, event: viser.GuiEvent):
         """
@@ -569,19 +595,7 @@ class GaussianSplat3dView:
         target_handle = event.target
         assert isinstance(target_handle, viser.GuiNumberHandle)
         self._min_radius_2d = target_handle.value
-        self._viewer_handle.notify_gaussian_render_threads()
-
-    def _max_image_width_update(self, event: viser.GuiEvent):
-        """
-        Callback function for when the max image width slider is updated.
-
-        Args:
-            event (viser.GuiEvent): The event triggered by the slider update.
-        """
-        target_handle = event.target
-        assert isinstance(target_handle, viser.GuiSliderHandle)
-        self._max_image_width = int(target_handle.value)
-        self._viewer_handle.notify_gaussian_render_threads()
+        self._viewer_handle.notify_render_threads()
 
     def _render_output_type_update(self, event: viser.GuiEvent):
         """
@@ -596,7 +610,7 @@ class GaussianSplat3dView:
             raise ValueError(f"Invalid render output type: {target_handle.value}")
         value = target_handle.value
         self._render_output_type = value
-        self._viewer_handle.notify_gaussian_render_threads()
+        self._viewer_handle.notify_render_threads()
 
     def _depth_compositing_update(self, event: viser.GuiEvent):
         """
@@ -608,7 +622,7 @@ class GaussianSplat3dView:
         target_handle = event.target
         assert isinstance(target_handle, viser.GuiCheckboxHandle)
         self._enable_depth_compositing = target_handle.value
-        self._viewer_handle.notify_gaussian_render_threads()
+        self._viewer_handle.notify_render_threads()
 
     def _sh_degree_update(self, event: viser.GuiEvent):
         """
@@ -625,7 +639,7 @@ class GaussianSplat3dView:
                 f"Cannot set spherical harmonics degree to {value} because the scene only has spherical harmonics of degree {self._gaussian_scene.sh_degree}."
             )
         self._sh_degree = value
-        self._viewer_handle.notify_gaussian_render_threads()
+        self._viewer_handle.notify_render_threads()
 
     def _enabled_update(self, event: viser.GuiEvent):
         """
@@ -642,11 +656,7 @@ class GaussianSplat3dView:
         self._tile_size_gui_handle.disabled = disabled
         self._antialias_gui_handle.disabled = disabled
         self._min_radius_2d_gui_handle.disabled = disabled
-        self._max_image_width_gui_handle.disabled = disabled
         self._render_output_type_gui_handle.disabled = disabled
         self._depth_compositing_update_handle.disabled = disabled
         self._sh_degree_gui_handle.disabled = disabled
-        if not self._enabled:
-            self._viewer_handle.pause_gaussian_render_threads()
-        else:
-            self._viewer_handle.resume_gaussian_render_threads()
+        self._viewer_handle.notify_render_threads()

@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 import threading
-from typing import Literal, Sequence
+from typing import Any, Literal, Sequence
 
 import numpy as np
 import torch
@@ -11,8 +11,10 @@ import viser
 from fvdb import GaussianSplat3d
 
 from .camera_view import CameraView
+from .client_rendering_thread_pool import ClientRenderingThreadPool
+from .client_thread_view import ClientThreadRenderingView
+from .custom_render_view import CustomRenderView, RenderCallBack
 from .dict_label_view import DictLabelView
-from .gaussian_render_client_thread_pool import GaussianRenderClientThreadPool
 from .gaussian_splat_3d_view import GaussianSplat3dView
 from .viewer_global_info_view import ViewerGlobalInfoView
 from .viewer_handle import ViewerAction, ViewerEvent, ViewerHandle
@@ -50,14 +52,15 @@ class Viewer(object):
         self._handle = ViewerHandle(viser_server=self._viser_server, event_handler=self._view_event_handler)
         self._lock = threading.Lock()
 
-        self._gaussian_splat_3d_views: dict[str, GaussianSplat3dView] = {}
+        self._gaussian_splat_3d_views: dict[str, tuple[int, ClientThreadRenderingView]] = {}
         self._dict_label_views: dict[str, DictLabelView] = {}
         self._camera_frustum_views: dict[str, CameraView] = {}
+        self._background_rendering_view_counter = 0
 
         self._global_info_view: ViewerGlobalInfoView = ViewerGlobalInfoView(
             viewer_handle=self._handle, camera_up_axis=camera_up_axis
         )
-        self._gaussian_client_render_thread_pool = GaussianRenderClientThreadPool(
+        self._gaussian_client_render_thread_pool = ClientRenderingThreadPool(
             self._viser_server, self._gaussian_splat_3d_views, self._lock
         )
 
@@ -77,7 +80,7 @@ class Viewer(object):
         clients = self._viser_server.get_clients()
         for client_id in clients:
             clients[client_id].scene.set_up_direction(up_axis)
-        self._notify_gaussian_render_threads()
+        self._notify_render_threads()
 
     def register_camera_view(
         self,
@@ -160,9 +163,6 @@ class Viewer(object):
         min_radius_2d: float = 0.0,
         antialias: bool = True,
         sh_degree: int = -1,
-        target_framerate: float = 30.0,
-        target_pixels_per_frame: float = 1024 * 1024,
-        max_image_width: int = 2048,
         render_output_type: Literal["rgb", "depth"] = "rgb",
         enabled: bool = True,
     ) -> GaussianSplat3dView:
@@ -183,13 +183,6 @@ class Viewer(object):
             sh_degree (int): The SH degree for the Gaussian splats. -1 means use all available SH bands.
                 Must be less than the total available SH bands in the Gaussian splat scene.
                 Defaults to -1.
-            target_framerate (float): The target framerate for rendering. Defaults to 30.0.
-                The viewer will adjust the resolution of the rendered image to achieve this framerate.
-            target_pixels_per_frame (float): The target number of pixels to render per frame.
-                Defaults to 1024 * 1024 (1 megapixel). The viewer will adjust the resolution of the rendered images
-                to achieve this number of pixels per frame.
-            max_image_width (int): The maximum width of the rendered image. Defaults to 2048.
-                The viewer will adjust the resolution of the rendered images to not exceed this width.
             render_output_type (Literal["rgb", "depth"]): The type of output to render.
                 Can be either "rgb" for color images or "depth" for colorized depth images.
             enabled (bool): If True, the Gaussian splat scene is enabled and will be rendered.
@@ -206,22 +199,100 @@ class Viewer(object):
             min_radius_2d=min_radius_2d,
             eps_2d=eps_2d,
             antialias=antialias,
-            max_image_width=max_image_width,
             gaussian_scene=gaussian_scene,
-            target_framerate=target_framerate,
-            target_pixels_per_frame=target_pixels_per_frame,
             render_output_type=render_output_type,
             enable_depth_compositing=False,  # Depth compositing is slow so disable by default
             enabled=enabled,
         )
         with self._lock:
-            self._gaussian_splat_3d_views[name] = gaussian_splat_3d_view
+            self._gaussian_splat_3d_views[name] = (self._background_rendering_view_counter, gaussian_splat_3d_view)
+            self._background_rendering_view_counter += 1
 
-        self._viser_server.gui.configure_theme(dark_mode=True, control_layout="fixed")
         self._layout_gui()
-        self._notify_gaussian_render_threads()
+        self._notify_render_threads()
 
         return gaussian_splat_3d_view
+
+    def register_custom_render_view(
+        self,
+        name: str,
+        render_callback: RenderCallBack,
+        ui_schema: list[dict[str, float | int | bool | str]] = [],
+        enabled: bool = True,
+    ) -> CustomRenderView:
+        """
+        Register a new custom render view to the viewer.
+
+        A custom render view allows you to define a custom rendering callback that will be called
+        every frame to render images in the scene as well as define custom UI components to affect
+        the rendering process.
+
+        The callback has the form:
+        ```python
+        def render_callback(
+            current_frame: torch.Tensor | None,
+            current_depth: torch.Tensor | None,
+            world_to_cam_matrix: torch.Tensor,
+            projection_matrix: torch.Tensor,
+            img_width: int,
+            img_height: int,
+            near: float,
+            far: float,
+            camera_model: str,
+            ui_state: dict[str, Any],
+        ) -> tuple[torch.Tensor, torch.Tensor | None]:
+        ```
+        Where `current_frame` and `current_depth` are the current frame and depth image being rendered,
+        (you can use these to composite your rendered frame on top of these). If they are `None`, it means
+        this is the first render pass.
+        The `world_to_cam_matrix` and `projection_matrix` are the camera transformation matrices for the current frame.
+        The `img_width` and `img_height` are the dimensions of the image being rendered.
+        The `near` and `far` parameters are the near and far clipping planes for the camera.
+        The `camera_model` is the camera model being used for rendering (e.g., "perspective", "orthographic").
+        The `ui_state` is a dictionary containing the current state of the UI components defined in the `ui_schema`.
+        The callback should return a tuple of `(rendered_image, rendered_depth)`, where `rendered_image` is a tensor of shape
+        `(H, W, C)` representing the rendered image and `rendered_depth` is a tensor of shape `(H, W)` representing the depth image.
+        If you do not want to render a depth image, you can return `None` for the `rendered_depth`.
+
+        UI Components can be defined in the `ui_schema` parameter, which is a sequence of dictionaries.
+        Each dictionary should contain the following keys:
+        - "type": The type of the UI component (e.g., "slider", "checkbox", "markdown").
+        - "name": The name of the UI component.
+        - "default_value": The default value for the UI component.
+
+        If the component is a slider, it must also contain:
+        - "min": The minimum value for the slider.
+        - "max": The maximum value for the slider.
+        - "step": The step size for the slider.
+
+        Args:
+            name (str): The name of the custom render view.
+            render_callback (RenderCallBack): The callback function that will be called every frame to render
+                the images in the scene. This function should take the parameters described above and return
+                a tuple of `(rendered_image, rendered_depth)`.
+            ui_schema (Sequence[dict[str, float | int | bool | str]]): A sequence of dictionaries defining the UI components
+                to be displayed in the custom render view. Each dictionary should contain the following keys:
+                - "type": The type of the UI component (e.g., "slider", "checkbox", "markdown").
+                - "name": The name of the UI component.
+                - "default_value": The default value for the UI component.
+            enabled (bool): If True, the custom render view is enabled and will be rendered.
+                If False, the custom render view is disabled and will not be rendered. Defaults to True
+        Returns:
+            CustomRenderView: A `CustomRenderView` instance, which can be used to render
+                custom images in the viewer and interact with the UI components defined in the `ui_schema`.
+        """
+        custom_render_view = CustomRenderView(
+            name=name, viewer_handle=self._handle, render_callback=render_callback, ui_schema=ui_schema, enabled=enabled
+        )
+
+        with self._lock:
+            self._gaussian_splat_3d_views[name] = (self._background_rendering_view_counter, custom_render_view)
+            self._background_rendering_view_counter += 1
+
+        self._layout_gui()
+        self._notify_render_threads()
+
+        return custom_render_view
 
     def register_point_cloud(self, name, points):
         raise NotImplementedError("Point cloud rendering is not implemented yet. Please use Gaussian splats for now.")
@@ -291,12 +362,13 @@ class Viewer(object):
         gui: viser.GuiApi = self._viser_server.gui
         gui.reset()
 
+        self._viser_server.gui.configure_theme(dark_mode=True, control_layout="fixed")
         self._global_info_view.layout_gui()
 
         if len(self._gaussian_splat_3d_views) > 0:
             with gui.add_folder("Gaussian Scenes", visible=True):
-                for _, splat_view in self._gaussian_splat_3d_views.items():
-                    splat_view.layout_gui()
+                for _, splat_id_and_view in self._gaussian_splat_3d_views.items():
+                    splat_id_and_view[1].layout_gui()
 
         if len(self._camera_frustum_views) > 0:
             with gui.add_folder("Cameras Views", visible=True):
@@ -307,14 +379,14 @@ class Viewer(object):
             for _, dict_label_view in self._dict_label_views.items():
                 dict_label_view.layout_gui()
 
-    def _notify_gaussian_render_threads(self):
+    def _notify_render_threads(self):
         """
         Notify all background threads that render the Gaussian splats
         that they should re-render the scene.
         """
         self._gaussian_client_render_thread_pool.notify_threads()
 
-    def _view_event_handler(self, event: ViewerEvent):
+    def _view_event_handler(self, event: ViewerEvent, value: Any):
         """
         Handle events from the views registered to the viewer.
 
@@ -330,16 +402,20 @@ class Viewer(object):
             self._layout_gui()
         elif event.action == ViewerAction.SET_UP_DIRECTION:
             assert event.gui_event is not None, "GuiEvent must be provided for setting up direction."
-            up_direction = event.gui_event.target.value
-            if up_direction not in ["+x", "+y", "+z", "-x", "-y", "-z"]:
-                raise ValueError(
-                    f"Invalid up direction: {up_direction}. Must be one of '+x', '+y', '+z', '-x', '-y', '-z'."
-                )
-            self.set_up_direction(up_direction)
+            if value not in ["+x", "+y", "+z", "-x", "-y", "-z"]:
+                raise ValueError(f"Invalid up direction: {value}. Must be one of '+x', '+y', '+z', '-x', '-y', '-z'.")
+            self.set_up_direction(value)
         elif event.action == ViewerAction.PAUSE_GAUSSIAN_THREADS:
             self._gaussian_client_render_thread_pool.pause_threads()
         elif event.action == ViewerAction.RESUME_GAUSSIAN_THREADS:
             self._gaussian_client_render_thread_pool.resume_threads()
+        elif event.action == ViewerAction.SET_TARGET_PIXELS_PER_FRAME:
+            assert isinstance(value, (int, float)), "Target pixels per frame must be a number."
+            self._gaussian_client_render_thread_pool.target_pixels_per_frame = int(value)
+        elif event.action == ViewerAction.SET_MAX_IMAGE_WIDTH:
+            assert event.gui_event is not None, "GuiEvent must be provided for setting up direction."
+            assert isinstance(value, (int, float)), "Max image width must be a number."
+            self._gaussian_client_render_thread_pool.max_image_width = int(value)
         else:
             raise ValueError(f"Unknown action: {event.action}. Cannot handle this event.")
 
@@ -369,4 +445,4 @@ class Viewer(object):
         with self._viser_server.atomic():
             client.scene.set_up_direction(self._global_info_view.camera_up_axis)
         self._gaussian_client_render_thread_pool.register_client(client)
-        self._notify_gaussian_render_threads()
+        self._notify_render_threads()

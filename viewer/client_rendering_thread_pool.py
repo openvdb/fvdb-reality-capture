@@ -15,11 +15,10 @@ import torch
 import viser
 import viser.transforms as vt
 
-from .gaussian_splat_3d_view import GaussianSplat3dView
-from .turbo_colormap import turbo_colormap_data
+from .client_thread_view import ClientThreadRenderingView
 
 
-class GaussianClientRenderThreadInterrupted(Exception):
+class ClientRenderThreadInterrupted(Exception):
     pass
 
 
@@ -37,7 +36,7 @@ class set_trace_context(object):
 
 class RenderState(Enum):
     """
-    Enum representing the different rendering states of the Gaussian splat scene.
+    Enum representing the different rendering states of the of the scene.
     """
 
     LOW_RES_MOVING = 1
@@ -59,16 +58,16 @@ class RenderAction(Enum):
 
 
 @dataclasses.dataclass(kw_only=True)
-class ThreadLocalGaussianCamera(object):
+class ThreadLocalCamera(object):
     """
-    A thread-local camera representation for Gaussian splat rendering.
+    A thread-local camera representation for rendering.
 
     We use this to avoid having the rendering thread read the viewer's camera state directly
     which may change underneath us while we're rendering.
 
     Attributes:
         fov (float): Field of view of the camera in radians.
-        aspect (float): Aspect ratio of the camera.
+        aspect (float): Aspect ratio of the camera (W/H).
         rotation_quat (np.ndarray): Rotation of the camera as a quaternion (w, x, y, z).
         position (np.ndarray): Position of the camera in world coordinates.
         near (float): Near clipping plane distance.
@@ -88,14 +87,14 @@ class ThreadLocalGaussianCamera(object):
     camera_model: Literal["perspective", "orthographic"] = "perspective"
 
     @staticmethod
-    def from_viser_camera(camera: viser.CameraHandle) -> "ThreadLocalGaussianCamera":
+    def from_viser_camera(camera: viser.CameraHandle) -> "ThreadLocalCamera":
         """
-        Create a ThreadLocalGaussianCamera from a viser.CameraHandle.
+        Create a ThreadLocalCamera from a viser.CameraHandle.
 
         Args:
             camera (viser.CameraHandle): The camera handle from the viser client.
         """
-        return ThreadLocalGaussianCamera(
+        return ThreadLocalCamera(
             fov=camera.fov,
             aspect=camera.aspect,
             rotation_quat=camera.wxyz,
@@ -156,10 +155,12 @@ class ThreadLocalGaussianCamera(object):
         ).to(torch.float32)
 
 
-class GaussianSplatRenderThread(threading.Thread):
+class ClientRenderThread(threading.Thread):
     """
-    A background thread that renders all the Gaussian splat scenes managed by a viewer for a specific web client
-    connected to the viewer.
+    A background thread that renders images on the server for a specific web client
+    connected to the viewer. This is useful when you have a custom type of view that you want
+    to render in the viewer for which the viewer does not have a built-in rendering
+    implementation, such as a Gaussian splat scene.
 
     We do this in a thread to avoid blocking the main UI thread for the viewer.
 
@@ -179,18 +180,16 @@ class GaussianSplatRenderThread(threading.Thread):
         - `UPDATE_STATE`: The state of the scene has changed, and we need to update the rendering so
         render the next frame in low resolution.
 
-    The thread also supports rendering three types of images determined by the `RenderOutputType`
-    enum defined in `gaussian_splat_3d_view.py`:
-    - `RGB`: Render the RGB image without depth compositing the final image into the viewer.
-    - `DEPTH`: Render depth images and composite them into the viewer.
-    - `RGBD`: Render the RGB image with depth compositing the final image into the viewer.
     """
 
     def __init__(
         self,
         client: viser.ClientHandle,
-        gaussian_splat_views: "dict[str, GaussianSplat3dView]",
+        render_views: dict[str, tuple[int, ClientThreadRenderingView]],
         viewer_lock: threading.Lock,
+        target_pixels_per_frame: int = 100_000,
+        target_framerate: float = 30,
+        max_image_width: int = 2048,
     ):
         """
         Initialize the rendering thread. The rendering thread tracks which client it's rendering for,
@@ -198,37 +197,97 @@ class GaussianSplatRenderThread(threading.Thread):
 
         Args:
             client (viser.ClientHandle): The client handle for the viewer client this thread is rendering for.
-            gaussian_splat_views (dict[str, GaussianSplat3dView]): A dictionary mapping scene names to their corresponding GaussianSplat3dView instances.
+            render_views (dict[str, type[ClientThreadRenderingView]]): A dictionary mapping scene names to their corresponding ClientThreadRenderingView instances.
             viewer_lock (threading.Lock): A global lock shared with the viewer to ensure thread-safe access to shared resources.
         """
         super().__init__(daemon=True)
 
-        self._scenes: dict[str, GaussianSplat3dView] = gaussian_splat_views
+        self._scenes: dict[str, tuple[int, ClientThreadRenderingView]] = render_views
         self._client: viser.ClientHandle = client
         self._lock: threading.Lock = viewer_lock
         self._running: bool = True
         self._last_img: np.ndarray | None = None  # Store the last image this thread rendered
         self._paused = False
 
-        # This thread can manage several different scenes, each of which may have its `GaussianSplat3d`
-        # scene stored on different devices (e.g., cuda:1, cuda:2, etc.). To colorize, depth,
-        # we cache the turbo colormap data on each device for rendering.
-        self._cmap_dict: dict[torch.device, torch.Tensor] = {}
-        for scene in self._scenes.values():
-            device = scene.gaussian_scene.device
-            dtype = scene.gaussian_scene.dtype
-            if device not in self._cmap_dict:
-                self._cmap_dict[device] = turbo_colormap_data.to(device=device, dtype=dtype)
-
         self._update_event = threading.Event()
         self._state: RenderState = RenderState.LOW_RES_STATIC
-        self._current_camera: ThreadLocalGaussianCamera = ThreadLocalGaussianCamera.from_viser_camera(client.camera)
+        self._current_camera: ThreadLocalCamera = ThreadLocalCamera.from_viser_camera(client.camera)
         self._task = (RenderAction.STAY_PUT, self._current_camera)
 
         # Track the number of pixels rendered per second for this scene
         self._pixels_per_second: float = 0.0
 
         self._may_interrupt_render = False
+
+        self._target_pixels_per_frame: int = target_pixels_per_frame
+        self._target_framerate: float = target_framerate
+        self._max_image_width: int = max_image_width
+
+    @property
+    def target_pixels_per_frame(self) -> int:
+        """
+        Returns the target number of pixels per frame for this thread.
+        This is used to determine the resolution of the rendered images based on the current state.
+
+        Returns:
+            int: The target number of pixels per frame.
+        """
+        return self._target_pixels_per_frame
+
+    @target_pixels_per_frame.setter
+    def target_pixels_per_frame(self, value: int):
+        """
+        Set the target number of pixels per frame for this thread.
+        This is used to determine the resolution of the rendered images based on the current state.
+
+        Args:
+            value (int): The target number of pixels per frame.
+        """
+        self._target_pixels_per_frame = value
+
+    @property
+    def target_framerate(self) -> float:
+        """
+        Returns the target framerate for this thread.
+        This is used to determine the resolution of the rendered images based on the current state.
+
+        Returns:
+            float: The target framerate.
+        """
+        return self._target_framerate
+
+    @target_framerate.setter
+    def target_framerate(self, value: float):
+        """
+        Set the target framerate for this thread.
+        This is used to determine the resolution of the rendered images based on the current state.
+
+        Args:
+            value (int): The target framerate.
+        """
+        self._target_framerate = value
+
+    @property
+    def max_image_width(self) -> int:
+        """
+        Returns the maximum image width for this thread.
+        This is used to determine the resolution of the rendered images based on the current state.
+
+        Returns:
+            int: The maximum image width.
+        """
+        return self._max_image_width
+
+    @max_image_width.setter
+    def max_image_width(self, value: int):
+        """
+        Set the maximum image width for this thread.
+        This is used to determine the resolution of the rendered images based on the current state.
+
+        Args:
+            value (int): The maximum image width.
+        """
+        self._max_image_width = value
 
     def stop(self):
         """
@@ -258,7 +317,7 @@ class GaussianSplatRenderThread(threading.Thread):
         Args:
             camera (viser.CameraHandle): The new camera to use for rendering.
         """
-        self._task = (RenderAction.MOVE_CAMERA, ThreadLocalGaussianCamera.from_viser_camera(camera))
+        self._task = (RenderAction.MOVE_CAMERA, ThreadLocalCamera.from_viser_camera(camera))
         if self._state == RenderState.HIGH_RES:
             self._may_interrupt_render = True
         self._update_event.set()
@@ -271,156 +330,46 @@ class GaussianSplatRenderThread(threading.Thread):
             camera (viser.CameraHandle | None): The new camera to use for rendering. If None, the current camera is used.
             If provided, this will update the current camera state for rendering.
         """
-        cam = ThreadLocalGaussianCamera.from_viser_camera(camera) if camera is not None else self._current_camera
+        cam = ThreadLocalCamera.from_viser_camera(camera) if camera is not None else self._current_camera
         self._task = (RenderAction.UPDATE_STATE, cam)
         if self._state == RenderState.HIGH_RES:
             self._may_interrupt_render = True
         self._update_event.set()
 
     def _image_resolution_for_current_camera(
-        self, camera: ThreadLocalGaussianCamera, splat_view: "GaussianSplat3dView"
+        self, camera: ThreadLocalCamera, render_view: "ClientThreadRenderingView"
     ) -> tuple[int, int]:
         """
         Determine at what resolution to render the images based on the current state of the viewer and the
-        specified maximum resolution in the `GaussianSplat3dView`.
+        specified maximum resolution in the `ClientThreadRenderingView`.
 
         If the viewer is rendering in low resolution mode, we also use the target pixels per frame and target framerate
-        specified in the `GaussianSplat3dView` to determine the image resolution.
+        specified in the `ClientThreadRenderingView` to determine the image resolution.
 
         Args:
-            camera (ThreadLocalGaussianCamera): The current camera state for rendering.
-            splat_view (GaussianSplat3dView): The view containing rendering parameters.
+            camera (ThreadLocalCamera): The current camera state for rendering.
+            splat_view (ClientThreadRenderingView): The view containing rendering parameters.
         """
         if self._state == RenderState.HIGH_RES:
-            img_height = splat_view.max_image_width
+            img_height = self.max_image_width
             img_width = int(img_height * camera.aspect)
-            if img_width > splat_view.max_image_width:
-                img_width = splat_view.max_image_width
+            if img_width > self.max_image_width:
+                img_width = self.max_image_width
                 img_height = int(img_width / camera.aspect)
         elif self._state in [RenderState.LOW_RES_MOVING, RenderState.LOW_RES_STATIC]:
-            target_view_rays_per_sec = splat_view.target_pixels_per_frame
-            target_fps = splat_view.target_framerate
+            target_view_rays_per_sec = self.target_pixels_per_frame
+            target_fps = self.target_framerate
             num_viewer_rays = target_view_rays_per_sec / target_fps
             img_height = (num_viewer_rays / camera.aspect) ** 0.5
             img_height = int(round(img_height, -1))
-            img_height = max(min(splat_view.max_image_width, img_height), 30)
+            img_height = max(min(self.max_image_width, img_height), 30)
             img_width = int(img_height * camera.aspect)
-            if img_width > splat_view.max_image_width:
-                img_width = splat_view.max_image_width
+            if img_width > self.max_image_width:
+                img_width = self.max_image_width
                 img_height = int(img_width / camera.aspect)
         else:
             raise ValueError(f"Invalid state: {self._state}.")
         return img_width, img_height
-
-    @torch.no_grad()
-    def _render_gaussians_to_tensors(
-        self, splat_view: "GaussianSplat3dView"
-    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor | None]:
-        """
-        Render the Gaussian Splat scene managed by the `GaussianSplat3dView` to RGB, depth, and alpha tensors.
-
-        Args:
-            scene (GaussianSplat3dView): The scene view containing the Gaussian splat scene to render.
-
-        Returns:
-            tuple[torch.Tensor, torch.Tensor, torch.Tensor | None]: A tuple containing:
-                - ret_rgb (torch.Tensor): The rendered RGB image tensor.
-                - ret_alpha (torch.Tensor): The rendered alpha channel tensor.
-                - ret_depth (torch.Tensor | None): The rendered depth tensor, or None if depth rendering is disabled.
-        """
-        assert self._current_camera is not None, "Camera state is not set."
-
-        camera = self._current_camera
-        device = splat_view.device
-        dtype = torch.float32
-
-        img_w, img_h = self._image_resolution_for_current_camera(camera, splat_view)
-
-        world_to_cam_matrix = camera.world_to_cam_matrix().to(device=device, dtype=dtype)
-        projection_matrix = camera.projection_matrix(img_w, img_h).to(device=device, dtype=dtype)
-
-        if splat_view.render_output_type == "rgb" and splat_view.enable_depth_compositing:
-            # Render RGB and depth for compositing
-            rgbd, alpha = splat_view.gaussian_scene.render_images(
-                world_to_cam_matrix[None],
-                projection_matrix[None],
-                img_w,
-                img_h,
-                camera.near,
-                camera.far,
-                camera.camera_model,  # Always "perspective" for now.
-                splat_view.sh_degree,
-                splat_view.tile_size,
-                splat_view.min_radius_2d,
-                splat_view.eps_2d,
-                splat_view.antialias,
-            )
-            ret_rgb = rgbd[0, ..., :3]
-            ret_alpha = alpha[0]
-            ret_depth = rgbd[0, ..., -1].unsqueeze(-1) / alpha[0].clamp_(min=1e-10)
-
-            return ret_rgb, ret_alpha, ret_depth
-        elif splat_view.render_output_type == "rgb" and not splat_view.enable_depth_compositing:
-            # Render RGB without depth since we're not doing compositing
-            rgb, alpha = splat_view.gaussian_scene.render_images(
-                world_to_cam_matrix[None],
-                projection_matrix[None],
-                img_w,
-                img_h,
-                camera.near,
-                camera.far,
-                camera.camera_model,  # Always "perspective" for now.
-                splat_view.sh_degree,
-                splat_view.tile_size,
-                splat_view.min_radius_2d,
-                splat_view.eps_2d,
-                splat_view.antialias,
-            )
-            ret_rgb = rgb[0, ..., :3]
-            ret_alpha = alpha[0]
-            return ret_rgb, ret_alpha, None
-        elif splat_view.render_output_type == "depth":
-            # Render depth maps only
-            depth, alpha = splat_view.gaussian_scene.render_images(
-                world_to_cam_matrix[None],
-                projection_matrix[None],
-                img_w,
-                img_h,
-                camera.near,
-                camera.far,
-                camera.camera_model,  # Always "perspective" for now.
-                splat_view.sh_degree,
-                splat_view.tile_size,
-                splat_view.min_radius_2d,
-                splat_view.eps_2d,
-                splat_view.antialias,
-            )
-            ret_depth = depth[0, ..., -1].unsqueeze(-1) / alpha[0].clamp_(min=1e-10)
-            ret_alpha = alpha[0]
-
-            # Colorize the depth map using the turbo colormap which is the best option for depth visualization.
-            # See https://research.google/blog/turbo-an-improved-rainbow-colormap-for-visualization/
-            depth_flat = depth.view(-1)
-            depth_min = depth_flat.min()
-            depth_max = depth_flat.max()
-            normalized_depth = (ret_depth - depth_min) / (depth_max - depth_min)
-            quantized = (
-                (normalized_depth * turbo_colormap_data.shape[0])
-                .clamp_(min=0, max=turbo_colormap_data.shape[0] - 1)
-                .long()
-            )
-            cmap = self._cmap_dict[device]
-            ret_rgb = cmap[quantized.to(device)].to(device=device, dtype=dtype).view(*ret_depth.shape[:2], 3)
-
-            # Return the actual depth as the last argument if we're doing compositing, otherwise
-            # only return the colorized depth map and alpha channel.
-            if splat_view.enable_depth_compositing:
-                return ret_rgb, ret_alpha, ret_depth
-            else:
-                return ret_rgb, ret_alpha, None
-
-        else:
-            raise ValueError(f"Unknown render output type: {splat_view.render_output_type}.")
 
     @property
     def pixels_per_second(self) -> float:
@@ -437,7 +386,7 @@ class GaussianSplatRenderThread(threading.Thread):
         if event == "line":
             if self._may_interrupt_render:
                 self._may_interrupt_render = False
-                raise GaussianClientRenderThreadInterrupted
+                raise ClientRenderThreadInterrupted
         return self._may_interrupt_trace
 
     def _next_state(self, action: RenderAction) -> RenderState:
@@ -509,7 +458,7 @@ class GaussianSplatRenderThread(threading.Thread):
                 time.sleep(0.1)
 
             if not self._update_event.wait(0.2):
-                self._task = (RenderAction.STAY_PUT, ThreadLocalGaussianCamera.from_viser_camera(self._client.camera))
+                self._task = (RenderAction.STAY_PUT, ThreadLocalCamera.from_viser_camera(self._client.camera))
                 self._update_event.set()
 
             self._update_event.clear()
@@ -521,28 +470,50 @@ class GaussianSplatRenderThread(threading.Thread):
             self._state = next_state
 
             try:
-                composited_image: np.ndarray | None = None
-                composited_depth: np.ndarray | None = None
+                composited_image: torch.Tensor | None = None
+                composited_depth: torch.Tensor | None = None
                 tic = time.time()
 
                 with self._lock, set_trace_context(self._may_interrupt_trace):
-                    for scene_name, scene in self._scenes.items():
-                        img, alpha, depth = self._render_gaussians_to_tensors(scene)
-                        composited_image = img.cpu().numpy()
-                        composited_depth = depth.cpu().numpy() if depth is not None else None
-                    assert composited_image is not None, "Rendered image is None."
-                    self._pixels_per_second = (len(self._scenes.items()) * composited_image.size / 3) / (
-                        time.time() - tic
-                    )
+                    sorted_scenes = sorted(self._scenes.items(), key=lambda x: x[1][0])
+                    for scene_name, id_and_scene in sorted_scenes:
+                        scene_id, scene = id_and_scene
+                        camera = self._current_camera
 
-                self._last_img = composited_image
+                        img_w, img_h = self._image_resolution_for_current_camera(camera, scene)
+
+                        world_to_cam_matrix = camera.world_to_cam_matrix().to(dtype=torch.float32)
+                        projection_matrix = camera.projection_matrix(img_w, img_h).to(dtype=torch.float32)
+
+                        with torch.no_grad():
+                            composited_image, composited_depth = scene._render(
+                                composited_image,
+                                composited_depth,
+                                world_to_cam_matrix,
+                                projection_matrix,
+                                img_w,
+                                img_h,
+                                camera.near,
+                                camera.far,
+                                camera.camera_model,
+                            )
+                    if composited_image is None:
+                        self._pixels_per_second = 0.0
+                    else:
+                        self._pixels_per_second = (len(self._scenes.items()) * composited_image.numel() / 3) / (
+                            time.time() - tic
+                        )
+
+                composited_image_np = composited_image.cpu().numpy() if composited_image is not None else None
+                composited_depth_np = composited_depth.cpu().numpy() if composited_depth is not None else None
+                self._last_img = composited_image_np
                 self._client.scene.set_background_image(
-                    composited_image,
+                    composited_image_np,
                     format="jpeg",
                     jpeg_quality=70 if action == RenderAction.STAY_PUT else 40,
-                    depth=composited_depth,
+                    depth=composited_depth_np,
                 )
-            except GaussianClientRenderThreadInterrupted:
+            except ClientRenderThreadInterrupted:
                 # If we got an interrupt, we just skip this frame and continue.
                 continue
             except Exception:
@@ -550,22 +521,103 @@ class GaussianSplatRenderThread(threading.Thread):
                 os._exit(1)
 
 
-class GaussianRenderClientThreadPool:
+class ClientRenderingThreadPool:
     def __init__(
         self,
         viser_server: viser.ViserServer,
-        gaussian_splat_views: dict[str, "GaussianSplat3dView"],
+        render_views: dict[str, tuple[int, ClientThreadRenderingView]],
         lock: threading.Lock,
+        target_pixels_per_frame: int = 100_000,
+        target_framerate: float = 30,
+        max_image_width: int = 2048,
     ):
-        self._client_rendering_threads: dict[int, GaussianSplatRenderThread] = {}
+        self._client_rendering_threads: dict[int, ClientRenderThread] = {}
         self._viser_server: viser.ViserServer = viser_server
-        self._gaussian_views: dict[str, GaussianSplat3dView] = gaussian_splat_views
+        self._render_views: dict[str, tuple[int, ClientThreadRenderingView]] = render_views
         self._lock: threading.Lock = lock
+        self._target_pixels_per_frame: int = target_pixels_per_frame
+        self._target_framerate: float = target_framerate
+        self._max_image_width: int = max_image_width
 
-    def update_state(self):
+    @property
+    def target_pixels_per_frame(self) -> int:
+        """
+        Returns the target number of pixels per frame for all threads in the pool.
+        This is used to determine the resolution of the rendered images based on the current state.
+
+        Returns:
+            int: The target number of pixels per frame.
+        """
+        return self._target_pixels_per_frame
+
+    @target_pixels_per_frame.setter
+    def target_pixels_per_frame(self, value: int):
+        """
+        Set the target number of pixels per frame for all threads in the pool.
+        This is used to determine the resolution of the rendered images based on the current state.
+
+        Args:
+            value (int): The target number of pixels per frame.
+        """
+        self._target_pixels_per_frame = value
         for client_id in self._client_rendering_threads:
             client = self._viser_server.get_clients()[client_id]
             thread = self._client_rendering_threads[client_id]
+            thread.target_pixels_per_frame = value
+            thread.update_state(client.camera)
+
+    @property
+    def target_framerate(self) -> float:
+        """
+        Returns the target framerate for all threads in the pool.
+        This is used to determine the resolution of the rendered images based on the current state.
+
+        Returns:
+            float: The target framerate.
+        """
+        return self._target_framerate
+
+    @target_framerate.setter
+    def target_framerate(self, value: float):
+        """
+        Set the target framerate for all threads in the pool.
+        This is used to determine the resolution of the rendered images based on the current state.
+
+        Args:
+            value (float): The target framerate.
+        """
+        self._target_framerate = value
+        for client_id in self._client_rendering_threads:
+            client = self._viser_server.get_clients()[client_id]
+            thread = self._client_rendering_threads[client_id]
+            thread.target_framerate = value
+            thread.update_state(client.camera)
+
+    @property
+    def max_image_width(self) -> int:
+        """
+        Returns the maximum image width for all threads in the pool.
+        This is used to determine the resolution of the rendered images based on the current state.
+
+        Returns:
+            int: The maximum image width.
+        """
+        return self._max_image_width
+
+    @max_image_width.setter
+    def max_image_width(self, value: int):
+        """
+        Set the maximum image width for all threads in the pool.
+        This is used to determine the resolution of the rendered images based on the current state.
+
+        Args:
+            value (int): The maximum image width.
+        """
+        self._max_image_width = value
+        for client_id in self._client_rendering_threads:
+            client = self._viser_server.get_clients()[client_id]
+            thread = self._client_rendering_threads[client_id]
+            thread.max_image_width = value
             thread.update_state(client.camera)
 
     def unregister_client(self, client: viser.ClientHandle):
@@ -574,8 +626,8 @@ class GaussianRenderClientThreadPool:
         self._client_rendering_threads.pop(client_id)
 
     def register_client(self, client: viser.ClientHandle):
-        client_render_thread = GaussianSplatRenderThread(
-            client=client, gaussian_splat_views=self._gaussian_views, viewer_lock=self._lock
+        client_render_thread = ClientRenderThread(
+            client=client, render_views=self._render_views, viewer_lock=self._lock
         )
         self._client_rendering_threads[client.client_id] = client_render_thread
         client_render_thread.start()
@@ -586,9 +638,10 @@ class GaussianRenderClientThreadPool:
                 client_render_thread.move_camera(client.camera)
 
     def notify_threads(self):
-        clients = self._viser_server.get_clients()
-        for client_id in clients:
-            self._client_rendering_threads[client_id].update_state(clients[client_id].camera)
+        for client_id in self._client_rendering_threads:
+            client = self._viser_server.get_clients()[client_id]
+            thread = self._client_rendering_threads[client_id]
+            thread.update_state(client.camera)
 
     def pause_threads(self):
         for thread in self._client_rendering_threads.values():

@@ -3,7 +3,7 @@
 #
 import dataclasses
 from enum import Enum
-from typing import Callable
+from typing import Any, Callable, Literal
 
 import viser
 
@@ -28,6 +28,12 @@ class ViewerAction(Enum):
 
     # Set the up direction for all clients attached to the viewer.
     SET_UP_DIRECTION = 5
+
+    # Set the target number of pixels to render per frame.
+    SET_TARGET_PIXELS_PER_FRAME = 6
+
+    # Set the maximum width of the rendered image.
+    SET_MAX_IMAGE_WIDTH = 7
 
 
 @dataclasses.dataclass(kw_only=True)
@@ -61,7 +67,7 @@ class ViewerHandle:
     makes it easier to manage the viewer's state and behavior.
     """
 
-    def __init__(self, viser_server: viser.ViserServer, event_handler: Callable[[ViewerEvent], None]):
+    def __init__(self, viser_server: viser.ViserServer, event_handler: Callable[[ViewerEvent, Any], None]):
         """
         Create a new ViewerHandle associated with a specific viewer.
         This constructor should only be called from the viewer itself.
@@ -100,27 +106,27 @@ class ViewerHandle:
         """
         return self._viser_server.gui
 
-    def notify_gaussian_render_threads(self) -> None:
+    def notify_render_threads(self) -> None:
         """
         Tell the viewer to notify its background rendering threads that something has changed
         and they should re-render the scene.
         """
         event = ViewerEvent(viewer_server=self._viser_server, action=ViewerAction.NOTIFY_GAUSSIAN_THREADS)
-        self._event_handler(event)
+        self._event_handler(event, None)
 
     def pause_gaussian_render_threads(self) -> None:
         """
         Tell the viewer to pause its background rendering threads.
         """
         event = ViewerEvent(viewer_server=self._viser_server, action=ViewerAction.PAUSE_GAUSSIAN_THREADS)
-        self._event_handler(event)
+        self._event_handler(event, None)
 
     def resume_gaussian_render_threads(self) -> None:
         """
         Tell the viewer to resume its background rendering threads.
         """
         event = ViewerEvent(viewer_server=self._viser_server, action=ViewerAction.RESUME_GAUSSIAN_THREADS)
-        self._event_handler(event)
+        self._event_handler(event, None)
 
     def rerender_gui(self, gui_event: viser.GuiEvent | None = None) -> None:
         """
@@ -130,18 +136,53 @@ class ViewerHandle:
             gui_event (viser.GuiEvent | None): Optional GUI event associated with the re-rendering.
         """
         event = ViewerEvent(viewer_server=self._viser_server, action=ViewerAction.RERENDER_GUI, gui_event=gui_event)
-        self._event_handler(event)
+        self._event_handler(event, None)
 
-    def set_up_direction(self, gui_event: viser.GuiEvent) -> None:
+    def set_up_direction(
+        self, gui_event: viser.GuiEvent, up_direction: Literal["+x", "+y", "+z", "-x", "-y", "-z"]
+    ) -> None:
         """
         Set the up direction for all clients attached to the viewer.
         This is used to change the up direction of the scene.
         Args:
             gui_event (viser.GuiEvent): The GUI event that triggered this action.
                 This is used to pass additional information about the action, such as which GUI element triggered it.
+            up_direction (Literal["+x", "+y", "+z", "-x", "-y", "-z"]): The up direction to set for the viewer.
+                This should be one of the six cardinal directions.
+                It determines the orientation of the camera and objects in the scene.
         """
         event = ViewerEvent(viewer_server=self._viser_server, action=ViewerAction.SET_UP_DIRECTION, gui_event=gui_event)
-        self._event_handler(event)
+        self._event_handler(event, up_direction)
+
+    def set_target_pixels_per_frame(self, gui_event: viser.GuiEvent, target_pixels_per_frame: int) -> None:
+        """
+        Set the target number of pixels to render per frame.
+        This is used to adjust the resolution of the rendered images to achieve a specific target pixel count.
+
+        Args:
+            gui_event (viser.GuiEvent): The GUI event that triggered this action.
+                This is used to pass additional information about the action, such as which GUI element triggered it.
+        """
+        self._event_handler(
+            ViewerEvent(
+                viewer_server=self._viser_server, action=ViewerAction.SET_TARGET_PIXELS_PER_FRAME, gui_event=gui_event
+            ),
+            target_pixels_per_frame,
+        )
+
+    def set_max_image_width(self, gui_event: viser.GuiEvent, max_image_width: int) -> None:
+        """
+        Set the maximum width of the rendered image.
+        This is used to ensure that the rendered images do not exceed a certain width.
+
+        Args:
+            gui_event (viser.GuiEvent): The GUI event that triggered this action.
+                This is used to pass additional information about the action, such as which GUI element triggered it.
+        """
+        self._event_handler(
+            ViewerEvent(viewer_server=self._viser_server, action=ViewerAction.SET_MAX_IMAGE_WIDTH, gui_event=gui_event),
+            max_image_width,
+        )
 
 
 # Only expose the ViewerHandle class to the outside world.
