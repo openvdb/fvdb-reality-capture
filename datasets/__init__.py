@@ -1,6 +1,7 @@
 # Copyright Contributors to the OpenVDB Project
 # SPDX-License-Identifier: Apache-2.0
 #
-from .colmap_dataset import ColmapDataset
+from .logger import logger
+from .sfm_dataset import SfmDataset
 
-__all__ = ["ColmapDataset"]
+__all__ = ["SfmDataset", "logger"]

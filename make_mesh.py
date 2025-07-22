@@ -9,7 +9,7 @@ import torch
 import torch.utils.data
 import tqdm
 import tyro
-from datasets import ColmapDataset
+from datasets import SfmDataset
 
 from fvdb import GaussianSplat3d
 
@@ -36,7 +36,7 @@ def to_cam_open3d(image_width, image_height, K, world_view_transform):
 @torch.inference_mode()
 def mesh_from_gaussian_splats(
     model: GaussianSplat3d,
-    dataset: ColmapDataset,
+    dataset: SfmDataset,
     voxel_size: float,
     sdf_trunc: float,
     depth_trunc: float,
@@ -98,7 +98,7 @@ def main(
     checkpoint = torch.load(checkpoint_path, map_location=device)
     model = GaussianSplat3d.from_state_dict(checkpoint["splats"])
 
-    dataset = ColmapDataset(dataset_path=data_path, image_downsample_factor=image_downsample_factor, split="all")
+    dataset = SfmDataset(dataset_path=data_path, image_downsample_factor=image_downsample_factor, split="all")
 
     print("extracting mesh")
     mesh = mesh_from_gaussian_splats(

@@ -10,6 +10,7 @@ from itertools import combinations
 
 import numpy as np
 
+from ...logger import logger
 from .camera import Camera
 from .image import Image
 from .rotation import Quaternion
@@ -73,7 +74,8 @@ class SceneManager:
                 pass
 
         if self.image_path is None:
-            print("Warning: image_path not found for reconstruction")
+            sublogger = logger.getChild("SceneManager")
+            sublogger.debug("Warning: image_path not found for reconstruction")
         elif not self.image_path.endswith("/"):
             self.image_path += "/"
 

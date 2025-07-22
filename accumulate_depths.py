@@ -1,13 +1,15 @@
 # Copyright Contributors to the OpenVDB Project
 # SPDX-License-Identifier: Apache-2.0
 #
+import pathlib
+
 import numpy as np
 import point_cloud_utils as pcu
 import torch
 import torch.utils.data
 import tqdm
 import tyro
-from datasets import ColmapDataset
+from datasets import SfmDataset
 from skimage import feature, morphology
 
 from fvdb import GaussianSplat3d
@@ -58,7 +60,7 @@ def render_depth_pointcloud(
 @torch.inference_mode()
 def accumulated_point_cloud(
     model: GaussianSplat3d,
-    dataset: ColmapDataset,
+    dataset: SfmDataset,
     canny_edge_std: float = 1.0,
     dilation_amt: int = 5,
     downsample_factor: int = 1,
@@ -160,7 +162,9 @@ def main(
     checkpoint = torch.load(checkpoint_path, map_location=device)
     model = GaussianSplat3d.from_state_dict(checkpoint["splats"])
 
-    dataset = ColmapDataset(dataset_path=data_path, image_downsample_factor=image_downsample_factor, split="all")
+    dataset = SfmDataset(
+        dataset_path=pathlib.Path(data_path), image_downsample_factor=image_downsample_factor, split="all"
+    )
 
     points, colors = accumulated_point_cloud(model, dataset, device=device)
     pcu.save_mesh_vc("accumulated_points.ply", points, colors)

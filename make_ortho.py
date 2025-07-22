@@ -2,13 +2,13 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 import os
+import pathlib
 
 import numpy as np
 import torch
 import tyro
 import utm
-from datasets import ColmapDataset
-from datasets.colmap_dataset import ColmapScene
+from datasets import SfmDataset
 from osgeo import gdal, gdal_array, osr
 from pyproj import Transformer
 from scipy.interpolate import griddata
@@ -171,6 +171,22 @@ def write_geotiff(ortho, geot, srs_wkt, output_fname):
     ortho_ds = None
 
 
+def transform_point_cloud(matrix, points):
+    """
+    Transform points using an SE(3) matrix.
+
+    Args:
+        matrix (np.ndarray): 4x4 SE(3) matrix
+        points (np.ndarray): Nx3 array of points
+
+    Returns:
+        transformed_points (np.ndarray): An Nx3 array of transformed points
+    """
+    assert matrix.shape == (4, 4)
+    assert len(points.shape) == 2 and points.shape[1] == 3
+    return points @ matrix[:3, :3].T + matrix[:3, 3]
+
+
 @torch.no_grad()
 def main(data_path: str, checkpoint_path: str, ortho_fn: str, npixx: int, percent_clip: int, device: str = "cuda"):
     """
@@ -187,8 +203,8 @@ def main(data_path: str, checkpoint_path: str, ortho_fn: str, npixx: int, percen
 
     EPSG_ECEF = "EPSG:4978"  # ecef from colmap model aligner
 
-    trainset = ColmapDataset(
-        dataset_path=data_path,
+    trainset = SfmDataset(
+        dataset_path=pathlib.Path(data_path),
         image_downsample_factor=1,
         normalization_type="ecef2enu",
         test_every=10000,
@@ -234,8 +250,8 @@ def main(data_path: str, checkpoint_path: str, ortho_fn: str, npixx: int, percen
     )
     image_corners_xyz = np.column_stack([xv, interp[..., np.newaxis]])
 
-    invT = np.linalg.inv(trainset.colmap_scene.normalization_transform)
-    image_corners_xyz_ecef = ColmapScene._transform_point_cloud(invT, image_corners_xyz)
+    invT = np.linalg.inv(trainset.normalization_transform)
+    image_corners_xyz_ecef = transform_point_cloud(invT, image_corners_xyz)
 
     tform_ecef2lonlat = Transformer.from_crs(EPSG_ECEF, "EPSG:4326", always_xy=True)
     pt_lonlat = tform_ecef2lonlat.transform(

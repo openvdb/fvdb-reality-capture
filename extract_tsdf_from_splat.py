@@ -1,12 +1,14 @@
 # Copyright Contributors to the OpenVDB Project
 # SPDX-License-Identifier: Apache-2.0
 #
+import pathlib
+
 import point_cloud_utils as pcu
 import torch
 import torch.utils.data
 import tqdm
 import tyro
-from datasets import ColmapDataset
+from datasets import SfmDataset
 
 from fvdb import GaussianSplat3d, JaggedTensor, gridbatch_from_dense
 
@@ -14,7 +16,7 @@ from fvdb import GaussianSplat3d, JaggedTensor, gridbatch_from_dense
 @torch.inference_mode()
 def make_mesh_from_splat(
     model: GaussianSplat3d,
-    dataset: ColmapDataset,
+    dataset: SfmDataset,
     voxel_size: float,
     voxel_trunc_margin: float = 2.0,
     near_plane: float = 0.1,
@@ -81,6 +83,14 @@ def make_mesh_from_splat(
         )
         pbar.set_postfix({"accumulated_voxels": accum_grid.total_voxels})
 
+        # TSDF fusion is a bit of a torture case for the PyTorch memory allocator since
+        # it progressively allocates bigger tensors which don't fit in the memory pool,
+        # causing the pool to grow larger and larger.
+        # To avoid this, we synchronize the CUDA device and empty the cache after each image.
+        del rgb_images, depth_images, weight_images
+        torch.cuda.synchronize()
+        torch.cuda.empty_cache()
+
     # After integrating all the images, we prune the grid to remove empty voxels which have no weights.
     # This is done to reduce the size of the grid and speed up the marching cubes algorithm
     # which will be used to extract the mesh.
@@ -136,8 +146,11 @@ def main(
     checkpoint = torch.load(checkpoint_path, map_location=device)
     model = GaussianSplat3d.from_state_dict(checkpoint["splats"])
 
-    dataset = ColmapDataset(
-        data_path, split="all", image_downsample_factor=image_downsample_factor, normalization_type=normalization_type
+    dataset = SfmDataset(
+        pathlib.Path(data_path),
+        split="all",
+        image_downsample_factor=image_downsample_factor,
+        normalization_type=normalization_type,
     )
 
     v, f, c = make_mesh_from_splat(

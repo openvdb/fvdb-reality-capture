@@ -19,8 +19,7 @@ from shapely.geometry import Polygon as shp_poly
 current_dir = os.path.dirname(os.path.abspath(__file__))
 parent_dir = os.path.dirname(current_dir)
 sys.path.append(parent_dir)
-from datasets import ColmapDataset
-from datasets.colmap_dataset import ColmapScene
+from datasets import SfmDataset
 
 
 def partition_points_xy_grid(points, point_inds, xchunks: int, ychunks: int, pad_percent=0.1):
@@ -75,7 +74,7 @@ def partition_points_xy_grid(points, point_inds, xchunks: int, ychunks: int, pad
     return cluster_inds, grid_bounds
 
 
-def pointids2imageids(colmap_data: ColmapDataset, point_ids: Set):
+def pointids2imageids(colmap_data: SfmDataset, point_ids: Set):
     """
     Find the image ids that see the give list of point ids
 
@@ -87,7 +86,7 @@ def pointids2imageids(colmap_data: ColmapDataset, point_ids: Set):
         A list of images ids for each given point ids
     """
     im_ids = set()
-    for im_id, im in enumerate(colmap_data.colmap_scene.images):
+    for im_id, im in enumerate(colmap_data._sfm_scene.images):
         im_point_ids = set(im.point_indices.tolist())
         if len(im_point_ids.intersection(point_ids)) > 0:
             im_ids.add(im_id)
@@ -110,6 +109,22 @@ def polygon_to_mask(polygon, image_size):
     pixels = np.vstack((x.flatten(), y.flatten())).T
     mask = polygon.contains_points(pixels).reshape(image_size)
     return mask
+
+
+def transform_point_cloud(matrix, points):
+    """
+    Transform points using an SE(3) matrix.
+
+    Args:
+        matrix (np.ndarray): 4x4 SE(3) matrix
+        points (np.ndarray): Nx3 array of points
+
+    Returns:
+        transformed_points (np.ndarray): An Nx3 array of transformed points
+    """
+    assert matrix.shape == (4, 4)
+    assert len(points.shape) == 2 and points.shape[1] == 3
+    return points @ matrix[:3, :3].T + matrix[:3, 3]
 
 
 def save_mask_file(
@@ -163,7 +178,7 @@ def save_mask_file(
             fy = all_intrinsics[im_index][2]
             cy = all_intrinsics[im_index][3]
 
-            bounds_cam = ColmapScene._transform_point_cloud(w2c, cube_bounds)
+            bounds_cam = transform_point_cloud(w2c, cube_bounds)
             bounds_pix = []
             for i in range(bounds_cam.shape[0]):
                 x, y, z = list(bounds_cam[i, :].squeeze())
@@ -222,7 +237,7 @@ def main(data_path: str, factor: int, ncores: int, nx_splits: int, ny_splits: in
             [cluster]_images_[factor]_masks: directory containing image masks to use for each cluster
 
     """
-    dataset: ColmapDataset = ColmapDataset(
+    dataset: SfmDataset = SfmDataset(
         dataset_path=data_path,
         image_downsample_factor=factor,
         normalization_type=normalization_type,
@@ -277,26 +292,26 @@ def main(data_path: str, factor: int, ncores: int, nx_splits: int, ny_splits: in
             fp.write(row + "\n")
 
     print("create image masks")
-    all_points = dataset.colmap_scene.points
-    nimages = dataset.colmap_scene.num_images
+    all_points = dataset._sfm_scene.points
+    nimages = dataset._sfm_scene.num_images
     all_img_sizes = [
         (
-            dataset.colmap_scene.images[ind].camera_metadata.width,
-            dataset.colmap_scene.images[ind].camera_metadata.height,
+            dataset._sfm_scene.images[ind].camera_metadata.width,
+            dataset._sfm_scene.images[ind].camera_metadata.height,
         )
         for ind in range(nimages)
     ]
     all_intrinsics = [
         (
-            dataset.colmap_scene.images[ind].camera_metadata.fx,
-            dataset.colmap_scene.images[ind].camera_metadata.cx,
-            dataset.colmap_scene.images[ind].camera_metadata.fy,
-            dataset.colmap_scene.images[ind].camera_metadata.cy,
+            dataset._sfm_scene.images[ind].camera_metadata.fx,
+            dataset._sfm_scene.images[ind].camera_metadata.cx,
+            dataset._sfm_scene.images[ind].camera_metadata.fy,
+            dataset._sfm_scene.images[ind].camera_metadata.cy,
         )
         for ind in range(nimages)
     ]
-    all_cam2worlds = [dataset.colmap_scene.images[ind].cam_to_world_mat for ind in range(nimages)]
-    all_image_names = [dataset.colmap_scene.images[ind].image_name for ind in range(nimages)]
+    all_cam2worlds = [dataset._sfm_scene.images[ind].camera_to_world_matrix for ind in range(nimages)]
+    all_image_names = [dataset._sfm_scene.images[ind].image_name for ind in range(nimages)]
 
     partial_func = partial(
         save_mask_file,
