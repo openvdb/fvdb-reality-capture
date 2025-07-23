@@ -13,7 +13,7 @@ import torch
 import torch.utils.data
 import tqdm
 
-from .image_dataset_cache import ImageDatasetCache
+from .dataset_cache import DatasetCache
 from .sfm_scene import SfmCameraMetadata, SfmImageMetadata, SfmScene, load_colmap_scene
 from .transforms import BaseTransform
 
@@ -63,7 +63,7 @@ class SfmDataset(torch.utils.data.Dataset, Iterable):
         self._dataset_path = dataset_path
 
         sfm_scene: SfmScene
-        base_cache: ImageDatasetCache
+        base_cache: DatasetCache
         sfm_scene, base_cache = load_colmap_scene(dataset_path=dataset_path)
 
         self._transform = transform
@@ -99,13 +99,13 @@ class SfmDataset(torch.utils.data.Dataset, Iterable):
         return self._split
 
     @property
-    def cache(self) -> ImageDatasetCache:
+    def cache(self) -> DatasetCache:
         """
         Get the image dataset cache for this dataset.
         This is useful if you're building new properties for the dataset or want to access the cache directly.
 
         Returns:
-            ImageDatasetCache: The image dataset cache for this dataset.
+            DatasetCache: The image dataset cache for this dataset.
         """
         return self._cache
 
@@ -227,6 +227,7 @@ class SfmDataset(torch.utils.data.Dataset, Iterable):
 
         image_meta: SfmImageMetadata = self._sfm_scene.images[index]
         camera_meta: SfmCameraMetadata = image_meta.camera_metadata
+
         image = imageio.imread(image_meta.image_path)[..., :3]
         image = camera_meta.undistort_image(image)
 

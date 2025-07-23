@@ -6,7 +6,7 @@ from typing import Any, Sequence
 
 import numpy as np
 
-from ..image_dataset_cache import ImageDatasetCache
+from ..dataset_cache import DatasetCache
 from ..sfm_scene import SfmScene
 from .base_transform import BaseTransform
 from .transform_registry import transform
@@ -52,17 +52,17 @@ class PercentileFilterPoints(BaseTransform):
         self._percentile_min = np.asarray(percentile_min).astype(np.float32)
         self._percentile_max = np.asarray(percentile_max).astype(np.float32)
 
-    def __call__(self, input_scene: SfmScene, input_cache: ImageDatasetCache) -> tuple[SfmScene, ImageDatasetCache]:
+    def __call__(self, input_scene: SfmScene, input_cache: DatasetCache) -> tuple[SfmScene, DatasetCache]:
         """
         Apply the percentile filtering transform to the input scene and cache.
 
         Args:
             input_scene (SfmScene): The input scene containing points to be filtered.
-            input_cache (ImageDatasetCache): The input cache, which is not modified by this transform.
+            input_cache (DatasetCache): The input cache, which is not modified by this transform.
 
         Returns:
             output_scene (SfmScene): A new SfmScene with points filtered based on the specified percentile bounds.
-            output_cache (ImageDatasetCache): The input cache, unchanged by this transform.
+            output_cache (DatasetCache): The input cache, unchanged by this transform.
         """
         self._logger.info(
             f"Filtering points based on percentiles: min={self._percentile_min}, max={self._percentile_max}"

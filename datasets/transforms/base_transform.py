@@ -4,7 +4,7 @@
 from abc import ABC, abstractmethod
 from typing import Any
 
-from ..image_dataset_cache import ImageDatasetCache
+from ..dataset_cache import DatasetCache
 from ..sfm_scene import SfmScene
 
 
@@ -15,17 +15,17 @@ class BaseTransform(ABC):
         pass
 
     @abstractmethod
-    def __call__(self, input_scene: SfmScene, input_cache: ImageDatasetCache) -> tuple[SfmScene, ImageDatasetCache]:
+    def __call__(self, input_scene: SfmScene, input_cache: DatasetCache) -> tuple[SfmScene, DatasetCache]:
         """
         Apply the transform to the data.
 
         Args:
-            input_scene: The input scene to transform.
-            input_cache: The input cache to use to save intermediate results.
+            input_scene (SfmScene): The input scene to transform.
+            input_cache (DatasetCache): The input cache to use to save intermediate results.
 
         Returns:
-            output_scene: The transformed scene.
-            output_cache: The cache to use for further transforms.
+            output_scene (SfmScene): The transformed scene.
+            output_cache (DatasetCache): The cache to use for further transforms.
         """
         pass
 

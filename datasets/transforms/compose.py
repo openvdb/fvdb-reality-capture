@@ -4,7 +4,7 @@
 
 from typing import Any
 
-from ..image_dataset_cache import ImageDatasetCache
+from ..dataset_cache import DatasetCache
 from ..sfm_scene import SfmScene
 from .base_transform import BaseTransform
 from .transform_registry import REGISTERED_TRANSFORMS, transform
@@ -37,7 +37,7 @@ class Compose(BaseTransform):
             if not isinstance(transform, BaseTransform):
                 raise TypeError(f"Expected a BaseTransform instance, got {type(transform)} instead.")
 
-    def __call__(self, input_scene: SfmScene, input_cache: ImageDatasetCache) -> tuple[SfmScene, ImageDatasetCache]:
+    def __call__(self, input_scene: SfmScene, input_cache: DatasetCache) -> tuple[SfmScene, DatasetCache]:
         for transform in self.transforms:
             input_scene, input_cache = transform(input_scene, input_cache)
         return input_scene, input_cache

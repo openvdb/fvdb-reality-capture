@@ -3,7 +3,7 @@
 #
 import pathlib
 
-from ..image_dataset_cache import ImageDatasetCache
+from ..dataset_cache import DatasetCache
 from .sfm_metadata import SfmCameraMetadata, SfmCameraType, SfmImageMetadata
 from .sfm_scene import SfmScene
 
@@ -12,12 +12,14 @@ __all__ = [
     "SfmImageMetadata",
     "SfmCameraType",
     "SfmScene",
+    "DatasetCache",
+    "load_colmap_scene",
 ]
 
 
 def load_colmap_scene(
     dataset_path: pathlib.Path,
-) -> tuple[SfmScene, ImageDatasetCache]:
+) -> tuple[SfmScene, DatasetCache]:
     from .colmap_dataset_reader import ColmapDatasetReader
 
     """

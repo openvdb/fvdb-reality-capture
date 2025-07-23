@@ -9,7 +9,7 @@ import cv2
 import imageio
 import tqdm
 
-from ..image_dataset_cache import ImageDatasetCache
+from ..dataset_cache import DatasetCache
 from ..sfm_scene import SfmImageMetadata, SfmScene
 from .base_transform import BaseTransform
 from .transform_registry import transform
@@ -53,17 +53,17 @@ class DownsampleImages(BaseTransform):
         self._rescaled_jpeg_quality = rescaled_jpeg_quality
         self._logger = logging.getLogger(f"{self.__class__.__module__}.{self.__class__.__name__}")
 
-    def __call__(self, input_scene: SfmScene, input_cache: ImageDatasetCache) -> tuple[SfmScene, ImageDatasetCache]:
+    def __call__(self, input_scene: SfmScene, input_cache: DatasetCache) -> tuple[SfmScene, DatasetCache]:
         """
         Perform the downsampling transform on the input scene and cache.
 
         Args:
             input_scene (SfmScene): The input scene containing images to be downsampled.
-            input_cache (ImageDatasetCache): The cache where the downsampled images will be stored.
+            input_cache (DatasetCache): The cache where the downsampled images will be stored.
 
         Returns:
             output_scene (SfmScene): A new SfmScene with paths to downsampled images.
-            output_cache (ImageDatasetCache): The cache containing the downsampled images with a prefix
+            output_cache (DatasetCache): The cache containing the downsampled images with a prefix
                 set according to the downsampling parameters.
         """
         if self._image_downsample_factor == 1:
@@ -78,22 +78,9 @@ class DownsampleImages(BaseTransform):
             return input_scene, input_cache
 
         cache_prefix = f"downsampled_{self._image_downsample_factor}x_{self._image_type}_q{self._rescaled_jpeg_quality}_m{self._rescale_sampling_mode}"
-        output_cache = input_cache.get_subcache(cache_prefix)
-
-        if "images" in output_cache:
-            rescaled_images_key_meta, rescaled_images_value_meta = output_cache.get_property_metadata("images")
-            if rescaled_images_key_meta["scope"] != "image":
-                self._logger.info(
-                    f"Rescaled images key metadata does not match expected values. "
-                    "Deleting the property from the cache."
-                )
-                output_cache.delete_property("images")
-            if output_cache.num_values_for_image_property("images") != input_scene.num_images:
-                self._logger.info(
-                    f"Rescaled images key has a differebt number of images than expected. "
-                    "Deleting the property from the cache."
-                )
-                output_cache.delete_property("images")
+        output_cache = input_cache.make_folder(
+            cache_prefix, description=f"Rescaled images by a factor of {self._image_downsample_factor}"
+        )
 
         # We'll just use the first camera's dimensions to determine the rescaled image size.
         # This assumes all cameras have the same dimensions, which is typical in many datasets.
@@ -104,23 +91,84 @@ class DownsampleImages(BaseTransform):
                 rescaled_img_w = int(cam_meta.width / self._image_downsample_factor)
                 rescaled_img_h = int(cam_meta.height / self._image_downsample_factor)
                 break
+        new_camera_metadata = {}
+        for cam_id, cam_meta in input_scene.cameras.items():
+            new_camera_metadata[cam_id] = cam_meta.resize(rescaled_img_w, rescaled_img_h)
+
         self._logger.info(
             f"Rescaling images to {rescaled_img_w} x {rescaled_img_h} "
             f"using downsample factor {self._image_downsample_factor}, "
             f"sampling mode {self._rescale_sampling_mode}, and quality {self._rescaled_jpeg_quality}."
         )
 
-        if "images" not in output_cache:
-            self._logger.info(f"Rescaling images by a factor of {self._image_downsample_factor} and saving to cache.")
-            output_cache.register_image_property(
-                key="images",
-                data_type="jpg",
-                description=f"Rescaled images by a factor of {self._image_downsample_factor}",
-                metadata={
-                    "sampling_mode": self._rescale_sampling_mode,
-                    "downsample_factor": self._image_downsample_factor,
-                    "quality": self._rescaled_jpeg_quality,
-                },
+        self._logger.info(f"Attempting to load downsampled images from cache.")
+        # How many zeros to pad the image index in the mask file names
+        num_zeropad = len(str(len(input_scene.images))) + 2
+
+        new_image_metadata = []
+
+        regenerate_cache = False
+
+        if output_cache.num_files != input_scene.num_images:
+            if output_cache.num_files == 0:
+                self._logger.info(f"No downsampled images found in the cache.")
+            else:
+                self._logger.info(
+                    f"Inconsistent number of downsampled images in the cache. "
+                    f"Expected {input_scene.num_images}, found {output_cache.num_files}. "
+                    f"Clearing cache and regenerating downsampled images."
+                )
+            output_cache.clear_all()
+            regenerate_cache = True
+
+        for image_id in range(input_scene.num_images):
+            if regenerate_cache:
+                break
+            cache_image_filename = f"image_{image_id:0{num_zeropad}}"
+            image_meta = input_scene.images[image_id]
+            if not output_cache.has_file(cache_image_filename):
+                self._logger.info(
+                    f"Image {cache_image_filename} not found in the cache. " f"Clearing cache and regenerating."
+                )
+                output_cache.clear_all()
+                regenerate_cache = True
+                break
+
+            cache_file_meta = output_cache.get_file_metadata(cache_image_filename)
+            value_meta = cache_file_meta["metadata"]
+            value_quality = value_meta.get("quality", -1)
+            value_mode = value_meta.get("downsample_mode", -1)
+
+            if (
+                cache_file_meta.get("data_type", "") != self._image_type
+                or value_quality != self._rescaled_jpeg_quality
+                or value_mode != self._rescale_sampling_mode
+            ):
+                self._logger.info(
+                    f"Output cache image metadata does not match expected format. "
+                    f"Clearing the cache and regenerating downsampled images."
+                )
+                output_cache.clear_all()
+                regenerate_cache = True
+                break
+
+            new_image_metadata.append(
+                SfmImageMetadata(
+                    world_to_camera_matrix=image_meta.world_to_camera_matrix,
+                    camera_to_world_matrix=image_meta.camera_to_world_matrix,
+                    camera_metadata=new_camera_metadata[image_meta.camera_id],
+                    camera_id=image_meta.camera_id,
+                    image_path=str(cache_file_meta["path"]),
+                    mask_path=image_meta.mask_path,
+                    point_indices=image_meta.point_indices,
+                    image_id=image_meta.image_id,
+                )
+            )
+
+        if regenerate_cache:
+            new_image_metadata = []
+            self._logger.info(
+                f"Generating images downsampled by a factor of {self._image_downsample_factor} and saving to cache."
             )
             pbar = tqdm.tqdm(input_scene.images, unit="imgs")
             for _, image_meta in enumerate(pbar):
@@ -141,8 +189,28 @@ class DownsampleImages(BaseTransform):
                     rescaled_image.shape[0] == rescaled_img_h and rescaled_image.shape[1] == rescaled_img_w
                 ), f"Rescaled image {image_filename} has shape {rescaled_image.shape} but expected {rescaled_img_h, rescaled_img_w}"
                 # Save the rescaled image to the cache
-                output_cache.set_image_property(
-                    "images", image_meta.image_id, rescaled_image, quality=self._rescaled_jpeg_quality
+                cache_image_filename = f"image_{image_meta.image_id:0{num_zeropad}}"
+                cache_file_meta = output_cache.write_file(
+                    key=cache_image_filename,
+                    data=rescaled_image,
+                    data_type=self._image_type,
+                    quality=self._rescaled_jpeg_quality,
+                    metadata={
+                        "quality": self._rescaled_jpeg_quality,
+                        "downsample_mode": self._rescale_sampling_mode,
+                    },
+                )
+                new_image_metadata.append(
+                    SfmImageMetadata(
+                        world_to_camera_matrix=image_meta.world_to_camera_matrix,
+                        camera_to_world_matrix=image_meta.camera_to_world_matrix,
+                        camera_metadata=new_camera_metadata[image_meta.camera_id],
+                        camera_id=image_meta.camera_id,
+                        image_path=str(cache_file_meta["path"]),
+                        mask_path=image_meta.mask_path,
+                        point_indices=image_meta.point_indices,
+                        image_id=image_meta.image_id,
+                    )
                 )
 
             pbar.close()
@@ -151,31 +219,6 @@ class DownsampleImages(BaseTransform):
                 f"Rescaled {input_scene.num_images} images by a factor of {self._image_downsample_factor} "
                 f"and saved to cache with sampling mode {self._rescale_sampling_mode} and quality "
                 f"{self._rescaled_jpeg_quality}."
-            )
-        else:
-            self._logger.info(
-                f"Rescaled images already exist in the cache. "
-                f"Using existing rescaled images with sampling mode {self._rescale_sampling_mode} "
-                f"and quality {self._rescaled_jpeg_quality}."
-            )
-
-        new_camera_metadata = {}
-        for cam_id, cam_meta in input_scene.cameras.items():
-            new_camera_metadata[cam_id] = cam_meta.resize(rescaled_img_w, rescaled_img_h)
-
-        new_image_metadata = []
-        for image_meta in input_scene.images:
-            new_image_metadata.append(
-                SfmImageMetadata(
-                    world_to_camera_matrix=image_meta.world_to_camera_matrix,
-                    camera_to_world_matrix=image_meta.camera_to_world_matrix,
-                    camera_metadata=new_camera_metadata[image_meta.camera_id],
-                    camera_id=image_meta.camera_id,
-                    image_path=str(output_cache.get_image_property_path("images", image_meta.image_id)),
-                    mask_path=image_meta.mask_path,
-                    point_indices=image_meta.point_indices,
-                    image_id=image_meta.image_id,
-                )
             )
 
         output_scene = SfmScene(

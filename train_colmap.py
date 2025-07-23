@@ -20,7 +20,6 @@ import tqdm
 import tyro
 import yaml
 from datasets import SfmDataset
-from datasets.namegen import generate_name
 from datasets.transforms import (
     Compose,
     CropScene,
@@ -566,6 +565,9 @@ class Runner:
         checkpoint_path = self.checkpoints_path / pathlib.Path(f"ckpt_{step:04d}.pt")
         ply_path = self.checkpoints_path / pathlib.Path(f"ckpt_{step:04d}.ply")
 
+        checkpoint_path = self.checkpoints_path / pathlib.Path(f"ckpt_{step:04d}.pt")
+        ply_path = self.checkpoints_path / pathlib.Path(f"ckpt_{step:04d}.ply")
+
         self.logger.info(f"Save checkpoint at step {step} to path {checkpoint_path}.")
 
         checkpoint_data = {
@@ -623,11 +625,12 @@ class Runner:
         results_base_path.mkdir(exist_ok=True)
 
         attempts = 0
+        run_name = f"run_{time.strftime('%Y-%m-%d-%H-%M-%S')}"
         while attempts < 50:
-            run_name = generate_name()
             results_path = results_base_path / run_name
             if not (results_path / run_name).exists():
                 break
+            run_name = f"run_{time.strftime('%Y-%m-%d-%H-%M-%S')}_{attempts+1:02d}"
         if attempts >= 50:
             raise RuntimeError("Failed to generate a unique results directory name after 50 attempts.")
 
@@ -710,12 +713,11 @@ class Runner:
         log_tensorboard_every: int = 100,
         log_images_to_tensorboard: bool = False,
         render_eval_images: bool = False,
-        no_save: bool = False,
+        save_results: bool = True,
         disable_masks: bool = False,
     ) -> None:
         self.cfg = cfg
         self.device = device
-
         self.disable_masks = disable_masks
 
         self.logger = logging.getLogger("Runner")
@@ -723,7 +725,7 @@ class Runner:
         # Setup output directories.
         self.run_name, self.image_render_path, self.stats_path, self.checkpoints_path, self.tensorboard_path = (
             self.make_results_directories(
-                save_results=not no_save, results_base_path=results_path, render_eval_images=render_eval_images
+                save_results=save_results, results_base_path=results_path, render_eval_images=render_eval_images
             )
         )
 
@@ -956,7 +958,6 @@ class Runner:
                         f"Step {current_step:,}: Refinement: {num_dup:,} duplicated, {num_split:,} split, {num_prune:,} pruned. "
                         f"Num Gaussians: {self.model.num_gaussians:,} (before: {num_gaussians_before:,})"
                     )
-
                     # If you specified a crop bounding box, clip the Gaussians that are outside the crop
                     # bounding box. This is useful if you want to train on a subset of the scene
                     # and don't want to waste resources on Gaussians that are outside the crop.
@@ -1022,11 +1023,11 @@ class Runner:
                 pbar.update(self.cfg.batch_size)
 
             # Save the model if we've reached a percentage of the total epochs specified in save_at_percent
-            if epoch in [(pct * self.cfg.max_epochs // 100) for pct in self.cfg.save_at_percent]:
+            if epoch in [(pct * self.cfg.max_epochs // 100) - 1 for pct in self.cfg.save_at_percent]:
                 self.save_checkpoint(pbar.n - 1)
 
             # Run evaluation if we've reached a percentage of the total epochs specified in eval_at_percent
-            if epoch in [(pct * self.cfg.max_epochs // 100) for pct in self.cfg.eval_at_percent]:
+            if epoch in [(pct * self.cfg.max_epochs // 100) - 1 for pct in self.cfg.eval_at_percent]:
                 if self.viewer_logger is not None:
                     self.viewer_logger.pause_for_eval()
                 self.eval(pbar.n - 1)
@@ -1083,6 +1084,7 @@ class Runner:
 
             # write images
             self.save_rendered_image(step, stage, f"image_{i:04d}", predicted_image, ground_truth_image)
+
             ground_truth_image = ground_truth_image.permute(0, 3, 1, 2)  # [1, 3, H, W]
             predicted_image = predicted_image.permute(0, 3, 1, 2)  # [1, 3, H, W]
             metrics["psnr"].append(self.psnr(predicted_image, ground_truth_image))
@@ -1133,7 +1135,7 @@ def train(
     disable_viewer: bool = False,
     log_tensorboard_every: int = 100,
     log_images_to_tensorboard: bool = False,
-    no_save: bool = False,
+    save_results: bool = True,
     render_eval_images: bool = False,
     disable_masks: bool = False,
 ):
@@ -1152,7 +1154,7 @@ def train(
         disable_viewer=disable_viewer,
         log_tensorboard_every=log_tensorboard_every,
         log_images_to_tensorboard=log_images_to_tensorboard,
-        no_save=no_save,
+        save_results=save_results,
         render_eval_images=render_eval_images,
         disable_masks=disable_masks,
     )

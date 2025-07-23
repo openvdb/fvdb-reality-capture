@@ -7,7 +7,7 @@ import pathlib
 import numpy as np
 import tqdm
 
-from ..image_dataset_cache import ImageDatasetCache
+from ..dataset_cache import DatasetCache
 from ._colmap_utils import Camera as ColmapCamera
 from ._colmap_utils import Image as ColmapImage
 from ._colmap_utils import SceneManager
@@ -46,17 +46,17 @@ class ColmapDatasetReader(BaseDatasetReader):
         self._scene_manager.load_cameras()
         self._scene_manager.load_images()
         self._scene_manager.load_points3D()
-        self._cache = ImageDatasetCache(self._colmap_path, num_images=self.num_images)
+        self._cache = DatasetCache.get_cache(self._colmap_path / "_cache")
 
         self._logger = logging.getLogger(f"{self.__class__.__module__}.{self.__class__.__name__}")
 
     @property
-    def cache(self) -> ImageDatasetCache:
+    def cache(self) -> DatasetCache:
         """
-        Return the ImageDatasetCache associated with this dataset reader.
+        Return the DatasetCache associated with this dataset reader.
         This cache is used to store and retrieve image data efficiently.
         Returns:
-            ImageDatasetCache: The cache used by this dataset reader.
+            DatasetCache: The cache used by this dataset reader.
         """
         return self._cache
 
@@ -191,21 +191,20 @@ class ColmapDatasetReader(BaseDatasetReader):
         image_absolute_paths = [image_absolute_paths[i] for i in sort_indices]
 
         # Compute the set of 3D points visible in each image
-        if "visible_points_per_image" in self._cache:
-            key_meta, value_meta = self._cache.get_property_metadata("visible_points_per_image")
+        if self.cache.has_file("visible_points_per_image"):
+            key_meta = self.cache.get_file_metadata("visible_points_per_image")
+            value_meta = key_meta["metadata"]
             if (
-                key_meta["scope"] != "dataset"
-                or key_meta.get("data_type", "pt") != "pt"
+                key_meta.get("data_type", "pt") != "pt"
                 or value_meta.get("num_points", 0) != len(self._scene_manager.points3D)
                 or value_meta.get("num_images", 0) != self.num_images
             ):
                 self._logger.info("Cached visible points per image do not match current scene. Recomputing...")
-                self._cache.delete_property("visible_points_per_image")
+                self.cache.delete_file("visible_points_per_image")
 
-        if "visible_points_per_image" in self._cache:
+        if self.cache.has_file("visible_points_per_image"):
             self._logger.info("Loading visible points per image from cache...")
-            point_indices, _ = self._cache.get_dataset_property("visible_points_per_image", default_value=None)
-            assert point_indices is not None, "Visible points per image not found in cache."
+            _, point_indices = self.cache.read_file("visible_points_per_image")
         else:
             self._logger.info("Computing and caching visible points per image...")
             # For each point, get the images that see it
@@ -217,15 +216,14 @@ class ColmapDatasetReader(BaseDatasetReader):
                     point_idx = self._scene_manager.point3D_id_to_point3D_idx[point_id]
                     point_indices.setdefault(image_id, []).append(point_idx)
             point_indices = {k: np.array(v).astype(np.int32) for k, v in point_indices.items()}
-            self._cache.set_dataset_property(
-                "visible_points_per_image",
-                data_type="pt",
+            self.cache.write_file(
+                key="visible_points_per_image",
                 data=point_indices,
-                description="Which points are visible from each image. This is a dictionary mapping image names to arrays of point indices.",
                 metadata={
                     "num_points": len(self._scene_manager.points3D),
                     "num_images": self.num_images,
                 },
+                data_type="pt",
             )
 
         # Create ColmapImageMetadata objects for each image

@@ -11,7 +11,7 @@ import numpy as np
 import tqdm
 from scipy.spatial import ConvexHull
 
-from ..image_dataset_cache import ImageDatasetCache
+from ..dataset_cache import DatasetCache
 from ..sfm_scene import SfmImageMetadata, SfmScene
 from .base_transform import BaseTransform
 from .transform_registry import transform
@@ -20,7 +20,8 @@ from .transform_registry import transform
 @transform
 class CropScene(BaseTransform):
     """
-    Crop the scene to a specified bounding box.
+    Crop the scene points to a specified bounding box and update masks to nullify
+    pixels corresponding to regions outside the cropped scene.
     """
 
     version = "1.0.0"
@@ -29,7 +30,7 @@ class CropScene(BaseTransform):
         self,
         bbox: Sequence[float] | np.ndarray,
         mask_format: Literal["png", "jpg", "npy"] = "png",
-        overwrite_existing_masks: bool = False,
+        composite_with_existing_masks: bool = True,
     ):
         """
         Initialize the Crop transform with a bounding box.
@@ -37,8 +38,9 @@ class CropScene(BaseTransform):
         Args:
             bbox (tuple): A tuple defining the bounding box in the format (min_x, min_y, min_z, max_x, max_y, max_z).
             mask_format (Literal["png", "jpg", "npy"]): The format to save the masks in. Defaults to "png".
-            overwrite_existing_masks (bool): Whether to overwrite existing masks. If set to False, existing masks
-                will be loaded and composited with the new mask. Defaults to False.
+            composite_with_existing_masks (bool): Whether to composite the masks generated into existing masks for
+                pixels corresponding to regions outside the cropped scene. If set to True, existing masks
+                will be loaded and composited with the new mask. Defaults to True.
         """
         super().__init__()
         self._logger = logging.getLogger(f"{self.__class__.__module__}.{self.__class__.__name__}")
@@ -50,7 +52,7 @@ class CropScene(BaseTransform):
             raise ValueError(
                 f"Unsupported mask format: {self._mask_format}. Supported formats are 'png', 'jpg', and 'npy'."
             )
-        self._overwrite_existing_masks = overwrite_existing_masks
+        self._composite_with_existing_masks = composite_with_existing_masks
 
     @staticmethod
     def name() -> str:
@@ -94,10 +96,10 @@ class CropScene(BaseTransform):
             "version": self.version,
             "bbox": self._bbox,
             "mask_format": self._mask_format,
-            "overwrite_existing_masks": self._overwrite_existing_masks,
+            "composite_into_existing_masks": self._composite_with_existing_masks,
         }
 
-    def __call__(self, input_scene: SfmScene, input_cache: ImageDatasetCache) -> tuple[SfmScene, ImageDatasetCache]:
+    def __call__(self, input_scene: SfmScene, input_cache: DatasetCache) -> tuple[SfmScene, DatasetCache]:
         """
         Apply the cropping transform to the scene.
 
@@ -114,11 +116,14 @@ class CropScene(BaseTransform):
 
         self._logger.info(f"Cropping scene to bounding box: {self._bbox}")
 
-        output_cache_prefix = f"{self.name()}_{self._bbox[0]}_{self._bbox[1]}_{self._bbox[2]}_{self._bbox[3]}_{self._bbox[4]}_{self._bbox[5]}_{self._mask_format}_{self._overwrite_existing_masks}"
+        output_cache_prefix = f"{self.name()}_{self._bbox[0]}_{self._bbox[1]}_{self._bbox[2]}_{self._bbox[3]}_{self._bbox[4]}_{self._bbox[5]}_{self._mask_format}_{self._composite_with_existing_masks}"
         output_cache_prefix = output_cache_prefix.replace(" ", "_")  # Ensure no spaces in the cache prefix
         output_cache_prefix = output_cache_prefix.replace(".", "_")  # Ensure no dots in the cache prefix
         output_cache_prefix = output_cache_prefix.replace("-", "neg")  # Ensure no dashes in the cache prefix
-        output_cache = input_cache.get_subcache(output_cache_prefix)
+        output_cache = input_cache.make_folder(
+            output_cache_prefix,
+            description=f"Image masks ({self._mask_format}) for cropping to bounding box {self._bbox}",
+        )
 
         # Create a mask over all the points which are inside the bounding box
         points_mask = np.logical_and.reduce(
@@ -135,30 +140,61 @@ class CropScene(BaseTransform):
         # Mask the scene using the points mask
         masked_scene = input_scene.filter_points(points_mask)
 
+        # How many zeros to pad the image index in the mask file names
+        num_zeropad = len(str(len(masked_scene.images))) + 2
+
         new_image_metadata = []
-        if "masks" in output_cache:
-            key_meta, value_meta = output_cache.get_property_metadata("masks")
-            if key_meta.get("scope", "") != "image" or key_meta.get("data_type", "") != self._mask_format:
-                self._logger.warning(
-                    f"Output cache masks metadata does not match expected format. Expected scope 'image' and data type '{self._mask_format}'."
-                    f"Deleting the key and regenerating masks."
+
+        regenerate_cache = False
+        if output_cache.num_files != len(masked_scene.images):
+            if output_cache.num_files == 0:
+                self._logger.info(f"No masks found in the cache for cropping.")
+            else:
+                self._logger.info(
+                    f"Inconsistent number of masks for images. Expected {len(masked_scene.images)}, found {output_cache.num_files}. "
+                    f"Clearing cache and regenerating masks."
                 )
-                output_cache.delete_property("masks")
-            if key_meta.get("scope", "") == "image":
-                if output_cache.num_values_for_image_property("masks") != len(masked_scene.images):
-                    self._logger.info(
-                        f"Inconsistent number of masks for images. Deleting the key and regenerating masks."
-                    )
-                    output_cache.delete_property("masks")
+            output_cache.clear_all()
+            regenerate_cache = True
 
-        if "masks" not in output_cache:
-            self._logger.info(f"Computing image masks for cropping.")
+        for image_id in range(len(masked_scene.images)):
+            if regenerate_cache:
+                break
+            image_cache_filename = f"mask_{image_id:0{num_zeropad}}"
+            image_meta = masked_scene.images[image_id]
+            if not output_cache.has_file(image_cache_filename):
+                self._logger.info(
+                    f"Mask for image {image_id} not found in cache. Clearing cache and regenerating masks."
+                )
+                output_cache.clear_all()
+                regenerate_cache = True
+                break
 
-            output_cache.register_image_property(
-                "masks",
-                data_type=self._mask_format,
-                description=f"Image masks for cropping to bounding box {self._bbox}",
+            key_meta = output_cache.get_file_metadata(image_cache_filename)
+            if key_meta.get("data_type", "") != self._mask_format:
+                self._logger.info(
+                    f"Output cache masks metadata does not match expected format. Expected '{self._mask_format}'."
+                    f"Clearing the cache and regenerating masks."
+                )
+                output_cache.clear_all()
+                regenerate_cache = True
+                break
+            new_image_metadata.append(
+                SfmImageMetadata(
+                    world_to_camera_matrix=image_meta.world_to_camera_matrix,
+                    camera_to_world_matrix=image_meta.camera_to_world_matrix,
+                    camera_metadata=image_meta.camera_metadata,
+                    camera_id=image_meta.camera_id,
+                    image_id=image_meta.image_id,
+                    image_path=image_meta.image_path,
+                    mask_path=str(key_meta["path"]),
+                    point_indices=image_meta.point_indices,
+                )
             )
+
+        if regenerate_cache:
+            self._logger.info(f"Computing image masks for cropping and saving to cache.")
+            new_image_metadata = []
 
             # Compute the bounding box of the masked points. We're going to use these to compute masks for the images images
             min_x, min_y, min_z, max_x, max_y, max_z = np.concatenate(
@@ -226,7 +262,7 @@ class CropScene(BaseTransform):
 
                 # If the mask already exists, load it and composite this one into it
                 mask_to_save = inside_mask.astype(np.uint8) * 255  # Convert to uint8 mask
-                if os.path.exists(image_meta.mask_path) and not self._overwrite_existing_masks:
+                if os.path.exists(image_meta.mask_path) and self._composite_with_existing_masks:
                     if image_meta.mask_path.strip().endswith(".npy"):
                         existing_mask = np.load(image_meta.mask_path)
                     elif image_meta.mask_path.strip().endswith(".png"):
@@ -247,12 +283,11 @@ class CropScene(BaseTransform):
                         )
                     mask_to_save = existing_mask * inside_mask
 
-                output_cache.set_image_property(
-                    "masks",
-                    image_meta.image_id,
-                    mask_to_save,
+                cache_file_meta = output_cache.write_file(
+                    key=f"mask_{image_meta.image_id:0{num_zeropad}}",
+                    data=mask_to_save,
+                    data_type=self._mask_format,
                 )
-                crop_mask_path = output_cache.get_image_property_path("masks", image_meta.image_id)
 
                 new_image_metadata.append(
                     SfmImageMetadata(
@@ -262,26 +297,10 @@ class CropScene(BaseTransform):
                         camera_id=image_meta.camera_id,
                         image_id=image_meta.image_id,
                         image_path=image_meta.image_path,
-                        mask_path=str(crop_mask_path),
+                        mask_path=str(cache_file_meta["path"]),
                         point_indices=image_meta.point_indices,
                     )
                 )
-
-        else:
-            self._logger.info(f"Using cached image masks for cropping.")
-            new_image_metadata = [
-                SfmImageMetadata(
-                    world_to_camera_matrix=image_meta.world_to_camera_matrix,
-                    camera_to_world_matrix=image_meta.camera_to_world_matrix,
-                    camera_metadata=image_meta.camera_metadata,
-                    camera_id=image_meta.camera_id,
-                    image_id=image_meta.image_id,
-                    image_path=image_meta.image_path,
-                    mask_path=str(output_cache.get_image_property_path("masks", image_meta.image_id)),
-                    point_indices=image_meta.point_indices,
-                )
-                for image_meta in masked_scene.images
-            ]
 
         output_scene = SfmScene(
             cameras=masked_scene.cameras,

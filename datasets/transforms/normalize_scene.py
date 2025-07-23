@@ -7,7 +7,7 @@ from typing import Any, Literal
 import numpy as np
 import pyproj
 
-from ..image_dataset_cache import ImageDatasetCache
+from ..dataset_cache import DatasetCache
 from ..sfm_scene import SfmScene
 from .base_transform import BaseTransform
 from .transform_registry import transform
@@ -190,17 +190,17 @@ class NormalizeScene(BaseTransform):
         self._normalization_type = normalization_type
         self._logger = logging.getLogger(f"{self.__class__.__module__}.{self.__class__.__name__}")
 
-    def __call__(self, input_scene: SfmScene, input_cache: ImageDatasetCache) -> tuple[SfmScene, ImageDatasetCache]:
+    def __call__(self, input_scene: SfmScene, input_cache: DatasetCache) -> tuple[SfmScene, DatasetCache]:
         """
         Normalize the SfmScene using the specified normalization type.
 
         Args:
             input_scene (SfmScene): Input SfmScene object containing camera and point data
-            input_cache (ImageDatasetCache): The input cache, which is not modified by this transform.
+            input_cache (DatasetCache): The input cache, which is not modified by this transform.
 
         Returns:
             output_scene (SfmScene): A new SfmScene after applying the normalization transform.
-            output_cache (ImageDatasetCache): The input cache, unchanged by this transform.
+            output_cache (DatasetCache): The input cache, unchanged by this transform.
         """
         points = input_scene.points
         world_to_camera_matrices = input_scene.camera_to_world_matrices
