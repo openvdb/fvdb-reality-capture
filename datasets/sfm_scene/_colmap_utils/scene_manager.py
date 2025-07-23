@@ -3,6 +3,7 @@
 #
 
 import array
+import logging
 import os
 import struct
 from collections import OrderedDict
@@ -10,7 +11,6 @@ from itertools import combinations
 
 import numpy as np
 
-from ...logger import logger
 from .camera import Camera
 from .image import Image
 from .rotation import Quaternion
@@ -74,8 +74,8 @@ class SceneManager:
                 pass
 
         if self.image_path is None:
-            sublogger = logger.getChild("SceneManager")
-            sublogger.debug("Warning: image_path not found for reconstruction")
+            logger = logging.getLogger(f"{self.__class__.__module__}.{self.__class__.__name__}")
+            logger.debug("Warning: image_path not found for reconstruction")
         elif not self.image_path.endswith("/"):
             self.image_path += "/"
 

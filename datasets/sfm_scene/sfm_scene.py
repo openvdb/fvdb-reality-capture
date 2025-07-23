@@ -3,7 +3,6 @@
 #
 import numpy as np
 
-from ..image_dataset_cache import ImageDatasetCache
 from .base_dataset_reader import BaseDatasetReader
 from .sfm_metadata import SfmCameraMetadata, SfmImageMetadata
 
@@ -114,7 +113,6 @@ class SfmScene:
                     camera_metadata=image_meta.camera_metadata,
                     camera_id=image_meta.camera_id,
                     image_path=image_meta.image_path,
-                    image_name=image_meta.image_name,
                     mask_path=image_meta.mask_path,
                     point_indices=remapped_points,
                     image_id=image_meta.image_id,

@@ -1,12 +1,12 @@
 # Copyright Contributors to the OpenVDB Project
 # SPDX-License-Identifier: Apache-2.0
 #
+import logging
 import pathlib
 
 import numpy as np
 import tqdm
 
-from .. import logger
 from ..image_dataset_cache import ImageDatasetCache
 from ._colmap_utils import Camera as ColmapCamera
 from ._colmap_utils import Image as ColmapImage
@@ -48,7 +48,7 @@ class ColmapDatasetReader(BaseDatasetReader):
         self._scene_manager.load_points3D()
         self._cache = ImageDatasetCache(self._colmap_path, num_images=self.num_images)
 
-        self._logger = logger.getChild("ColmapDatasetReader")
+        self._logger = logging.getLogger(f"{self.__class__.__module__}.{self.__class__.__name__}")
 
     @property
     def cache(self) -> ImageDatasetCache:
@@ -197,7 +197,7 @@ class ColmapDatasetReader(BaseDatasetReader):
                 key_meta["scope"] != "dataset"
                 or key_meta.get("data_type", "pt") != "pt"
                 or value_meta.get("num_points", 0) != len(self._scene_manager.points3D)
-                or value_meta.get("num_images", 0) != len(image_file_names)
+                or value_meta.get("num_images", 0) != self.num_images
             ):
                 self._logger.info("Cached visible points per image do not match current scene. Recomputing...")
                 self._cache.delete_property("visible_points_per_image")
@@ -224,7 +224,7 @@ class ColmapDatasetReader(BaseDatasetReader):
                 description="Which points are visible from each image. This is a dictionary mapping image names to arrays of point indices.",
                 metadata={
                     "num_points": len(self._scene_manager.points3D),
-                    "num_images": len(image_file_names),
+                    "num_images": self.num_images,
                 },
             )
 
@@ -236,7 +236,6 @@ class ColmapDatasetReader(BaseDatasetReader):
                 camera_id=image_camera_ids[i],
                 camera_metadata=loaded_cameras[image_camera_ids[i]],
                 image_path=str(image_absolute_paths[i].absolute()),
-                image_name=image_file_names[i],
                 mask_path=image_mask_absolute_paths[i],
                 point_indices=point_indices[image_colmap_ids[i]].copy(),
                 image_id=i,

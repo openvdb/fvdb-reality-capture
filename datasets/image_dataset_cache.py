@@ -58,7 +58,7 @@ class ImageDatasetCache:
 
         if not isinstance(prefix, str):
             raise TypeError(f"Prefix must be a string, got {type(prefix)}")
-        if not re.match(r"^[a-zA-Z0-9_]*$", prefix):
+        if not re.match(r"^[a-zA-Z0-9_.]*$", prefix):
             raise ValueError(
                 f"Prefix {prefix} contains invalid characters. "
                 "Prefixes must only contain alphanumeric characters and underscores."
@@ -543,6 +543,28 @@ class ImageDatasetCache:
             return default_value
 
         return self._load_cache_data(file_path, data_type), value_meta
+
+    def get_image_property_path(self, key: str, image_id: int) -> pathlib.Path:
+        """
+        Return the file path for a given image property key and image ID.
+
+        This method does not read the data from the file, it only returns the path to the file where the data is stored.
+
+        This method raises a `FileNotFoundError` error if the file does not exist.
+
+        Args:
+            key (str): The key for the image property. This must be a nonempty string
+                consisting only of alphanumeric characters and underscores.
+            image_id (int): The ID of the image to read the property for. This should be a nonnegative integer.
+
+        Returns:
+            pathlib.Path: The path to the file for the given image key and image ID.
+        """
+        key = self._prefix_key(key)
+        file_path, _, _ = self._get_image_property_path_and_data_type(key, image_id)
+        if not file_path.exists():
+            raise FileNotFoundError(f"Image property {key} does not have a file for image ID {image_id}.")
+        return file_path
 
     def set_dataset_property(
         self, key: str, data_type: str, data: Any, description: str = "", metadata: dict = {}

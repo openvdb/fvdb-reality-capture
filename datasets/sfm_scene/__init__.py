@@ -17,7 +17,6 @@ __all__ = [
 
 def load_colmap_scene(
     dataset_path: pathlib.Path,
-    normalization_type: str = "pca",
 ) -> tuple[SfmScene, ImageDatasetCache]:
     from .colmap_dataset_reader import ColmapDatasetReader
 
@@ -26,7 +25,6 @@ def load_colmap_scene(
 
     Args:
         dataset_path: Path to the COLMAP dataset directory.
-        normalization_type: Type of normalization to apply to the scene.
 
     Returns:
         An instance of SfmScene containing the loaded data.

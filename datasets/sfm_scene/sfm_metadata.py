@@ -306,7 +306,6 @@ class SfmImageMetadata:
         camera_metadata: SfmCameraMetadata,
         camera_id: int,
         image_path: str,
-        image_name: str,
         mask_path: str,
         point_indices: np.ndarray,
         image_id: int,
@@ -315,7 +314,6 @@ class SfmImageMetadata:
         self._camera_to_world_matrix = camera_to_world_matrix
         self._camera_id = camera_id
         self._image_path = image_path
-        self._image_name = image_name
         self._mask_path = mask_path
         self._point_indices = point_indices
         self._camera_metadata = camera_metadata
@@ -342,7 +340,6 @@ class SfmImageMetadata:
             camera_metadata=self.camera_metadata,
             camera_id=self.camera_id,
             image_path=self.image_path,
-            image_name=self.image_name,
             mask_path=self.mask_path,
             point_indices=self.point_indices,
             image_id=self.image_id,
@@ -391,18 +388,6 @@ class SfmImageMetadata:
             str: The path to the image file.
         """
         return self._image_path
-
-    @property
-    def image_name(self) -> str:
-        """
-        Return the name of the image file.
-
-        This is the path without the directory, just the filename itself.
-
-        Returns:
-            str: The name of the image file.
-        """
-        return self._image_name
 
     @property
     def mask_path(self) -> str:

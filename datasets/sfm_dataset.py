@@ -1,6 +1,7 @@
 # Copyright Contributors to the OpenVDB Project
 # SPDX-License-Identifier: Apache-2.0
 #
+import logging
 import pathlib
 from collections.abc import Iterable
 from typing import Any, Dict, List, Literal
@@ -13,9 +14,8 @@ import torch.utils.data
 import tqdm
 
 from .image_dataset_cache import ImageDatasetCache
-from .logger import logger
 from .sfm_scene import SfmCameraMetadata, SfmImageMetadata, SfmScene, load_colmap_scene
-from .transformations import normalize_sfm_scene, percentile_filter_sfm_scene
+from .transforms import BaseTransform
 
 
 class SfmDataset(torch.utils.data.Dataset, Iterable):
@@ -40,10 +40,7 @@ class SfmDataset(torch.utils.data.Dataset, Iterable):
         dataset_path: pathlib.Path,
         test_every: int = 100,
         split: Literal["train", "test", "all"] = "train",
-        normalization_type: Literal["pca", "none", "ecef2enu", "similarity"] = "pca",
-        image_downsample_factor: int = 1,
-        points_percentile_filter_min: np.ndarray = np.zeros(3, dtype=float),
-        points_percentile_filter_max: np.ndarray = np.full((3,), 100.0, dtype=float),
+        transform: BaseTransform | None = None,
         image_indices: List[int] | None = None,
         patch_size: int | None = None,
         return_visible_points: bool = False,
@@ -57,115 +54,26 @@ class SfmDataset(torch.utils.data.Dataset, Iterable):
             split: The split of the dataset to use. Options are "train", "test", or "all". If "train", only
                 training images will be used. If "test", only testing images will be used.
                 If "all", all images will be used.
-            normalization_type: Type of normalization to apply to the scene. Options are "pca", "similarity", "ecef2enu", or "none".
-            image_downsample_factor: Factor by which to downsample images. If > 1, images will be downsampled using
-                cv2.INTER_AREA. If 1, images will not be downsampled.
-            points_percentile_filter_min: A 3-element array specifying the minimum percentiles for filtering points along each axis.
-            points_percentile_filter_max: A 3-element array specifying the maximum percentiles for filtering points along each axis.
             image_indices: Optional list of image indices to include in the dataset. If None, all images will be used.
             patch_size: If not None, images will be randomly cropped to this size.
             return_visible_points: If True, depths of visible points will be loaded and included in each datum.
         """
-        self._logger = logger.getChild("SfmDataset")
+        self._logger = logging.getLogger(f"{self.__class__.__module__}.{self.__class__.__name__}")
 
         self._dataset_path = dataset_path
-        self._image_downsample_factor = image_downsample_factor
-        self._normalization_type = normalization_type
 
         sfm_scene: SfmScene
         base_cache: ImageDatasetCache
-        sfm_scene, base_cache = load_colmap_scene(dataset_path=dataset_path, normalization_type=normalization_type)
+        sfm_scene, base_cache = load_colmap_scene(dataset_path=dataset_path)
 
-        # TODO: (fwilliams) We can implement a transforms module and compose the operations below with others
-
-        # Normalize the scene based on the specified normalization type.
-        self._normalization_type = normalization_type
-        self._logger.info(f"Normalizing SfmScene with normalization type: {normalization_type}")
-        self._sfm_scene, self._normalization_transform = normalize_sfm_scene(sfm_scene, normalization_type)
-
-        # Filter out points based on their percentile along each axis
-        self._logger.info(
-            f"Filtering points based on percentiles: min={points_percentile_filter_min}, max={points_percentile_filter_max}"
-        )
-        self._percentile_filter_min = points_percentile_filter_min
-        self._percentile_filter_max = points_percentile_filter_max
-        self._sfm_scene = percentile_filter_sfm_scene(
-            self._sfm_scene,
-            percentile_min=points_percentile_filter_min,
-            percentile_max=points_percentile_filter_max,
-        )
-
-        # Subcaches prepend the prefix to the keys used to store the data.
-        cache_prefix = f"sfm_dataset_{image_downsample_factor}"
-        self._cache: ImageDatasetCache = base_cache.get_subcache(prefix=cache_prefix)
+        self._transform = transform
+        if self._transform is not None:
+            self._sfm_scene, self._cache = self._transform(sfm_scene, base_cache)
 
         self._test_every = test_every
         self._split: Literal["train", "test", "all"] = split
         self.patch_size = patch_size
         self._return_visible_points = return_visible_points
-        self._image_downsample_factor = image_downsample_factor
-
-        # If you asked to downsample images, we'll either load the downsampled images from the cache or create them.
-        if image_downsample_factor > 1:
-            rescale_sampling_mode = cv2.INTER_AREA
-            rescaled_image_type = "jpg"
-            rescaled_jpeg_quality = 100
-
-            if "images" in self._cache:
-                rescaled_images_key_meta, rescaled_images_value_meta = self._cache.get_property_metadata("images")
-                if (
-                    rescaled_images_key_meta["scope"] != "image"
-                    or rescaled_images_key_meta.get("data_type", "jpg") != rescaled_image_type
-                    or rescaled_images_value_meta.get("sampling_mode", cv2.INTER_AREA) != rescale_sampling_mode
-                    or rescaled_images_value_meta.get("downsample_factor", 1) != image_downsample_factor
-                    or rescaled_images_value_meta.get("quality", 100) != rescaled_jpeg_quality
-                ):
-                    self._logger.info(
-                        f"Rescaled images key metadata does not match expected values. "
-                        "Deleting the property from the cache."
-                    )
-                    self._cache.delete_property("images")
-                elif self._cache.num_values_for_image_property("images") < self._sfm_scene.num_images:
-                    self._logger.info(
-                        f"Rescaled images key has fewer values than expected. " "Deleting the property from the cache."
-                    )
-                    self._cache.delete_property("images")
-
-            if "images" not in self._cache:
-                self._logger.info(f"Rescaling images in {dataset_path} by a factor of {image_downsample_factor}")
-                self._cache.register_image_property(
-                    key="images",
-                    data_type="jpg",
-                    description=f"Rescaled images by a factor of {image_downsample_factor}",
-                    metadata={
-                        "sampling_mode": rescale_sampling_mode,
-                        "downsample_factor": image_downsample_factor,
-                        "quality": rescaled_jpeg_quality,
-                    },
-                )
-                pbar = tqdm.tqdm(self._sfm_scene.images, unit="imgs")
-                rescaled_img_h, rescaled_img_w = None, None  # We'll set these later based on the first image.
-                for _, image_meta in enumerate(pbar):
-                    full_res_image_path = image_meta.image_path
-                    full_res_img = imageio.imread(full_res_image_path)
-                    img_h, img_w = full_res_img.shape[:2]
-                    if rescaled_img_h is None or rescaled_img_w is None:
-                        rescaled_img_h, rescaled_img_w = int(img_h / image_downsample_factor), int(
-                            img_w / image_downsample_factor
-                        )
-                    pbar.set_description(
-                        f"Rescaling {image_meta.image_name} from {img_w} x {img_h} to {rescaled_img_w} x {rescaled_img_h}"
-                    )
-                    rescaled_image = cv2.resize(
-                        full_res_img, (rescaled_img_w, rescaled_img_h), interpolation=rescale_sampling_mode
-                    )
-                    assert (
-                        rescaled_image.shape[0] == rescaled_img_h and rescaled_image.shape[1] == rescaled_img_w
-                    ), f"Rescaled image {image_meta.image_name} has shape {rescaled_image.shape} but expected {rescaled_img_h, rescaled_img_w}"
-                    # Save the rescaled image to the cache
-                    self._cache.set_image_property(
-                        "images", image_meta.image_id, rescaled_image, quality=rescaled_jpeg_quality
-                    )
 
         # If you specified image indices, we'll filter the dataset to only include those images.
         indices = np.arange(self._sfm_scene.num_images) if image_indices is None else np.array(image_indices)
@@ -177,19 +85,6 @@ class SfmDataset(torch.utils.data.Dataset, Iterable):
             self._indices = indices
         else:
             raise ValueError(f"Split must be one of 'train', 'test', or 'all'. Got {self._split}.")
-
-    @property
-    def normalization_transform(self) -> np.ndarray:
-        """
-        Get the normalization transform applied to the scene.
-
-        This is a 4x4 matrix that transforms points in the scene to a normalized coordinate system.
-        The normalization is based on the specified normalization type during dataset initialization.
-
-        Returns:
-            np.ndarray: A 4x4 normalization transform.
-        """
-        return self._normalization_transform
 
     @property
     def split(self) -> Literal["train", "test", "all"]:
@@ -332,18 +227,10 @@ class SfmDataset(torch.utils.data.Dataset, Iterable):
 
         image_meta: SfmImageMetadata = self._sfm_scene.images[index]
         camera_meta: SfmCameraMetadata = image_meta.camera_metadata
-        image_id = image_meta.image_id
-        if self._image_downsample_factor != 1:
-            # Load the rescaled image from the cache
-            image, _ = self._cache.get_image_property("images", image_id)
-            img_h, img_w = image.shape[:2]
-            if image is None:
-                raise ValueError(f"Rescaled image {image_id} not found in cache.")
-            camera_meta = camera_meta.resize(img_w, img_h)
-        else:
-            image = imageio.imread(image_meta.image_path)[..., :3]
-        projection_matrix = camera_meta.projection_matrix.copy()  # undistorted projection matrix
+        image = imageio.imread(image_meta.image_path)[..., :3]
         image = camera_meta.undistort_image(image)
+
+        projection_matrix = camera_meta.projection_matrix.copy()  # undistorted projection matrix
         camera_to_world_matrix = image_meta.camera_to_world_matrix.copy()
         world_to_camera_matrix = image_meta.world_to_camera_matrix.copy()
 
@@ -415,7 +302,6 @@ if __name__ == "__main__":
     # Parse COLMAP data.
     dataset = SfmDataset(
         dataset_path=args.data_dir,
-        image_downsample_factor=args.factor,
         test_every=8,
         split="train",
         return_visible_points=True,
