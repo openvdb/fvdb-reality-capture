@@ -450,10 +450,10 @@ class Runner:
             stage: The stage of training (e.g., "train", "eval").
             stats: A dictionary containing statistics to save.
         """
-        if self.stats_path is None:
+        if self._stats_path is None:
             self.logger.info("No stats path specified, skipping statistics save.")
             return
-        stats_path = self.stats_path / pathlib.Path(f"stats_{stage}_{step:04d}.json")
+        stats_path = self._stats_path / pathlib.Path(f"stats_{stage}_{step:04d}.json")
 
         self.logger.info(f"Saving {stage} statistics at step {step} to path {stats_path}.")
 
@@ -475,10 +475,10 @@ class Runner:
             predicted_image: The predicted image tensor to save.
             ground_truth_image: The ground truth image tensor to save.
         """
-        if self.image_render_path is None:
+        if self._image_render_path is None:
             self.logger.debug("No image render path specified, skipping image save.")
             return
-        eval_render_directory_path = self.image_render_path / pathlib.Path(f"{stage}_{step:04d}")
+        eval_render_directory_path = self._image_render_path / pathlib.Path(f"{stage}_{step:04d}")
         eval_render_directory_path.mkdir(parents=True, exist_ok=True)
         image_path = eval_render_directory_path / pathlib.Path(image_name)
         self.logger.info(f"Saving {stage} image at step {step} to {image_path}")
@@ -495,41 +495,26 @@ class Runner:
         Args:
             step: The current training step, used to name the checkpoint file.
         """
-        if self.checkpoints_path is None:
+        if self._checkpoints_path is None:
             self.logger.info("No checkpoints path specified, skipping checkpoint save.")
             return
-        assert self.run_name is not None, "Run name must be set before saving checkpoints."
+        assert self._run_name is not None, "Run name must be set before saving checkpoints."
         Checkpoint.make_checkpoint(
             step=step,
-            run_name=self.run_name,
+            run_name=self._run_name,
             model=self.model,
             optimizer=self.optimizer,
-            config=vars(self.cfg),
+            config=vars(self.config),
             pose_adjust_model=self.pose_adjust_model,
             pose_adjust_optimizer=self.pose_adjust_optimizer,
             pose_adjust_scheduler=self.pose_adjust_scheduler,
-            train_dataset=self.trainset,
-            eval_dataset=self.valset,
-        ).save(self.checkpoints_path / pathlib.Path(f"ckpt_{step:04d}.pt"))
-        self.model.save_ply(str(self.checkpoints_path / pathlib.Path(f"ckpt_{step:04d}.ply")))
-
-    @property
-    def checkpoint(self):
-        return Checkpoint.make_checkpoint(
-            step=self._global_step,
-            run_name=self.run_name,
-            model=self.model,
-            optimizer=self.optimizer,
-            config=vars(self.cfg),
-            pose_adjust_model=self.pose_adjust_model,
-            pose_adjust_optimizer=self.pose_adjust_optimizer,
-            pose_adjust_scheduler=self.pose_adjust_scheduler,
-            train_dataset=self.trainset,
-            eval_dataset=self.valset,
-        )
+            train_dataset=self.training_dataset,
+            eval_dataset=self.validation_dataset,
+        ).save(self._checkpoints_path / pathlib.Path(f"ckpt_{step:04d}.pt"))
+        self.model.save_ply(str(self._checkpoints_path / pathlib.Path(f"ckpt_{step:04d}.ply")))
 
     @staticmethod
-    def _make_run_directory(results_base_path: pathlib.Path, prefix: str = "run") -> tuple[str, pathlib.Path]:
+    def _make_unique_run_directory(results_base_path: pathlib.Path, prefix: str = "run") -> tuple[str, pathlib.Path]:
         """
         Generate a unique run name and directory based on the current time.
 
@@ -570,6 +555,23 @@ class Runner:
         results_base_path: pathlib.Path,
         save_eval_images: bool,
     ):
+        """
+        Create or get the paths to the results directories for the training run.
+
+        Args:
+            run_name (str | None): The name of the run. If None, a unique name will be generated.
+            save_results (bool): Whether to save results to disk.
+            results_base_path (pathlib.Path): The base path where results will be saved.
+            save_eval_images (bool): Whether to save evaluation images during training.
+
+        Returns:
+            run_name (str): The name of the run.
+            eval_render_path (pathlib.Path | None): Path to save evaluation renders, or None if not saving.
+            stats_path (pathlib.Path): Path to save statistics.
+            checkpoints_path (pathlib.Path): Path to save model checkpoints.
+            tensorboard_path (pathlib.Path): Path to save TensorBoard logs.
+        """
+
         logger = logging.getLogger("Runner")
         if not save_results:
             return run_name, None, None, None, None
@@ -578,7 +580,7 @@ class Runner:
 
         if run_name is None:
             logger.info("No run name provided. Creating a new run directory.")
-            run_name, results_path = Runner._make_run_directory(results_base_path)
+            run_name, results_path = Runner._make_unique_run_directory(results_base_path)
         else:
             results_path = results_base_path / pathlib.Path(run_name)
             if not results_path.exists():
@@ -605,6 +607,179 @@ class Runner:
         tensorboard_path.mkdir(exist_ok=True)
 
         return run_name, eval_render_path, stats_path, checkpoints_path, tensorboard_path
+
+    @property
+    def checkpoint(self):
+        """
+        Return a Checkpoint object containing the current training state.
+
+        This includes the model, optimizer, configuration, pose adjustment model, and datasets.
+
+        Returns:
+            Checkpoint: A Checkpoint object containing the current training state.
+        """
+        return Checkpoint.make_checkpoint(
+            step=self._global_step,
+            run_name=self._run_name,
+            model=self.model,
+            optimizer=self.optimizer,
+            config=vars(self.config),
+            pose_adjust_model=self.pose_adjust_model,
+            pose_adjust_optimizer=self.pose_adjust_optimizer,
+            pose_adjust_scheduler=self.pose_adjust_scheduler,
+            train_dataset=self.training_dataset,
+            eval_dataset=self.validation_dataset,
+        )
+
+    @property
+    def config(self) -> Config:
+        """
+        Get the configuration object for the current training run.
+
+        Returns:
+            Config: The configuration object containing all parameters for the training run.
+        """
+        return self._cfg
+
+    @property
+    def run_name(self) -> str | None:
+        """
+        Get the name of the current run.
+
+        Returns:
+            str | None: The name of the run, or None if no run name is set.
+        """
+        return self._run_name
+
+    @property
+    def model(self) -> GaussianSplat3d:
+        """
+        Get the Gaussian Splatting model being trained.
+
+        Returns:
+            GaussianSplat3d: The model instance.
+        """
+        return self._model
+
+    @property
+    def optimizer(self) -> GaussianSplatOptimizer:
+        """
+        Get the optimizer used for training the Gaussian Splatting model.
+
+        Returns:
+            GaussianSplatOptimizer: The optimizer instance.
+        """
+        return self._optimizer
+
+    @property
+    def pose_adjust_model(self) -> CameraPoseAdjustment | None:
+        """
+        Get the camera pose adjustment model used for optimizing camera poses during training.
+
+        Returns:
+            CameraPoseAdjustment | None: The pose adjustment model instance, or None if not used.
+        """
+        return self._pose_adjust_model
+
+    @property
+    def pose_adjust_optimizer(self) -> torch.optim.Adam | None:
+        """
+        Get the optimizer used for adjusting camera poses during training.
+
+        Returns:
+            torch.optim.Optimizer | None: The pose adjustment optimizer instance, or None if not used.
+        """
+        return self._pose_adjust_optimizer
+
+    @property
+    def pose_adjust_scheduler(self) -> torch.optim.lr_scheduler.ExponentialLR | None:
+        """
+        Get the learning rate scheduler used for adjusting camera poses during training.
+
+        Returns:
+            torch.optim.lr_scheduler.ExponentialLR | None: The pose adjustment scheduler instance, or None if not used.
+        """
+        return self._pose_adjust_scheduler
+
+    @property
+    def training_dataset(self) -> SfmDataset:
+        """
+        Get the training dataset used for training the Gaussian Splatting model.
+
+        Returns:
+            SfmDataset: The training dataset instance.
+        """
+        return self._training_dataset
+
+    @property
+    def validation_dataset(self) -> SfmDataset:
+        """
+        Get the validation dataset used for evaluating the Gaussian Splatting model.
+
+        Returns:
+            SfmDataset: The validation dataset instance.
+        """
+        return self._validation_dataset
+
+    @property
+    def stats_path(self) -> pathlib.Path | None:
+        """
+        Get the path where training statistics are saved.
+
+        Returns:
+            pathlib.Path | None: The path to the statistics directory, or None if not set.
+        """
+        return self._stats_path
+
+    @property
+    def image_render_path(self) -> pathlib.Path | None:
+        """
+        Get the path where rendered images are saved during evaluation.
+
+        Returns:
+            pathlib.Path | None: The path to the evaluation renders directory, or None if not set.
+        """
+        return self._image_render_path
+
+    @property
+    def checkpoints_path(self) -> pathlib.Path | None:
+        """
+        Get the path where model checkpoints are saved.
+
+        Returns:
+            pathlib.Path | None: The path to the checkpoints directory, or None if not set.
+        """
+        return self._checkpoints_path
+
+    @property
+    def ssim_loss(self) -> StructuralSimilarityIndexMeasure:
+        """
+        Get the SSIM loss metric used for evaluating the model.
+
+        Returns:
+            StructuralSimilarityIndexMeasure: The SSIM loss metric instance.
+        """
+        return self._ssim
+
+    @property
+    def lpips_loss(self) -> LearnedPerceptualImagePatchSimilarity:
+        """
+        Get the LPIPS loss metric used for evaluating the model.
+
+        Returns:
+            LearnedPerceptualImagePatchSimilarity: The LPIPS loss metric instance.
+        """
+        return self._lpips
+
+    @property
+    def psnr_loss(self) -> PeakSignalNoiseRatio:
+        """
+        Get the PSNR loss metric used for evaluating the model.
+
+        Returns:
+            PeakSignalToNoiseRatio: The PSNR loss metric instance.
+        """
+        return self._psnr
 
     @staticmethod
     def _init_model(
@@ -879,74 +1054,127 @@ class Runner:
         disable_viewer: bool,
         _private: object | None = None,
     ) -> None:
+        """
+        Initialize the Runner with the provided configuration, model, optimizer, datasets, and paths.
 
+        Note: This constructor should only be called by the `new_run` or `resume_from_checkpoint` methods.
+
+        Args:
+            config (Config): Configuration object containing model parameters.
+            trainset (SfmDataset): The training dataset.
+            valset (SfmDataset): The validation dataset.
+            model (GaussianSplat3d): The Gaussian Splatting model to train.
+            optimizer (GaussianSplatOptimizer): The optimizer for the model.
+            pose_adjust_model (CameraPoseAdjustment | None): The camera pose adjustment model, if used
+            pose_adjust_optimizer (torch.optim.Adam | None): The optimizer for camera pose adjustment, if used.
+            pose_adjust_scheduler (torch.optim.lr_scheduler.ExponentialLR | None): The learning rate scheduler
+                for camera pose adjustment, if used.
+            start_step (int): The step to start training from (useful for resuming training
+                from a checkpoint).
+            run_name (str | None): The name of the training run or None for an un-named run.
+            image_render_path (pathlib.Path | None): Path to save rendered images during evaluation.
+            stats_path (pathlib.Path | None): Path to save training statistics
+            checkpoints_path (pathlib.Path | None): Path to save model checkpoints.
+            tensorboard_path (pathlib.Path | None): Path to save TensorBoard logs.
+            log_tensorboard_every (int): How often to log metrics to TensorBoard.
+            log_images_to_tensorboard (bool): Whether to log images to TensorBoard.
+            disable_viewer (bool): Whether to disable the viewer for this run.
+            _private (object | None): Private object to ensure this class is only initialized through `new_run` or `resume_from_checkpoint`.
+        """
         if _private is not Runner.__PRIVATE__:
             raise RuntimeError("Runner should only be initialized through `new_run` or `resume_from_checkpoint`.")
 
         self.logger = logging.getLogger("Runner")
 
-        self.cfg = config
-        self.model = model
-        self.optimizer = optimizer
-        self.pose_adjust_model = pose_adjust_model
-        self.pose_adjust_optimizer = pose_adjust_optimizer
-        self.pose_adjust_scheduler = pose_adjust_scheduler
-        self.start_step = start_step
+        self._cfg = config
+        self._model = model
+        self._optimizer = optimizer
+        self._pose_adjust_model = pose_adjust_model
+        self._pose_adjust_optimizer = pose_adjust_optimizer
+        self._pose_adjust_scheduler = pose_adjust_scheduler
+        self._start_step = start_step
 
-        self.trainset: SfmDataset = trainset
-        self.valset: SfmDataset = valset
+        self._training_dataset: SfmDataset = trainset
+        self._validation_dataset: SfmDataset = valset
         self.device = model.device
 
-        self.run_name = run_name
-        self.image_render_path = image_render_path
-        self.stats_path = stats_path
-        self.checkpoints_path = checkpoints_path
+        self._run_name = run_name
+        self._image_render_path = image_render_path
+        self._stats_path = stats_path
+        self._checkpoints_path = checkpoints_path
 
         self._global_step: int = 0
 
         # Tensorboard
-        self.tensorboard_logger = None
+        self._tensorboard_logger = None
         if tensorboard_path is not None:
-            self.tensorboard_logger = TensorboardLogger(
+            self._tensorboard_logger = TensorboardLogger(
                 log_dir=tensorboard_path,
                 log_every_step=log_tensorboard_every,
                 log_images_to_tensorboard=log_images_to_tensorboard,
             )
 
         # Viewer
-        self.viewer_logger = ViewerLogger(self.model, self.trainset) if not disable_viewer else None
+        self._viewer = ViewerLogger(self.model, self._training_dataset) if not disable_viewer else None
 
         # Losses & Metrics.
-        self.ssim = StructuralSimilarityIndexMeasure(data_range=1.0).to(model.device)
-        self.psnr = PeakSignalNoiseRatio(data_range=1.0).to(model.device)
-        if self.cfg.lpips_net == "alex":
-            self.lpips = LearnedPerceptualImagePatchSimilarity(net_type="alex", normalize=True).to(model.device)
-        elif self.cfg.lpips_net == "vgg":
+        self._ssim = StructuralSimilarityIndexMeasure(data_range=1.0).to(model.device)
+        self._psnr = PeakSignalNoiseRatio(data_range=1.0).to(model.device)
+        if self.config.lpips_net == "alex":
+            self._lpips = LearnedPerceptualImagePatchSimilarity(net_type="alex", normalize=True).to(model.device)
+        elif self.config.lpips_net == "vgg":
             # The 3DGS official repo uses lpips vgg, which is equivalent with the following:
-            self.lpips = LearnedPerceptualImagePatchSimilarity(net_type="vgg", normalize=False).to(model.device)
+            self._lpips = LearnedPerceptualImagePatchSimilarity(net_type="vgg", normalize=False).to(model.device)
         else:
-            raise ValueError(f"Unknown LPIPS network: {self.cfg.lpips_net}")
+            raise ValueError(f"Unknown LPIPS network: {self.config.lpips_net}")
 
     def train(self):
+        """
+        Run the training loop for the Gaussian Splatting model.
+
+        This method initializes the training data loader, sets up the training loop, and performs optimization steps
+        for the model. It also handles camera pose optimization if enabled, and logs training metrics to
+        TensorBoard and the viewer.
+
+        The training loop iterates over the training dataset, computes losses, updates model parameters,
+        and logs metrics at each step. It also handles progressive refinement of the model based on the
+        configured epochs and steps.
+
+        The training process includes:
+        - Loading training data in batches.
+        - Performing camera pose optimization if enabled.
+        - Rendering images from the model's projected Gaussians.
+        - Computing losses (L1, SSIM, LPIPS) and updating model parameters.
+        - Logging training metrics to TensorBoard and the viewer.
+
+        Returns:
+            Checkpoint: A checkpoint object containing the current training state, including the model, optimizer,
+            and training configuration. This can be used to save the current state of the training process
+            or resume training later.
+        """
         trainloader = torch.utils.data.DataLoader(
-            self.trainset,
-            batch_size=self.cfg.batch_size,
+            self.training_dataset,
+            batch_size=self.config.batch_size,
             shuffle=True,
             num_workers=8,
             persistent_workers=True,
             pin_memory=True,
         )
 
-        # TODO: doesn't account for batch size
-        total_steps: int = int(self.cfg.max_epochs * len(self.trainset))
-        refine_start_step: int = int(self.cfg.refine_start_epoch * len(self.trainset))
-        refine_stop_step: int = int(self.cfg.refine_stop_epoch * len(self.trainset))
-        refine_every_step: int = int(self.cfg.refine_every_epoch * len(self.trainset))
-        reset_opacities_every_step: int = int(self.cfg.reset_opacities_every_epoch * len(self.trainset))
-        refine_using_scale2d_stop_step: int = int(self.cfg.refine_using_scale2d_stop_epoch * len(self.trainset))
-        increase_sh_degree_every_step: int = int(self.cfg.increase_sh_degree_every_epoch * len(self.trainset))
-        pose_opt_stop_step: int = int(self.cfg.pose_opt_stop_epoch * len(self.trainset))
+        total_steps: int = int(self.config.max_epochs * len(self.training_dataset))
+        refine_start_step: int = int(self.config.refine_start_epoch * len(self.training_dataset))
+        refine_stop_step: int = int(self.config.refine_stop_epoch * len(self.training_dataset))
+        refine_every_step: int = int(self.config.refine_every_epoch * len(self.training_dataset))
+        reset_opacities_every_step: int = int(self.config.reset_opacities_every_epoch * len(self.training_dataset))
+        refine_using_scale2d_stop_step: int = int(
+            self.config.refine_using_scale2d_stop_epoch * len(self.training_dataset)
+        )
+        increase_sh_degree_every_step: int = int(
+            self.config.increase_sh_degree_every_epoch * len(self.training_dataset)
+        )
+        pose_opt_stop_step: int = int(self.config.pose_opt_stop_epoch * len(self.training_dataset))
 
+        # Progress bar to track training progress
         pbar = tqdm.tqdm(range(0, total_steps), unit="imgs", desc="Training")
 
         # Zero out gradients before training in case we resume training
@@ -954,18 +1182,20 @@ class Runner:
         if self.pose_adjust_optimizer is not None:
             self.pose_adjust_optimizer.zero_grad()
 
-        for epoch in range(self.cfg.max_epochs):
+        for epoch in range(self.config.max_epochs):
             for minibatch in trainloader:
                 batch_size = minibatch["image"].shape[0]
 
                 # Skip steps before the start step
-                if self._global_step < self.start_step:
-                    pbar.set_description(f"Skipping step {self._global_step:,} (before start step {self.start_step:,})")
+                if self._global_step < self._start_step:
+                    pbar.set_description(
+                        f"Skipping step {self._global_step:,} (before start step {self._start_step:,})"
+                    )
                     pbar.update(batch_size)
                     self._global_step = pbar.n
                     continue
-                if self.viewer_logger is not None:
-                    self.viewer_logger.viewer.acquire_lock()
+                if self._viewer is not None:
+                    self._viewer.viewer.acquire_lock()
 
                 cam_to_world_mats: torch.Tensor = minibatch["camtoworld"].to(self.device)  # [B, 4, 4]
                 world_to_cam_mats: torch.Tensor = minibatch["worldtocam"].to(self.device)  # [B, 4, 4]
@@ -982,28 +1212,28 @@ class Runner:
 
                 projection_mats = minibatch["K"].to(self.device)  # [B, 3, 3]
                 image = minibatch["image"]  # [B, H, W, 3]
-                mask = minibatch["mask"] if "mask" in minibatch and not self.cfg.ignore_masks else None
+                mask = minibatch["mask"] if "mask" in minibatch and not self.config.ignore_masks else None
                 image_height, image_width = image.shape[1:3]
 
                 # Progressively use higher spherical harmonic degree as we optimize
-                sh_degree_to_use = min(self._global_step // increase_sh_degree_every_step, self.cfg.sh_degree)
+                sh_degree_to_use = min(self._global_step // increase_sh_degree_every_step, self.config.sh_degree)
                 projected_gaussians = self.model.project_gaussians_for_images(
                     world_to_cam_mats,
                     projection_mats,
                     image_width,
                     image_height,
-                    self.cfg.near_plane,
-                    self.cfg.far_plane,
+                    self.config.near_plane,
+                    self.config.far_plane,
                     "perspective",
                     sh_degree_to_use,
-                    self.cfg.min_radius_2d,
-                    self.cfg.eps_2d,
-                    self.cfg.antialias,
+                    self.config.min_radius_2d,
+                    self.config.eps_2d,
+                    self.config.antialias,
                 )
 
                 # If you have very large images, you can iterate over disjoint crops and accumulate gradients
                 # If cfg.crops_per_image is 1, then this just returns the image
-                for pixels, mask_pixels, crop, is_last in crop_image_batch(image, mask, self.cfg.crops_per_image):
+                for pixels, mask_pixels, crop, is_last in crop_image_batch(image, mask, self.config.crops_per_image):
                     # Actual pixels to compute the loss on, normalized to [0, 1]
                     pixels = pixels.to(self.device) / 255.0  # [1, H, W, 3]
 
@@ -1011,10 +1241,10 @@ class Runner:
                     # possibly using a crop of the full image
                     crop_origin_w, crop_origin_h, crop_w, crop_h = crop
                     colors, alphas = self.model.render_from_projected_gaussians(
-                        projected_gaussians, crop_w, crop_h, crop_origin_w, crop_origin_h, self.cfg.tile_size
+                        projected_gaussians, crop_w, crop_h, crop_origin_w, crop_origin_h, self.config.tile_size
                     )
                     # If you want to add random background, we'll mix it in here
-                    if self.cfg.random_bkgd:
+                    if self.config.random_bkgd:
                         bkgd = torch.rand(1, 3, device=self.device)
                         colors = colors + bkgd * (1.0 - alphas)
 
@@ -1025,23 +1255,23 @@ class Runner:
 
                     # Image losses
                     l1loss = F.l1_loss(colors, pixels)
-                    ssimloss = 1.0 - self.ssim(pixels.permute(0, 3, 1, 2), colors.permute(0, 3, 1, 2))
-                    loss = l1loss * (1.0 - self.cfg.ssim_lambda) + ssimloss * self.cfg.ssim_lambda
+                    ssimloss = 1.0 - self.ssim_loss(pixels.permute(0, 3, 1, 2), colors.permute(0, 3, 1, 2))
+                    loss = l1loss * (1.0 - self.config.ssim_lambda) + ssimloss * self.config.ssim_lambda
 
                     # Rgularize opacity to ensure Gaussian's don't become too opaque
-                    if self.cfg.opacity_reg > 0.0:
-                        loss = loss + self.cfg.opacity_reg * torch.abs(self.model.opacities).mean()
+                    if self.config.opacity_reg > 0.0:
+                        loss = loss + self.config.opacity_reg * torch.abs(self.model.opacities).mean()
 
                     # Regularize scales to ensure Gaussians don't become too large
-                    if self.cfg.scale_reg > 0.0:
-                        loss = loss + self.cfg.scale_reg * torch.abs(self.model.scales).mean()
+                    if self.config.scale_reg > 0.0:
+                        loss = loss + self.config.scale_reg * torch.abs(self.model.scales).mean()
 
                     # If you're optimizing poses, regularize the pose parameters so the poses
                     # don't drift too far from the initial values
                     if self.pose_adjust_model is not None and self._global_step < pose_opt_stop_step:
                         pose_params = self.pose_adjust_model.pose_embeddings(image_ids)
                         pose_reg = torch.mean(torch.abs(pose_params))
-                        loss = loss + self.cfg.pose_opt_reg * pose_reg
+                        loss = loss + self.config.pose_opt_reg * pose_reg
 
                     # If we're splitting into crops, accumulate gradients, so pass retain_graph=True
                     # for every crop but the last one
@@ -1072,8 +1302,8 @@ class Runner:
                     # If you specified a crop bounding box, clip the Gaussians that are outside the crop
                     # bounding box. This is useful if you want to train on a subset of the scene
                     # and don't want to waste resources on Gaussians that are outside the crop.
-                    if self.cfg.remove_gaussians_outside_scene_bbox:
-                        bbox_min, bbox_max = self.trainset.scene_bbox
+                    if self.config.remove_gaussians_outside_scene_bbox:
+                        bbox_min, bbox_max = self.training_dataset.scene_bbox
                         ng_prior = self.model.num_gaussians
                         points = self.model.means
 
@@ -1100,7 +1330,7 @@ class Runner:
 
                 # If you enabled pose optimization, step the pose optimizer if we performed a
                 # pose update this iteration
-                if self.cfg.optimize_camera_poses and self._global_step < pose_opt_stop_step:
+                if self.config.optimize_camera_poses and self._global_step < pose_opt_stop_step:
                     assert (
                         self.pose_adjust_optimizer is not None
                     ), "Pose optimizer should be initialized if pose optimization is enabled."
@@ -1112,23 +1342,23 @@ class Runner:
                     self.pose_adjust_scheduler.step()
 
                 # Log to tensorboard if you requested it
-                if self.tensorboard_logger is not None:
-                    self.tensorboard_logger.log_training_iteration(
+                if self._tensorboard_logger is not None:
+                    self._tensorboard_logger.log_training_iteration(
                         self._global_step,
                         self.model.num_gaussians,
                         loss.item(),
                         l1loss.item(),
                         ssimloss.item(),
                         torch.cuda.max_memory_allocated() / 1024**3,
-                        pose_loss=pose_reg.item() if self.cfg.optimize_camera_poses else None,
+                        pose_loss=pose_reg.item() if self.config.optimize_camera_poses else None,
                         gt_img=pixels,
                         pred_img=colors,
                     )
 
                 # Update the viewer
-                if self.viewer_logger is not None:
-                    self.viewer_logger.viewer.release_lock()
-                    self.viewer_logger.log_training_iteration(
+                if self._viewer is not None:
+                    self._viewer.viewer.release_lock()
+                    self._viewer.log_training_iteration(
                         self._global_step,
                         loss=loss.item(),
                         l1loss=l1loss.item(),
@@ -1136,52 +1366,67 @@ class Runner:
                         mem=torch.cuda.max_memory_allocated() / 1024**3,
                         num_gaussians=self.model.num_gaussians,
                         current_sh_degree=sh_degree_to_use,
-                        pose_regulation=pose_reg.item() if self.cfg.optimize_camera_poses else None,
+                        pose_regulation=pose_reg.item() if self.config.optimize_camera_poses else None,
                     )
-                    if self.cfg.optimize_camera_poses:
-                        self.viewer_logger.update_camera_poses(cam_to_world_mats, image_ids)
-                    if self._global_step % increase_sh_degree_every_step == 0 and sh_degree_to_use < self.cfg.sh_degree:
-                        self.viewer_logger.set_sh_basis_to_view(sh_degree_to_use)
+                    if self.config.optimize_camera_poses:
+                        self._viewer.update_camera_poses(cam_to_world_mats, image_ids)
+                    if (
+                        self._global_step % increase_sh_degree_every_step == 0
+                        and sh_degree_to_use < self.config.sh_degree
+                    ):
+                        self._viewer.set_sh_basis_to_view(sh_degree_to_use)
 
                 pbar.update(batch_size)
                 self._global_step = pbar.n
 
             # Save the model if we've reached a percentage of the total epochs specified in save_at_percent
-            if epoch in [(pct * self.cfg.max_epochs // 100) - 1 for pct in self.cfg.save_at_percent]:
-                if self._global_step <= self.start_step and self.checkpoints_path is not None:
+            if epoch in [(pct * self.config.max_epochs // 100) - 1 for pct in self.config.save_at_percent]:
+                if self._global_step <= self._start_step and self._checkpoints_path is not None:
                     self.logger.info(
-                        f"Skipping checkpoint save at epoch {epoch + 1} (before start step {self.start_step})."
+                        f"Skipping checkpoint save at epoch {epoch + 1} (before start step {self._start_step})."
                     )
                     continue
-                if self.checkpoints_path is not None:
-                    self.logger.info(f"Saving checkpoint at epoch {epoch + 1} to {self.checkpoints_path}.")
-                    self.checkpoint.save(self.checkpoints_path / pathlib.Path(f"ckpt_{self._global_step:04d}.pt"))
+                if self._checkpoints_path is not None:
+                    self.logger.info(f"Saving checkpoint at epoch {epoch + 1} to {self._checkpoints_path}.")
+                    self.checkpoint.save(self._checkpoints_path / pathlib.Path(f"ckpt_{self._global_step:04d}.pt"))
 
             # Run evaluation if we've reached a percentage of the total epochs specified in eval_at_percent
-            if epoch in [(pct * self.cfg.max_epochs // 100) - 1 for pct in self.cfg.eval_at_percent]:
-                if self._global_step <= self.start_step:
-                    self.logger.info(f"Skipping evaluation at epoch {epoch + 1} (before start step {self.start_step}).")
+            if epoch in [(pct * self.config.max_epochs // 100) - 1 for pct in self.config.eval_at_percent]:
+                if self._global_step <= self._start_step:
+                    self.logger.info(
+                        f"Skipping evaluation at epoch {epoch + 1} (before start step {self._start_step})."
+                    )
                     continue
-                if self.viewer_logger is not None:
-                    self.viewer_logger.pause_for_eval()
-                self.eval(self._global_step - 1)
-                if self.viewer_logger is not None:
-                    self.viewer_logger.resume_after_eval()
+                if self._viewer is not None:
+                    self._viewer.pause_for_eval()
+                self.eval()
+                if self._viewer is not None:
+                    self._viewer.resume_after_eval()
+
+        return self.checkpoint
 
     @torch.no_grad()
-    def eval(self, step: int, stage: str = "val"):
-        """Entry for evaluation."""
+    def eval(self, stage: str = "val"):
+        """
+        Run evaluation of the Gaussian Splatting model on the validation dataset.
+
+        This method evaluates the model by rendering images from the projected Gaussians and computing
+        various image quality metrics.
+
+        Args:
+            stage (str): The name of the evaluation stage used for logging.
+        """
         self.logger.info("Running evaluation...")
         device = self.device
 
-        valloader = torch.utils.data.DataLoader(self.valset, batch_size=1, shuffle=False, num_workers=1)
+        valloader = torch.utils.data.DataLoader(self.validation_dataset, batch_size=1, shuffle=False, num_workers=1)
         evaluation_time = 0
         metrics = {"psnr": [], "ssim": [], "lpips": []}
         for i, data in enumerate(valloader):
             world_to_cam_matrices = data["worldtocam"].to(device)
             projection_matrices = data["K"].to(device)
             ground_truth_image = data["image"].to(device) / 255.0
-            mask_pixels = data["mask"] if "mask" in data and not self.cfg.ignore_masks else None
+            mask_pixels = data["mask"] if "mask" in data and not self.config.ignore_masks else None
 
             height, width = ground_truth_image.shape[1:3]
 
@@ -1193,14 +1438,14 @@ class Runner:
                 projection_matrices,
                 width,
                 height,
-                self.cfg.near_plane,
-                self.cfg.far_plane,
+                self.config.near_plane,
+                self.config.far_plane,
                 "perspective",
-                self.cfg.sh_degree,
-                self.cfg.tile_size,
-                self.cfg.min_radius_2d,
-                self.cfg.eps_2d,
-                self.cfg.antialias,
+                self.config.sh_degree,
+                self.config.tile_size,
+                self.config.min_radius_2d,
+                self.config.eps_2d,
+                self.config.antialias,
             )
             predicted_image = torch.clamp(predicted_image, 0.0, 1.0)
             # depths = colors[..., -1:] / alphas.clamp(min=1e-10)
@@ -1217,13 +1462,13 @@ class Runner:
                 ground_truth_image[~mask_pixels] = predicted_image.detach()[~mask_pixels]
 
             # write images
-            self._save_rendered_image(step, stage, f"image_{i:04d}", predicted_image, ground_truth_image)
+            self._save_rendered_image(self._global_step, stage, f"image_{i:04d}", predicted_image, ground_truth_image)
 
             ground_truth_image = ground_truth_image.permute(0, 3, 1, 2)  # [1, 3, H, W]
             predicted_image = predicted_image.permute(0, 3, 1, 2)  # [1, 3, H, W]
-            metrics["psnr"].append(self.psnr(predicted_image, ground_truth_image))
-            metrics["ssim"].append(self.ssim(predicted_image, ground_truth_image))
-            metrics["lpips"].append(self.lpips(predicted_image, ground_truth_image))
+            metrics["psnr"].append(self.psnr_loss(predicted_image, ground_truth_image))
+            metrics["ssim"].append(self.ssim_loss(predicted_image, ground_truth_image))
+            metrics["lpips"].append(self.lpips_loss(predicted_image, ground_truth_image))
 
         evaluation_time /= len(valloader)
 
@@ -1241,18 +1486,18 @@ class Runner:
             "evaluation_time": evaluation_time,
             "num_gaussians": self.model.num_gaussians,
         }
-        self._save_statistics(step, stage, stats)
+        self._save_statistics(self._global_step, stage, stats)
 
         # Log to tensorboard if enabled
-        if self.tensorboard_logger is not None:
-            self.tensorboard_logger.log_evaluation_iteration(
-                step, psnr.item(), ssim.item(), lpips.item(), evaluation_time, self.model.num_gaussians
+        if self._tensorboard_logger is not None:
+            self._tensorboard_logger.log_evaluation_iteration(
+                self._global_step, psnr.item(), ssim.item(), lpips.item(), evaluation_time, self.model.num_gaussians
             )
 
         # Upate the viewer with evaluation results
-        if self.viewer_logger is not None:
-            self.viewer_logger.log_evaluation_iteration(
-                step, psnr.item(), ssim.item(), lpips.item(), evaluation_time, self.model.num_gaussians
+        if self._viewer is not None:
+            self._viewer.log_evaluation_iteration(
+                self._global_step, psnr.item(), ssim.item(), lpips.item(), evaluation_time, self.model.num_gaussians
             )
 
 

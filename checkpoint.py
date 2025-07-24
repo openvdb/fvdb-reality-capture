@@ -13,6 +13,33 @@ from fvdb import GaussianSplat3d
 
 
 class Checkpoint:
+    """
+    Class representing a checkpoint for the Gaussian Splatting model.
+
+    The checkpoint contains the model, optimizer, configuration, datasets, and camera poses
+    used during training and evaluation. It can be saved to and loaded from a file.
+
+    Note: Do not instantiate this class directly. Use the `make_checkpoint` or `load` methods instead.
+
+    A checkpoint is a snapshot of the training state at a specific step, including:
+    - `splats`: The Gaussian Splatting model.
+    - `optimizer`: The optimizer used for training.
+    - `config`: The configuration used for training.
+    - `train_dataset`: The training dataset.
+    - `eval_dataset`: The evaluation dataset.
+    - `initial_training_poses`: The initial camera-to-world poses used for training.
+    - `final_training_poses`: The final camera-to-world poses after potential optimization.
+    - `training_projection_matrices`: The projection matrices for each image used in training.
+    - `training_image_sizes`: The image sizes for each image used in training.
+    - `eval_poses`: The camera-to-world poses used for validation.
+    - `eval_projection_matrices`: The projection matrices for each image used in validation.
+    - `eval_image_sizes`: The image sizes for each image used in validation.
+    - `pose_adjust_model`: The camera pose adjustment model, if used.
+    - `pose_adjust_optimizer`: The optimizer for the camera pose adjustment model, if used.
+    - `pose_adjust_scheduler`: The learning rate scheduler for the camera pose adjustment optimizer, if used.
+    - `run_name`: The name of the run associated with this checkpoint, if any.
+    """
+
     __PRIVATE__ = object()
 
     def __init__(
@@ -46,6 +73,22 @@ class Checkpoint:
             model (GaussianSplat3d): The Gaussian Splatting model.
             optimizer (GaussianSplatOptimizer): The optimizer used for training.
             config (Config): The configuration used for training.
+            train_dataset (SfmDataset | None): The training dataset, if available.
+            eval_dataset (SfmDataset | None): The evaluation dataset, if available.
+            initial_training_poses (torch.Tensor | None): The initial camera-to-world poses used for training, if available.
+            final_training_poses (torch.Tensor | None): The final camera-to-world poses after potential optimization, if available.
+            training_projection_matrices (torch.Tensor | None): The projection matrices used for training, if available.
+            training_image_sizes (torch.Tensor | None): The image sizes used for training, if available.
+            eval_poses (torch.Tensor | None):
+                The camera-to-world poses used for evaluation, if available.
+            eval_projection_matrices (torch.Tensor | None):
+                The projection matrices used for evaluation, if available.
+            eval_image_sizes (torch.Tensor | None): The image sizes used for evaluation, if available.
+            pose_adjust_model (CameraPoseAdjustment | None): The camera pose adjustment model, if used.
+            pose_adjust_optimizer (torch.optim.Adam | None): The optimizer for the camera pose adjustment model, if used.
+            pose_adjust_scheduler (torch.optim.lr_scheduler.ExponentialLR | None):
+                The learning rate scheduler for the camera pose adjustment optimizer, if used.
+            _private (Any): Internal use only. Should be set to `Checkpoint.__PRIVATE__` to allow instantiation.
         """
         if _private is not Checkpoint.__PRIVATE__:
             raise ValueError("Checkpoint can only be initialized through the `load` or `make_checkpoint` fucntions.")
@@ -256,6 +299,26 @@ class Checkpoint:
         pose_adjust_optimizer: torch.optim.Adam | None,
         pose_adjust_scheduler: torch.optim.lr_scheduler.ExponentialLR | None,
     ) -> "Checkpoint":
+        """
+        Create a checkpoint for the model, optimizer, and configuration.
+
+        Args:
+            step (int): The training step at which the checkpoint is created.
+            run_name (str | None): The name of the run associated with this checkpoint, if any.
+            model (GaussianSplat3d): The Gaussian Splatting model.
+            optimizer (GaussianSplatOptimizer): The optimizer used for training.
+            train_dataset (SfmDataset): The training dataset.
+            eval_dataset (SfmDataset): The evaluation dataset.
+            config (dict): The configuration used for training.
+            pose_adjust_model (CameraPoseAdjustment | None): The camera pose adjustment model, if used.
+            pose_adjust_optimizer (torch.optim.Adam | None): The optimizer for the camera pose adjustment model, if used.
+            pose_adjust_scheduler (torch.optim.lr_scheduler.ExponentialLR | None):
+                The learning rate scheduler for the camera pose adjustment optimizer, if used.
+
+        Returns:
+            Checkpoint: A new checkpoint instance containing the model, optimizer, datasets, and camera poses
+                used during training and evaluation.
+        """
 
         if pose_adjust_model is not None and pose_adjust_optimizer is None:
             raise ValueError("Pose optimizer must be provided if pose adjust model is provided.")
@@ -362,6 +425,20 @@ class Checkpoint:
         dataset_path: pathlib.Path | None = None,
         load_datasets: bool = True,
     ) -> "Checkpoint":
+        """
+        Load a checkpoint from a file.
+
+        Args:
+            path (pathlib.Path): The path to the checkpoint file.
+            device (torch.device | str): The device to load the checkpoint onto. Defaults to "cpu".
+            dataset_path (pathlib.Path | None): The path to the dataset, if the checkpoint contains datasets,
+                they will be updated to use this path instead of the one they were saved with.
+            load_datasets (bool): Whether to load the training and evaluation datasets from the checkpoint. Defaults to True.
+                Setting this to false is useful if you don't have access to the datasets the checkpoint was trained on,
+                but still want to load the model and optimizer state.
+        Returns:
+            Checkpoint: A new checkpoint instance loaded from the file.
+        """
         checkpoint_data = torch.load(path, map_location=device, weights_only=False)
 
         step = checkpoint_data["step"]
