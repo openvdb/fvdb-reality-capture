@@ -32,6 +32,7 @@ class SfmScene:
         points: np.ndarray,
         points_err: np.ndarray,
         points_rgb: np.ndarray,
+        scene_bbox: np.ndarray | None = None,
     ):
         """
         Initialize the SfmScene with cameras, images, and points.
@@ -61,6 +62,7 @@ class SfmScene:
         scene_center = np.mean(camera_locations, axis=0)
         dists = np.linalg.norm(camera_locations - scene_center, axis=1)
         self._scene_scale = np.max(dists)
+        self._scene_bbox = scene_bbox
 
     @classmethod
     def from_dataset_reader(
@@ -272,3 +274,21 @@ class SfmScene:
             np.ndarray: An Nx3 uint8 array of RGB color values for each point in the scene where N is the number of points.
         """
         return self._points_rgb
+
+    @property
+    def scene_bbox(self) -> np.ndarray:
+        """
+        Return the clip bounds of the scene as a numpy array of shape (6,) in the form
+        [xmin, ymin, zmin, xmax, ymax, zmax].
+
+        By default, the clip bounds are [-inf, -inf, -inf, inf, inf, inf].
+
+        Returns:
+            np.ndarray: A 1D array of shape (6,) representing the bounding box of the scene.
+                        If the bounding box has not been computed, it returns [-inf, -inf, -inf, inf, inf, inf].
+        """
+        if self._scene_bbox is None:
+            # Calculate the bounding box of the scene if not already computed
+            return np.array([-np.inf, np.inf, -np.inf, np.inf, -np.inf, np.inf])
+        else:
+            return self._scene_bbox

@@ -8,8 +8,7 @@ import numpy as np
 
 from ..dataset_cache import DatasetCache
 from ..sfm_scene import SfmScene
-from .base_transform import BaseTransform
-from .transform_registry import transform
+from .base_transform import BaseTransform, transform
 
 
 @transform

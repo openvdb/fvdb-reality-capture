@@ -15,7 +15,7 @@ import tqdm
 
 from .dataset_cache import DatasetCache
 from .sfm_scene import SfmCameraMetadata, SfmImageMetadata, SfmScene, load_colmap_scene
-from .transforms import BaseTransform
+from .transforms import BaseTransform, Identity
 
 
 class SfmDataset(torch.utils.data.Dataset, Iterable):
@@ -40,7 +40,7 @@ class SfmDataset(torch.utils.data.Dataset, Iterable):
         dataset_path: pathlib.Path,
         test_every: int = 100,
         split: Literal["train", "test", "all"] = "train",
-        transform: BaseTransform | None = None,
+        transform: BaseTransform = Identity(),
         image_indices: List[int] | None = None,
         patch_size: int | None = None,
         return_visible_points: bool = False,
@@ -67,8 +67,7 @@ class SfmDataset(torch.utils.data.Dataset, Iterable):
         sfm_scene, base_cache = load_colmap_scene(dataset_path=dataset_path)
 
         self._transform = transform
-        if self._transform is not None:
-            self._sfm_scene, self._cache = self._transform(sfm_scene, base_cache)
+        self._sfm_scene, self._cache = self._transform(sfm_scene, base_cache)
 
         self._test_every = test_every
         self._split: Literal["train", "test", "all"] = split
@@ -85,6 +84,73 @@ class SfmDataset(torch.utils.data.Dataset, Iterable):
             self._indices = indices
         else:
             raise ValueError(f"Split must be one of 'train', 'test', or 'all'. Got {self._split}.")
+
+    def state_dict(self) -> Dict[str, Any]:
+        """
+        Get the state of the dataset as a dictionary.
+
+        This is useful for saving the dataset state to disk or for debugging purposes.
+
+        Returns:
+            Dict[str, Any]: A dictionary containing the dataset state.
+        """
+        return {
+            "dataset_path": str(self._dataset_path),
+            "test_every": self._test_every,
+            "split": self._split,
+            "transform": self._transform.state_dict(),
+            "image_indices": self._indices.tolist(),
+            "patch_size": self.patch_size,
+            "return_visible_points": self._return_visible_points,
+        }
+
+    @staticmethod
+    def from_state_dict(state_dict: Dict[str, Any], map_path: pathlib.Path | None = None) -> "SfmDataset":
+        """
+        Create a new SfmDataset instance from a state dictionary.
+
+        Args:
+            state_dict: A dictionary containing the dataset state.
+            map_path: Optional path to the dataset directory. If provided, this will override the path in the state_dict.
+
+        Returns:
+            SfmDataset: A new SfmDataset instance with the state loaded from the dictionary.
+        """
+        dataset = SfmDataset(
+            dataset_path=map_path if map_path is not None else pathlib.Path(state_dict["dataset_path"]),
+            test_every=state_dict["test_every"],
+            split=state_dict["split"],
+            transform=BaseTransform.from_state_dict(state_dict["transform"]),
+            image_indices=state_dict["image_indices"],
+            patch_size=state_dict["patch_size"],
+            return_visible_points=state_dict["return_visible_points"],
+        )
+        return dataset
+
+    @property
+    def scene_bbox(self) -> np.ndarray:
+        """
+        Get the bounding box of the scene.
+
+        The bounding box is defined as a tensor of shape (2, 3) where the first row is the minimum
+        corner and the second row is the maximum corner of the bounding box.
+
+        Returns:
+            torch.Tensor: A tensor of shape (2, 3) representing the bounding box of the scene.
+        """
+        return self._sfm_scene.scene_bbox.reshape([2, 3])
+
+    @property
+    def transform(self) -> BaseTransform:
+        """
+        Get the transform applied to the dataset.
+
+        This is useful if you want to access the transform directly or modify it.
+
+        Returns:
+            BaseTransform: The transform applied to the dataset.
+        """
+        return self._transform
 
     @property
     def split(self) -> Literal["train", "test", "all"]:
@@ -132,6 +198,19 @@ class SfmDataset(torch.utils.data.Dataset, Iterable):
             np.ndarray: An Nx3x3 array of projection matrices for the cameras in the dataset.
         """
         return np.stack([self[i]["K"].numpy() for i in range(len(self))], axis=0)
+
+    @property
+    def image_sizes(self) -> np.ndarray:
+        """
+        Get the image sizes for all images in the dataset.
+
+        This returns the image sizes as a numpy array of shape (N, 2) where N is the number of images.
+        Each row contains the height and width of the corresponding image.
+
+        Returns:
+            np.ndarray: An Nx2 array of image sizes for the cameras in the dataset.
+        """
+        return np.array([self[i]["image"].shape[:2] for i in range(len(self))], dtype=np.int32)
 
     @property
     def scene_scale(self) -> float:

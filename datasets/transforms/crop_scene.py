@@ -13,8 +13,7 @@ from scipy.spatial import ConvexHull
 
 from ..dataset_cache import DatasetCache
 from ..sfm_scene import SfmImageMetadata, SfmScene
-from .base_transform import BaseTransform
-from .transform_registry import transform
+from .base_transform import BaseTransform, transform
 
 
 @transform
@@ -308,6 +307,7 @@ class CropScene(BaseTransform):
             points=masked_scene.points,
             points_rgb=masked_scene.points_rgb,
             points_err=masked_scene.points_err,
+            scene_bbox=bbox,
         )
 
         return output_scene, output_cache

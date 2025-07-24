@@ -141,27 +141,6 @@ def apply_bounds(splats, bounds):
     return splats
 
 
-def gaussian_means_outside_bbox(clip_bounds, model):
-    """
-    returns mask of gaussian mean locations falling outside clipping bounds
-    Args:
-        clip_bounds: 3D bounding box used to find gaussians to clip
-        model: GaussianModel3d object containing splats
-
-    Returns:
-        logical mask of gaussians to remove
-    """
-
-    points = model.means
-
-    bad_mask = torch.logical_or(points[:, 0] < clip_bounds[0], points[:, 0] > clip_bounds[3])
-    bad_mask = torch.logical_or(bad_mask, points[:, 1] < clip_bounds[1])
-    bad_mask = torch.logical_or(bad_mask, points[:, 1] > clip_bounds[4])
-    bad_mask = torch.logical_or(bad_mask, points[:, 2] < clip_bounds[2])
-    bad_mask = torch.logical_or(bad_mask, points[:, 2] > clip_bounds[5])
-    return bad_mask
-
-
 class AppearanceOptModule(torch.nn.Module):
     """Appearance optimization module."""
 

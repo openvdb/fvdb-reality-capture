@@ -2,10 +2,39 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 from abc import ABC, abstractmethod
-from typing import Any
+from typing import Any, TypeVar
 
 from ..dataset_cache import DatasetCache
 from ..sfm_scene import SfmScene
+
+# Keeps track of names of registered transforms and their classes.
+REGISTERED_TRANSFORMS = {}
+
+
+DerivedTransform = TypeVar("DerivedTransform", bound=type)
+
+
+def transform(cls: DerivedTransform) -> DerivedTransform:
+    """
+    Decorator to register a transform class.
+
+    Args:
+        cls: The transform class to register.
+
+    Returns:
+        cls: The registered transform class.
+    """
+    if not issubclass(cls, BaseTransform):
+        raise TypeError(f"Transform {cls} must inherit from BaseTransform.")
+
+    if cls.name() in REGISTERED_TRANSFORMS:
+        raise ValueError(
+            f"Transform name '{cls.name()}' is already registered. You must use unique names for each transform."
+        )
+
+    REGISTERED_TRANSFORMS[cls.name()] = cls
+
+    return cls
 
 
 class BaseTransform(ABC):
@@ -62,7 +91,14 @@ class BaseTransform(ABC):
         Returns:
             BaseTransform: An instance of the transform.
         """
-        pass
+        StateDictType = REGISTERED_TRANSFORMS.get(state_dict["name"], None)
+        if StateDictType is None:
+            raise ValueError(
+                f"Transform '{state_dict['name']}' is not registered. Transform classes must be registered "
+                f"with the `transform` decorator which will be called when the transform is defined. "
+                f"Ensure the transform class uses the `transform` decorator and was imported before calling from_state_dict."
+            )
+        return StateDictType.from_state_dict(state_dict)
 
     def __repr__(self):
         return self.__class__.__name__

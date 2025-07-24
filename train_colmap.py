@@ -1,7 +1,6 @@
 # Copyright Contributors to the OpenVDB Project
 # SPDX-License-Identifier: Apache-2.0
 #
-import csv
 import itertools
 import json
 import logging
@@ -9,7 +8,7 @@ import pathlib
 import random
 import time
 from dataclasses import dataclass, field
-from typing import List, Literal, Optional, Union
+from typing import List, Literal
 
 import imageio
 import numpy as np
@@ -18,7 +17,8 @@ import torch.nn.functional as F
 import torch.utils.data
 import tqdm
 import tyro
-import yaml
+from camera_pose_adjust import CameraPoseAdjustment
+from checkpoint import Checkpoint
 from datasets import SfmDataset
 from datasets.transforms import (
     Compose,
@@ -32,7 +32,6 @@ from sklearn.neighbors import NearestNeighbors
 from torch.utils.tensorboard import SummaryWriter
 from torchmetrics.image import PeakSignalNoiseRatio, StructuralSimilarityIndexMeasure
 from torchmetrics.image.lpip import LearnedPerceptualImagePatchSimilarity
-from utils import gaussian_means_outside_bbox
 from viewer import Viewer
 
 from fvdb import GaussianSplat3d
@@ -90,6 +89,10 @@ class Config:
     reset_opacities_every_epoch: int = 16
     # When to stop using the 2d projected scale for refinement (default of 0 is to never use it)
     refine_using_scale2d_stop_epoch: int = 0
+    # Whether to ignore masks during training
+    ignore_masks: bool = False
+    # Whether to remove Gaussians that fall outside the scene bounding box
+    remove_gaussians_outside_scene_bbox: bool = False
 
     #
     # Pose optimization parameters
@@ -126,18 +129,20 @@ class Config:
     tile_size: int = 16
 
 
-def crop_image_batch(image: torch.Tensor, mask: Optional[torch.Tensor], ncrops: int):
+def crop_image_batch(image: torch.Tensor, mask: torch.Tensor | None, ncrops: int):
     """
     Generator to iterate a minibatch of images (B, H, W, C) into disjoint patches patches (B, H_patch, W_patch, C).
     We use this function when training on very large images so that we can accumulate gradients over
     crops of each image.
 
     Args:
-        image: Image minibatch (B, H, W, C)
-        ncrops: Number of chunks to split the image into (i.e. each crop will have shape (B, H/ncrops x W/ncrops, C).
+        image (torch.Tensor): Image minibatch (B, H, W, C)
+        mask (torch.Tensor | None): Optional mask of shape (B, H, W) to apply to the image.
+        ncrops (int): Number of chunks to split the image into (i.e. each crop will have shape (B, H/ncrops x W/ncrops, C).
 
     Yields: A crop of the input image and its coordinate
         image_patch (torch.Tensor): the patch with shape (B, H/ncrops, W/ncrops, C)
+        mask_patch (torch.Tensor | None): the mask patch with shape (B, H/ncrops, W/ncrops) or None if no mask is provided
         crop (tuple[int, int, int, int]): the crop coordinates (x, y, w, h),
         is_last (bool): is true if this is the last crop in the iteration
     """
@@ -160,117 +165,6 @@ def crop_image_batch(image: torch.Tensor, mask: Optional[torch.Tensor], ncrops: 
         assert (x2 - x1) == patch_w and (y2 - y1) == patch_h
         is_last = patch_id == (patches.shape[0] - 1)
         yield image_patch, mask_patch, crop, is_last
-
-
-class CameraPoseAdjustment(torch.nn.Module):
-    """Camera pose optimization module for 3D Gaussian Splatting.
-
-    This module enables optimization of camera poses defined by their Camera-to-World
-    transform. It's generally used to jointly optimize camera poses during training of a
-    3D Gaussian Splatting model.
-
-    The model learns a transformation *delta* which applies to the original camera-to-world
-    transforms in a dataset.
-
-    The delta is represented as a 9D vector `[dx, dy, dz, r1, r2, r3, r4, r5, r6]`
-    which encodes a change in translation and a change in rotation.
-    The nine components of the vector are:
-    - `[dx, dy, dz]`: translation deltas in world coordinates
-    - `[r1, r2, r3, r4, r5, r6]`: 6D rotation representation for stable optimization in machine
-    learning, as described in "On the Continuity of Rotation Representations in Neural Networks"
-    (Zhou et al., 2019). This representation is preferred over Euler angles or quaternions for
-    optimization stability and avoids singularities.
-
-    The module uses an embedding layer to learn these deltas for a fixed number of cameras
-    specified at initialization. Generally, this is the number of cameras in the training dataset.\
-
-    You apply this module to a batch of camera-to-world transforms by passing the transforms
-    and their corresponding camera indices (in the range `[0, num_cameras-1]`() to the
-    `forward` method. The module will return the updated camera-to-world transforms
-    after applying the learned deltas.
-
-    Attributes:
-        pose_embeddings (torch.nn.Embedding): Embedding layer for learning camera pose deltas.
-    """
-
-    def __init__(self, num_cameras: int, init_std: float = 1e-4):
-        """
-        Create a new `CameraPoseAdjustment` module for storing changes in camera-to-world transforms
-        for a fixed number of cameras (`num_cameras`).
-
-        Args:
-            num_cameras (int): Number of cameras to learn deltas for.
-            init_std (float): Standard deviation for the normal distribution used to initialize
-                the pose embeddings.
-        """
-        super().__init__()
-
-        # Change in positions (3D) + Change in rotations (6D)
-        self.pose_embeddings: torch.nn.Embedding = torch.nn.Embedding(num_cameras, 9)
-
-        torch.nn.init.normal_(self.pose_embeddings.weight, std=init_std)
-
-        # Identity rotation in 6D representation
-        self.register_buffer("_identity", torch.tensor([1.0, 0.0, 0.0, 0.0, 1.0, 0.0]))
-
-    @property
-    def num_cameras(self) -> int:
-        """Number of cameras this module is initialized for."""
-        return self.pose_embeddings.num_embeddings
-
-    @staticmethod
-    def _rotation_6d_to_matrix(d6: torch.Tensor) -> torch.Tensor:
-        """
-        Converts 6D rotation representation described in [1] to a rotation matrix.
-
-        This method uses the Gram-Schmid orthogonalization schemed described in Section B of [1].
-
-        [1] Zhou, Y., Barnes, C., Lu, J., Yang, J., & Li, H.
-        On the Continuity of Rotation Representations in Neural Networks.
-        IEEE Conference on Computer Vision and Pattern Recognition, 2019.
-        Retrieved from http://arxiv.org/abs/1812.07035
-
-        Args:
-            d6 (torch.Tensor): 6D rotation representation tensor with shape (*, 6)
-
-        Returns:
-            torch.Tensor: batch of rotation matrices with shape (*, 3, 3)
-        """
-
-        a1, a2 = d6[..., :3], d6[..., 3:]
-        b1 = F.normalize(a1, dim=-1)
-        b2 = a2 - (b1 * a2).sum(-1, keepdim=True) * b1
-        b2 = F.normalize(b2, dim=-1)
-        b3 = torch.cross(b1, b2, dim=-1)
-        return torch.stack((b1, b2, b3), dim=-2)
-
-    def forward(self, cam_to_world_matrices: torch.Tensor, camera_ids: torch.Tensor) -> torch.Tensor:
-        """Adjust camera pose based on deltas.
-
-        Args:
-            cam_to_world_matrices (torch.Tensor): A batch of camera to world transformations
-                to adjust. Tnsor of shape (*, 4, 4) where B is the batch size.
-            camera_ids (torch.Tensor): Indices of cameras in the batch in the range
-            `[0, self.num_cameras -1]`. Tensor of shape (*,).
-
-        Returns:
-            torch.Tensor: A batch of updated cam_to_world_matrices where we've applied the
-                learned deltas for camera ids to the input camera-to-world transforms.
-                i.e. `output[i] = cam_to_world_matrices[i] @ transform[camera_ids[i]]`
-        """
-        if cam_to_world_matrices.shape[:-2] != camera_ids.shape:
-            raise ValueError("`cam_to_world_matrices` and `camera_ids` must have the same batch shape.")
-        if cam_to_world_matrices.shape[-2:] != (4, 4):
-            raise ValueError("`cam_to_world_matrices` must have shape (..., 4, 4).")
-
-        batch_shape = cam_to_world_matrices.shape[:-2]
-        pose_deltas = self.pose_embeddings(camera_ids)  # (..., 9)
-        dx, drot = pose_deltas[..., :3], pose_deltas[..., 3:]
-        rot = self._rotation_6d_to_matrix(drot + self._identity.expand(*batch_shape, -1))  # (..., 3, 3)
-        transform = torch.eye(4, device=pose_deltas.device).repeat((*batch_shape, 1, 1))
-        transform[..., :3, :3] = rot
-        transform[..., :3, 3] = dx
-        return torch.matmul(cam_to_world_matrices, transform)
 
 
 class TensorboardLogger:
@@ -543,53 +437,19 @@ class ViewerLogger:
 class Runner:
     """Engine for training and testing."""
 
-    def load_checkpoint(self, checkpoint_path: str, load_optimizer: bool = True):
-        checkpoint = torch.load(checkpoint_path)
-        self.model.load_state_dict(checkpoint["splats"])
-        if load_optimizer:
-            self.optimizer.load_state_dict(checkpoint["optimizer"])
-            # pose optimization
-            if self.cfg.optimize_camera_poses and "pose_optimizer" in checkpoint:
-                assert (
-                    self.pose_optimizer is not None
-                ), "Pose optimizer should be initialized if pose optimization is enabled."
-                self.pose_optimizer.load_state_dict(checkpoint["pose_optimizer"])
-        self.config = Config(*checkpoint["config"])
+    __PRIVATE__ = object()
 
-        return checkpoint["step"]
+    logger = logging.getLogger("Runner")
 
-    def save_checkpoint(self, step: int):
-        if self.checkpoints_path is None:
-            self.logger.info("No checkpoints path specified, skipping checkpoint save.")
-            return
-        checkpoint_path = self.checkpoints_path / pathlib.Path(f"ckpt_{step:04d}.pt")
-        ply_path = self.checkpoints_path / pathlib.Path(f"ckpt_{step:04d}.ply")
+    def _save_statistics(self, step: int, stage: str, stats: dict) -> None:
+        """
+        Save statistics in a dict to a JSON file.
 
-        checkpoint_path = self.checkpoints_path / pathlib.Path(f"ckpt_{step:04d}.pt")
-        ply_path = self.checkpoints_path / pathlib.Path(f"ckpt_{step:04d}.ply")
-
-        self.logger.info(f"Save checkpoint at step {step} to path {checkpoint_path}.")
-
-        checkpoint_data = {
-            "step": step,
-            "splats": self.model.state_dict(),
-            "optimizer": self.optimizer.state_dict(),
-            "transform": self.transform.state_dict(),
-            "config": vars(self.cfg),
-        }
-
-        # pose optimization
-        if self.cfg.optimize_camera_poses:
-            assert (
-                self.pose_optimizer is not None
-            ), "Pose optimizer should be initialized if pose optimization is enabled."
-            checkpoint_data["pose_adjust"] = self.adjust_camera_poses.state_dict()
-            checkpoint_data["pose_optimizer"] = self.pose_optimizer.state_dict()
-
-        torch.save(checkpoint_data, checkpoint_path)
-        self.model.save_ply(str(ply_path))
-
-    def save_statistics(self, step: int, stage: str, stats: dict):
+        Args:
+            step: The current training step.
+            stage: The stage of training (e.g., "train", "eval").
+            stats: A dictionary containing statistics to save.
+        """
         if self.stats_path is None:
             self.logger.info("No stats path specified, skipping statistics save.")
             return
@@ -600,9 +460,21 @@ class Runner:
         with open(stats_path, "w") as f:
             json.dump(stats, f, indent=4)
 
-    def save_rendered_image(
+    def _save_rendered_image(
         self, step: int, stage: str, image_name: str, predicted_image: torch.Tensor, ground_truth_image: torch.Tensor
     ):
+        """
+        Save a rendered image and its ground truth image to the evaluation renders directory.
+
+        The rendered image and ground truth image are concatenated horizontally and saved as a single image file.
+
+        Args:
+            step: The current training step.
+            stage: The stage of training (e.g., "train", "eval").
+            image_name: The name of the image file to save.
+            predicted_image: The predicted image tensor to save.
+            ground_truth_image: The ground truth image tensor to save.
+        """
         if self.image_render_path is None:
             self.logger.debug("No image render path specified, skipping image save.")
             return
@@ -616,29 +488,110 @@ class Runner:
             (canvas * 255).astype(np.uint8),
         )
 
-    def make_results_directories(
-        self, save_results: bool, results_base_path: pathlib.Path, render_eval_images: bool
-    ) -> tuple[str | None, pathlib.Path | None, pathlib.Path | None, pathlib.Path | None, pathlib.Path | None]:
+    def _save_checkpoint(self, step: int):
+        """
+        Save the current model, optimizer, and training state to a checkpoint file.
+
+        Args:
+            step: The current training step, used to name the checkpoint file.
+        """
+        if self.checkpoints_path is None:
+            self.logger.info("No checkpoints path specified, skipping checkpoint save.")
+            return
+        assert self.run_name is not None, "Run name must be set before saving checkpoints."
+        Checkpoint.make_checkpoint(
+            step=step,
+            run_name=self.run_name,
+            model=self.model,
+            optimizer=self.optimizer,
+            config=vars(self.cfg),
+            pose_adjust_model=self.pose_adjust_model,
+            pose_adjust_optimizer=self.pose_adjust_optimizer,
+            pose_adjust_scheduler=self.pose_adjust_scheduler,
+            train_dataset=self.trainset,
+            eval_dataset=self.valset,
+        ).save(self.checkpoints_path / pathlib.Path(f"ckpt_{step:04d}.pt"))
+        self.model.save_ply(str(self.checkpoints_path / pathlib.Path(f"ckpt_{step:04d}.ply")))
+
+    @property
+    def checkpoint(self):
+        return Checkpoint.make_checkpoint(
+            step=self._global_step,
+            run_name=self.run_name,
+            model=self.model,
+            optimizer=self.optimizer,
+            config=vars(self.cfg),
+            pose_adjust_model=self.pose_adjust_model,
+            pose_adjust_optimizer=self.pose_adjust_optimizer,
+            pose_adjust_scheduler=self.pose_adjust_scheduler,
+            train_dataset=self.trainset,
+            eval_dataset=self.valset,
+        )
+
+    @staticmethod
+    def _make_run_directory(results_base_path: pathlib.Path, prefix: str = "run") -> tuple[str, pathlib.Path]:
+        """
+        Generate a unique run name and directory based on the current time.
+
+        The run directory will be created under `results_base_path` with a name in the format
+        `prefix_YYYY-MM-DD-HH-MM-SS`. If a directory with the same name already exists,
+        it will attempt to create a new one by appending an incremented number to
+
+        Returns:
+            run_name: A unique run name in the format "run_YYYY-MM-DD-HH-MM-SS".
+            run_path: A pathlib.Path object pointing to the created directory.
+        """
+        attempts = 0
+        max_attempts = 50
+        run_name = f"{prefix}_{time.strftime('%Y-%m-%d-%H-%M-%S')}"
+        while attempts < 50:
+            results_path = results_base_path / run_name
+            try:
+                results_path.mkdir(exist_ok=False)
+                break
+            except FileExistsError:
+                attempts += 1
+                Runner.logger.warning(f"Directory {results_path} already exists. Attempting to create a new one.")
+                # Generate a new run name with an incremented attempt number
+                run_name = f"{prefix}_{time.strftime('%Y-%m-%d-%H-%M-%S')}_{attempts+1:02d}"
+                continue
+        if attempts >= max_attempts:
+            raise FileExistsError(f"Failed to generate a unique results directory name after {max_attempts} attempts.")
+
+        Runner.logger.info(f"Creating new training run with name {run_name}.")
+        Runner.logger.info(f"Results will be saved to {results_path.absolute()}.")
+
+        return run_name, results_path
+
+    @staticmethod
+    def _make_or_get_results_directories(
+        run_name: str | None,
+        save_results: bool,
+        results_base_path: pathlib.Path,
+        save_eval_images: bool,
+    ):
+        logger = logging.getLogger("Runner")
         if not save_results:
-            return None, None, None, None, None
+            return run_name, None, None, None, None
 
         results_base_path.mkdir(exist_ok=True)
 
-        attempts = 0
-        run_name = f"run_{time.strftime('%Y-%m-%d-%H-%M-%S')}"
-        while attempts < 50:
-            results_path = results_base_path / run_name
-            if not (results_path / run_name).exists():
-                break
-            run_name = f"run_{time.strftime('%Y-%m-%d-%H-%M-%S')}_{attempts+1:02d}"
-        if attempts >= 50:
-            raise RuntimeError("Failed to generate a unique results directory name after 50 attempts.")
+        if run_name is None:
+            logger.info("No run name provided. Creating a new run directory.")
+            run_name, results_path = Runner._make_run_directory(results_base_path)
+        else:
+            results_path = results_base_path / pathlib.Path(run_name)
+            if not results_path.exists():
+                logger.info(
+                    f"Run name {run_name} does not exist in results path {results_base_path}. Creating new run directory."
+                )
+                results_path.mkdir(exist_ok=True)
+            else:
+                logger.info(f"Using existing run name {run_name} in results path {results_base_path}.")
+                logger.info(f"Results will be saved to {results_path.absolute()}.")
 
-        self.logger.info(f"Creating new training run with name {run_name}.")
-        self.logger.info(f"Results will be saved to {results_path.absolute()}.")
-        results_path.mkdir(exist_ok=True)
         eval_render_path = None
-        if render_eval_images:
+        if save_eval_images:
             eval_render_path = results_path / pathlib.Path("eval_renders")
             eval_render_path.mkdir(exist_ok=True)
 
@@ -651,21 +604,28 @@ class Runner:
         tensorboard_path = results_path / pathlib.Path("tb")
         tensorboard_path.mkdir(exist_ok=True)
 
-        # Dump config to file
-        config_path = results_path / pathlib.Path("cfg.yml")
-        with open(config_path, "w") as f:
-            yaml.dump(vars(self.cfg), f)
-
         return run_name, eval_render_path, stats_path, checkpoints_path, tensorboard_path
 
-    def init_model(
-        self,
+    @staticmethod
+    def _init_model(
+        config: Config,
+        device: torch.device | str,
         training_dataset: SfmDataset,
     ):
+        """
+        Initialize the Gaussian Splatting model with random parameters based on the training dataset.
+
+        Args:
+            config: Configuration object containing model parameters.
+            device: The device to run the model on (e.g., "cuda" or "cpu").
+            training_dataset: The dataset used for training, which provides the initial points and RGB values
+                            for the Gaussians.
+        """
+
         def _knn(x_np: np.ndarray, k: int = 4) -> torch.Tensor:
             model = NearestNeighbors(n_neighbors=k, metric="euclidean").fit(x_np)
             distances, _ = model.kneighbors(x_np)
-            return torch.from_numpy(distances).to(device=self.device, dtype=torch.float32)
+            return torch.from_numpy(distances).to(device=device, dtype=torch.float32)
 
         def _rgb_to_sh(rgb: torch.Tensor) -> torch.Tensor:
             C0 = 0.28209479177387814
@@ -675,72 +635,67 @@ class Runner:
 
         dist2_avg = (_knn(training_dataset.points, 4)[:, 1:] ** 2).mean(dim=-1)  # [N,]
         dist_avg = torch.sqrt(dist2_avg)
-        log_scales = torch.log(dist_avg * self.cfg.initial_covariance_scale).unsqueeze(-1).repeat(1, 3)  # [N, 3]
+        log_scales = torch.log(dist_avg * config.initial_covariance_scale).unsqueeze(-1).repeat(1, 3)  # [N, 3]
 
-        means = torch.from_numpy(training_dataset.points).to(device=self.device, dtype=torch.float32)  # [N, 3]
-        quats = torch.rand((num_gaussians, 4), device=self.device)  # [N, 4]
-        logit_opacities = torch.logit(
-            torch.full((num_gaussians,), self.cfg.initial_opacity, device=self.device)
-        )  # [N,]
+        means = torch.from_numpy(training_dataset.points).to(device=device, dtype=torch.float32)  # [N, 3]
+        quats = torch.rand((num_gaussians, 4), device=device)  # [N, 4]
+        logit_opacities = torch.logit(torch.full((num_gaussians,), config.initial_opacity, device=device))  # [N,]
 
-        rgbs = torch.from_numpy(training_dataset.points_rgb / 255.0).to(
-            device=self.device, dtype=torch.float32
-        )  # [N, 3]
+        rgbs = torch.from_numpy(training_dataset.points_rgb / 255.0).to(device=device, dtype=torch.float32)  # [N, 3]
         sh_0 = _rgb_to_sh(rgbs).unsqueeze(1)  # [N, 1, 3]
 
-        sh_n = torch.zeros((num_gaussians, (self.cfg.sh_degree + 1) ** 2 - 1, 3), device=self.device)  # [N, K-1, 3]
+        sh_n = torch.zeros((num_gaussians, (config.sh_degree + 1) ** 2 - 1, 3), device=device)  # [N, K-1, 3]
 
         model = GaussianSplat3d(means, quats, log_scales, logit_opacities, sh_0, sh_n, True)
         model.requires_grad = True
 
-        if self.cfg.refine_using_scale2d_stop_epoch > 0:
+        if config.refine_using_scale2d_stop_epoch > 0:
             model.accumulate_max_2d_radii = True
 
         return model
 
-    def __init__(
-        self,
-        cfg: Config,
-        data_path: str,
+    @staticmethod
+    def new_run(
+        dataset_path: pathlib.Path,
+        config: Config = Config(),
         image_downsample_factor: int = 4,
         points_percentile_filter: float = 0.0,
         normalization_type: Literal["none", "pca", "ecef2enu", "similarity"] = "pca",
         crop_bbox: tuple[float, float, float, float, float, float] | None = None,
         results_path: pathlib.Path = pathlib.Path("results"),
-        device: Union[str, torch.device] = "cuda",
-        use_every_n_as_test: int = 100,
+        device: str | torch.device = "cuda",
+        use_every_n_as_val: int = 100,
         disable_viewer: bool = False,
         log_tensorboard_every: int = 100,
         log_images_to_tensorboard: bool = False,
-        render_eval_images: bool = False,
+        save_eval_images: bool = False,
         save_results: bool = True,
-        disable_masks: bool = False,
-    ) -> None:
-        self.cfg = cfg
-        self.device = device
-        self.disable_masks = disable_masks
+    ) -> "Runner":
+        """
+        Create a `Runner` instance for a new training run.
 
-        self.logger = logging.getLogger("Runner")
+        Args:
+            dataset_path (pathlib.Path): Path to the dataset directory containing the SFM data.
+            config (Config): Configuration object containing model parameters.
+            image_downsample_factor (int): Factor by which to downsample the images for training.
+            points_percentile_filter (float): Percentile filter to apply to the points in the dataset (in [0, 100]).
+            normalization_type (Literal["none", "pca", "ecef2enu", "similarity"]): Type of normalization to apply to the scene data.
+            crop_bbox (tuple[float, float, float, float, float, float] | None): Optional bounding box to crop the scene data.
+            results_path (pathlib.Path): Base path where results will be saved.
+            device (str | torch.device): The device to run the model on (e.g., "cuda" or "cpu").
+            use_every_n_as_val (int): How often to use a training image as a validation image
+            disable_viewer (bool): Whether to disable the viewer for this run.
+            log_tensorboard_every (int): How often to log metrics to TensorBoard.
+            log_images_to_tensorboard (bool): Whether to log images to TensorBoard.
+            save_eval_images (bool): Whether to save evaluation images during training.
+            save_results (bool): Whether to save results to disk.
 
-        # Setup output directories.
-        self.run_name, self.image_render_path, self.stats_path, self.checkpoints_path, self.tensorboard_path = (
-            self.make_results_directories(
-                save_results=save_results, results_base_path=results_path, render_eval_images=render_eval_images
-            )
-        )
-
-        random.seed(cfg.seed)
-        np.random.seed(cfg.seed)
-        torch.manual_seed(cfg.seed)
-
-        # Tensorboard
-        self.tensorboard_logger = None
-        if self.tensorboard_path is not None:
-            self.tensorboard_logger = TensorboardLogger(
-                log_dir=self.tensorboard_path,
-                log_every_step=log_tensorboard_every,
-                log_images_to_tensorboard=log_images_to_tensorboard,
-            )
+        Returns:
+            Runner: A `Runner` instance initialized with the specified configuration and datasets.
+        """
+        np.random.seed(config.seed)
+        random.seed(config.seed)
+        torch.manual_seed(config.seed)
 
         # Dataset transform
         transforms = [
@@ -755,82 +710,229 @@ class Runner:
         ]
         if crop_bbox is not None:
             transforms.append(CropScene(crop_bbox))
-        self.transform = Compose(*transforms)
+        transform = Compose(*transforms)
 
-        # Store the crop bounding box and whether to prune Gaussians outside the crop
-        # This is used to filter out Gaussians that are outside the crop bounding box during
-        # training.
-        self.crop_bbox = crop_bbox
-
-        self.trainset = SfmDataset(
-            dataset_path=pathlib.Path(data_path),
-            test_every=use_every_n_as_test,
+        train_dataset = SfmDataset(
+            dataset_path=pathlib.Path(dataset_path),
+            test_every=use_every_n_as_val,
             split="train",
-            transform=self.transform,
+            transform=transform,
         )
-        self.valset = SfmDataset(
-            dataset_path=pathlib.Path(data_path),
-            test_every=use_every_n_as_test,
+        val_dataset = SfmDataset(
+            dataset_path=pathlib.Path(dataset_path),
+            test_every=use_every_n_as_val,
             split="test",
-            transform=self.transform,
+            transform=transform,
         )
-        self.logger.info(
-            f"Created dataset training and test datasets with {len(self.trainset)} training images and {len(self.valset)} test images."
+        Runner.logger.info(
+            f"Created dataset training and test datasets with {len(train_dataset)} training images and {len(val_dataset)} test images."
         )
 
         # Initialize model
-        self.model = self.init_model(self.trainset)
-        self.logger.info(f"Model initialized with {self.model.num_gaussians:,} Gaussians")
+        model = Runner._init_model(config, device, train_dataset)
+        Runner.logger.info(f"Model initialized with {model.num_gaussians:,} Gaussians")
+
+        # Initialize optimizer
+        max_steps = config.max_epochs * len(train_dataset)
+        optimizer = GaussianSplatOptimizer(
+            model,
+            scene_scale=train_dataset.scene_scale * 1.1,
+            mean_lr_decay_exponent=0.01 ** (1.0 / max_steps),
+        )
+
+        # Optional camera position optimizer
+        pose_adjust_optimizer = None
+        pose_adjust_model = None
+        pose_adjust_scheduler = None
+        if config.optimize_camera_poses:
+            # Module to adjust camera poses during training
+            pose_adjust_model = CameraPoseAdjustment(len(train_dataset), init_std=config.pose_opt_init_std).to(device)
+
+            # Increase learning rate for pose optimization and add gradient clipping
+            pose_adjust_optimizer = torch.optim.Adam(
+                pose_adjust_model.parameters(),
+                lr=config.pose_opt_lr * 100.0,
+                weight_decay=config.pose_opt_reg,
+            )
+
+            # Add gradient clipping
+            torch.nn.utils.clip_grad_norm_(pose_adjust_model.parameters(), max_norm=1.0)
+
+            # Add learning rate scheduler for pose optimization
+            pose_adjust_scheduler = torch.optim.lr_scheduler.ExponentialLR(
+                pose_adjust_optimizer, gamma=config.pose_opt_lr_decay ** (1.0 / max_steps)
+            )
+
+        # Setup output directories.
+        run_name, image_render_path, stats_path, checkpoints_path, tensorboard_path = (
+            Runner._make_or_get_results_directories(
+                run_name=None,
+                results_base_path=results_path,
+                save_results=save_results,
+                save_eval_images=save_eval_images,
+            )
+        )
+
+        return Runner(
+            config=config,
+            trainset=train_dataset,
+            valset=val_dataset,
+            model=model,
+            optimizer=optimizer,
+            pose_adjust_model=pose_adjust_model,
+            pose_adjust_optimizer=pose_adjust_optimizer,
+            pose_adjust_scheduler=pose_adjust_scheduler,
+            start_step=0,
+            run_name=run_name,
+            image_render_path=image_render_path,
+            stats_path=stats_path,
+            checkpoints_path=checkpoints_path,
+            tensorboard_path=tensorboard_path,
+            log_tensorboard_every=log_tensorboard_every,
+            log_images_to_tensorboard=log_images_to_tensorboard,
+            disable_viewer=disable_viewer,
+            _private=Runner.__PRIVATE__,
+        )
+
+    @staticmethod
+    def from_checkpoint(
+        checkpoint: Checkpoint,
+        results_path: pathlib.Path = pathlib.Path("results"),
+        disable_viewer: bool = False,
+        log_tensorboard_every: int = 100,
+        log_images_to_tensorboard: bool = False,
+        save_eval_images: bool = False,
+        save_results: bool = True,
+    ) -> "Runner":
+        """
+        Create a `Runner` instance from a saved checkpoint.
+
+        Args:
+            checkpoint (Checkpoint): The checkpoint to load from.
+            results_path (pathlib.Path): Base path where results will be saved.
+            disable_viewer (bool): Whether to disable the viewer for this run.
+            log_tensorboard_every (int): How often to log metrics to TensorBoard.
+            log_images_to_tensorboard (bool): Whether to log images to TensorBoard.
+            save_results (bool): Whether to save results to disk.
+            save_eval_images (bool): Whether to save evaluation images during training.
+        """
+        config = Config(**checkpoint.config)
+
+        np.random.seed(config.seed)
+        random.seed(config.seed)
+        torch.manual_seed(config.seed)
+
+        assert checkpoint.train_dataset is not None, "Checkpoint must contain a training dataset."
+        assert checkpoint.eval_dataset is not None, "Checkpoint must contain a validation dataset."
+
+        Runner.logger.info(f"Loaded checkpoint with {checkpoint.splats.num_gaussians:,} Gaussians.")
+
+        # Setup output directories.
+        run_name, image_render_path, stats_path, checkpoints_path, tensorboard_path = (
+            Runner._make_or_get_results_directories(
+                run_name=checkpoint.run_name,
+                save_results=save_results,
+                results_base_path=results_path,
+                save_eval_images=save_eval_images,
+            )
+        )
+
+        return Runner(
+            config=config,
+            trainset=checkpoint.train_dataset,
+            valset=checkpoint.eval_dataset,
+            model=checkpoint.splats,
+            optimizer=checkpoint.optimizer,
+            pose_adjust_model=checkpoint.pose_adjust_model,
+            pose_adjust_optimizer=checkpoint.pose_adjust_optimizer,
+            pose_adjust_scheduler=checkpoint.pose_adjust_scheduler,
+            start_step=checkpoint.step,
+            run_name=run_name,
+            image_render_path=image_render_path,
+            stats_path=stats_path,
+            checkpoints_path=checkpoints_path,
+            tensorboard_path=tensorboard_path,
+            log_tensorboard_every=log_tensorboard_every,
+            log_images_to_tensorboard=log_images_to_tensorboard,
+            disable_viewer=disable_viewer,
+            _private=Runner.__PRIVATE__,
+        )
+
+    def __init__(
+        self,
+        config: Config,
+        trainset: SfmDataset,
+        valset: SfmDataset,
+        model: GaussianSplat3d,
+        optimizer: GaussianSplatOptimizer,
+        pose_adjust_model: CameraPoseAdjustment | None,
+        pose_adjust_optimizer: torch.optim.Adam | None,
+        pose_adjust_scheduler: torch.optim.lr_scheduler.ExponentialLR | None,
+        start_step: int,
+        run_name: str | None,
+        image_render_path: pathlib.Path | None,
+        stats_path: pathlib.Path | None,
+        checkpoints_path: pathlib.Path | None,
+        tensorboard_path: pathlib.Path | None,
+        log_tensorboard_every: int,
+        log_images_to_tensorboard: bool,
+        disable_viewer: bool,
+        _private: object | None = None,
+    ) -> None:
+
+        if _private is not Runner.__PRIVATE__:
+            raise RuntimeError("Runner should only be initialized through `new_run` or `resume_from_checkpoint`.")
+
+        self.logger = logging.getLogger("Runner")
+
+        self.cfg = config
+        self.model = model
+        self.optimizer = optimizer
+        self.pose_adjust_model = pose_adjust_model
+        self.pose_adjust_optimizer = pose_adjust_optimizer
+        self.pose_adjust_scheduler = pose_adjust_scheduler
+        self.start_step = start_step
+
+        self.trainset: SfmDataset = trainset
+        self.valset: SfmDataset = valset
+        self.device = model.device
+
+        self.run_name = run_name
+        self.image_render_path = image_render_path
+        self.stats_path = stats_path
+        self.checkpoints_path = checkpoints_path
+
+        self._global_step: int = 0
+
+        # Tensorboard
+        self.tensorboard_logger = None
+        if tensorboard_path is not None:
+            self.tensorboard_logger = TensorboardLogger(
+                log_dir=tensorboard_path,
+                log_every_step=log_tensorboard_every,
+                log_images_to_tensorboard=log_images_to_tensorboard,
+            )
 
         # Viewer
         self.viewer_logger = ViewerLogger(self.model, self.trainset) if not disable_viewer else None
 
-        # Initialize optimizer
-        max_steps = cfg.max_epochs * len(self.trainset)
-        self.optimizer = GaussianSplatOptimizer(
-            self.model, scene_scale=self.trainset.scene_scale * 1.1, mean_lr_decay_exponent=0.01 ** (1.0 / max_steps)
-        )
-
-        # Optional camera position optimizer
-        self.pose_optimizer = None
-        if self.cfg.optimize_camera_poses:
-            # Module to adjust camera poses during training
-            self.adjust_camera_poses = CameraPoseAdjustment(len(self.trainset), init_std=cfg.pose_opt_init_std).to(
-                self.device
-            )
-
-            # Increase learning rate for pose optimization and add gradient clipping
-            self.pose_optimizer = torch.optim.Adam(
-                self.adjust_camera_poses.parameters(),
-                lr=self.cfg.pose_opt_lr * 100.0,
-                weight_decay=self.cfg.pose_opt_reg,
-            )
-
-            # Add gradient clipping
-            torch.nn.utils.clip_grad_norm_(self.adjust_camera_poses.parameters(), max_norm=1.0)
-
-            # Add learning rate scheduler for pose optimization
-            self.pose_scheduler = torch.optim.lr_scheduler.ExponentialLR(
-                self.pose_optimizer, gamma=self.cfg.pose_opt_lr_decay ** (1.0 / max_steps)
-            )
-
         # Losses & Metrics.
-        self.ssim = StructuralSimilarityIndexMeasure(data_range=1.0).to(device)
-        self.psnr = PeakSignalNoiseRatio(data_range=1.0).to(device)
-        if cfg.lpips_net == "alex":
-            self.lpips = LearnedPerceptualImagePatchSimilarity(net_type="alex", normalize=True).to(device)
-        elif cfg.lpips_net == "vgg":
+        self.ssim = StructuralSimilarityIndexMeasure(data_range=1.0).to(model.device)
+        self.psnr = PeakSignalNoiseRatio(data_range=1.0).to(model.device)
+        if self.cfg.lpips_net == "alex":
+            self.lpips = LearnedPerceptualImagePatchSimilarity(net_type="alex", normalize=True).to(model.device)
+        elif self.cfg.lpips_net == "vgg":
             # The 3DGS official repo uses lpips vgg, which is equivalent with the following:
-            self.lpips = LearnedPerceptualImagePatchSimilarity(net_type="vgg", normalize=False).to(device)
+            self.lpips = LearnedPerceptualImagePatchSimilarity(net_type="vgg", normalize=False).to(model.device)
         else:
-            raise ValueError(f"Unknown LPIPS network: {cfg.lpips_net}")
+            raise ValueError(f"Unknown LPIPS network: {self.cfg.lpips_net}")
 
-    def train(self, start_step: int = 0):
+    def train(self):
         trainloader = torch.utils.data.DataLoader(
             self.trainset,
             batch_size=self.cfg.batch_size,
             shuffle=True,
-            num_workers=4,
+            num_workers=8,
             persistent_workers=True,
             pin_memory=True,
         )
@@ -845,13 +947,22 @@ class Runner:
         increase_sh_degree_every_step: int = int(self.cfg.increase_sh_degree_every_epoch * len(self.trainset))
         pose_opt_stop_step: int = int(self.cfg.pose_opt_stop_epoch * len(self.trainset))
 
-        pbar = tqdm.tqdm(range(start_step, total_steps), unit="imgs", desc="Training")
+        pbar = tqdm.tqdm(range(0, total_steps), unit="imgs", desc="Training")
+
+        # Zero out gradients before training in case we resume training
+        self.optimizer.zero_grad()
+        if self.pose_adjust_optimizer is not None:
+            self.pose_adjust_optimizer.zero_grad()
 
         for epoch in range(self.cfg.max_epochs):
             for minibatch in trainloader:
-                current_step = pbar.n
-                if current_step < start_step:
-                    pbar.set_description(f"Skipping step {current_step:,} (before start step {start_step:,})")
+                batch_size = minibatch["image"].shape[0]
+
+                # Skip steps before the start step
+                if self._global_step < self.start_step:
+                    pbar.set_description(f"Skipping step {self._global_step:,} (before start step {self.start_step:,})")
+                    pbar.update(batch_size)
+                    self._global_step = pbar.n
                     continue
                 if self.viewer_logger is not None:
                     self.viewer_logger.viewer.acquire_lock()
@@ -861,21 +972,21 @@ class Runner:
 
                 # Camera pose optimization
                 image_ids = minibatch["image_id"].to(self.device)  # [B]
-                if self.cfg.optimize_camera_poses:
-                    if current_step < pose_opt_stop_step:
-                        cam_to_world_mats = self.adjust_camera_poses(cam_to_world_mats, image_ids)
+                if self.pose_adjust_model is not None:
+                    if self._global_step < pose_opt_stop_step:
+                        cam_to_world_mats = self.pose_adjust_model(cam_to_world_mats, image_ids)
                     else:
                         # After pose_opt_stop_iter, don't track gradients through pose adjustment
                         with torch.no_grad():
-                            cam_to_world_mats = self.adjust_camera_poses(cam_to_world_mats, image_ids)
+                            cam_to_world_mats = self.pose_adjust_model(cam_to_world_mats, image_ids)
 
                 projection_mats = minibatch["K"].to(self.device)  # [B, 3, 3]
                 image = minibatch["image"]  # [B, H, W, 3]
-                mask = minibatch["mask"] if "mask" in minibatch and not self.disable_masks else None
+                mask = minibatch["mask"] if "mask" in minibatch and not self.cfg.ignore_masks else None
                 image_height, image_width = image.shape[1:3]
 
                 # Progressively use higher spherical harmonic degree as we optimize
-                sh_degree_to_use = min(current_step // increase_sh_degree_every_step, self.cfg.sh_degree)
+                sh_degree_to_use = min(self._global_step // increase_sh_degree_every_step, self.cfg.sh_degree)
                 projected_gaussians = self.model.project_gaussians_for_images(
                     world_to_cam_mats,
                     projection_mats,
@@ -927,8 +1038,8 @@ class Runner:
 
                     # If you're optimizing poses, regularize the pose parameters so the poses
                     # don't drift too far from the initial values
-                    if self.adjust_camera_poses is not None and current_step < pose_opt_stop_step:
-                        pose_params = self.adjust_camera_poses.pose_embeddings(image_ids)
+                    if self.pose_adjust_model is not None and self._global_step < pose_opt_stop_step:
+                        pose_params = self.pose_adjust_model.pose_embeddings(image_ids)
                         pose_reg = torch.mean(torch.abs(pose_params))
                         loss = loss + self.cfg.pose_opt_reg * pose_reg
 
@@ -941,13 +1052,13 @@ class Runner:
 
                 # Refine the gaussians via splitting/duplication/pruning
                 if (
-                    current_step > refine_start_step
-                    and current_step % refine_every_step == 0
-                    and current_step < refine_stop_step
+                    self._global_step > refine_start_step
+                    and self._global_step % refine_every_step == 0
+                    and self._global_step < refine_stop_step
                 ):
                     num_gaussians_before: int = self.model.num_gaussians
-                    use_scales_for_refinement: bool = current_step > reset_opacities_every_step
-                    use_screen_space_scales_for_refinement: bool = current_step < refine_using_scale2d_stop_step
+                    use_scales_for_refinement: bool = self._global_step > reset_opacities_every_step
+                    use_screen_space_scales_for_refinement: bool = self._global_step < refine_using_scale2d_stop_step
                     if not use_screen_space_scales_for_refinement:
                         self.model.accumulate_max_2d_radii = False
                     num_dup, num_split, num_prune = self.optimizer.refine_gaussians(
@@ -955,22 +1066,32 @@ class Runner:
                         use_screen_space_scales=use_screen_space_scales_for_refinement,
                     )
                     self.logger.info(
-                        f"Step {current_step:,}: Refinement: {num_dup:,} duplicated, {num_split:,} split, {num_prune:,} pruned. "
+                        f"Step {self._global_step:,}: Refinement: {num_dup:,} duplicated, {num_split:,} split, {num_prune:,} pruned. "
                         f"Num Gaussians: {self.model.num_gaussians:,} (before: {num_gaussians_before:,})"
                     )
                     # If you specified a crop bounding box, clip the Gaussians that are outside the crop
                     # bounding box. This is useful if you want to train on a subset of the scene
                     # and don't want to waste resources on Gaussians that are outside the crop.
-                    if self.crop_bbox is not None:
+                    if self.cfg.remove_gaussians_outside_scene_bbox:
+                        bbox_min, bbox_max = self.trainset.scene_bbox
                         ng_prior = self.model.num_gaussians
-                        bad_mask = gaussian_means_outside_bbox(self.crop_bbox, self.model)
-                        self.optimizer.remove_gaussians(bad_mask)
+                        points = self.model.means
+
+                        outside_mask = torch.logical_or(points[:, 0] < bbox_min[0], points[:, 0] > bbox_max[0])
+                        outside_mask = torch.logical_or(outside_mask, points[:, 1] < bbox_min[1])
+                        outside_mask = torch.logical_or(outside_mask, points[:, 1] > bbox_max[1])
+                        outside_mask = torch.logical_or(outside_mask, points[:, 2] < bbox_min[2])
+                        outside_mask = torch.logical_or(outside_mask, points[:, 2] > bbox_max[2])
+
+                        self.optimizer.remove_gaussians(outside_mask)
                         ng_post = self.model.num_gaussians
                         nclip = ng_prior - ng_post
-                        self.logger.info(f"Clipped {nclip:,} Gaussians outside the crop bounding box {self.crop_bbox}.")
+                        self.logger.info(
+                            f"Clipped {nclip:,} Gaussians outside the crop bounding box min={bbox_min}, max={bbox_max}."
+                        )
 
                 # Reset the opacity parameters every so often
-                if current_step % reset_opacities_every_step == 0:
+                if self._global_step % reset_opacities_every_step == 0:
                     self.optimizer.reset_opacities()
 
                 # Step the Gaussian optimizer
@@ -979,19 +1100,21 @@ class Runner:
 
                 # If you enabled pose optimization, step the pose optimizer if we performed a
                 # pose update this iteration
-                if self.cfg.optimize_camera_poses and current_step < pose_opt_stop_step:
+                if self.cfg.optimize_camera_poses and self._global_step < pose_opt_stop_step:
                     assert (
-                        self.pose_optimizer is not None
+                        self.pose_adjust_optimizer is not None
                     ), "Pose optimizer should be initialized if pose optimization is enabled."
-                    self.pose_optimizer.step()
-                    self.pose_optimizer.zero_grad(set_to_none=True)
-                    # Step the scheduler
-                    self.pose_scheduler.step()
+                    assert (
+                        self.pose_adjust_scheduler is not None
+                    ), "Pose scheduler should be initialized if pose optimization is enabled."
+                    self.pose_adjust_optimizer.step()
+                    self.pose_adjust_optimizer.zero_grad(set_to_none=True)
+                    self.pose_adjust_scheduler.step()
 
                 # Log to tensorboard if you requested it
                 if self.tensorboard_logger is not None:
                     self.tensorboard_logger.log_training_iteration(
-                        current_step,
+                        self._global_step,
                         self.model.num_gaussians,
                         loss.item(),
                         l1loss.item(),
@@ -1006,7 +1129,7 @@ class Runner:
                 if self.viewer_logger is not None:
                     self.viewer_logger.viewer.release_lock()
                     self.viewer_logger.log_training_iteration(
-                        current_step,
+                        self._global_step,
                         loss=loss.item(),
                         l1loss=l1loss.item(),
                         ssimloss=ssimloss.item(),
@@ -1017,20 +1140,31 @@ class Runner:
                     )
                     if self.cfg.optimize_camera_poses:
                         self.viewer_logger.update_camera_poses(cam_to_world_mats, image_ids)
-                    if current_step % increase_sh_degree_every_step == 0 and sh_degree_to_use < self.cfg.sh_degree:
+                    if self._global_step % increase_sh_degree_every_step == 0 and sh_degree_to_use < self.cfg.sh_degree:
                         self.viewer_logger.set_sh_basis_to_view(sh_degree_to_use)
 
-                pbar.update(self.cfg.batch_size)
+                pbar.update(batch_size)
+                self._global_step = pbar.n
 
             # Save the model if we've reached a percentage of the total epochs specified in save_at_percent
             if epoch in [(pct * self.cfg.max_epochs // 100) - 1 for pct in self.cfg.save_at_percent]:
-                self.save_checkpoint(pbar.n - 1)
+                if self._global_step <= self.start_step and self.checkpoints_path is not None:
+                    self.logger.info(
+                        f"Skipping checkpoint save at epoch {epoch + 1} (before start step {self.start_step})."
+                    )
+                    continue
+                if self.checkpoints_path is not None:
+                    self.logger.info(f"Saving checkpoint at epoch {epoch + 1} to {self.checkpoints_path}.")
+                    self.checkpoint.save(self.checkpoints_path / pathlib.Path(f"ckpt_{self._global_step:04d}.pt"))
 
             # Run evaluation if we've reached a percentage of the total epochs specified in eval_at_percent
             if epoch in [(pct * self.cfg.max_epochs // 100) - 1 for pct in self.cfg.eval_at_percent]:
+                if self._global_step <= self.start_step:
+                    self.logger.info(f"Skipping evaluation at epoch {epoch + 1} (before start step {self.start_step}).")
+                    continue
                 if self.viewer_logger is not None:
                     self.viewer_logger.pause_for_eval()
-                self.eval(pbar.n - 1)
+                self.eval(self._global_step - 1)
                 if self.viewer_logger is not None:
                     self.viewer_logger.resume_after_eval()
 
@@ -1047,7 +1181,7 @@ class Runner:
             world_to_cam_matrices = data["worldtocam"].to(device)
             projection_matrices = data["K"].to(device)
             ground_truth_image = data["image"].to(device) / 255.0
-            mask_pixels = data["mask"] if "mask" in data and not self.disable_masks else None
+            mask_pixels = data["mask"] if "mask" in data and not self.cfg.ignore_masks else None
 
             height, width = ground_truth_image.shape[1:3]
 
@@ -1083,7 +1217,7 @@ class Runner:
                 ground_truth_image[~mask_pixels] = predicted_image.detach()[~mask_pixels]
 
             # write images
-            self.save_rendered_image(step, stage, f"image_{i:04d}", predicted_image, ground_truth_image)
+            self._save_rendered_image(step, stage, f"image_{i:04d}", predicted_image, ground_truth_image)
 
             ground_truth_image = ground_truth_image.permute(0, 3, 1, 2)  # [1, 3, H, W]
             predicted_image = predicted_image.permute(0, 3, 1, 2)  # [1, 3, H, W]
@@ -1107,7 +1241,7 @@ class Runner:
             "evaluation_time": evaluation_time,
             "num_gaussians": self.model.num_gaussians,
         }
-        self.save_statistics(step, stage, stats)
+        self._save_statistics(step, stage, stats)
 
         # Log to tensorboard if enabled
         if self.tensorboard_logger is not None:
@@ -1123,41 +1257,58 @@ class Runner:
 
 
 def train(
-    data_path: str,
+    dataset_path: pathlib.Path,
     cfg: Config = Config(),
+    checkpoint_path: pathlib.Path | None = None,
     image_downsample_factor: int = 4,
     points_percentile_filter: float = 0.0,
     normalization_type: Literal["none", "pca", "ecef2enu", "similarity"] = "pca",
     crop_bbox: tuple[float, float, float, float, float, float] | None = None,
     results_path: pathlib.Path = pathlib.Path("results"),
-    device: Union[str, torch.device] = "cuda",
+    device: str | torch.device = "cuda",
     use_every_n_as_val: int = 8,
     disable_viewer: bool = False,
     log_tensorboard_every: int = 100,
     log_images_to_tensorboard: bool = False,
     save_results: bool = True,
-    render_eval_images: bool = False,
-    disable_masks: bool = False,
+    save_eval_images: bool = False,
 ):
     logging.basicConfig(level=logging.INFO, format="%(levelname)s : %(message)s")
 
-    runner = Runner(
-        cfg=cfg,
-        data_path=data_path,
-        image_downsample_factor=image_downsample_factor,
-        points_percentile_filter=points_percentile_filter,
-        normalization_type=normalization_type,
-        crop_bbox=crop_bbox,
-        results_path=results_path,
-        device=device,
-        use_every_n_as_test=use_every_n_as_val,
-        disable_viewer=disable_viewer,
-        log_tensorboard_every=log_tensorboard_every,
-        log_images_to_tensorboard=log_images_to_tensorboard,
-        save_results=save_results,
-        render_eval_images=render_eval_images,
-        disable_masks=disable_masks,
-    )
+    if checkpoint_path is not None:
+        checkpoint: Checkpoint = Checkpoint.load(
+            checkpoint_path,
+            device=device,
+            dataset_path=dataset_path if dataset_path != "" else None,
+            load_datasets=True,
+        )
+        runner = Runner.from_checkpoint(
+            checkpoint=checkpoint,
+            results_path=results_path,
+            disable_viewer=disable_viewer,
+            log_tensorboard_every=log_tensorboard_every,
+            log_images_to_tensorboard=log_images_to_tensorboard,
+            save_eval_images=save_eval_images,
+            save_results=save_results,
+        )
+    else:
+        runner = Runner.new_run(
+            config=cfg,
+            dataset_path=dataset_path,
+            image_downsample_factor=image_downsample_factor,
+            points_percentile_filter=points_percentile_filter,
+            normalization_type=normalization_type,
+            crop_bbox=crop_bbox,
+            results_path=results_path,
+            device=device,
+            use_every_n_as_val=use_every_n_as_val,
+            disable_viewer=disable_viewer,
+            log_tensorboard_every=log_tensorboard_every,
+            log_images_to_tensorboard=log_images_to_tensorboard,
+            save_results=save_results,
+            save_eval_images=save_eval_images,
+        )
+
     runner.train()
 
     logger = logging.getLogger(__name__)
