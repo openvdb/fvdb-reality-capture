@@ -554,6 +554,7 @@ class Runner:
         save_results: bool,
         results_base_path: pathlib.Path,
         save_eval_images: bool,
+        exists_ok: bool = True,
     ):
         """
         Create or get the paths to the results directories for the training run.
@@ -563,6 +564,7 @@ class Runner:
             save_results (bool): Whether to save results to disk.
             results_base_path (pathlib.Path): The base path where results will be saved.
             save_eval_images (bool): Whether to save evaluation images during training.
+            exists_ok (bool): If True, will not raise an error if the run name already exists.
 
         Returns:
             run_name (str): The name of the run.
@@ -589,6 +591,11 @@ class Runner:
                 )
                 results_path.mkdir(exist_ok=True)
             else:
+                if not exists_ok:
+                    raise FileExistsError(
+                        f"Run name {run_name} already exists in results path {results_base_path}. "
+                        "Please provide a different run name or set exists_ok=True."
+                    )
                 logger.info(f"Using existing run name {run_name} in results path {results_base_path}.")
                 logger.info(f"Results will be saved to {results_path.absolute()}.")
 
@@ -833,6 +840,7 @@ class Runner:
     def new_run(
         dataset_path: pathlib.Path,
         config: Config = Config(),
+        run_name: str | None = None,
         image_downsample_factor: int = 4,
         points_percentile_filter: float = 0.0,
         normalization_type: Literal["none", "pca", "ecef2enu", "similarity"] = "pca",
@@ -852,6 +860,8 @@ class Runner:
         Args:
             dataset_path (pathlib.Path): Path to the dataset directory containing the SFM data.
             config (Config): Configuration object containing model parameters.
+            run_name (str | None): Optional name for the run. If None, a unique name will be generated.
+                If a run with the same name already exists, an exception will be raised.
             image_downsample_factor (int): Factor by which to downsample the images for training.
             points_percentile_filter (float): Percentile filter to apply to the points in the dataset (in [0, 100]).
             normalization_type (Literal["none", "pca", "ecef2enu", "similarity"]): Type of normalization to apply to the scene data.
@@ -941,10 +951,11 @@ class Runner:
         # Setup output directories.
         run_name, image_render_path, stats_path, checkpoints_path, tensorboard_path = (
             Runner._make_or_get_results_directories(
-                run_name=None,
+                run_name=run_name,
                 results_base_path=results_path,
                 save_results=save_results,
                 save_eval_images=save_eval_images,
+                exists_ok=False,
             )
         )
 
@@ -1504,6 +1515,7 @@ class Runner:
 def train(
     dataset_path: pathlib.Path,
     cfg: Config = Config(),
+    run_name: str | None = None,
     checkpoint_path: pathlib.Path | None = None,
     image_downsample_factor: int = 4,
     points_percentile_filter: float = 0.0,
@@ -1540,6 +1552,7 @@ def train(
         runner = Runner.new_run(
             config=cfg,
             dataset_path=dataset_path,
+            run_name=run_name,
             image_downsample_factor=image_downsample_factor,
             points_percentile_filter=points_percentile_filter,
             normalization_type=normalization_type,
