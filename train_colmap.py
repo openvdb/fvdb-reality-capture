@@ -282,9 +282,9 @@ class ViewerLogger:
         cam_to_world_matrices, projection_matrices, images = [], [], []
         camera_positions = []
         for data in train_dataset:
-            cam_to_world_matrices.append(data["camtoworld"])
-            projection_matrices.append(data["K"])
-            camera_positions.append(data["camtoworld"][:3, 3].cpu().numpy())
+            cam_to_world_matrices.append(data["camera_to_world"])
+            projection_matrices.append(data["projection"])
+            camera_positions.append(data["camera_to_world"][:3, 3].cpu().numpy())
             images.append(data["image"])
 
         scene_center = np.mean(camera_positions, axis=0)
@@ -1197,8 +1197,8 @@ class Runner:
                 if self._viewer is not None:
                     self._viewer.viewer.acquire_lock()
 
-                cam_to_world_mats: torch.Tensor = minibatch["camtoworld"].to(self.device)  # [B, 4, 4]
-                world_to_cam_mats: torch.Tensor = minibatch["worldtocam"].to(self.device)  # [B, 4, 4]
+                cam_to_world_mats: torch.Tensor = minibatch["camera_to_world"].to(self.device)  # [B, 4, 4]
+                world_to_cam_mats: torch.Tensor = minibatch["world_to_camera"].to(self.device)  # [B, 4, 4]
 
                 # Camera pose optimization
                 image_ids = minibatch["image_id"].to(self.device)  # [B]
@@ -1210,7 +1210,7 @@ class Runner:
                         with torch.no_grad():
                             cam_to_world_mats = self.pose_adjust_model(cam_to_world_mats, image_ids)
 
-                projection_mats = minibatch["K"].to(self.device)  # [B, 3, 3]
+                projection_mats = minibatch["projection"].to(self.device)  # [B, 3, 3]
                 image = minibatch["image"]  # [B, H, W, 3]
                 mask = minibatch["mask"] if "mask" in minibatch and not self.config.ignore_masks else None
                 image_height, image_width = image.shape[1:3]
@@ -1423,8 +1423,8 @@ class Runner:
         evaluation_time = 0
         metrics = {"psnr": [], "ssim": [], "lpips": []}
         for i, data in enumerate(valloader):
-            world_to_cam_matrices = data["worldtocam"].to(device)
-            projection_matrices = data["K"].to(device)
+            world_to_cam_matrices = data["world_to_camera"].to(device)
+            projection_matrices = data["projection"].to(device)
             ground_truth_image = data["image"].to(device) / 255.0
             mask_pixels = data["mask"] if "mask" in data and not self.config.ignore_masks else None
 

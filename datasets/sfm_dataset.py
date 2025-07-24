@@ -185,7 +185,7 @@ class SfmDataset(torch.utils.data.Dataset, Iterable):
         Returns:
             np.ndarray: An Nx4x4 array of camera to world matrices for the cameras in the dataset.
         """
-        return np.stack([self[i]["camtoworld"].numpy() for i in range(len(self))], axis=0)
+        return np.stack([self[i]["camera_to_world"].numpy() for i in range(len(self))], axis=0)
 
     @property
     def projection_matrices(self) -> np.ndarray:
@@ -197,7 +197,7 @@ class SfmDataset(torch.utils.data.Dataset, Iterable):
         Returns:
             np.ndarray: An Nx3x3 array of projection matrices for the cameras in the dataset.
         """
-        return np.stack([self[i]["K"].numpy() for i in range(len(self))], axis=0)
+        return np.stack([self[i]["projection"].numpy() for i in range(len(self))], axis=0)
 
     @property
     def image_sizes(self) -> np.ndarray:
@@ -288,9 +288,9 @@ class SfmDataset(torch.utils.data.Dataset, Iterable):
         Get a single item from the dataset.
 
         An item is a dictionary with the following keys:
-         - K: The projection matrix for the camera.
-         - camtoworld: The camera to world transformation matrix.
-         - worldtocam: The world to camera transformation matrix.
+         - projection: The projection matrix for the camera.
+         - camera_to_world: The camera to world transformation matrix.
+         - world_to_camera: The world to camera transformation matrix.
          - image: The image tensor.
          - image_id: The index of the image in the dataset.
          - image_path: The file path of the image.
@@ -324,9 +324,9 @@ class SfmDataset(torch.utils.data.Dataset, Iterable):
             projection_matrix[1, 2] -= y
 
         data = {
-            "K": torch.from_numpy(projection_matrix).float(),
-            "camtoworld": torch.from_numpy(camera_to_world_matrix).float(),
-            "worldtocam": torch.from_numpy(world_to_camera_matrix).float(),
+            "projection": torch.from_numpy(projection_matrix).float(),
+            "camera_to_world": torch.from_numpy(camera_to_world_matrix).float(),
+            "world_to_camera": torch.from_numpy(world_to_camera_matrix).float(),
             "image": image,
             "image_id": item,  # the index of the image in the dataset
             "image_path": image_meta.image_path,
