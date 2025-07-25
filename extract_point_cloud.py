@@ -7,7 +7,7 @@ import pathlib
 import point_cloud_utils as pcu
 import torch
 import tyro
-from checkpoint import Checkpoint, extract_point_cloud_from_checkpoint
+from training import Checkpoint, extract_point_cloud_from_checkpoint
 
 
 def main(
@@ -38,12 +38,7 @@ def main(
 
     checkpoint = Checkpoint.load(checkpoint_path)
 
-    if checkpoint.train_dataset is None:
-        raise ValueError(
-            "Checkpoint does not contain a training dataset. Cannot extract point cloud. "
-            "Please provide a checkpoint that includes training dataset information."
-        )
-    far = far * checkpoint.train_dataset.scene_scale
+    far = far * checkpoint.scene_scale
 
     logger.info(
         f"Extracting point cloud from checkpoint using near={near:0.3f}, far={far:0.3f}, downsample factor={depth_image_downsample_factor}"

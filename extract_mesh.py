@@ -7,7 +7,7 @@ import pathlib
 import point_cloud_utils as pcu
 import torch
 import tyro
-from checkpoint import Checkpoint, extract_mesh_from_checkpoint
+from training import Checkpoint, extract_mesh_from_checkpoint
 
 
 def main(

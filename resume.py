@@ -4,24 +4,18 @@
 import logging
 import pathlib
 import time
-from typing import Literal
 
 import torch
 import tyro
-from training import Config, SceneOptimizationRunner
+from training import SceneOptimizationRunner
+from training.checkpoint import Checkpoint
 
 
 def main(
-    dataset_path: pathlib.Path,
-    cfg: Config = Config(),
-    run_name: str | None = None,
-    image_downsample_factor: int = 4,
-    points_percentile_filter: float = 0.0,
-    normalization_type: Literal["none", "pca", "ecef2enu", "similarity"] = "pca",
-    crop_bbox: tuple[float, float, float, float, float, float] | None = None,
+    checkpoint_path: pathlib.Path,
+    dataset_path: pathlib.Path | None = None,
     results_path: pathlib.Path = pathlib.Path("results"),
     device: str | torch.device = "cuda",
-    use_every_n_as_val: int = 8,
     disable_viewer: bool = False,
     log_tensorboard_every: int = 100,
     log_images_to_tensorboard: bool = False,
@@ -30,27 +24,24 @@ def main(
 ):
     logging.basicConfig(level=logging.INFO, format="%(levelname)s : %(message)s")
 
-    runner = SceneOptimizationRunner.new_run(
-        config=cfg,
-        dataset_path=dataset_path,
-        run_name=run_name,
-        image_downsample_factor=image_downsample_factor,
-        points_percentile_filter=points_percentile_filter,
-        normalization_type=normalization_type,
-        crop_bbox=crop_bbox,
-        results_path=results_path,
+    checkpoint: Checkpoint = Checkpoint.load(
+        checkpoint_path,
         device=device,
-        use_every_n_as_val=use_every_n_as_val,
+        dataset_path=dataset_path,
+    )
+    runner = SceneOptimizationRunner.from_checkpoint(
+        checkpoint=checkpoint,
+        results_path=results_path,
         disable_viewer=disable_viewer,
         log_tensorboard_every=log_tensorboard_every,
         log_images_to_tensorboard=log_images_to_tensorboard,
-        save_results=save_results,
         save_eval_images=save_eval_images,
+        save_results=save_results,
     )
 
     runner.train()
 
-    logger = logging.getLogger("train")
+    logger = logging.getLogger(__name__)
     if not disable_viewer:
         logger.info("Viewer running... Ctrl+C to exit.")
         time.sleep(1000000)

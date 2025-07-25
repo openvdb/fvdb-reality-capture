@@ -116,6 +116,10 @@ class SfmDataset(torch.utils.data.Dataset, Iterable):
         Returns:
             SfmDataset: A new SfmDataset instance with the state loaded from the dictionary.
         """
+        dataset_path = map_path if map_path is not None else pathlib.Path(state_dict["dataset_path"])
+        if not dataset_path.exists():
+            raise FileNotFoundError(f"Dataset path {dataset_path} does not exist.")
+
         dataset = SfmDataset(
             dataset_path=map_path if map_path is not None else pathlib.Path(state_dict["dataset_path"]),
             test_every=state_dict["test_every"],
