@@ -36,6 +36,7 @@ from fvdb import GaussianSplat3d
 
 from .camera_pose_adjust import CameraPoseAdjustment
 from .checkpoint import Checkpoint
+from .utils import make_unique_name_directory_based_on_time
 
 
 @dataclass
@@ -296,7 +297,9 @@ class ViewerLogger:
         images = np.stack(images, axis=0)
 
         self.viewer = Viewer(port=viewer_port, verbose=verbose)
-
+        bbmin, bbmax = train_dataset.points.min(axis=0), train_dataset.points.max(axis=0)
+        bbox_diagonal_length = float(np.linalg.norm(bbmax - bbmin))
+        self.viewer.camera_far = 3.0 * bbox_diagonal_length
         self._splat_model_view = self.viewer.register_gaussian_splat_3d(name="Model", gaussian_scene=splat_scene)
 
         self._train_camera_view = self.viewer.register_camera_view(
@@ -489,68 +492,6 @@ class SceneOptimizationRunner:
             (canvas * 255).astype(np.uint8),
         )
 
-    def _save_checkpoint(self, step: int):
-        """
-        Save the current model, optimizer, and training state to a checkpoint file.
-
-        Args:
-            step: The current training step, used to name the checkpoint file.
-        """
-        if self._checkpoints_path is None:
-            self.logger.info("No checkpoints path specified, skipping checkpoint save.")
-            return
-        assert self._run_name is not None, "Run name must be set before saving checkpoints."
-        Checkpoint.make_checkpoint(
-            step=step,
-            run_name=self._run_name,
-            model=self.model,
-            optimizer=self.optimizer,
-            config=vars(self.config),
-            pose_adjust_model=self.pose_adjust_model,
-            pose_adjust_optimizer=self.pose_adjust_optimizer,
-            pose_adjust_scheduler=self.pose_adjust_scheduler,
-            train_dataset=self.training_dataset,
-            eval_dataset=self.validation_dataset,
-        ).save(self._checkpoints_path / pathlib.Path(f"ckpt_{step:04d}.pt"))
-        self.model.save_ply(str(self._checkpoints_path / pathlib.Path(f"ckpt_{step:04d}.ply")))
-
-    @staticmethod
-    def _make_unique_run_directory(results_base_path: pathlib.Path, prefix: str = "run") -> tuple[str, pathlib.Path]:
-        """
-        Generate a unique run name and directory based on the current time.
-
-        The run directory will be created under `results_base_path` with a name in the format
-        `prefix_YYYY-MM-DD-HH-MM-SS`. If a directory with the same name already exists,
-        it will attempt to create a new one by appending an incremented number to
-
-        Returns:
-            run_name: A unique run name in the format "run_YYYY-MM-DD-HH-MM-SS".
-            run_path: A pathlib.Path object pointing to the created directory.
-        """
-        attempts = 0
-        max_attempts = 50
-        run_name = f"{prefix}_{time.strftime('%Y-%m-%d-%H-%M-%S')}"
-        while attempts < 50:
-            results_path = results_base_path / run_name
-            try:
-                results_path.mkdir(exist_ok=False)
-                break
-            except FileExistsError:
-                attempts += 1
-                SceneOptimizationRunner.logger.warning(
-                    f"Directory {results_path} already exists. Attempting to create a new one."
-                )
-                # Generate a new run name with an incremented attempt number
-                run_name = f"{prefix}_{time.strftime('%Y-%m-%d-%H-%M-%S')}_{attempts+1:02d}"
-                continue
-        if attempts >= max_attempts:
-            raise FileExistsError(f"Failed to generate a unique results directory name after {max_attempts} attempts.")
-
-        SceneOptimizationRunner.logger.info(f"Creating new training run with name {run_name}.")
-        SceneOptimizationRunner.logger.info(f"Results will be saved to {results_path.absolute()}.")
-
-        return run_name, results_path
-
     @staticmethod
     def _make_or_get_results_directories(
         run_name: str | None,
@@ -592,7 +533,7 @@ class SceneOptimizationRunner:
 
         if run_name is None:
             logger.info("No run name provided. Creating a new run directory.")
-            run_name, results_path = SceneOptimizationRunner._make_unique_run_directory(results_base_path)
+            run_name, results_path = make_unique_name_directory_based_on_time(results_base_path, prefix="run")
         else:
             results_path = results_base_path / pathlib.Path(run_name)
             if not results_path.exists():
@@ -679,12 +620,12 @@ class SceneOptimizationRunner:
         return self._model
 
     @property
-    def optimizer(self) -> GaussianSplatOptimizer:
+    def optimizer(self) -> GaussianSplatOptimizer | None:
         """
         Get the optimizer used for training the Gaussian Splatting model.
 
         Returns:
-            GaussianSplatOptimizer: The optimizer instance.
+            GaussianSplatOptimizer | None: The optimizer instance, or None if this runner is only used for evaluation.
         """
         return self._optimizer
 
@@ -1014,11 +955,18 @@ class SceneOptimizationRunner:
             save_results (bool): Whether to save results to disk.
             save_eval_images (bool): Whether to save evaluation images during training.
         """
-        config = Config(**checkpoint.config)
+        if checkpoint.has_config:
+            assert checkpoint.config is not None, "Checkpoint must contain a configuration."
+            config = Config(**checkpoint.config)
 
-        np.random.seed(config.seed)
-        random.seed(config.seed)
-        torch.manual_seed(config.seed)
+            np.random.seed(config.seed)
+            random.seed(config.seed)
+            torch.manual_seed(config.seed)
+        else:
+            SceneOptimizationRunner.logger.warning(
+                "Checkpoint does not contain a configuration. Using default configuration."
+            )
+            config = Config()
 
         assert checkpoint.train_dataset is not None, "Checkpoint must contain a training dataset."
         assert checkpoint.eval_dataset is not None, "Checkpoint must contain a validation dataset."
@@ -1039,12 +987,10 @@ class SceneOptimizationRunner:
             SceneOptimizationRunner.logger.warning(
                 "Checkpoint does not contain an optimizer. The model will not be trainable."
             )
-            optimizer = GaussianSplatOptimizer(module=checkpoint.splats)
             step = -1
         else:
             assert checkpoint.optimizer is not None, "Checkpoint must contain an optimizer."
             assert checkpoint.step is not None, "Checkpoint must contain a training step."
-            optimizer = checkpoint.optimizer
             step = checkpoint.step
 
         return SceneOptimizationRunner(
@@ -1052,7 +998,7 @@ class SceneOptimizationRunner:
             trainset=checkpoint.train_dataset,
             valset=checkpoint.eval_dataset,
             model=checkpoint.splats,
-            optimizer=optimizer,
+            optimizer=checkpoint.optimizer,
             pose_adjust_model=checkpoint.pose_adjust_model,
             pose_adjust_optimizer=checkpoint.pose_adjust_optimizer,
             pose_adjust_scheduler=checkpoint.pose_adjust_scheduler,
@@ -1074,7 +1020,7 @@ class SceneOptimizationRunner:
         trainset: SfmDataset,
         valset: SfmDataset,
         model: GaussianSplat3d,
-        optimizer: GaussianSplatOptimizer,
+        optimizer: GaussianSplatOptimizer | None,
         pose_adjust_model: CameraPoseAdjustment | None,
         pose_adjust_optimizer: torch.optim.Adam | None,
         pose_adjust_scheduler: torch.optim.lr_scheduler.ExponentialLR | None,
@@ -1099,7 +1045,8 @@ class SceneOptimizationRunner:
             trainset (SfmDataset): The training dataset.
             valset (SfmDataset): The validation dataset.
             model (GaussianSplat3d): The Gaussian Splatting model to train.
-            optimizer (GaussianSplatOptimizer): The optimizer for the model.
+            optimizer (GaussianSplatOptimizer | None): The optimizer for the model if training.
+                Note: You can pass in a None optimizer if you want to use the model only for evaluation.
             pose_adjust_model (CameraPoseAdjustment | None): The camera pose adjustment model, if used
             pose_adjust_optimizer (torch.optim.Adam | None): The optimizer for camera pose adjustment, if used.
             pose_adjust_scheduler (torch.optim.lr_scheduler.ExponentialLR | None): The learning rate scheduler
@@ -1142,7 +1089,7 @@ class SceneOptimizationRunner:
 
         # Tensorboard
         self._tensorboard_logger = None
-        if tensorboard_path is not None:
+        if tensorboard_path is not None and optimizer is not None:
             self._tensorboard_logger = TensorboardLogger(
                 log_dir=tensorboard_path,
                 log_every_step=log_tensorboard_every,
@@ -1187,6 +1134,9 @@ class SceneOptimizationRunner:
             and training configuration. This can be used to save the current state of the training process
             or resume training later.
         """
+        if self.optimizer is None:
+            raise RuntimeError("This runner was not created with an optimizer. Cannot run training.")
+
         trainloader = torch.utils.data.DataLoader(
             self.training_dataset,
             batch_size=self.config.batch_size,
@@ -1438,6 +1388,14 @@ class SceneOptimizationRunner:
                 if self._viewer is not None:
                     self._viewer.resume_after_eval()
 
+        if self._checkpoints_path is not None:
+            self.logger.info("Training completed. Saving final checkpoint.")
+            # Save the final checkpoint after training is complete
+            self.checkpoint.save(self._checkpoints_path / pathlib.Path(f"ckpt_final.pt"))
+            self.logger.info(f"Final checkpoint saved to {self._checkpoints_path / pathlib.Path('ckpt_final.pt')}.")
+        else:
+            self.logger.info("Training completed. No checkpoints path specified, not saving final checkpoint.")
+
         return self.checkpoint
 
     @torch.no_grad()
@@ -1497,7 +1455,9 @@ class SceneOptimizationRunner:
                 ground_truth_image[~mask_pixels] = predicted_image.detach()[~mask_pixels]
 
             # write images
-            self._save_rendered_image(self._global_step, stage, f"image_{i:04d}", predicted_image, ground_truth_image)
+            self._save_rendered_image(
+                self._global_step, stage, f"image_{i:04d}.jpg", predicted_image, ground_truth_image
+            )
 
             ground_truth_image = ground_truth_image.permute(0, 3, 1, 2)  # [1, 3, H, W]
             predicted_image = predicted_image.permute(0, 3, 1, 2)  # [1, 3, H, W]

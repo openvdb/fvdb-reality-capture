@@ -32,6 +32,46 @@ class ViewerGlobalInfoView:
         self._max_render_width = 2048  # Default maximum image width
         self._max_image_width_min = 64  # Minimum possible value a user can set for the maximum image width
         self._max_image_width_max = 2048  # Maximum possible value a user can set for the maximum image width
+        self._camera_near = 0.01  # Default near plane distance
+        self._camera_far = 1000.0  # Default far plane distance
+
+    @property
+    def camera_near(self) -> float:
+        """
+        Returns the near plane distance for the camera.
+        """
+        return self._camera_near
+
+    @camera_near.setter
+    def camera_near(self, camera_near: float) -> None:
+        """
+        Sets the near plane distance for the camera.
+        This is used to define the minimum distance at which objects are rendered.
+
+        Args:
+            camera_near (float): The near plane distance for the camera.
+        """
+        self._camera_near = camera_near
+        self._camera_near_handle.value = camera_near
+
+    @property
+    def camera_far(self) -> float:
+        """
+        Returns the far plane distance for the camera.
+        """
+        return self._camera_far
+
+    @camera_far.setter
+    def camera_far(self, camera_far: float) -> None:
+        """
+        Sets the far plane distance for the camera.
+        This is used to define the maximum distance at which objects are rendered.
+
+        Args:
+            camera_far (float): The far plane distance for the camera.
+        """
+        self._camera_far = camera_far
+        self._camera_far_handle.value = camera_far
 
     @property
     def camera_up_axis(self) -> CameraUpAxis:
@@ -39,6 +79,19 @@ class ViewerGlobalInfoView:
         Returns the current camera up axis.
         """
         return self._camera_up_axis
+
+    @camera_up_axis.setter
+    def camera_up_axis(self, camera_up_axis: CameraUpAxis) -> None:
+        """
+        Sets the camera up axis for the viewer.
+        This determines the orientation of the camera and objects in the scene.
+
+        Args:
+            camera_up_axis (CameraUpAxis): The up axis to set for the viewer.
+                This should be one of the six cardinal directions.
+        """
+        self._camera_up_axis = camera_up_axis
+        self._camera_up_axis_selector_handle.value = camera_up_axis
 
     @property
     def target_framerate(self) -> float:
@@ -102,11 +155,27 @@ class ViewerGlobalInfoView:
                 step=1,
                 initial_value=self._low_res_render_width,
             )
+            self._camera_near_handle = gui.add_number(
+                "Near Plane",
+                min=0.001,
+                max=100.0,
+                initial_value=self._camera_near,
+                step=0.001,
+            )
+            self._camera_far_handle = gui.add_number(
+                "Far Plane",
+                min=0.1,
+                max=100_000.0,
+                initial_value=self._camera_far,
+                step=0.1,
+            )
 
         self._camera_up_axis_selector_handle.on_update(self._camera_up_axis_update)
         self._max_image_width_handle.on_update(self._max_image_width_update)
         self._image_width_range_handle.on_update(self._max_image_width_range_update)
         self._low_res_image_width_handle.on_update(self._low_res_image_width_update)
+        self._camera_near_handle.on_update(self._camera_near_update)
+        self._camera_far_handle.on_update(self._camera_far_update)
 
     def _low_res_image_width_update(self, event: viser.GuiEvent):
         """
@@ -121,6 +190,29 @@ class ViewerGlobalInfoView:
         target_pixels_per_frame = (target_handle.value**2) * self._target_framerate
         self._low_res_render_width = target_handle.value
         self._viewer_handle.set_target_pixels_per_frame(event, target_pixels_per_frame)
+
+    def _camera_far_update(self, event: viser.GuiEvent):
+        """
+        Callback function for when the far plane distance is updated.
+
+        Args:
+            event (viser.GuiEvent): The event triggered by the number input update.
+        """
+        target_handle = event.target
+        assert isinstance(target_handle, viser.GuiNumberHandle)
+        self._camera_far = target_handle.value
+        self._viewer_handle.set_camera_far(event, self._camera_far)
+
+    def _camera_near_update(self, event: viser.GuiEvent):
+        """
+        Callback function for when the near plane distance is updated.
+        Args:
+            event (viser.GuiEvent): The event triggered by the number input update.
+        """
+        target_handle = event.target
+        assert isinstance(target_handle, viser.GuiNumberHandle)
+        self._camera_near = target_handle.value
+        self._viewer_handle.set_camera_near(event, self._camera_near)
 
     def _max_image_width_update(self, event: viser.GuiEvent):
         """

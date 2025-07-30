@@ -3,12 +3,13 @@
 #
 
 from .checkpoint import Checkpoint
-from .scene_optimization_runner import Config, SceneOptimizationRunner
-from .utils import (
+from .checkpoint_utils import (
     extract_mesh_from_checkpoint,
     extract_point_cloud_from_checkpoint,
     extract_tsdf_from_checkpoint,
+    merge_checkpoints,
 )
+from .scene_optimization_runner import Config, SceneOptimizationRunner
 
 __all__ = [
     "SceneOptimizationRunner",
@@ -17,4 +18,5 @@ __all__ = [
     "extract_tsdf_from_checkpoint",
     "extract_point_cloud_from_checkpoint",
     "extract_mesh_from_checkpoint",
+    "merge_checkpoints",
 ]

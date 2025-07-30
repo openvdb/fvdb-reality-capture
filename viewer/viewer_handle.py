@@ -35,6 +35,12 @@ class ViewerAction(Enum):
     # Set the maximum width of the rendered image.
     SET_MAX_IMAGE_WIDTH = 7
 
+    # Set the far plane distance for the camera
+    SET_CAMERA_FAR = 8
+
+    # Set the near plane distance for the camera
+    SET_CAMERA_NEAR = 9
+
 
 @dataclasses.dataclass(kw_only=True)
 class ViewerEvent:
@@ -182,6 +188,38 @@ class ViewerHandle:
         self._event_handler(
             ViewerEvent(viewer_server=self._viser_server, action=ViewerAction.SET_MAX_IMAGE_WIDTH, gui_event=gui_event),
             max_image_width,
+        )
+
+    def set_camera_far(self, gui_event: viser.GuiEvent, camera_far: float) -> None:
+        """
+        Set the far plane distance for the camera.
+        This is used to define the maximum distance at which objects are rendered.
+
+        Args:
+            gui_event (viser.GuiEvent): The GUI event that triggered this action.
+                This is used to pass additional information about the action, such as which GUI element triggered it.
+            camera_far (float): The far plane distance for the camera.
+        """
+
+        self._event_handler(
+            ViewerEvent(viewer_server=self._viser_server, action=ViewerAction.SET_CAMERA_FAR, gui_event=gui_event),
+            camera_far,
+        )
+
+    def set_camera_near(self, gui_event: viser.GuiEvent, camera_near: float) -> None:
+        """
+        Set the near plane distance for the camera.
+        This is used to define the minimum distance at which objects are rendered.
+
+        Args:
+            gui_event (viser.GuiEvent): The GUI event that triggered this action.
+                This is used to pass additional information about the action, such as which GUI element triggered it.
+            camera_near (float): The near plane distance for the camera.
+        """
+
+        self._event_handler(
+            ViewerEvent(viewer_server=self._viser_server, action=ViewerAction.SET_CAMERA_NEAR, gui_event=gui_event),
+            camera_near,
         )
 
 

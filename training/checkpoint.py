@@ -17,6 +17,7 @@ from .camera_pose_adjust import CameraPoseAdjustment
 class _CheckpoinPoseOptimizerState:
     """
     Internal class to represent the state of an optimizer in a checkpoint.
+
     This is used to store the state of the optimizer when saving and loading checkpoints.
     """
 
@@ -360,7 +361,7 @@ class Checkpoint:
     def __init__(
         self,
         model: GaussianSplat3d,
-        config: dict,
+        config: dict | None,
         training_metadata_state: _CheckpointTrainingMetadataState,
         optimizer_state: _CheckpointOptimizerState | None,
         dataset_state: _CheckpointDatasetState | None,
@@ -381,7 +382,6 @@ class Checkpoint:
     def make_minimal_checkpoint(
         run_name: str,
         model: GaussianSplat3d,
-        config: dict,
         scene_scale: float,
         training_camera_to_world_matrices: torch.Tensor,
         training_projection_matrices: torch.Tensor,
@@ -424,7 +424,7 @@ class Checkpoint:
 
         return Checkpoint(
             model=model,
-            config=config,
+            config=None,
             training_metadata_state=training_metadata_state,
             optimizer_state=None,
             dataset_state=None,
@@ -578,7 +578,8 @@ class Checkpoint:
 
         # Load the optimizer if present
         optimizer_state = None
-        if "optimizer_state" in checkpoint_data:
+        assert "optimizer_state" in checkpoint_data, "Optimizer state is missing in the checkpoint."
+        if checkpoint_data["optimizer_state"] is not None:
             optimizer_state = _CheckpointOptimizerState.from_state_dict(
                 checkpoint_data["optimizer_state"], model, config
             )
@@ -627,6 +628,16 @@ class Checkpoint:
         return self._dataset_state is not None
 
     @property
+    def has_config(self) -> bool:
+        """
+        Check if the checkpoint contains a training configuration.
+
+        Returns:
+            bool: True if the checkpoint contains a configuration, False otherwise.
+        """
+        return self._config is not None
+
+    @property
     def splats(self) -> GaussianSplat3d:
         """
         Get the Gaussian Splatting model from the checkpoint.
@@ -637,7 +648,7 @@ class Checkpoint:
         return self._model
 
     @property
-    def config(self) -> dict:
+    def config(self) -> dict | None:
         """
         Get the configuration used for training from the checkpoint.
 
@@ -703,7 +714,7 @@ class Checkpoint:
         return torch.cat([final_train_sizes, val_sizes], dim=0)
 
     @property
-    def initial_training_poses(self) -> torch.Tensor | None:
+    def initial_training_poses(self) -> torch.Tensor:
         """
         Get the initial camera-to-world poses used for training from the checkpoint.
 
@@ -713,7 +724,7 @@ class Checkpoint:
         return self._training_metadata_state.initial_training_poses
 
     @property
-    def final_training_poses(self) -> torch.Tensor | None:
+    def final_training_poses(self) -> torch.Tensor:
         """
         Get the final camera-to-world poses used for training from the checkpoint.
 
@@ -733,7 +744,7 @@ class Checkpoint:
         return self._training_metadata_state.training_projection_matrices
 
     @property
-    def training_image_sizes(self) -> torch.Tensor | None:
+    def training_image_sizes(self) -> torch.Tensor:
         """
         Get the image sizes used for training from the checkpoint.
 

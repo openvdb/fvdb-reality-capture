@@ -339,7 +339,7 @@ class SfmDataset(torch.utils.data.Dataset, Iterable):
         # If you passed in masks, we'll set set these in the data dictionary
         if image_meta.mask_path != "":
             mask = imageio.imread(image_meta.mask_path)
-            mask = mask < 127
+            mask = mask > 127
 
             data["mask_path"] = image_meta.mask_path
             data["mask"] = mask

@@ -70,6 +70,16 @@ class Viewer(object):
         self._layout_gui()
         self.set_up_direction(camera_up_axis)
 
+    @property
+    def viser_server(self) -> viser.ViserServer:
+        """
+        Get the Viser server instance associated with this viewer.
+
+        Returns:
+            viser.ViserServer: The Viser server instance.
+        """
+        return self._viser_server
+
     def set_up_direction(self, up_axis: Literal["+x", "+y", "+z", "-x", "-y", "-z"]):
         """
         Sets the camera up direction for all web clients connected to this viewer.
@@ -77,10 +87,7 @@ class Viewer(object):
         Args:
             up_axis (Literal["+x", "+y", "+z", "-x", "-y", "-z"]): The up axis to set.
         """
-        clients = self._viser_server.get_clients()
-        for client_id in clients:
-            clients[client_id].scene.set_up_direction(up_axis)
-        self._notify_render_threads()
+        self._global_info_view.camera_up_axis = up_axis
 
     def register_camera_view(
         self,
@@ -404,7 +411,10 @@ class Viewer(object):
             assert event.gui_event is not None, "GuiEvent must be provided for setting up direction."
             if value not in ["+x", "+y", "+z", "-x", "-y", "-z"]:
                 raise ValueError(f"Invalid up direction: {value}. Must be one of '+x', '+y', '+z', '-x', '-y', '-z'.")
-            self.set_up_direction(value)
+            clients = self._viser_server.get_clients()
+            for client_id in clients:
+                clients[client_id].scene.set_up_direction(value)
+            self._notify_render_threads()
         elif event.action == ViewerAction.PAUSE_GAUSSIAN_THREADS:
             self._gaussian_client_render_thread_pool.pause_threads()
         elif event.action == ViewerAction.RESUME_GAUSSIAN_THREADS:
@@ -416,8 +426,60 @@ class Viewer(object):
             assert event.gui_event is not None, "GuiEvent must be provided for setting up direction."
             assert isinstance(value, (int, float)), "Max image width must be a number."
             self._gaussian_client_render_thread_pool.max_image_width = int(value)
+        elif event.action == ViewerAction.SET_CAMERA_FAR:
+            assert event.gui_event is not None, "GuiEvent must be provided for setting camera far."
+            assert isinstance(value, (int, float)), "Camera far must be a number."
+            clients = self._viser_server.get_clients()
+            for client_id in clients:
+                clients[client_id].camera.far = float(value)
+            self._notify_render_threads()
+        elif event.action == ViewerAction.SET_CAMERA_NEAR:
+            assert event.gui_event is not None, "GuiEvent must be provided for setting camera near."
+            assert isinstance(value, (int, float)), "Camera near must be a number."
+            clients = self._viser_server.get_clients()
+            for client_id in clients:
+                clients[client_id].camera.near = float(value)
+            self._notify_render_threads()
         else:
             raise ValueError(f"Unknown action: {event.action}. Cannot handle this event.")
+
+    @property
+    def camera_far(self) -> float:
+        """
+        Returns the far plane distance for the camera.
+        This is used to define the maximum distance at which objects are rendered.
+        """
+        return self._global_info_view.camera_far
+
+    @camera_far.setter
+    def camera_far(self, camera_far: float):
+        """
+        Set the far plane distance for the camera.
+        This is used to define the maximum distance at which objects are rendered.
+
+        Args:
+            camera_far (float): The far plane distance for the camera.
+        """
+        self._global_info_view.camera_far = camera_far
+
+    @property
+    def camera_near(self) -> float:
+        """
+        Returns the near plane distance for the camera.
+        This is used to define the minimum distance at which objects are rendered.
+        """
+        return self._global_info_view.camera_near
+
+    @camera_near.setter
+    def camera_near(self, camera_near: float):
+        """
+        Set the near plane distance for the camera.
+        This is used to define the minimum distance at which objects are rendered.
+
+        Args:
+            camera_near (float): The near plane distance for the camera.
+        """
+        self._global_info_view.camera_near = camera_near
 
     def _on_client_disconnect(self, client: viser.ClientHandle):
         """
@@ -444,5 +506,7 @@ class Viewer(object):
         """
         with self._viser_server.atomic():
             client.scene.set_up_direction(self._global_info_view.camera_up_axis)
+            client.camera.near = self._global_info_view.camera_near
+            client.camera.far = self._global_info_view.camera_far
         self._gaussian_client_render_thread_pool.register_client(client)
         self._notify_render_threads()
