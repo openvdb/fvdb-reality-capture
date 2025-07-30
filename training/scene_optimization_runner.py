@@ -1064,7 +1064,7 @@ class SceneOptimizationRunner:
             _private (object | None): Private object to ensure this class is only initialized through `new_run` or `resume_from_checkpoint`.
         """
         if _private is not SceneOptimizationRunner.__PRIVATE__:
-            raise RuntimeError("Runner should only be initialized through `new_run` or `resume_from_checkpoint`.")
+            raise ValueError("Runner should only be initialized through `new_run` or `resume_from_checkpoint`.")
 
         self.logger = logging.getLogger("Runner")
 
@@ -1135,7 +1135,7 @@ class SceneOptimizationRunner:
             or resume training later.
         """
         if self.optimizer is None:
-            raise RuntimeError("This runner was not created with an optimizer. Cannot run training.")
+            raise ValueError("This runner was not created with an optimizer. Cannot run training.")
 
         trainloader = torch.utils.data.DataLoader(
             self.training_dataset,

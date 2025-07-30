@@ -224,7 +224,7 @@ class NormalizeScene(BaseTransform):
         elif self._normalization_type == "none":
             normalization_transform = np.eye(4)
         else:
-            raise RuntimeError(f"Unknown normalization type {self._normalization_type}")
+            raise ValueError(f"Unknown normalization type {self._normalization_type}")
 
         return input_scene.transform(normalization_transform), input_cache
 

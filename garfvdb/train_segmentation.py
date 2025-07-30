@@ -266,7 +266,7 @@ class Runner:
                     self.frozen_pca_projection = calculate_pca_projection(filtered_features, n_components, center=True)
 
                 return result
-            except RuntimeError as e:
+            except Exception as e:
                 if "failed to converge" in str(e):
                     # Fallback: return zeros with correct shape
                     logging.warning("PCA failed to converge, returning zero projection")

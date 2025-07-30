@@ -113,7 +113,7 @@ class DatasetCache:
         _private: Any = None,
     ):
         if _private != __SECRET__:
-            raise RuntimeError(
+            raise ValueError(
                 "Do not create a `DatasetCache` instance directly. Instead use `DatasetCache.get_cache()` to create a cache "
                 "or make_folder to make a folder within a cache."
             )
@@ -144,7 +144,7 @@ class DatasetCache:
         else:
             # The cache directory already exists, so we need to load the metadata
             if not self.metadata_path.exists():
-                raise RuntimeError(
+                raise ValueError(
                     f"Cache directory {self.cache_path} exists but does not contain a metadata file. "
                     "Please delete the cache directory and rebuild."
                 )
@@ -307,11 +307,11 @@ class DatasetCache:
         if file_metadata is None:
             raise ValueError(f"Key {filename} not found in cache.")
         if "data_type" not in file_metadata:
-            raise RuntimeError(
+            raise ValueError(
                 f"Metadata for {filename} does not have a data type specified in the cache metadata. The cache may be corrupted."
             )
         if "metadata" not in file_metadata:
-            raise RuntimeError(
+            raise ValueError(
                 f"Metadata for {filename} does not have metadata specified in the cache metadata. The cache may be corrupted."
             )
 
@@ -424,7 +424,7 @@ class DatasetCache:
             if item.name == DatasetCache.metadata_filename:
                 continue
             if not item.is_relative_to(self.root_path):
-                raise RuntimeError(
+                raise ValueError(
                     f"Attempting to delete a directory {item} that is not relative to the cache root {self.root_path}. "
                     "This may be a security issue."
                 )
