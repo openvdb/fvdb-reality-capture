@@ -1,4 +1,4 @@
-/results/
+**/results/
 /data/
 *.pt
 *.pth

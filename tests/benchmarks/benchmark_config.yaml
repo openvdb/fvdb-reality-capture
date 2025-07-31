@@ -1,0 +1,57 @@
+datasets:
+- name: garden
+  path: ../../data/360_v2/garden
+  run_directory: results/benchmark/garden/run_64a796223c16b0fd36d6fcc48e388ff6600b7b68
+  checkpoint_paths:
+  - results/benchmark/garden/run_64a796223c16b0fd36d6fcc48e388ff6600b7b68/checkpoints/ckpt_0644.pt
+  - results/benchmark/garden/run_64a796223c16b0fd36d6fcc48e388ff6600b7b68/checkpoints/ckpt_6440.pt
+  - results/benchmark/garden/run_64a796223c16b0fd36d6fcc48e388ff6600b7b68/checkpoints/ckpt_32200.pt
+  - results/benchmark/garden/run_64a796223c16b0fd36d6fcc48e388ff6600b7b68/checkpoints/ckpt_final.pt
+results:
+  base_path: results/benchmark
+training:
+  config:
+    antialias: false
+    batch_size: 1
+    eps_2d: 0.3
+    far_plane: 10000000000.0
+    ignore_masks: false
+    increase_sh_degree_every_epoch: 5
+    initial_covariance_scale: 1.0
+    initial_opacity: 0.1
+    lpips_net: alex
+    max_epochs: 200
+    min_radius_2d: 0.0
+    near_plane: 0.01
+    opacity_reg: 0.0
+    optimize_camera_poses: true
+    pose_opt_lr: 1.0e-05
+    pose_opt_lr_decay: 1.0
+    pose_opt_reg: 1.0e-06
+    random_bkgd: false
+    refine_every_epoch: 0.75
+    refine_start_epoch: 3
+    refine_stop_epoch: 100
+    refine_using_scale2d_stop_epoch: 0
+    remove_gaussians_outside_scene_bbox: false
+    reset_opacities_every_epoch: 16
+    scale_reg: 0.0
+    sh_degree: 3
+    ssim_lambda: 0.2
+    tile_size: 16
+  save_at_percent:
+  - 2
+  - 20
+  - 100
+training_params:
+  crop_bbox: null
+  device: cuda
+  disable_viewer: true
+  image_downsample_factor: 4
+  log_images_to_tensorboard: false
+  log_tensorboard_every: 100
+  normalization_type: pca
+  points_percentile_filter: 0.0
+  save_eval_images: false
+  save_results: true
+  use_every_n_as_val: 8
