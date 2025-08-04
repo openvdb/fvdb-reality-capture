@@ -4,6 +4,9 @@
 import itertools
 import logging
 import math
+import os
+import sys
+from pathlib import Path
 from typing import Callable, Dict, Iterator, Literal, Optional, Union
 
 import numpy as np
@@ -18,6 +21,9 @@ from fvdb import GaussianSplat3d
 from .config import ModelConfig
 from .dataset import GARfVDBInput
 from .util import rgb_to_sh
+
+sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+from utils import filter_splat_means, prune_large
 
 
 class SparseConvWithSkips(torch.nn.Module):
@@ -83,7 +89,7 @@ class GARfVDBModel(torch.nn.Module):
 
     def __init__(
         self,
-        gsplat_checkpoint_path: str,
+        gsplat_checkpoint_path: Path,
         scale_stats: torch.Tensor,
         model_config: ModelConfig = ModelConfig(),
         device: Union[str, torch.device] = torch.device("cuda"),
@@ -103,27 +109,18 @@ class GARfVDBModel(torch.nn.Module):
         self.model_config = model_config
 
         ### Load the GaussianSplat3D model ###
-        checkpoint = torch.load(gsplat_checkpoint_path, map_location=device)
+        if gsplat_checkpoint_path.suffix == ".ply":
+            self.gs_model = GaussianSplat3d.from_ply(gsplat_checkpoint_path, device=device)
+        else:
+            checkpoint = torch.load(gsplat_checkpoint_path, map_location=device)
 
-        state_dict = {
-            "sh0": checkpoint["splats"]["sh0"],  # [N, 1, 3]
-            "shN": checkpoint["splats"]["shN"],  # [N, K, 3]
-            "quats": checkpoint["splats"]["quats"],  # [N, 4]
-            "means": checkpoint["splats"]["means"],  # [N, 3]
-            "log_scales": checkpoint["splats"]["log_scales"],  # [N, 3]
-            "logit_opacities": checkpoint["splats"]["logit_opacities"],  # [N]
-            "requires_grad": checkpoint["splats"]["requires_grad"],  # [N]
-            "track_max_2d_radii_for_grad": checkpoint["splats"]["track_max_2d_radii_for_grad"],  # [N]
-        }
-
-        # if this checkpoint was saved with the old SH shapes, we need to move it to be N-first
-        if state_dict["sh0"].shape[0] == 1:
-            state_dict["sh0"] = state_dict["sh0"].permute(1, 0, 2)
-            state_dict["shN"] = state_dict["shN"].permute(1, 0, 2)
-
-        self.gs_model = GaussianSplat3d.from_state_dict(state_dict)
+            splats = checkpoint["splats"]
+            splats = prune_large(splats)
+            splats = filter_splat_means(splats, [0.95, 0.95, 0.95, 0.95, 0.95, 0.999])
+            self.gs_model = GaussianSplat3d.from_state_dict(splats)
 
         # Build the quantile transformer
+        self.max_scale = float(torch.max(scale_stats).item())
         self.quantile_transformer = self._get_quantile_func(scale_stats)
 
         ###  Encoded Features ###
@@ -198,9 +195,9 @@ class GARfVDBModel(torch.nn.Module):
         self.add_module(
             "mlp",
             torch.nn.Sequential(
-                torch.nn.Linear(i_channels, n_neurons, bias=False),
+                torch.nn.Linear(i_channels, n_neurons, bias=True),
                 torch.nn.ReLU(),
-                *[torch.nn.Linear(n_neurons, n_neurons, bias=False), torch.nn.ReLU()] * hidden_layers,
+                *[torch.nn.Linear(n_neurons, n_neurons, bias=True), torch.nn.ReLU()] * hidden_layers,
                 torch.nn.Linear(n_neurons, o_channels, bias=False),
             ).to(device),
         )
@@ -216,7 +213,7 @@ class GARfVDBModel(torch.nn.Module):
         Returns:
             float: The maximum grouping world space scale
         """
-        return self.model_config.max_grouping_scale
+        return self.max_scale
 
     def parameters(self, recurse: bool = True) -> Iterator[torch.nn.Parameter]:
         """Return an iterator over module parameters.
@@ -239,18 +236,43 @@ class GARfVDBModel(torch.nn.Module):
         else:
             return itertools.chain(self.mlp.parameters(), [self.gs_model.sh0])
 
-    def load_checkpoint(self, checkpoint_path: str):
+    @staticmethod
+    def create_from_checkpoint(
+        checkpoint_path: Union[str, Path],
+        gsplat_checkpoint_path: Union[str, Path],
+        scale_stats: torch.Tensor,
+        device: Union[str, torch.device] = torch.device("cuda"),
+    ) -> "GARfVDBModel":
         """Load the model checkpoint from the given path.
 
         Args:
             checkpoint_path: Path to the checkpoint
         """
-        checkpoint = torch.load(checkpoint_path, map_location=self.device)
-        if self.model_config.use_grid:
-            self.encoder_grids.data.jdata = checkpoint["encoder_grids"]
+        checkpoint = torch.load(checkpoint_path, map_location=device)
+        model_config = checkpoint["model_config"]
+        model = GARfVDBModel(gsplat_checkpoint_path, scale_stats, model_config, device)
+
+        if model_config.use_grid:
+            model.encoder_grids = checkpoint["encoder_grids"]
         else:
-            self.gs_model.sh0 = checkpoint["sh0"]
-        self.mlp.load_state_dict(checkpoint["mlp"])
+            model.gs_model.sh0 = checkpoint["sh0"]
+        model.mlp.load_state_dict(checkpoint["mlp"])
+        return model
+
+    def save_checkpoint(self, checkpoint_path: str):
+        """Save the model checkpoint to the given path.
+
+        Args:
+            checkpoint_path: Path to the checkpoint
+        """
+        checkpoint = {}
+        checkpoint["model_config"] = self.model_config
+        if self.model_config.use_grid:
+            checkpoint["encoder_grids"] = self.encoder_grids.detach().cpu()
+        else:
+            checkpoint["sh0"] = self.gs_model.sh0.detach().cpu()
+        checkpoint["mlp"] = self.mlp.state_dict()
+        torch.save(checkpoint, checkpoint_path)
 
     def get_quantile_transformer(self) -> Callable[[torch.Tensor], torch.Tensor]:
         """Get the scale quantile transformer.
@@ -284,7 +306,7 @@ class GARfVDBModel(torch.nn.Module):
         def quantile_transformer_func(scales):
             # This function acts as a wrapper for QuantileTransformer.
             # QuantileTransformer expects a numpy array, while we have a torch tensor.
-            return torch.Tensor(quantile_transformer.transform(scales.cpu().numpy())).to(scales.device)
+            return torch.from_numpy(quantile_transformer.transform(scales.cpu().numpy())).to(scales.device)
 
         return quantile_transformer_func
 
@@ -402,33 +424,32 @@ class GARfVDBModel(torch.nn.Module):
                     logging.warning("WARNING: Nans in weights")
                     weights = torch.where(torch.isnan(weights), torch.zeros_like(weights), weights)
 
-            # stochastically pick the depth_sample for each pixel based on the weights as probabilities
-            # Convert weights to probabilities if they aren't already normalized
+            if self.model_config.enc_feats_one_idx_per_ray:
+                # Stochastically pick the depth_sample for each pixel based on the weights as probabilities
+                # Convert weights to probabilities if they aren't already normalized
 
-            # Check for rays where all weights are -1
-            zero_mask = weights.sum(dim=-1) == 0  # [B, R] or [B, H, W]
-            if zero_mask.any():
-                logging.warning(f"WARNING: Found {zero_mask.sum().item()} rays with all 0 weights")
-                # For each ray with all zeros, set the first depth sample to 1e-10
-                weights = torch.where(
-                    zero_mask.unsqueeze(-1),  # [B, R, 1] or [B, H, W, 1]
-                    torch.cat([torch.full_like(weights[..., :1], 1e-10), weights[..., 1:]], dim=-1),
-                    weights,
+                # Check for rays where all weights are -1
+                zero_mask = weights.sum(dim=-1) == 0  # [B, R] or [B, H, W]
+                if zero_mask.any():
+                    logging.warning(f"WARNING: Found {zero_mask.sum().item()} rays with all 0 weights")
+                    # For each ray with all zeros, set the first depth sample to 1e-10
+                    weights = torch.where(
+                        zero_mask.unsqueeze(-1),  # [B, R, 1] or [B, H, W, 1]
+                        torch.cat([torch.full_like(weights[..., :1], 1e-10), weights[..., 1:]], dim=-1),
+                        weights,
+                    )
+                # Sample one index per ray based on probabilities
+                probs = torch.relu(weights / (weights.sum(dim=-1, keepdim=True) + 1e-10))  # Normalize to ensure sum=1
+                # shape: [B, R]
+                depth_sample_indices = torch.multinomial(probs.view(-1, probs.shape[-1]), num_samples=1).reshape(
+                    probs.shape[:-1]
                 )
-
-            probs = torch.relu(weights / (weights.sum(dim=-1, keepdim=True) + 1e-10))  # Normalize to ensure sum=1
-
-            # Sample one index per ray based on probabilities
-            # shape: [B, R]
-            depth_sample_indices = torch.multinomial(probs.view(-1, probs.shape[-1]), num_samples=1).reshape(
-                probs.shape[:-1]
-            )
-            depth_sample_indices = depth_sample_indices.unsqueeze(-1)  # [B, R, 1] or [B, H, W, 1]
-            # get 1 id per ray based on the depth_sample_indices
-            selected_ids = torch.gather(ids.squeeze(-1), dim=2, index=depth_sample_indices)  # [B, R, 1] or [B, H, W, 1]
+                depth_sample_indices = depth_sample_indices.unsqueeze(-1)  # [B, R, 1] or [B, H, W, 1]
+                # get 1 id per ray based on the depth_sample_indices
+                ids = torch.gather(ids.squeeze(-1), dim=2, index=depth_sample_indices)  # [B, R, 1] or [B, H, W, 1]
 
             # unique ids
-            ids_3dgs = selected_ids % self.gs_model.means.shape[0]
+            ids_3dgs = ids % self.gs_model.means.shape[0]
             unique_ids, unique_ids_inverse = torch.unique(ids_3dgs, return_inverse=True)
             unique_world_pts = self.gs_model.means[unique_ids]
 
@@ -436,7 +457,7 @@ class GARfVDBModel(torch.nn.Module):
             # in_voxels = self.encoder_grids.grid.points_in_active_voxel(unique_world_pts)
             # num_not_in_voxels = (in_voxels.jdata == 0).sum().item()
             # if num_not_in_voxels > 0:
-            #     print(f"num_not_in_voxels: {num_not_in_voxels}")
+            #     logging.error(f"num_not_in_voxels: {num_not_in_voxels}")
 
             # sample the encoder grids at the unique world points
             enc_grid_sample_pts = fvdb.JaggedTensor([unique_world_pts for _ in range(self.encoder_grids.grid_count)])
@@ -449,15 +470,16 @@ class GARfVDBModel(torch.nn.Module):
             # re-assemble the enc_feats based on the original ids
             enc_feats = unique_cam_enc_feats[unique_ids_inverse].squeeze(-2)  # [B, R, S, F]
 
-            # Weighted sum of the enc_feats and transmittance weights
-            # weights = weights.unsqueeze(-1)  # [B, R, S, 1] or [B, H, W, S, 1]
+            if not self.model_config.enc_feats_one_idx_per_ray:
+                # Weighted sum of the enc_feats and transmittance weights
+                weights = weights.unsqueeze(-1)  # [B, R, S, 1] or [B, H, W, S, 1]
 
-            # multiply by weights
-            # enc_feats = enc_feats * weights
-            # enc_feats = enc_feats.sum(dim=-2)  # [B, R, F] or [B, H, W, F]
-            # print("enc_Feats shape ", enc_feats.shape)
+                # multiply by weights
+                enc_feats = enc_feats * weights
+                enc_feats = enc_feats.sum(dim=-2)  # [B, R, F] or [B, H, W, F]
 
-            enc_feats = enc_feats / torch.linalg.norm(enc_feats, dim=-1, keepdim=True)
+            epsilon = 1e-6
+            enc_feats = enc_feats / (torch.linalg.norm(enc_feats, dim=-1, keepdim=True) + epsilon)
 
             return enc_feats
 
@@ -480,9 +502,10 @@ class GARfVDBModel(torch.nn.Module):
         # Flatten for processing
         scales_flat = scales.reshape(-1)
         scales_flat = scales_flat.contiguous().view(-1, 1)
-        scales_flat = self.quantile_transformer(scales_flat).to(scales_flat.device)
+        scales_quant = self.quantile_transformer(scales_flat).to(scales_flat.device)
+        scales_quant = scales_quant.reshape(enc_feats.shape[:-1]).unsqueeze(-1)
 
-        in_feats = torch.cat([enc_feats, scales_flat.reshape(scales.shape).unsqueeze(-1)], dim=-1)
+        in_feats = torch.cat([enc_feats, scales_quant], dim=-1)
 
         # Apply MLP
         gfeats = self.mlp(in_feats)
@@ -519,24 +542,15 @@ class GARfVDBModel(torch.nn.Module):
         else:
             enc_feats = self.encoder_grids.sample_trilinear(world_pts)
         enc_feats = torch.cat(enc_feats.unbind(), dim=-1)  # [N, F]
-        enc_feats = enc_feats / torch.linalg.norm(enc_feats, dim=-1, keepdim=True)
-
-        # Apply MLP
-        epsilon = 1e-5
-        scales = torch.full_like(enc_feats[:, :1], scale)
-
-        gfeats = self.mlp(torch.cat([enc_feats, scales], dim=-1))
-        norms = gfeats.norm(dim=-1, keepdim=True)
-        gfeats = gfeats / (norms + epsilon)
 
         # Set them as the sh0 features
         enc_feats_state_dict = self.gs_model.state_dict()
-        enc_feats_state_dict["sh0"] = rgb_to_sh(gfeats).unsqueeze(1).contiguous()
+        enc_feats_state_dict["sh0"] = rgb_to_sh(enc_feats).unsqueeze(1).contiguous()
 
         gs3d_enc_feats = GaussianSplat3d.from_state_dict(enc_feats_state_dict)
 
         # Render the image
-        img, alpha = gs3d_enc_feats.render_images(
+        img_feats, alpha = gs3d_enc_feats.render_images(
             image_width=img_w,
             image_height=img_h,
             world_to_camera_matrices=world_to_cam,
@@ -547,6 +561,11 @@ class GARfVDBModel(torch.nn.Module):
             sh_degree_to_use=0,
         )
 
-        img = img / torch.linalg.norm(img, dim=-1, keepdim=True)
+        epsilon = 1e-6
+        img_feats = img_feats / (torch.linalg.norm(img_feats, dim=-1, keepdim=True) + epsilon)
 
-        return img, alpha
+        # Apply MLP
+        scales = torch.full_like(img_feats[..., :1], scale)
+        gfeats = self.get_mlp_output(img_feats, scales)
+
+        return gfeats, alpha

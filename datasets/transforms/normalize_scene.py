@@ -187,6 +187,7 @@ class NormalizeScene(BaseTransform):
                 f"Valid options are: {', '.join(self.valid_normalization_types)}."
             )
         self._normalization_type = normalization_type
+        self._normalization_transform = None
         self._logger = logging.getLogger(f"{self.__class__.__module__}.{self.__class__.__name__}")
 
     def __call__(self, input_scene: SfmScene, input_cache: DatasetCache) -> tuple[SfmScene, DatasetCache]:
@@ -201,32 +202,70 @@ class NormalizeScene(BaseTransform):
             output_scene (SfmScene): A new SfmScene after applying the normalization transform.
             output_cache (DatasetCache): The input cache, unchanged by this transform.
         """
-        points = input_scene.points
-        world_to_camera_matrices = input_scene.camera_to_world_matrices
-
         self._logger.info(f"Normalizing SfmScene with normalization type: {self._normalization_type}")
 
-        if points is None or len(points) == 0:
-            self._logger.warning("No points found in the SfmScene. Returning the input scene unchanged.")
+        normalization_transform = self._compute_normalization_transform(input_scene)
+        if normalization_transform is None:
+            self._logger.warning("Returning the input scene unchanged.")
             return input_scene, input_cache
-        if world_to_camera_matrices is None or len(world_to_camera_matrices) == 0:
-            self._logger.warning("No camera matrices found in the SfmScene. Returning the input scene unchanged.")
-            return input_scene, input_cache
-
-        # Normalize the world space.
-        if self._normalization_type == "pca":
-            normalization_transform = _pca_normalization_transform(points)
-        elif self._normalization_type == "ecef2enu":
-            normalization_transform = _geo_ecef2enu_normalization_transform(points)
-        elif self._normalization_type == "similarity":
-            camera_to_world_matrices = np.linalg.inv(world_to_camera_matrices)
-            normalization_transform = _camera_similarity_normalization_transform(camera_to_world_matrices)
-        elif self._normalization_type == "none":
-            normalization_transform = np.eye(4)
-        else:
-            raise ValueError(f"Unknown normalization type {self._normalization_type}")
 
         return input_scene.transform(normalization_transform), input_cache
+
+    def _compute_normalization_transform(self, input_scene: SfmScene) -> np.ndarray | None:
+        """
+        Compute the normalization transform for the scene.
+
+        Args:
+            input_scene (SfmScene): The input scene to normalize.
+
+        Returns:
+            np.ndarray | None: The normalization transform, or None if the scene lacks points or camera matrices.
+        """
+        if self._normalization_transform is None:
+            points = input_scene.points
+            world_to_camera_matrices = input_scene.camera_to_world_matrices
+
+            if points is None or len(points) == 0:
+                self._logger.warning("No points found in the SfmScene.")
+                return None
+            if world_to_camera_matrices is None or len(world_to_camera_matrices) == 0:
+                self._logger.warning("No camera matrices found in the SfmScene.")
+                return None
+
+            # Normalize the world space.
+            if self._normalization_type == "pca":
+                normalization_transform = _pca_normalization_transform(points)
+            elif self._normalization_type == "ecef2enu":
+                normalization_transform = _geo_ecef2enu_normalization_transform(points)
+            elif self._normalization_type == "similarity":
+                camera_to_world_matrices = np.linalg.inv(world_to_camera_matrices)
+                normalization_transform = _camera_similarity_normalization_transform(camera_to_world_matrices)
+            elif self._normalization_type == "none":
+                normalization_transform = np.eye(4)
+            else:
+                raise RuntimeError(f"Unknown normalization type {self._normalization_type}")
+
+            self._normalization_transform = normalization_transform
+        return self._normalization_transform
+
+    def transform_camera_poses_to_scene_normalized_space(
+        self, input_scene: SfmScene, camera_to_world_matrices: np.ndarray
+    ) -> np.ndarray:
+        """
+        Transform points to the scene normalized space.
+        """
+        normalization_transform = self._compute_normalization_transform(input_scene)
+
+        if normalization_transform is None:
+            self._logger.warning("Returning the input poses unchanged.")
+            return camera_to_world_matrices
+        assert len(camera_to_world_matrices.shape) == 3 and camera_to_world_matrices.shape[1:] == (4, 4)
+
+        new_camera_to_world_matrix = np.einsum("nij, ki -> nkj", camera_to_world_matrices, normalization_transform)
+        scaling = np.linalg.norm(new_camera_to_world_matrix[:, 0, :3], axis=1)
+        new_camera_to_world_matrix[:, :3, :3] = new_camera_to_world_matrix[:, :3, :3] / scaling[:, None, None]
+
+        return new_camera_to_world_matrix
 
     def state_dict(self) -> dict[str, Any]:
         """

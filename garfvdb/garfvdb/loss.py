@@ -168,7 +168,6 @@ def calculate_loss(
 
     # Get instance features - will return a 3D tensor [batch_size, samples_per_img, feat_dim]
     instance_features = model.get_mlp_output(enc_feats, scales)
-    instance_features = instance_features
 
     # Flatten the instance features to match the masking operations
     # [batch_size, samples_per_img, feat_dim] -> [batch_size*samples_per_img, feat_dim]
@@ -290,6 +289,6 @@ def calculate_loss(
 
     return_loss_dict["total_loss"] = (
         return_loss_dict["instance_loss_1"] + return_loss_dict["instance_loss_2"] + return_loss_dict["instance_loss_4"]
-    ) / torch.sum(block_mask * (~diag_mask)).float()
+    ) / torch.sum(block_mask).float()
 
     return return_loss_dict

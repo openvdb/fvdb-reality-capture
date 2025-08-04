@@ -1,6 +1,7 @@
 # Copyright Contributors to the OpenVDB Project
 # SPDX-License-Identifier: Apache-2.0
 #
+import logging
 from typing import Optional
 
 import torch
@@ -36,18 +37,22 @@ def calculate_pca_projection(features: torch.Tensor, n_components: int = 3, cent
 
 
 def pca_projection_fast(
-    features: torch.Tensor, n_components: int = 3, V: Optional[torch.Tensor] = None
+    features: torch.Tensor, n_components: int = 3, V: Optional[torch.Tensor] = None, mask: Optional[torch.Tensor] = None
 ) -> torch.Tensor:
     """Project features using PCA to a lower dimension.
 
     Args:
         features: A 4D tensor of shape [B, H, W, C] containing features to project
         n_components: The number of principal components to use
+        mask: A tensor of shape [B, H, W] containing a mask of valid features
 
     Returns:
         A 4D tensor of shape [B, H, W, n_components] containing the projected features
     """
     B, H, W, C = features.shape
+
+    if mask is not None:
+        features = features[mask]
     features_flat = features.reshape(-1, C)
 
     # Center the data
@@ -57,14 +62,20 @@ def pca_projection_fast(
         V = calculate_pca_projection(features_centered, n_components, center=False)
 
     # Project data onto principal components
-    projected = torch.mm(features_centered, V.to(features.device))
+    projected = torch.mm(features_flat, V.to(features.device))
 
     # Normalize to [0, 1] range
     mins = projected.min(dim=0, keepdim=True)[0]
     maxs = projected.max(dim=0, keepdim=True)[0]
     projected_normalized = (projected - mins) / (maxs - mins + 1e-8)
 
-    return projected_normalized.reshape(B, H, W, n_components)
+    if mask is not None:
+        result = torch.zeros(B, H, W, n_components, device=features.device)
+        result[mask] = projected_normalized
+    else:
+        result = projected_normalized
+
+    return result
 
 
 def unique_values_to_colors(tensor: torch.Tensor) -> torch.Tensor:

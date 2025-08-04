@@ -3,6 +3,7 @@
 #
 import logging
 import random
+from pathlib import Path
 from typing import Dict, List, NotRequired, TypedDict, Union, cast
 
 import torch
@@ -34,7 +35,7 @@ class SegmentationDataset(Dataset):
     scales, mask_cdfs, mask_ids from disk.  Members of this class can then be modified by further
     data transforms."""
 
-    def __init__(self, segmentation_dataset_path: str):
+    def __init__(self, segmentation_dataset_path: Union[str, Path]):
         """
         Args:
             segmentation_dataset_path: Path to the segmentation dataset.
@@ -146,25 +147,84 @@ class RandomSelectMaskIDAndScale:
 
 
 class RandomSamplePixels:
-    """A dataset transform that randomly samples pixels from the image.
+    """A dataset transform that samples pixels from the image.
+    Can use importance sampling based on scales to bias towards smaller scale pixels.
     Equivalent pixels will also be filtered out of mask_ids and mask_cdf and the original image
     will be preserved in 'image_full'.
     """
 
-    def __init__(self, num_samples_per_image: int):
+    def __init__(self, num_samples_per_image: int, scale_bias_strength: float = 0.0):
+        """
+        Args:
+            num_samples_per_image: Number of pixels to sample per image.
+            scale_bias_strength: Strength of bias towards smaller scales.
+                                0.0 = uniform random sampling (default behavior)
+                                > 0.0 = bias towards smaller scales (higher values = stronger bias)
+        """
         self.num_samples_per_image = num_samples_per_image
+        self.scale_bias_strength = scale_bias_strength
 
     def __call__(self, item: SegmentationDataItem) -> SegmentationDataItem:
-        """Sample random pixels from the image.
+        """Sample pixels from the image, optionally biased towards smaller scales.
         Args:
             item: SegmentationDataItem to sample pixels from.
         Returns:
-            SegmentationDataItem: SegmentationDataItem where image, mask_ids, mask_cdf consist of only the randomly sampled pixels whose original image coordinates are in 'pixel_coords'.
+            SegmentationDataItem: SegmentationDataItem where image, mask_ids, mask_cdf consist of only the sampled pixels whose original image coordinates are in 'pixel_coords'.
         """
-        # sample random pixels
         h, w = int(cast(torch.Tensor, item["image_h"]).item()), int(cast(torch.Tensor, item["image_w"]).item())
-        flat_indices = random.sample(range(h * w), k=self.num_samples_per_image)
-        pixels = torch.tensor([(idx // w, idx % w) for idx in flat_indices])  # (x, y) format
+
+        if self.scale_bias_strength > 0.0 and "scales" in item:
+            # Use importance sampling based on scales (smaller scales = higher probability)
+            scales = item["scales"]  # [NM] - scale per mask
+            mask_ids = item["mask_ids"]  # [H, W, MM] - mask IDs per pixel
+
+            # Get scale values for each pixel by indexing scales with mask_ids
+            # Handle invalid mask IDs (typically -1) by masking them out
+            valid_mask = mask_ids >= 0  # [H, W, MM]
+
+            # Vectorized computation of per-pixel scales
+            # Clamp mask_ids to valid range to avoid index errors when accessing scales
+            clamped_mask_ids = torch.clamp(mask_ids, 0, len(scales) - 1)  # [H, W, MM]
+
+            # Get scale values for all pixels at once using advanced indexing
+            pixel_scale_values = scales[clamped_mask_ids]  # [H, W, MM]
+
+            # Mask out invalid entries (set to inf so they don't affect min operation)
+            pixel_scale_values = torch.where(valid_mask, pixel_scale_values, float("inf"))
+
+            # Get minimum scale per pixel across the MM dimension
+            pixel_scales, _ = torch.min(pixel_scale_values, dim=-1)  # [H, W]
+
+            # Handle pixels with no valid masks (where all scales were inf)
+            inf_mask = pixel_scales == float("inf")
+            if inf_mask.any():
+                median_scale = torch.median(scales)
+                pixel_scales[inf_mask] = median_scale
+
+            # Convert scales to sampling probabilities (smaller scales = higher prob)
+            inv_scales = 1.0 / (pixel_scales + 1e-8)  # Add small epsilon to avoid division by zero
+
+            # Apply bias strength (higher strength = more bias towards small scales)
+            if self.scale_bias_strength != 1.0:
+                inv_scales = torch.pow(inv_scales, self.scale_bias_strength)
+
+            # Flatten and normalize to get probabilities
+            flat_probs = inv_scales.flatten()
+            flat_probs = flat_probs / flat_probs.sum()
+
+            # Determine sampling parameters
+            total_pixels = h * w
+            num_samples = min(self.num_samples_per_image, total_pixels)
+
+            # Sample according to probabilities
+            flat_indices = torch.multinomial(flat_probs, num_samples, replacement=False).tolist()
+            pixels = torch.tensor([(idx // w, idx % w) for idx in flat_indices])  # (x, y) format
+        else:
+            # Fall back to uniform random sampling
+            total_pixels = h * w
+            num_samples = min(self.num_samples_per_image, total_pixels)
+            flat_indices = random.sample(range(total_pixels), k=num_samples)
+            pixels = torch.tensor([(idx // w, idx % w) for idx in flat_indices])  # (x, y) format
 
         item["image_full"] = item["image"]
         item["image"] = item["image"][pixels[:, 0], pixels[:, 1]]
@@ -219,6 +279,17 @@ class Resize:
             .permute(0, 2, 3, 1)
             .squeeze(0)
         )
+
+        # scale intrinsics for new image size
+        fx = item["intrinsics"][0, 0]
+        fy = item["intrinsics"][1, 1]
+        cx = item["intrinsics"][0, 2]
+        cy = item["intrinsics"][1, 2]
+        new_fx = fx / self.scale
+        new_fy = fy / self.scale
+        new_cx = cx / self.scale
+        new_cy = cy / self.scale
+        item["intrinsics"] = torch.tensor([[new_fx, 0, new_cx], [0, new_fy, new_cy], [0, 0, 1]], dtype=torch.float32)
 
         return item
 

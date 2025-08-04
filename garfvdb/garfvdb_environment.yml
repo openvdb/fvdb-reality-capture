@@ -20,6 +20,7 @@ dependencies:
   - sam2
   - pyproj
   - transformers
+  - pycocotools
   # 3dgs training
   - gdown
   - tensorboard

@@ -8,6 +8,7 @@ import os
 import sys
 import time
 from datetime import datetime
+from pathlib import Path
 from typing import Optional, Tuple, Union
 
 import numpy as np
@@ -32,11 +33,9 @@ from garfvdb.util import calculate_pca_projection, pca_projection_fast
 from torch.utils.data import DataLoader, random_split
 from torch.utils.tensorboard import SummaryWriter
 from torchvision.transforms import Compose
-
-sys.path.append("..")
 from viz import CameraState, Viewer
 
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(level=logging.ERROR)
 logging.getLogger().name = "garfvdb"
 
 
@@ -44,7 +43,7 @@ class Runner:
     def __init__(
         self,
         cfg: Config,
-        checkpoint_path: str,
+        checkpoint_path: Path,
         segmentation_dataset_path: str,
         device: Union[str, torch.device] = "cuda",
         disable_viewer: bool = False,
@@ -76,11 +75,18 @@ class Runner:
         # For training, randomly sample pixels from each image
         self.train_dataset = TransformDataset(
             self.train_dataset,
-            Compose([RandomSamplePixels(self.config.sample_pixels_per_image), RandomSelectMaskIDAndScale()]),
+            Compose(
+                [
+                    RandomSamplePixels(self.config.sample_pixels_per_image, scale_bias_strength=0.0),
+                    RandomSelectMaskIDAndScale(),
+                ]
+            ),
         )
         self.val_dataset = TransformDataset(
             self.val_dataset,
-            Compose([RandomSamplePixels(self.config.sample_pixels_per_image), RandomSelectMaskIDAndScale()]),
+            Compose(
+                [Resize(1 / 2), RandomSamplePixels(self.config.sample_pixels_per_image), RandomSelectMaskIDAndScale()]
+            ),
         )
         # For testing, use the full image
         self.test_dataset = TransformDataset(self.test_dataset, Compose([Resize(1 / 6), RandomSelectMaskIDAndScale()]))
@@ -88,6 +94,8 @@ class Runner:
         ### Model ###
         # Scale grouping stats
         grouping_scale_stats = torch.cat(full_dataset.scales)
+        # Calculate max scale from dataset
+        self.max_scale = float(torch.max(grouping_scale_stats).item())
         self.model = GARfVDBModel(
             checkpoint_path,
             grouping_scale_stats,
@@ -97,28 +105,28 @@ class Runner:
 
         # Optimizer
         # Different parameter groups with separate learning rates
+        lr = 1e-5
         param_groups = [
-            {"params": self.model.mlp.parameters(), "lr": 1e-4},  # Base learning rate for MLP
+            {"params": self.model.mlp.parameters(), "lr": lr},  # Base learning rate for MLP
         ]
 
         # Add grid parameters with different learning rate if using grid
         if self.config.model.use_grid:
             # For encoder_grids, we need to access the data.jdata parameter as shown in the model's parameters() method
-            param_groups.append({"params": [self.model.encoder_grids.data.jdata], "lr": 1e-3})
+            param_groups.append({"params": [self.model.encoder_grids.data.jdata], "lr": lr})
             if self.config.model.use_grid_conv:
-                param_groups.append({"params": self.model.encoder_convnet.parameters(), "lr": 1e-3})
+                param_groups.append({"params": self.model.encoder_convnet.parameters(), "lr": lr})
 
         else:
             # For sh0 model, add the sh0 parameter
-            param_groups.append({"params": [self.model.gs_model.sh0], "lr": 1e-3})  # Lower learning rate for sh0
+            param_groups.append({"params": [self.model.gs_model.sh0], "lr": lr})  # Lower learning rate for sh0
 
         self.optimizer = torch.optim.Adam(
             params=self.model.parameters(),
-            lr=1e-4,
+            lr=lr / self.config.batch_size,
+            eps=1e-15,
             # param_groups,
-            # lr=1e-5,
-            # weight_decay=1e-6,
-            # eps=1e-15 / lr_batch_rescale,
+            weight_decay=1e-6,
         )
 
         # Add ExponentaLRWithRampUpScheduler for each parameter group
@@ -135,9 +143,6 @@ class Runner:
 
         # Store the full dataset for viewer
         self.full_dataset = full_dataset
-
-        # Calculate max scale from dataset
-        self.max_scale = float(torch.max(grouping_scale_stats).item())
 
         # Initialize viewer sliders to default values
         self.viewer_scale = self.max_scale * 0.1  # Start at 10% of max scale
@@ -243,27 +248,101 @@ class Runner:
                 render_fn=self._viewer_render_fn,
                 mode="training",
             )
+            # Add camera frames to the viewer
+            self.camera_frames = []
+            self.camera_labels = []
+
+            # Calculate scene scale from camera positions
+            camera_positions = []
+            for i, data in enumerate(self.train_dataset):
+                cam_to_world = data["cam_to_world"].cpu().numpy()
+                camera_positions.append(cam_to_world[:3, 3])
+            camera_positions = np.array(camera_positions)
+
+            # Calculate scene bounds and scale
+            scene_center = np.mean(camera_positions, axis=0)
+            scene_radius = np.max(np.linalg.norm(camera_positions - scene_center, axis=1))
+            # Scale factors for axes - adjust these multipliers to change relative size
+            axes_length = scene_radius * 0.0005  # 5% of scene radius
+            axes_radius = axes_length * 0.1  # 10% of axes length
+
+            for i, data in enumerate(self.train_dataset):
+                cam_to_world = data["cam_to_world"].cpu().numpy()
+                # Create a frame for each camera with scaled axes
+                frame = self.server.scene.add_frame(
+                    f"camera_{i}",
+                    wxyz=self._matrix_to_quaternion(cam_to_world[:3, :3]),
+                    position=cam_to_world[:3, 3],
+                    axes_length=axes_length,  # Scaled based on scene size
+                    axes_radius=axes_radius,  # Scaled based on scene size
+                )
+                K = data["intrinsics"].cpu().numpy()
+                H, W = data["image"].shape[:2]
+                fy = K[1, 1]
+                frustum = self.server.scene.add_camera_frustum(
+                    f"camera_{i}/frustum",
+                    fov=2 * np.arctan2(H / 2, fy),
+                    aspect=W / H,
+                    image=data["image_full"].cpu().numpy(),
+                )
+                self.camera_frames.append(frame)
+
+    # pose optimization
+    def _matrix_to_quaternion(self, R):
+        """Convert rotation matrix to quaternion."""
+        # Ensure R is a proper rotation matrix
+        U, _, Vt = np.linalg.svd(R)
+        R = U @ Vt
+        if np.linalg.det(R) < 0:
+            R = -R
+
+        # Convert to quaternion
+        q = np.zeros(4)
+        tr = np.trace(R)
+        if tr > 0:
+            S = np.sqrt(tr + 1.0) * 2
+            q[0] = 0.25 * S
+            q[1] = (R[2, 1] - R[1, 2]) / S
+            q[2] = (R[0, 2] - R[2, 0]) / S
+            q[3] = (R[1, 0] - R[0, 1]) / S
+        elif R[0, 0] > R[1, 1] and R[0, 0] > R[2, 2]:
+            S = np.sqrt(1.0 + R[0, 0] - R[1, 1] - R[2, 2]) * 2
+            q[0] = (R[2, 1] - R[1, 2]) / S
+            q[1] = 0.25 * S
+            q[2] = (R[0, 1] + R[1, 0]) / S
+            q[3] = (R[0, 2] + R[2, 0]) / S
+        elif R[1, 1] > R[2, 2]:
+            S = np.sqrt(1.0 + R[1, 1] - R[0, 0] - R[2, 2]) * 2
+            q[0] = (R[0, 2] - R[2, 0]) / S
+            q[1] = (R[0, 1] + R[1, 0]) / S
+            q[2] = 0.25 * S
+            q[3] = (R[1, 2] + R[2, 1]) / S
+        else:
+            S = np.sqrt(1.0 + R[2, 2] - R[0, 0] - R[1, 1]) * 2
+            q[0] = (R[1, 0] - R[0, 1]) / S
+            q[1] = (R[0, 2] + R[2, 0]) / S
+            q[2] = (R[1, 2] + R[2, 1]) / S
+            q[3] = 0.25 * S
+        return q
 
     def _apply_pca_projection(
         self, features: torch.Tensor, n_components: int = 3, valid_feature_mask: Optional[torch.Tensor] = None
     ) -> torch.Tensor:
         """Apply PCA projection, either using frozen parameters or computing fresh ones."""
-        if valid_feature_mask is not None:
-            filtered_features = self._filter_features_for_robust_pca(features, valid_feature_mask)
-        else:
-            filtered_features = features
 
         if self.freeze_pca and self.frozen_pca_projection is not None:
             # Use frozen PCA projection matrix
-            return pca_projection_fast(filtered_features, n_components, V=self.frozen_pca_projection)
+            return pca_projection_fast(features, n_components, V=self.frozen_pca_projection, mask=valid_feature_mask)
         else:
             # Compute fresh PCA
             try:
-                result = pca_projection_fast(filtered_features, n_components)
+                result = pca_projection_fast(features, n_components, mask=valid_feature_mask)
 
                 # Store projection matrix if freezing is enabled
                 if self.freeze_pca:
-                    self.frozen_pca_projection = calculate_pca_projection(filtered_features, n_components, center=True)
+                    if valid_feature_mask is not None:
+                        features = features[valid_feature_mask]
+                    self.frozen_pca_projection = calculate_pca_projection(features, n_components, center=True)
 
                 return result
             except Exception as e:
@@ -322,7 +401,7 @@ class Runner:
                 self.train_dataset,
                 batch_size=self.config.batch_size,
                 shuffle=True,
-                num_workers=4,
+                num_workers=self.config.batch_size * 2,
                 persistent_workers=True,
                 pin_memory=True,
                 collate_fn=GARfVDBInputCollateFn,
@@ -332,7 +411,7 @@ class Runner:
         # Create validation dataloader
         valloader = DataLoader(
             self.val_dataset,
-            batch_size=self.config.batch_size,
+            batch_size=min(self.config.batch_size, 4),
             shuffle=False,
             num_workers=4,
             persistent_workers=True,
@@ -354,7 +433,7 @@ class Runner:
         pbar = tqdm.tqdm(range(self.config.num_train_iters))
 
         # Gradient accumulation settings
-        gradient_accumulation_steps = 8
+        gradient_accumulation_steps = self.config.accumulate_grad_steps
         accumulated_loss = 0.0
 
         for step in pbar:
@@ -404,7 +483,7 @@ class Runner:
 
             # Perform optimizer step and gradient clipping only after accumulating gradients
             if (step + 1) % gradient_accumulation_steps == 0:
-                torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=1.0)
+                # torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=1.0)
                 self.optimizer.step()
                 # self.scheduler.step()
 
@@ -418,8 +497,12 @@ class Runner:
             del loss
             torch.cuda.empty_cache()
 
+            # Save model
+            if (step + 1) % 1000 == 0:
+                self.model.save_checkpoint(f"checkpoints/segmentation_checkpoint_{step}.pt")
+
             # Evaluate on validation set periodically
-            if step % self.val_every_n_steps == 0 or step == self.config.num_train_iters - 1:
+            if (step + 1) % self.val_every_n_steps == 0 or step == self.config.num_train_iters - 1:
                 val_loss = 0
                 with torch.no_grad():
                     for val_batch in valloader:
@@ -435,13 +518,34 @@ class Runner:
 
                 # Log a sample validation image
                 with torch.no_grad():
+                    cam_to_world_matrix = val_batch["cam_to_world"]  # .cpu().numpy()
+                    world_to_cam_matrix = torch.linalg.inv(cam_to_world_matrix).contiguous()
+                    projection_matrix = val_batch["intrinsics"]  # .cpu().numpy()
+                    img_w, img_h = val_batch["image_full"].shape[2], val_batch["image_full"].shape[1]
+                    beauty_output, _ = self.model.gs_model.render_images(
+                        world_to_cam_matrix,
+                        projection_matrix,
+                        img_w,
+                        img_h,
+                        0.01,
+                        1e10,
+                        "perspective",
+                        # 0,  # sh_degree_to_use
+                    )
+                    beauty_output = torch.clamp(beauty_output, 0.0, 1.0).cpu()
+                    self.writer.add_image("val/beauty_output", beauty_output.permute(0, 3, 1, 2).cpu()[0], step)
+                    beauty_gt = val_batch["image_full"]
+                    self.writer.add_image("val/beauty_gt", beauty_gt.permute(0, 3, 1, 2)[0].cpu(), step)
+
                     val_batch_zero = next(iter(valloader)).to(self.device)
-                    desired_scale = torch.max(val_batch_zero["scales"]) * 0.1
-                    val_mask_output, _ = self.model.get_mask_output(val_batch_zero, desired_scale.item())
-                    beauty_output = val_batch_zero["image_full"]
-                    pca_output = pca_projection_fast(val_mask_output, 3)
+                    desired_scale = torch.max(val_batch_zero["scales"]) * 0.05
+
+                    val_mask_output, mask_alpha = self.model.get_mask_output(val_batch_zero, desired_scale.item())
+                    logging.debug(f"mask_alpha zeros: {mask_alpha.sum()}")
+                    # beauty_output = val_batch_zero["image_full"]
+                    pca_output = pca_projection_fast(val_mask_output, 3, mask=mask_alpha.squeeze(-1) > 0)
                     ### Save images
-                    beauty_output = beauty_output.cpu()  # [B, H, W, 3]
+
                     pca_output = (pca_output.cpu() * 255).type(torch.uint8)  # [B, H, W, 3]
                     self.writer.add_image("val/sample_mask", pca_output.permute(0, 3, 1, 2)[0], step)
                     alpha = 0.7
@@ -451,7 +555,7 @@ class Runner:
                     self.writer.add_image("val/sample_image", blended[0], step)
 
                 # Log test loss images
-                if self.config.model.log_test_images:
+                if self.config.log_test_images:
                     with torch.no_grad():
                         for test_batch_idx, test_batch in enumerate(testloader):
                             if test_batch_idx != 0:
@@ -477,15 +581,6 @@ class Runner:
                                     f"test/{key}_img", test_loss_dict[f"{key}_img"].detach().cpu(), step
                                 )
                             self.model.to(self.device)
-
-                # Save model
-                if step % 1000 == 0:
-                    dict_to_save = {"mlp": self.model.mlp.state_dict()}
-                    if self.config.model.use_grid:
-                        dict_to_save["encoder_grids"] = self.model.encoder_grids.data.jdata.detach().cpu()
-                    else:
-                        dict_to_save["sh0"] = self.model.gs_model.sh0.detach().cpu()
-                    torch.save(dict_to_save, f"checkpoints/checkpoint_{step}.pt")
 
             # Update the viewer
             if not self.disable_viewer:
@@ -534,16 +629,17 @@ class Runner:
                 0.01,
                 1e10,
                 "perspective",
-                0,  # sh_degree_to_use
+                # 0,  # sh_degree_to_use
             )
             beauty_rgb = beauty_colors[0, ..., :3]
 
             # Render the mask features
-            mask_features_output, _ = self.model.get_mask_output(mock_input, self.viewer_scale)
+            mask_features_output, mask_alpha = self.model.get_mask_output(mock_input, self.viewer_scale)
 
             # Apply PCA projection
-            # valid_feature_mask will replace areas of empty gaussians with noise… without this, PCA can fail to converge
-            mask_pca = self._apply_pca_projection(mask_features_output, 3, valid_feature_mask=beauty_rgb.any(dim=-1))[0]
+            mask_pca = self._apply_pca_projection(
+                mask_features_output, 3, valid_feature_mask=mask_alpha.squeeze(-1) > 0
+            )[0]
 
             # Blend between beauty image and mask based on slider value
             alpha = self.viewer_mask_blend
@@ -558,7 +654,7 @@ class Runner:
 
 
 def train_segmentation(
-    checkpoint_path: str,
+    checkpoint_path: Path,
     segmentation_dataset_path: str,
     config: Config = Config(),
     disable_viewer: bool = False,

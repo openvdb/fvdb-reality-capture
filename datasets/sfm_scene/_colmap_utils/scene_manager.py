@@ -317,7 +317,7 @@ class SceneManager:
 
             camera_struct = struct.Struct("IiLL")
 
-            for camera_id, camera in sorted(self.cameras.iteritems()):
+            for camera_id, camera in sorted(self.cameras.items()):
                 fid.write(camera_struct.pack(camera_id, camera.camera_type, camera.width, camera.height))
                 # TODO (True): should move this into the Camera class
                 fid.write(camera.get_params().tobytes())
@@ -351,12 +351,12 @@ class SceneManager:
         with open(output_file, "wb") as fid:
             fid.write(struct.pack("L", len(self.images)))
 
-            for image_id, image in self.images.iteritems():
+            for image_id, image in self.images.items():
                 fid.write(struct.pack("I", image_id))
                 fid.write(image.q.q.tobytes())
                 fid.write(image.tvec.tobytes())
                 fid.write(struct.pack("I", image.camera_id))
-                fid.write(image.name + "\0")
+                fid.write((image.name + "\0").encode("utf-8"))
                 fid.write(struct.pack("L", len(image.points2D)))
                 data = np.rec.fromarrays((image.points2D[:, 0], image.points2D[:, 1], image.point3D_ids))
                 fid.write(data.tobytes())
@@ -369,7 +369,7 @@ class SceneManager:
             print >> fid, "# Number of images: {},".format(len(self.images)),
             print >> fid, "mean observations per image: unknown"
 
-            for image_id, image in self.images.iteritems():
+            for image_id, image in self.images.items():
                 print >> fid, image_id,
                 print >> fid, " ".join(str(qi) for qi in image.q.q),
                 print >> fid, " ".join(str(ti) for ti in image.tvec),
@@ -401,12 +401,10 @@ class SceneManager:
 
     def _save_points3D_bin(self, output_file):
         num_valid_points3D = sum(
-            1
-            for point3D_idx in self.point3D_id_to_point3D_idx.itervalues()
-            if point3D_idx != SceneManager.INVALID_POINT3D
+            1 for point3D_idx in self.point3D_id_to_point3D_idx.values() if point3D_idx != SceneManager.INVALID_POINT3D
         )
 
-        iter_point3D_id_to_point3D_idx = self.point3D_id_to_point3D_idx.iteritems()
+        iter_point3D_id_to_point3D_idx = self.point3D_id_to_point3D_idx.items()
 
         with open(output_file, "wb") as fid:
             fid.write(struct.pack("L", num_valid_points3D))
@@ -424,14 +422,12 @@ class SceneManager:
 
     def _save_points3D_txt(self, output_file):
         num_valid_points3D = sum(
-            1
-            for point3D_idx in self.point3D_id_to_point3D_idx.itervalues()
-            if point3D_idx != SceneManager.INVALID_POINT3D
+            1 for point3D_idx in self.point3D_id_to_point3D_idx.values() if point3D_idx != SceneManager.INVALID_POINT3D
         )
 
         array_to_string = lambda arr: " ".join(str(x) for x in arr)
 
-        iter_point3D_id_to_point3D_idx = self.point3D_id_to_point3D_idx.iteritems()
+        iter_point3D_id_to_point3D_idx = self.point3D_id_to_point3D_idx.items()
 
         with open(output_file, "w") as fid:
             print >> fid, "# 3D point list with one line of data per point:"

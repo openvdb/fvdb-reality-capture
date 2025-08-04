@@ -2,13 +2,17 @@
 
 ```bash
 conda env create -f ./garfvdb_environment.yml
-conda activate fvdb_garfvdb
 ```
 
 ### Build and Install ƒVDB wheel
 
 ```bash
+# Build ƒVDB wheel in build environment
+conda activate fvdb_build
 ./build.sh wheel
+
+# Install ƒVDB wheel in garfvdb environment
+conda activate fvdb_garfvdb
 pip install ./dist/[fvdb wheel]
 ```
 

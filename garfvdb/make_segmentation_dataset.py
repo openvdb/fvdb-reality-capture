@@ -2,20 +2,55 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 import logging
+import sys
 from pathlib import Path
+from typing import Literal, Optional
 
+import h5py
 import torch
 import torch.utils.data
 import tqdm
 import tyro
-from datasets import ColmapDataset
 from sam2.automatic_mask_generator import SAM2AutomaticMaskGenerator
 from sam2.build_sam import build_sam2
 
 from fvdb import GaussianSplat3d
 
+sys.path.insert(0, str(Path(__file__).parent.parent))
+from datasets import SfmDataset
+from datasets.transforms import Compose, DownsampleImages, NormalizeScene
+
 logging.basicConfig(level=logging.WARN)
 logging.getLogger().name = "make_segmentation_dataset"
+
+
+def convert_pixel_level_keys_to_masks(pixel_level_keys: torch.Tensor) -> torch.Tensor:
+    # iterate over each mask ID
+    num_masks = torch.max(pixel_level_keys) + 1  # +1 because mask IDs start from 0
+    masks = []
+    for i in range(num_masks):
+        # Create binary mask where any pixel with value i becomes 1, others become 0
+        mask = torch.any(pixel_level_keys == i, dim=-1)  # Shape: (H, W)
+        masks.append(mask)
+    return torch.stack(masks)
+
+
+def get_garfield_sam_masks_for_image(image_path: str, sam_data_path: str) -> torch.Tensor:
+    sam_data = h5py.File(sam_data_path, "r")
+    image_path = Path(image_path)
+    image_name = image_path.name
+    dataset_name = "sam_fb_points_per_side_32_pred_iou_thresh_0.9_stability_score_thresh_0.9"
+    for cam_id in sam_data[dataset_name]["image_filenames"].keys():
+        sam_image_filename = Path(sam_data[dataset_name]["image_filenames"][cam_id][()].decode("utf-8"))
+
+        if sam_image_filename.name == image_name:
+            pixel_level_keys = torch.tensor(sam_data[dataset_name]["pixel_level_keys"][cam_id])
+            logging.debug(f"pixel_level_keys.shape {pixel_level_keys.shape}")
+            masks = convert_pixel_level_keys_to_masks(pixel_level_keys)
+            logging.debug(f"masks.shape {masks.shape}")
+            return masks
+
+    raise ValueError(f"Could not find {image_name} in {sam_data_path}")
 
 
 def get_sam2_checkpoint(ckpt_name="sam2.1_hiera_large.pt") -> Path:
@@ -35,15 +70,23 @@ def get_sam2_checkpoint(ckpt_name="sam2.1_hiera_large.pt") -> Path:
 
 
 @torch.inference_mode()
-def make_segmentation_dataset(model: GaussianSplat3d, dataset: ColmapDataset, max_scale: float = 2.0, device="cuda"):
+def make_segmentation_dataset(
+    model: GaussianSplat3d,
+    dataset: SfmDataset,
+    max_scale,
+    device="cuda",
+    garfield_sam_data_path: Optional[str] = None,
+):
     dataloader = torch.utils.data.DataLoader(dataset, batch_size=1, shuffle=False, num_workers=1)
 
-    sam2_checkpoint = get_sam2_checkpoint()
-    model_cfg = "configs/sam2.1/sam2.1_hiera_l"
-    sam2 = build_sam2(model_cfg, ckpt_path=sam2_checkpoint, device=device, apply_postprocessing=False)
-    sam2_mask_generator = SAM2AutomaticMaskGenerator(
-        sam2, points_per_side=40, pred_iou_thresh=0.80, stability_score_thresh=0.80
-    )
+    # If we're re-using the garfield sam data, we don't need to use SAM2
+    if garfield_sam_data_path is None:
+        sam2_checkpoint = get_sam2_checkpoint()
+        model_cfg = "configs/sam2.1/sam2.1_hiera_l"
+        sam2 = build_sam2(model_cfg, ckpt_path=sam2_checkpoint, device=device, apply_postprocessing=False)
+        sam2_mask_generator = SAM2AutomaticMaskGenerator(
+            sam2, points_per_side=40, pred_iou_thresh=0.80, stability_score_thresh=0.80
+        )
 
     all_scales = []
     all_pixel_to_mask_ids = []
@@ -54,13 +97,12 @@ def make_segmentation_dataset(model: GaussianSplat3d, dataset: ColmapDataset, ma
 
     for data in tqdm.tqdm(dataloader):
         img = data["image"].squeeze()  # [H, W, 3]
-        intrinsics = data["K"].to(device).squeeze()
-        cam_to_world = data["camtoworld"].to(device).squeeze()
+        intrinsics = data["projection"].to(device).squeeze()
+        cam_to_world = data["camera_to_world"].to(device).squeeze()
         world_to_cam = torch.linalg.inv(cam_to_world).contiguous()
 
         logging.debug("img h %s w %s" % (img.shape[0], img.shape[1]))
 
-        # Compute a depth image for the current camera as well as the 3D points that correspond to each pixel
         g_ids, _ = model.render_top_contributing_gaussian_ids(
             num_samples=1,
             world_to_camera_matrices=world_to_cam.unsqueeze(0),
@@ -82,35 +124,36 @@ def make_segmentation_dataset(model: GaussianSplat3d, dataset: ColmapDataset, ma
         if invalid_mask.any():
             logging.debug("Found %d invalid (-1) ids" % (invalid_mask.sum().item()))
 
-        world_pts = model.means[g_ids]  # [H, W, 3]
+        world_pts = model.means[g_ids].squeeze(2)  # [H, W, 3]
 
-        # Generate a set of masks for the current image using SAM2
-        with torch.autocast("cuda", dtype=torch.bfloat16):
-            sam_masks = sam2_mask_generator.generate(img.cpu().numpy())
-            sam_masks = sorted(sam_masks, key=(lambda x: x["area"]), reverse=True)
-            sam_masks = torch.stack([torch.from_numpy(m["segmentation"]) for m in sam_masks]).to(device)  # [M, H, W]
+        if garfield_sam_data_path is None:
+            # Generate a set of masks for the current image using SAM2
+            with torch.autocast("cuda", dtype=torch.bfloat16):
+                sam_masks = sam2_mask_generator.generate(img.cpu().numpy())
+                sam_masks = sorted(sam_masks, key=(lambda x: x["area"]), reverse=True)
+                sam_masks = torch.stack([torch.from_numpy(m["segmentation"]) for m in sam_masks]).to(
+                    device
+                )  # [M, H, W]
+            # Erode masks to remove noise at the boundary.
+            # We're going to compute the scale of each mask by taking the standard deviation of the 3D points
+            # within that mask, and the points at the boundary of masks are usually noisy.
+            eroded_masks = torch.conv2d(
+                sam_masks.unsqueeze(1).float(),
+                torch.full((3, 3), 1.0, device=device).view(1, 1, 3, 3),
+                padding=1,
+            )
+            eroded_masks = (eroded_masks >= 5).squeeze(1)  # [M, H, W]
+        else:
+            eroded_masks = get_garfield_sam_masks_for_image(data["image_path"][0], garfield_sam_data_path).to(device)
 
         # mask out any pixels with invalid gaussian ids in the sam_masks
-        sam_masks = sam_masks * (~invalid_mask.squeeze().unsqueeze(0))
-
-        logging.debug("data[image] shape and type %s %s" % (data["image"].shape, data["image"].dtype))
-
-        # Erode masks to remove noise at the boundary.
-        # We're going to compute the scale of each mask by taking the standard deviation of the 3D points
-        # within that mask, and the points at the boundary of masks are usually noisy.
-        eroded_masks = torch.conv2d(
-            sam_masks.unsqueeze(1).float(),
-            torch.full((3, 3), 1.0, device=device).view(1, 1, 3, 3),
-            padding=1,
-        )
-
-        eroded_masks = (eroded_masks >= 5).squeeze(1)  # [M, H, W]
+        eroded_masks = eroded_masks * (~invalid_mask.squeeze().unsqueeze(0))
 
         # Compute a 3D scale per mask which corresponds to the variance of the 3D points that fall within that mask
         # Filter out masks whose scale is too large since very scattered 3D points are likely noise
         logging.debug("world_pts " + str(world_pts.shape))
         logging.debug("scale " + str(world_pts[eroded_masks[1]].std(dim=0) * 2.0))
-        scales = torch.stack([(world_pts[mask].std(dim=0) * 2.0).norm() for mask in eroded_masks])  # [M]
+        scales = torch.stack([world_pts[mask].std(dim=0).norm() for mask in eroded_masks])  # [M]
         keep = scales < max_scale  # [M]
         eroded_masks = eroded_masks[keep]  # [M', H, W]
         scales = scales[keep]  # [M']
@@ -176,28 +219,55 @@ def make_segmentation_dataset(model: GaussianSplat3d, dataset: ColmapDataset, ma
     return all_scales, all_pixel_to_mask_ids, all_mask_cdfs, all_images, all_cam_to_world, all_intrinsics
 
 
-def main(checkpoint_path: str, colmap_path: str, output_path: str, data_scale_factor: int = 1, device: str = "cuda"):
+def main(
+    checkpoint_path: Path,
+    colmap_path: Path,
+    output_filepath: Path,
+    garfield_sam_data_path: Optional[str] = None,
+    data_scale_factor: int = 1,
+    normalization_type: Literal["pca", "none"] = "pca",
+    device: str = "cuda",
+):
+    """Generate segmentation dataset for Garfvdb training.
+
+    This script can operate in two modes:
+    1. Generate fresh segmentation data using SAM2 (when garfield_sam_data_path is None)
+    2. Convert existing segmentation data generated by Garfield by reading the HDF5 file
+
+    The output contains pixel-to-mask mappings, mask scales, and camera information that can be
+    used for contrastive learning during GARfVDB training.
+
+    Args:
+        checkpoint_path: Path to the 3D Gaussian Splatting checkpoint (.ply or .pth file)
+        colmap_path: Path to the COLMAP reconstruction directory containing cameras, images, and points3D
+        output_filepath: Path where the segmentation dataset will be saved (.pth file)
+        garfield_sam_data_path: Optional path to Garfield's HDF5 segmentation file. If provided,
+                               segmentation data will be read from this file instead of generating
+                               new masks with SAM2
+        data_scale_factor: Downsampling factor for input images (default: 1 = no downsampling)
+        device: Device to run computations on (default: "cuda")
+    """
     print("Loading checkpoint from ", checkpoint_path)
-    if checkpoint_path.endswith(".ply"):
-        means, quats, scales, opacities, sh = GaussianSplat3d.load_ply(checkpoint_path, device=device)
-        if torch.any(scales < 0.0):
-            # likely these scales are read from the old model format
-            print("Warning: Some scales are negative, converting to positive")
-            scales = torch.exp(scales)
-            opacities = torch.sigmoid(opacities)
-        gs3d = GaussianSplat3d(means, quats, scales, opacities, sh[0:1], sh[1:])
+    if checkpoint_path.suffix == ".ply":
+        gs3d = GaussianSplat3d.from_ply(checkpoint_path, device=device)
     else:
         checkpoint = torch.load(checkpoint_path, map_location=device)
         gs3d = GaussianSplat3d.from_state_dict(checkpoint["splats"])
 
-    dataset = ColmapDataset(colmap_path, test_every=1, split="test", image_downsample_factor=data_scale_factor)
+    transforms = [
+        NormalizeScene(normalization_type=normalization_type),
+        DownsampleImages(data_scale_factor),
+    ]
+    dataset = SfmDataset(
+        colmap_path, test_every=1, split="all", transform=Compose(*transforms)
+    )  # , image_downsample_factor=data_scale_factor)
 
     min = gs3d.means.min(dim=0)[0]
     max = gs3d.means.max(dim=0)[0]
     extents = torch.abs(max - min)
 
     scales, mask_ids, mask_cds, imgs, cam_to_worlds, intrinsics = make_segmentation_dataset(
-        gs3d, dataset, device=device, max_scale=extents.max().item()
+        gs3d, dataset, device=device, max_scale=extents.max().item(), garfield_sam_data_path=garfield_sam_data_path
     )
 
     torch.save(
@@ -209,7 +279,7 @@ def main(checkpoint_path: str, colmap_path: str, output_path: str, data_scale_fa
             "cam_to_worlds": cam_to_worlds,
             "intrinsics": intrinsics,
         },
-        output_path,
+        output_filepath,
     )
 
 
