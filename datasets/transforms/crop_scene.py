@@ -153,7 +153,7 @@ class CropScene(BaseTransform):
                     f"Inconsistent number of masks for images. Expected {len(masked_scene.images)}, found {output_cache.num_files}. "
                     f"Clearing cache and regenerating masks."
                 )
-            output_cache.clear_all()
+            output_cache.clear_current_folder()
             regenerate_cache = True
 
         for image_id in range(len(masked_scene.images)):
@@ -165,7 +165,7 @@ class CropScene(BaseTransform):
                 self._logger.info(
                     f"Mask for image {image_id} not found in cache. Clearing cache and regenerating masks."
                 )
-                output_cache.clear_all()
+                output_cache.clear_current_folder()
                 regenerate_cache = True
                 break
 
@@ -175,7 +175,7 @@ class CropScene(BaseTransform):
                     f"Output cache masks metadata does not match expected format. Expected '{self._mask_format}'."
                     f"Clearing the cache and regenerating masks."
                 )
-                output_cache.clear_all()
+                output_cache.clear_current_folder()
                 regenerate_cache = True
                 break
             new_image_metadata.append(
@@ -283,7 +283,7 @@ class CropScene(BaseTransform):
                     mask_to_save = existing_mask * inside_mask
 
                 cache_file_meta = output_cache.write_file(
-                    key=f"mask_{image_meta.image_id:0{num_zeropad}}",
+                    name=f"mask_{image_meta.image_id:0{num_zeropad}}",
                     data=mask_to_save,
                     data_type=self._mask_format,
                 )

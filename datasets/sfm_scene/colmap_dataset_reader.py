@@ -46,7 +46,7 @@ class ColmapDatasetReader(BaseDatasetReader):
         self._scene_manager.load_cameras()
         self._scene_manager.load_images()
         self._scene_manager.load_points3D()
-        self._cache = DatasetCache.get_cache(self._colmap_path / "_cache")
+        self._cache = DatasetCache.get_cache(self._colmap_path / "_cache", "sfm_dataset_cache", "Cache for SFM dataset")
 
         self._logger = logging.getLogger(f"{self.__class__.__module__}.{self.__class__.__name__}")
 
@@ -217,7 +217,7 @@ class ColmapDatasetReader(BaseDatasetReader):
                     point_indices.setdefault(image_id, []).append(point_idx)
             point_indices = {k: np.array(v).astype(np.int32) for k, v in point_indices.items()}
             self.cache.write_file(
-                key="visible_points_per_image",
+                name="visible_points_per_image",
                 data=point_indices,
                 metadata={
                     "num_points": len(self._scene_manager.points3D),

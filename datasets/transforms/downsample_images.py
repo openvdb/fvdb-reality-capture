@@ -117,7 +117,7 @@ class DownsampleImages(BaseTransform):
                     f"Expected {input_scene.num_images}, found {output_cache.num_files}. "
                     f"Clearing cache and regenerating downsampled images."
                 )
-            output_cache.clear_all()
+            output_cache.clear_current_folder()
             regenerate_cache = True
 
         for image_id in range(input_scene.num_images):
@@ -129,7 +129,7 @@ class DownsampleImages(BaseTransform):
                 self._logger.info(
                     f"Image {cache_image_filename} not found in the cache. " f"Clearing cache and regenerating."
                 )
-                output_cache.clear_all()
+                output_cache.clear_current_folder()
                 regenerate_cache = True
                 break
 
@@ -147,7 +147,7 @@ class DownsampleImages(BaseTransform):
                     f"Output cache image metadata does not match expected format. "
                     f"Clearing the cache and regenerating downsampled images."
                 )
-                output_cache.clear_all()
+                output_cache.clear_current_folder()
                 regenerate_cache = True
                 break
 
@@ -190,7 +190,7 @@ class DownsampleImages(BaseTransform):
                 # Save the rescaled image to the cache
                 cache_image_filename = f"image_{image_meta.image_id:0{num_zeropad}}"
                 cache_file_meta = output_cache.write_file(
-                    key=cache_image_filename,
+                    name=cache_image_filename,
                     data=rescaled_image,
                     data_type=self._image_type,
                     quality=self._rescaled_jpeg_quality,
