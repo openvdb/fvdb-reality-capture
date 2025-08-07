@@ -1372,8 +1372,9 @@ class SceneOptimizationRunner:
                     )
                     continue
                 if self._checkpoints_path is not None:
-                    self.logger.info(f"Saving checkpoint at epoch {epoch + 1} to {self._checkpoints_path}.")
-                    self.checkpoint.save(self._checkpoints_path / pathlib.Path(f"ckpt_{self._global_step:04d}.pt"))
+                    ckpt_path = self._checkpoints_path / pathlib.Path(f"ckpt_{self._global_step:04d}.pt")
+                    self.logger.info(f"Saving checkpoint at epoch {epoch + 1} to {ckpt_path}.")
+                    self.checkpoint.save(ckpt_path)
 
             # Run evaluation if we've reached a percentage of the total epochs specified in eval_at_percent
             if epoch in [(pct * self.config.max_epochs // 100) - 1 for pct in self.config.eval_at_percent]:
@@ -1388,11 +1389,19 @@ class SceneOptimizationRunner:
                 if self._viewer is not None:
                     self._viewer.resume_after_eval()
 
-        if self._checkpoints_path is not None:
-            self.logger.info("Training completed. Saving final checkpoint.")
+        if self._checkpoints_path is not None and 100 in self.config.save_at_percent:
+            # If we already saved the final checkpoint at 100%, create a symlink to it so there is always a ckpt_final.pt
+            final_ckpt_path = self._checkpoints_path / pathlib.Path(f"ckpt_{self._global_step:04d}.pt")
+            final_ckpt_symlink_path = self._checkpoints_path / pathlib.Path("ckpt_final.pt")
+            self.logger.info(
+                f"Training completed. Creating symlink {final_ckpt_symlink_path} pointing to final checkpoint at {final_ckpt_path}."
+            )
+            final_ckpt_symlink_path.symlink_to(final_ckpt_path.absolute())
+        elif self._checkpoints_path is not None and 100 not in self.config.save_at_percent:
+            final_ckpt_path = self._checkpoints_path / pathlib.Path(f"ckpt_{self._global_step:04d}.pt")
+            self.logger.info(f"Training completed. Saving final checkpoint at {final_ckpt_path}.")
             # Save the final checkpoint after training is complete
             self.checkpoint.save(self._checkpoints_path / pathlib.Path(f"ckpt_final.pt"))
-            self.logger.info(f"Final checkpoint saved to {self._checkpoints_path / pathlib.Path('ckpt_final.pt')}.")
         else:
             self.logger.info("Training completed. No checkpoints path specified, not saving final checkpoint.")
 
