@@ -16,7 +16,9 @@ def main(
     device: str | torch.device = "cuda",
 ):
     """
-    Run evaluation on a Gaussian splat scene
+    Run evaluation on a Gaussian splat scene. This will render each image in the validation set,
+    compute statistics (PSNR, SSIM, LPIPS), and save the rendered images and ground truth validation
+    images to disk.
 
     Args:
         checkpoint_path (pathlib.Path): Path to the checkpoint file containing the Gaussian splat model.
