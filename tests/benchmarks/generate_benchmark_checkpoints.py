@@ -74,12 +74,12 @@ def get_run_name(results_path: pathlib.Path) -> str:
     return run_name
 
 
-def main(run_name: str | None = None):
+def main(run_name: str | None = None, config_path: str = "benchmark_config.yaml"):
 
     logging.basicConfig(level=logging.INFO, format="%(levelname)s : %(message)s")
 
     # Load configuration
-    config = load_config()
+    config = load_config(config_path)
 
     # Get the current git commit hash of the repository
     commit_hash = subprocess.check_output(["git", "rev-parse", "HEAD"]).decode("utf-8").strip()
@@ -97,6 +97,9 @@ def main(run_name: str | None = None):
     # Override config with values from YAML
     for key, value in config["training"]["config"].items():
         if hasattr(base_config, key):
+            # Handle boolean conversion explicitly
+            if isinstance(value, str) and value.lower() in ["true", "false"]:
+                value = value.lower() == "true"
             setattr(base_config, key, value)
 
     # Set save percentages
@@ -124,11 +127,9 @@ def main(run_name: str | None = None):
         if train:
             run_name = get_run_name(dataset_results_path)
 
-            # Start training
-            logger.info(f"Starting training for {dataset_name}...")
-            start_time = time.time()
-
-            SceneOptimizationRunner.new_run(
+            # Create the runner (this sets up datasets/transforms/cache) without including it in training time
+            logger.info(f"Preparing training run for {dataset_name} (initializing datasets/transforms/cache)...")
+            runner = SceneOptimizationRunner.new_run(
                 config=base_config,
                 dataset_path=dataset_path,
                 run_name=run_name,
@@ -144,7 +145,12 @@ def main(run_name: str | None = None):
                 log_images_to_tensorboard=training_params["log_images_to_tensorboard"],
                 save_results=training_params["save_results"],
                 save_eval_images=training_params["save_eval_images"],
-            ).train()
+            )
+
+            # Start training-only timer
+            logger.info(f"Starting training for {dataset_name}...")
+            start_time = time.time()
+            runner.train()
             training_time = time.time() - start_time
             logger.info(f"Training completed for {dataset_name} in {training_time:.2f} seconds")
         else:
@@ -182,7 +188,7 @@ def main(run_name: str | None = None):
             dataset_config["checkpoint_paths"] = generated_checkpoints[dataset_name]["checkpoint_paths"]
 
     # Save updated configuration
-    save_config(config)
+    save_config(config, config_path)
     logger.info(f"Updated configuration saved to benchmark_config.yaml")
     logger.info("Checkpoint paths have been added to the configuration file.")
 
@@ -193,6 +199,11 @@ if __name__ == "__main__":
     if __name__ == "__main__":
         parser = argparse.ArgumentParser(description="Generate Gaussian splatting checkpoints for the benchmark.")
         parser.add_argument(
+            "--config",
+            default="benchmark_config.yaml",
+            help="Path to the benchmark configuration file (default: benchmark_config.yaml)",
+        )
+        parser.add_argument(
             "--find-checkpoints-run-name",
             help=(
                 "Skip training and look for checkpoints in the specified run directory name, "
@@ -201,4 +212,4 @@ if __name__ == "__main__":
         )
 
         args = parser.parse_args()
-        main(run_name=args.find_checkpoints_run_name)
+        main(run_name=args.find_checkpoints_run_name, config_path=args.config)

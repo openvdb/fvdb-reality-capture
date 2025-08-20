@@ -1,0 +1,58 @@
+name: benchmark
+channels:
+  - conda-forge
+  - nodefaults
+dependencies:
+  - blas=*=mkl
+  - ca-certificates
+  - certifi
+  - cuda-version=12.8
+  - cuda-command-line-tools
+  - cuda-compiler
+  - cuda-cudart-dev
+  - cuda-nvrtc-dev
+  - cuda-nvtx-dev
+  - cxx-compiler
+  - gcc_linux-64=11
+  - gxx_linux-64=11
+  - libcublas-dev
+  - libcusolver-dev
+  - libcusparse-dev
+  - make
+  - ninja
+  - cmake
+  - scikit-build-core
+  - setuptools>=68.2.2
+  - git
+  - gitpython
+  - imageio
+  - ipython
+  - libpng
+  - linkify-it-py
+  - matplotlib
+  - myst-parser
+  - numpy
+  - openssl
+  - pandas
+  - parameterized
+  - pip>=23.3.1
+  - polyscope
+  # - py-opencv=4.10[build=headless*]
+  - pytest-benchmark
+  - python=3.11
+  # pytorch-gpu will be installed via pip from PyTorch's official index
+  - rich
+  - scikit-learn
+  - sphinx_rtd_theme
+  - sphinx>=7.0.0
+  - tensorboard
+  - tqdm
+  - zlib
+  ## 3dgs
+  - pyproj
+  - scikit-image
+  # torchmetrics removed - will install via pip after PyTorch
+#  - torchvision=0.19
+  - viser
+  - pyyaml
+  # Note: PyTorch 2.8 will be installed separately in Dockerfile, then pip dependencies that need it

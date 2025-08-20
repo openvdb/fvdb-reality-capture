@@ -1,0 +1,97 @@
+# Use condaforge/miniforge3 base image
+FROM condaforge/miniforge3:24.11.3-2
+
+# Set environment variables
+ENV DEBIAN_FRONTEND=noninteractive
+ENV CONDA_AUTO_UPDATE_CONDA=false
+ENV CONDA_OVERRIDE_CUDA=12.8
+ENV PATH="/opt/conda/bin:$PATH"
+
+# Install system dependencies for building
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    unzip \
+    # cmake \
+    # ninja-build \
+    # git \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy conda environment file
+COPY docker/benchmark_environment_blackwell.yml /tmp/benchmark_environment_blackwell.yml
+
+# Create conda environment
+RUN conda env create -f /tmp/benchmark_environment_blackwell.yml
+
+# Set default conda environment
+ENV CONDA_DEFAULT_ENV=benchmark
+ENV PATH="/opt/conda/envs/benchmark/bin:$PATH"
+
+# Set CUDA environment variables for compilation
+ENV CUDA_HOME="/opt/conda/envs/benchmark"
+ENV CUDA_PATH="/opt/conda/envs/benchmark"
+ENV CPATH="/opt/conda/envs/benchmark/targets/x86_64-linux/include:/opt/conda/envs/benchmark/lib/python3.11/site-packages/nvidia/cudnn/include:$CPATH"
+ENV CUDNN_INCLUDE_DIR="/opt/conda/envs/benchmark/lib/python3.11/site-packages/nvidia/cudnn/include"
+ENV CUDNN_LIBRARY_DIR="/opt/conda/envs/benchmark/lib/python3.11/site-packages/nvidia/cudnn/lib"
+# Put PyTorch and cuDNN lib paths first to resolve conflicts
+ENV LD_LIBRARY_PATH="/opt/conda/envs/benchmark/lib/python3.11/site-packages/torch/lib:/opt/conda/envs/benchmark/lib/python3.11/site-packages/nvidia/cudnn/lib:/opt/conda/envs/benchmark/targets/x86_64-linux/lib:/opt/conda/envs/benchmark/lib:$LD_LIBRARY_PATH"
+ENV LIBRARY_PATH="/opt/conda/envs/benchmark/lib/python3.11/site-packages/torch/lib:/opt/conda/envs/benchmark/lib/python3.11/site-packages/nvidia/cudnn/lib:/opt/conda/envs/benchmark/targets/x86_64-linux/lib:/opt/conda/envs/benchmark/lib:$LIBRARY_PATH"
+
+# Set build parallelism to use 16 threads
+ENV CMAKE_BUILD_PARALLEL_LEVEL=20
+ENV MAKEFLAGS="-j20"
+
+# compile for Blackwell architecture
+ENV TORCH_CUDA_ARCH_LIST=12.0
+
+# Install PyTorch 2.8 with CUDA 12.8 from PyTorch's official index
+RUN conda run -n benchmark pip install torch torchvision --index-url https://download.pytorch.org/whl/cu128
+
+# Create symlinks for PyTorch libraries so CMake can find them
+RUN ln -sf /opt/conda/envs/benchmark/lib/python3.11/site-packages/torch/lib/libc10.so /opt/conda/envs/benchmark/lib/libc10.so && \
+    ln -sf /opt/conda/envs/benchmark/lib/python3.11/site-packages/torch/lib/libc10_cuda.so /opt/conda/envs/benchmark/lib/libc10_cuda.so && \
+    ln -sf /opt/conda/envs/benchmark/lib/python3.11/site-packages/torch/lib/libtorch.so /opt/conda/envs/benchmark/lib/libtorch.so && \
+    ln -sf /opt/conda/envs/benchmark/lib/python3.11/site-packages/torch/lib/libtorch_cuda.so /opt/conda/envs/benchmark/lib/libtorch_cuda.so && \
+    ln -sf /opt/conda/envs/benchmark/lib/python3.11/site-packages/nvidia/cudnn/lib/libcudnn.so.9 /opt/conda/envs/benchmark/lib/libcudnn.so
+
+# Now install pip dependencies that need PyTorch
+RUN conda run -n benchmark pip install \
+    torchmetrics \
+    pytest-markdown-docs \
+    point-cloud-utils \
+    oiio-static-python \
+    dlnr_lite \
+    einops \
+    splines \
+    "gsplat @ git+https://github.com/nerfstudio-project/gsplat.git" \
+    "nerfview @ git+https://github.com/nerfstudio-project/nerfview@4538024fe0d15fd1a0e4d760f3695fc44ca72787" \
+    "pycolmap @ git+https://github.com/rmbrualla/pycolmap@cc7ea4b7301720ac29287dbe450952511b32125e"
+
+# Install fused-ssim with explicit CUDA architecture support for Blackwell
+# Export TORCH_CUDA_ARCH_LIST in the shell environment before running pip
+RUN conda run -n benchmark pip cache purge && \
+    conda run -n benchmark pip uninstall -y fused-ssim || true && \
+    conda run -n benchmark bash -c "export TORCH_CUDA_ARCH_LIST=12.0 && pip install 'fused-ssim @ git+https://github.com/rahul-goel/fused-ssim@328dc9836f513d00c4b5bc38fe30478b4435cbb5' --no-cache-dir"
+
+# For some reason conda is silently skipping scikit-build-core and cmake installation
+# Install missing dependencies that might not be installed due to conflicts
+RUN conda run -n benchmark conda install -c conda-forge scikit-build-core cmake -y
+
+# Patch pycolmap after installation
+RUN sed -i 's/INVALID_POINT3D = np.uint64(-1)/INVALID_POINT3D = np.uint64(2**64-1)/' /opt/conda/envs/benchmark/lib/python3.11/site-packages/pycolmap/scene_manager.py
+
+# Initialize conda
+RUN conda init
+RUN echo "conda activate benchmark" >> ~/.bashrc
+
+# Set working directory
+WORKDIR /workspace
+
+# Clone GSplat repository
+RUN git clone https://github.com/nerfstudio-project/gsplat.git gsplat
+
+# Create directories for results
+RUN mkdir -p results/benchmark/summary
+
+
+# Expose ports for visualization
+EXPOSE 8080 8081

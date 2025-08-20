@@ -1,0 +1,43 @@
+services:
+  benchmark:
+    build:
+      context: ..
+      dockerfile: docker/${DOCKERFILE:-Dockerfile}
+    container_name: ${CONTAINER_NAME:-fvdb-benchmark}
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              device_ids: ["0"]
+              capabilities: [gpu]
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=0
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+      - TORCH_CUDA_ARCH_LIST=${TORCH_CUDA_ARCH_LIST:-}
+      - CMAKE_BUILD_PARALLEL_LEVEL=${CMAKE_BUILD_PARALLEL_LEVEL:-18}
+    volumes:
+      - ../../../../data:/workspace/data
+      - ../results:/workspace/results
+      - ../../../../../../../:/workspace/openvdb
+      - ..:/workspace/benchmark
+    ports:
+      - "8080:8080"  # FVDB viewer
+      - "8081:8081"  # GSplat viewer
+    working_dir: /workspace/benchmark
+    stdin_open: true
+    tty: true
+    shm_size: 2gb
+    command: >
+      bash -c "
+        set -e
+        git config --global --add safe.directory /workspace/openvdb &&
+        echo 'Building FVDB...' &&
+        cd /workspace/openvdb/fvdb &&
+        source /opt/conda/etc/profile.d/conda.sh &&
+        conda activate benchmark &&
+        echo 'Conda environment activated, starting build...' &&
+        ./build.sh install verbose &&
+        echo 'FVDB build complete!' &&
+        tail -f /dev/null
+      "

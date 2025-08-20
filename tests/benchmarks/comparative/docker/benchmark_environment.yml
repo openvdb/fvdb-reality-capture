@@ -1,0 +1,72 @@
+name: benchmark
+channels:
+  - conda-forge
+  - nodefaults
+dependencies:
+  - blas=*=mkl
+  - ca-certificates
+  - certifi
+  - cuda-version=12.0
+  - cuda-command-line-tools
+  - cuda-compiler
+  - cuda-cudart-dev
+  - cuda-nvrtc-dev
+  - cuda-nvtx-dev
+  - cxx-compiler
+  - gcc_linux-64=11
+  - gxx_linux-64=11
+  - libcublas-dev
+  - libcusolver-dev
+  - libcusparse-dev
+  - make
+  - ninja
+  - cmake
+  - scikit-build-core
+  - setuptools>=68.2.2
+  - git
+  - gitpython
+  - imageio
+  - ipython
+  - libpng
+  - linkify-it-py
+  - matplotlib
+  - myst-parser
+  - numpy
+  - openssl
+  - pandas
+  - parameterized
+  - pip>=23.3.1
+  - polyscope
+  - py-opencv=4.10[build=headless*]
+  - pytest-benchmark
+  - python=3.11
+  - pytorch-gpu=2.4.1[build=cuda120*]
+  - rich
+  - scikit-learn
+  - sphinx_rtd_theme
+  - sphinx>=7.0.0
+  - tensorboard
+  - tqdm
+  - zlib
+  ## 3dgs
+  - pyproj
+  - scikit-image
+  - torchmetrics
+  - torchvision=0.19
+  - viser
+  - pyyaml
+  - pip:
+    - gsplat
+    - pytest-markdown-docs
+    - point-cloud-utils
+    - https://nksr.s3.ap-northeast-1.amazonaws.com/dev-whls/pt24cu120/torchsparse-2.1.0-cp311-cp311-linux_x86_64.whl
+    - https://nksr.s3.ap-northeast-1.amazonaws.com/dev-whls/pt24cu120/torchsparse_20-2.0.0b0-cp311-cp311-linux_x86_64.whl
+    - https://nksr.s3.ap-northeast-1.amazonaws.com/dev-whls/pt24cu120/torch_scatter-2.1.2-cp311-cp311-linux_x86_64.whl
+    ## 3dgs tests
+    - oiio-static-python
+    - dlnr_lite
+    - einops
+    - splines
+    - nerfview @ git+https://github.com/nerfstudio-project/nerfview@4538024fe0d15fd1a0e4d760f3695fc44ca72787
+    - fused-ssim @ git+https://github.com/rahul-goel/fused-ssim@328dc9836f513d00c4b5bc38fe30478b4435cbb5
+    - pycolmap @ git+https://github.com/rmbrualla/pycolmap@cc7ea4b7301720ac29287dbe450952511b32125e

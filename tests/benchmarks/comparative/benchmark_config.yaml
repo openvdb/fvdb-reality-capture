@@ -1,0 +1,70 @@
+# Path configuration for different environments
+paths:
+  # Base paths for different environments
+  fvdb_base: ../openvdb/fvdb/projects/3d_gaussian_splatting  # Relative path from benchmark directory
+  gsplat_base: ../gsplat/examples  # Relative path from benchmark directory
+  data_base: /workspace/data  # Docker container path for data
+
+datasets:
+- name: garden
+  path: data/360_v2/garden
+- name: bicycle
+  path: data/360_v2/bicycle
+- name: bonsai
+  path: data/360_v2/bonsai
+- name: counter
+  path: data/360_v2/counter
+- name: kitchen
+  path: data/360_v2/kitchen
+- name: room
+  path: data/360_v2/room
+- name: stump
+  path: data/360_v2/stump
+results:
+  base_path: results/benchmark
+training:
+  config:
+    antialias: false
+    batch_size: 1
+    eps_2d: 0.3
+    far_plane: 10000000000.0
+    ignore_masks: false
+    increase_sh_degree_every_epoch: 5
+    initial_covariance_scale: 1.0
+    initial_opacity: 0.1
+    lpips_net: alex
+    max_epochs: 200
+    min_radius_2d: 0.0
+    near_plane: 0.01
+    opacity_reg: 0.0
+    optimize_camera_poses: false
+    pose_opt_lr: 1.0e-05
+    pose_opt_lr_decay: 1.0
+    pose_opt_reg: 1.0e-06
+    random_bkgd: false
+    refine_every_epoch: 0.75
+    refine_start_epoch: 3
+    refine_stop_epoch: 100
+    refine_using_scale2d_stop_epoch: 0
+    remove_gaussians_outside_scene_bbox: false
+    reset_opacities_every_epoch: 16
+    scale_reg: 0.0
+    sh_degree: 3
+    ssim_lambda: 0.2
+    tile_size: 16
+    eval_at_percent:
+      - 100
+  save_at_percent:
+  - 100
+training_params:
+  crop_bbox: null
+  device: cuda
+  disable_viewer: true
+  image_downsample_factor: 4
+  log_images_to_tensorboard: false
+  log_tensorboard_every: 100
+  normalization_type: pca
+  points_percentile_filter: 0.0
+  save_eval_images: false
+  save_results: true
+  use_every_n_as_val: 8
