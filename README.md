@@ -16,9 +16,9 @@
     ./download_example-data.py
     ```
 
-4. Run the `train_colmap.py` example
+4. Run the `train.py` example
     ```bash
-    python train_colmap.py --data-path data/360_v2/[scene_name]
+    python train.py --dataset-path data/360_v2/[scene_name]
     ```
 
 5. View the results in a browser at `http://localhost:8080`
