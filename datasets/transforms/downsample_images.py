@@ -81,22 +81,14 @@ class DownsampleImages(BaseTransform):
             cache_prefix, description=f"Rescaled images by a factor of {self._image_downsample_factor}"
         )
 
-        # We'll just use the first camera's dimensions to determine the rescaled image size.
-        # This assumes all cameras have the same dimensions, which is typical in many datasets.
-        # If this assumption does not hold, you may need to adjust this logic.
-        rescaled_img_w, rescaled_img_h = None, None
-        for cam_id, cam_meta in input_scene.cameras.items():
-            if rescaled_img_w is None and rescaled_img_h is None:
-                rescaled_img_w = int(cam_meta.width / self._image_downsample_factor)
-                rescaled_img_h = int(cam_meta.height / self._image_downsample_factor)
-                break
         new_camera_metadata = {}
         for cam_id, cam_meta in input_scene.cameras.items():
-            new_camera_metadata[cam_id] = cam_meta.resize(rescaled_img_w, rescaled_img_h)
+            rescaled_cam_w = int(cam_meta.width / self._image_downsample_factor)
+            rescaled_cam_h = int(cam_meta.height / self._image_downsample_factor)
+            new_camera_metadata[cam_id] = cam_meta.resize(rescaled_cam_w, rescaled_cam_h)
 
         self._logger.info(
-            f"Rescaling images to {rescaled_img_w} x {rescaled_img_h} "
-            f"using downsample factor {self._image_downsample_factor}, "
+            f"Rescaling images using downsample factor {self._image_downsample_factor}, "
             f"sampling mode {self._rescale_sampling_mode}, and quality {self._rescaled_jpeg_quality}."
         )
 
@@ -175,9 +167,10 @@ class DownsampleImages(BaseTransform):
                 full_res_image_path = image_meta.image_path
                 full_res_img = imageio.imread(full_res_image_path)
                 img_h, img_w = full_res_img.shape[:2]
-                if rescaled_img_h is None or rescaled_img_w is None:
-                    rescaled_img_h = int(img_h / self._image_downsample_factor)
-                    rescaled_img_w = int(img_w / self._image_downsample_factor)
+                rescaled_img_h = int(img_h / self._image_downsample_factor)
+                rescaled_img_w = int(img_w / self._image_downsample_factor)
+                assert rescaled_img_w == new_camera_metadata[image_meta.camera_id].width, "Got mismatched widths!"
+                assert rescaled_img_h == new_camera_metadata[image_meta.camera_id].height, "Got mismatched heights!"
                 pbar.set_description(
                     f"Rescaling {image_filename} from {img_w} x {img_h} to {rescaled_img_w} x {rescaled_img_h}"
                 )
