@@ -10,10 +10,22 @@ ENV PATH="/opt/conda/bin:$PATH"
 # Install system dependencies for building
 RUN apt-get update && apt-get install -y \
     build-essential \
+    wget \
+    gnupg2 \
     # cmake \
     # ninja-build \
     # git \
     && rm -rf /var/lib/apt/lists/*
+
+# Add NVIDIA repository for latest Nsight Systems
+RUN wget -qO - https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2404/x86_64/3bf863cc.pub | apt-key add - && \
+    echo "deb https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2404/x86_64/ /" > /etc/apt/sources.list.d/cuda.list
+
+# Install latest Nsight Systems and create symlink
+RUN apt-get update && apt-get install -y \
+    nsight-systems-2025.3.2 \
+    && rm -rf /var/lib/apt/lists/* \
+    && ln -sf /opt/nvidia/nsight-systems/2025.3.2/bin/nsys /usr/local/bin/nsys
 
 # Copy conda environment file
 COPY docker/benchmark_environment.yml /tmp/benchmark_environment.yml

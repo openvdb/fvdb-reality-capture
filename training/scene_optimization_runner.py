@@ -50,6 +50,8 @@ class Config:
 
     # Number of training epochs -- i.e. number of times we will visit each image in the dataset
     max_epochs: int = 200
+    # Optional maximum number of training steps (overrides max_epochs * dataset_size if set)
+    max_steps: int | None = None
     # Percentage of total epochs at which we perform evaluation on the validation set. i.e. 10 means perform evaluation after 10% of the epochs.
     eval_at_percent: List[int] = field(default_factory=lambda: [10, 20, 30, 40, 50, 75, 100])
     # Percentage of total epochs at which we save the model checkpoint. i.e. 10 means save a checkpoint after 10% of the epochs.
@@ -1146,7 +1148,10 @@ class SceneOptimizationRunner:
             pin_memory=True,
         )
 
-        total_steps: int = int(self.config.max_epochs * len(self.training_dataset))
+        # Calculate total steps, allowing max_steps to override the computed value
+        computed_total_steps: int = int(self.config.max_epochs * len(self.training_dataset))
+        total_steps: int = self.config.max_steps if self.config.max_steps is not None else computed_total_steps
+
         refine_start_step: int = int(self.config.refine_start_epoch * len(self.training_dataset))
         refine_stop_step: int = int(self.config.refine_stop_epoch * len(self.training_dataset))
         refine_every_step: int = int(self.config.refine_every_epoch * len(self.training_dataset))
@@ -1160,7 +1165,12 @@ class SceneOptimizationRunner:
         pose_opt_stop_step: int = int(self.config.pose_opt_stop_epoch * len(self.training_dataset))
 
         # Progress bar to track training progress
+        if self.config.max_steps is not None:
+            print(f"Using max_steps={self.config.max_steps} (overriding computed {computed_total_steps} steps)")
         pbar = tqdm.tqdm(range(0, total_steps), unit="imgs", desc="Training")
+
+        # Flag to break out of outer epoch loop when max_steps is reached
+        reached_max_steps = False
 
         # Zero out gradients before training in case we resume training
         self.optimizer.zero_grad()
@@ -1363,6 +1373,15 @@ class SceneOptimizationRunner:
 
                 pbar.update(batch_size)
                 self._global_step = pbar.n
+
+                # Check if we've reached max_steps and break out of training
+                if self.config.max_steps is not None and self._global_step >= self.config.max_steps:
+                    reached_max_steps = True
+                    break
+
+            # Check if we've reached max_steps and break out of outer epoch loop
+            if reached_max_steps:
+                break
 
             # Save the model if we've reached a percentage of the total epochs specified in save_at_percent
             if epoch in [(pct * self.config.max_epochs // 100) - 1 for pct in self.config.save_at_percent]:
