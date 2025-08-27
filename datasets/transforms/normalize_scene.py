@@ -209,7 +209,7 @@ class NormalizeScene(BaseTransform):
             self._logger.warning("Returning the input scene unchanged.")
             return input_scene, input_cache
 
-        return input_scene.transform(normalization_transform), input_cache
+        return input_scene.apply_transformation_matrix(normalization_transform), input_cache
 
     def _compute_normalization_transform(self, input_scene: SfmScene) -> np.ndarray | None:
         """

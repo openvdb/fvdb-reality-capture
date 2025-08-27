@@ -8,8 +8,6 @@ from foundation_models.dlnr import DLNRModel
 
 from fvdb import GaussianSplat3d, Grid
 
-from ..checkpoint import Checkpoint
-
 
 def debug_plot(
     disparity_l2r: torch.Tensor,
@@ -280,13 +278,15 @@ def get_images_depth_and_weights(
 
 
 @torch.no_grad()
-def extract_tsdf_from_checkpoint_dlnr(
-    checkpoint: Checkpoint,
+def tsdf_from_splats_dlnr(
+    model: GaussianSplat3d,
+    camera_to_world_matrices: torch.Tensor,
+    projection_matrices: torch.Tensor,
+    image_sizes: torch.Tensor,
     truncation_margin: float,
     baseline: float = 0.1,
     near: float = 0.1,
     far: float = 1e10,
-    device: torch.device | str = "cuda",
     dtype: torch.dtype = torch.float16,
     feature_dtype: torch.dtype = torch.uint8,
     dlnr_backbone: str = "middleburry",
@@ -296,12 +296,17 @@ def extract_tsdf_from_checkpoint_dlnr(
     Extract a TSDF grid from a checkpoint using DLNR for depth estimation.
 
     Args:
-        checkpoint (Checkpoint): The checkpoint containing the Gaussian splat model and camera parameters.
+        model (GaussianSplat3d): The Gaussian splat model to extract a mesh from
+        camera_to_world_matrices (torch.Tensor): A (C, 4, 4)-shaped Tensor containing the camera to world
+            matrices to render depth images from for mesh extraction where C is the number of camera views.
+        projection_matrices (torch.Tensor): A (C, 3, 3)-shaped Tensor containing the perspective projection matrices
+            used to render images for mesh extraction where C is the number of camera views.
+        image_sizes (torch.Tensor): A (C, 2)-shaped Tensor containing the width and height of each image to extract
+            from the Gaussian splat where C is the number of camera views.
         truncation_margin (float): Margin for truncating the TSDF, in world units.
         baseline (float): Baseline distance for stereo depth estimation, in world units.
         near (float): Near plane distance below which to ignore depth samples, in world units.
         far (float): Far plane distance above which to ignore depth samples, in world units.
-        device (torch.device | str): Device to use for computation (default is "cuda").
         dtype (torch.dtype): Data type for the TSDF grid (default is torch.float16).
         feature_dtype (torch.dtype): Data type for the color features (default is torch.uint8).
         dlnr_backbone (str): Backbone to use for the DLNR model, either "middleburry" or "sceneflow".
@@ -312,21 +317,11 @@ def extract_tsdf_from_checkpoint_dlnr(
         tsdf (torch.Tensor): The TSDF values in the grid.
         colors (torch.Tensor): The color features in the grid.
     """
-    model: GaussianSplat3d = checkpoint.splats.to(device)
 
     if model.num_channels != 3:
         raise ValueError(f"Expected model with 3 channels, got {model.num_channels} channels.")
 
-    camera_to_world_matrices = checkpoint.camera_to_world_matrices
-    projection_matrices = checkpoint.projection_matrices
-    image_sizes = checkpoint.image_sizes
-
-    if camera_to_world_matrices is None:
-        raise ValueError("Camera to world matrices are not available in the checkpoint.")
-    if projection_matrices is None:
-        raise ValueError("Projection matrices are not available in the checkpoint.")
-    if image_sizes is None:
-        raise ValueError("Image sizes are not available in the checkpoint.")
+    device = model.device
 
     voxel_size = truncation_margin / 2.0
     accum_grid = Grid.from_dense(dense_dims=1, ijk_min=0, voxel_size=voxel_size, origin=0.0, device=model.device)

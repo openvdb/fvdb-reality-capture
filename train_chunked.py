@@ -11,17 +11,22 @@ from typing import Literal, Sequence
 
 import numpy as np
 import torch
+import tqdm
 import tyro
 from datasets import SfmDataset
+from datasets.dataset_cache import DatasetCache
+from datasets.sfm_scene import SfmScene, load_colmap_scene
 from datasets.transforms import (
     Compose,
     DownsampleImages,
     NormalizeScene,
     PercentileFilterPoints,
 )
-from training import Checkpoint, Config, SceneOptimizationRunner, merge_checkpoints
+from training import Config, SceneOptimizationRunner
 from training.utils import make_unique_name_directory_based_on_time
 from viewer import Viewer
+
+from fvdb import GaussianSplat3d
 
 
 def _run_on_chunk(
@@ -196,7 +201,7 @@ def main(
 
     logger = logging.getLogger("train_chunked")
 
-    transforms = [
+    transform = Compose(
         NormalizeScene(normalization_type=normalization_type),
         PercentileFilterPoints(
             percentile_min=np.full((3,), points_percentile_filter),
@@ -205,20 +210,19 @@ def main(
         DownsampleImages(
             image_downsample_factor=image_downsample_factor,
         ),
-    ]
-    full_train_dataset = SfmDataset(
-        dataset_path=dataset_path,
-        transform=Compose(*transforms),
-        split="train",
-        test_every=use_every_n_as_val,
     )
 
-    full_val_dataset = SfmDataset(
-        dataset_path=dataset_path,
-        transform=Compose(*transforms),
-        split="test",
-        test_every=use_every_n_as_val,
-    )
+    sfm_scene: SfmScene
+    cache: DatasetCache
+    sfm_scene, cache = load_colmap_scene(dataset_path=dataset_path)
+    sfm_scene, cache = transform(sfm_scene, cache)
+
+    indices = np.arange(sfm_scene.num_images)
+    mask = np.ones(len(indices), dtype=bool)
+    mask[::use_every_n_as_val] = False
+    train_indices = indices[mask]
+
+    full_train_dataset = SfmDataset(sfm_scene, train_indices)
 
     scene_points = full_train_dataset.points
 
@@ -266,6 +270,7 @@ def main(
     #  pool = Pool(ngpus)
     # for _ in pool.imap_unordered(partial_function, clusters):
     #    pass
+
     chunk_runner_partial = partial(
         _run_on_chunk,
         chunk_bboxes=crops_bboxes,
@@ -289,27 +294,34 @@ def main(
         chunk_runner_partial(chunk_id)
         logger.info(f"Finished training for chunk {chunk_id + 1}/{num_chunks}")
 
-    logger.info("All chunks have been processed. Merging checkpoints...")
+    logger.info("All chunks have been processed. Merging splats...")
     run_names = [f"{chunk_run_name}_chunk_{i:04d}" for i in range(num_chunks)]
-    checkpoints = []
-    for chunk_id in range(num_chunks):
-        checkpoint_path = chunk_results_path / run_names[chunk_id] / "checkpoints" / "ckpt_final.pt"
-        if not checkpoint_path.exists():
-            raise FileNotFoundError(f"Checkpoint file {checkpoint_path} does not exist.")
-        logger.info(f"Loading checkpoint for chunk {chunk_id + 1}/{num_chunks} from {checkpoint_path}")
-        checkpoints.append(Checkpoint.load(checkpoint_path, device=device))
+    splats = []
+    for chunk_id in tqdm.tqdm(range(num_chunks)):
+        ply_path = chunk_results_path / run_names[chunk_id] / "checkpoints" / "ckpt_final.ply"
+        if not ply_path.exists():
+            raise FileNotFoundError(f"PLY file {ply_path} does not exist.")
+        logger.info(f"Loading PLY for chunk {chunk_id + 1}/{num_chunks} from {ply_path}")
+        splat_chunk, _ = GaussianSplat3d.from_ply(ply_path, device=device)
+        splats.append(splat_chunk)
 
-    logger.info("All checkpoints loaded. Merging checkpoints...")
-    out_checkpoint = merge_checkpoints(
-        checkpoints,
-        "merged",
-        config=cfg,
-        train_dataset=full_train_dataset,
-        eval_dataset=full_val_dataset,
-    )
-    logger.info(f"Scene scale is {out_checkpoint.scene_scale}")
-    logger.info(f"Merging completed. Saving merged checkpoint to {chunk_results_path / 'merged_checkpoint.pt'}")
-    out_checkpoint.save(chunk_results_path / "merged_checkpoint.pt")
+    logger.info("All PLY files loaded. Merging...")
+    merged_splats = GaussianSplat3d.cat(splats)
+    logger.info(f"Merging completed. Saving merged checkpoint to {chunk_results_path / 'merged.ply'}")
+
+    out_ply_path = chunk_results_path / "merged.ply"
+    normalization_transform = torch.from_numpy(full_train_dataset.sfm_scene.transformation_matrix).to(torch.float32)
+    training_camera_to_world_matrices = torch.from_numpy(full_train_dataset.camera_to_world_matrices).to(torch.float32)
+    training_projection_matrices = torch.from_numpy(full_train_dataset.projection_matrices).to(torch.float32)
+    image_sizes = torch.from_numpy(full_train_dataset.image_sizes).to(torch.int32)
+
+    training_metadata = {
+        "normalization_transform": normalization_transform,
+        "camera_to_world_matrices": training_camera_to_world_matrices,
+        "projection_matrices": training_projection_matrices,
+        "image_sizes": image_sizes,
+    }
+    merged_splats.save_ply(out_ply_path, training_metadata)
 
 
 if __name__ == "__main__":

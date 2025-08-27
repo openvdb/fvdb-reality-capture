@@ -19,6 +19,10 @@ class SfmScene:
         - points: An Nx3 array of 3D points in the scene, where N is the number of points.
         - points_err: An array of shape (N,) representing the error or uncertainty of each point in `points`.
         - points_rgb: An Nx3 uint8 array of RGB color values for each point in the scene, where N is the number of points.
+        - scene_bbox: An array of shape (6,) representing a bounding box containing the scene. In the form
+            (bbmin_x, bbmin_y, bbmin_z, bbmax_x, bbmax_y, bbmax_z)
+        - transformation_matrix: A 4x4 matrix encoding a transformation from some canonical coordinate space
+            to scene coordinates.
 
     The scene can be transformed using a 4x4 transformation matrix, which applies to both the camera poses and the 3D points in the scene.
     The scene also provides properties to access the world-to-camera and camera-to-world matrices,
@@ -33,6 +37,7 @@ class SfmScene:
         points_err: np.ndarray,
         points_rgb: np.ndarray,
         scene_bbox: np.ndarray | None = None,
+        transformation_matrix: np.ndarray | None = None,
     ):
         """
         Initialize the SfmScene with cameras, images, and points.
@@ -49,19 +54,20 @@ class SfmScene:
                                      of each point in `points`.
             points_rgb (np.ndarray): An Nx3 uint8 array of RGB color values for each point in the scene,
                                      where N is the number of points.
+            scene_bbox (np.ndarray): A (6)-shaped array of the form [bmin_x, bmin_y, bmin_z, bmax_x, bmax_y, bmax_z]
+                defining the bounding box of the scene. If None is passed in, it will default to
+                [-inf, -inf, -inf, inf, inf, inf] (i.e. all of R^3)
+            transformation_matrix (np.ndarray): A 4x4 transformation matrix encoding the transformation from a reference coordinate
+                system to the scene's coordinate system.
+                Note that this is not applied to the scene but simply stored to track transformations applied
+                to the scene (e.g. via apply_transformation_matrix).
         """
         self._cameras = cameras
         self._images = images
         self._points = points
         self._points_err = points_err
         self._points_rgb = points_rgb
-
-        # Calculate the maximum distance from the average point of the scene to any point
-        # which defines a notion of scene scale
-        camera_locations = np.stack([img.origin for img in self._images], axis=0)
-        scene_center = np.mean(camera_locations, axis=0)
-        dists = np.linalg.norm(camera_locations - scene_center, axis=1)
-        self._scene_scale = np.max(dists)
+        self._transformation_matrix = transformation_matrix if transformation_matrix is not None else np.eye(4)
         self._scene_bbox = scene_bbox
 
     @classmethod
@@ -131,9 +137,11 @@ class SfmScene:
             points=filtered_points,
             points_err=filtered_points_err,
             points_rgb=filtered_points_rgb,
+            scene_bbox=self._scene_bbox,
+            transformation_matrix=self._transformation_matrix,
         )
 
-    def transform(self, transformation_matrix: np.ndarray) -> "SfmScene":
+    def apply_transformation_matrix(self, transformation_matrix: np.ndarray) -> "SfmScene":
         """
         Apply a transformation to the scene using a 4x4 transformation matrix.
 
@@ -157,6 +165,14 @@ class SfmScene:
             raise ValueError("Transformation matrix must be a 4x4 matrix.")
 
         transformed_points = self._points @ transformation_matrix[:3, :3].T + transformation_matrix[:3, 3]
+        transformation_matrix = transformation_matrix @ self._transformation_matrix
+        bbox = self._scene_bbox
+        if self._scene_bbox is not None:
+            bbmin = self._scene_bbox[:3]
+            bbmax = self._scene_bbox[3:]
+            bbmin = transformation_matrix[:3, :3] @ bbmin + transformation_matrix[:3, 3]
+            bbmax = transformation_matrix[:3, :3] @ bbmax + transformation_matrix[:3, 3]
+            bbox = np.concatenate([bbmin, bbmax])
 
         return SfmScene(
             cameras=self._cameras,
@@ -164,7 +180,17 @@ class SfmScene:
             points=transformed_points,
             points_err=self._points_err,
             points_rgb=self._points_rgb,
+            scene_bbox=bbox,
+            transformation_matrix=transformation_matrix,
         )
+
+    @property
+    def transformation_matrix(self) -> np.ndarray:
+        """
+        Return the 4x4 transformation matrix for the scene which encodes the transformation
+        from some reference coordinate system to the scene's coordinates.
+        """
+        return self._transformation_matrix
 
     @property
     def world_to_camera_matrices(self) -> np.ndarray:
@@ -185,16 +211,6 @@ class SfmScene:
             np.ndarray: A (N, 4, 4) array representing the camera-to-world transformation matrices.
         """
         return np.stack([image.camera_to_world_matrix for image in self._images], axis=0)
-
-    @property
-    def scene_scale(self) -> float:
-        """
-        Return the scale of the scene, defined as the maximum distance from the average point of the scene to any point.
-
-        Returns:
-            float: The scale of the scene.
-        """
-        return self._scene_scale
 
     @property
     def num_images(self) -> int:

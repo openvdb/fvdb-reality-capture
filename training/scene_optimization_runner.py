@@ -17,8 +17,10 @@ import torch
 import torch.nn.functional as F
 import torch.utils.data
 import tqdm
-from datasets import SfmDataset
+from datasets import DatasetCache, SfmDataset, SfmScene
+from datasets.sfm_scene import load_colmap_scene
 from datasets.transforms import (
+    BaseTransform,
     Compose,
     CropScene,
     DownsampleImages,
@@ -578,17 +580,55 @@ class SceneOptimizationRunner:
         Returns:
             Checkpoint: A Checkpoint object containing the current training state.
         """
-        return Checkpoint.make_checkpoint(
+        return Checkpoint(
             step=self._global_step,
             run_name=self.run_name,
             model=self.model,
+            dataset_transform=self._dataset_transform,
+            dataset_path=self._dataset_path,
+            dataset_splits={"train": self._training_dataset.indices, "val": self._validation_dataset.indices},
             optimizer=self.optimizer,
             config=vars(self.config),
             pose_adjust_model=self.pose_adjust_model,
             pose_adjust_optimizer=self.pose_adjust_optimizer,
             pose_adjust_scheduler=self.pose_adjust_scheduler,
-            train_dataset=self.training_dataset,
-            eval_dataset=self.validation_dataset,
+        )
+
+    @torch.no_grad()
+    def _save_checkpoint_and_ply(self, ckpt_path: pathlib.Path, ply_path: pathlib.Path):
+        """
+        Saves a checkpoint and a PLY file to disk
+        """
+        if self._checkpoints_path is None:
+            return
+
+        self.checkpoint.save(ckpt_path)
+
+        training_camera_to_world_matrices = torch.from_numpy(self._training_dataset.camera_to_world_matrices).to(
+            dtype=torch.float32, device=self.device
+        )
+        if self.pose_adjust_model is not None:
+            training_camera_to_world_matrices = self.pose_adjust_model(
+                training_camera_to_world_matrices, torch.arange(len(self.training_dataset), device=self.device)
+            )
+
+        # Save projection parameters as a per-camera tuple (fx, fy, cx, cy, h, w)
+        training_projection_matrices = torch.from_numpy(self._training_dataset.projection_matrices.astype(np.float32))
+        training_image_sizes = torch.from_numpy(self._training_dataset.image_sizes.astype(np.int32))
+        normalization_transform = torch.from_numpy(self.training_dataset.sfm_scene.transformation_matrix).to(
+            torch.float32
+        )
+
+        metadata_to_save = {
+            "normalization_transform": normalization_transform,
+            "camera_to_world_matrices": training_camera_to_world_matrices,
+            "projection_matrices": training_projection_matrices,
+            "image_sizes": training_image_sizes,
+            "scene_scale": SceneOptimizationRunner._compute_scene_scale(self.training_dataset.sfm_scene),
+        }
+        self.model.save_ply(
+            ply_path,
+            metadata=metadata_to_save,
         )
 
     @property
@@ -622,12 +662,12 @@ class SceneOptimizationRunner:
         return self._model
 
     @property
-    def optimizer(self) -> GaussianSplatOptimizer | None:
+    def optimizer(self) -> GaussianSplatOptimizer:
         """
         Get the optimizer used for training the Gaussian Splatting model.
 
         Returns:
-            GaussianSplatOptimizer | None: The optimizer instance, or None if this runner is only used for evaluation.
+            GaussianSplatOptimizer: The optimizer instance.
         """
         return self._optimizer
 
@@ -790,6 +830,41 @@ class SceneOptimizationRunner:
         return model
 
     @staticmethod
+    def _compute_scene_scale(sfm_scene: SfmScene, use_sfm_depths=True) -> float:
+        """
+        Compute a measure of the "scale" of a scene. I.e. how far away objects of interest are from
+        the cameras in the capture.
+
+        Args:
+            sfm_scene (SfmScene): The scene loaded from an structure-from-motion (SfM) pipeline.
+            use_sfm_depths (bool): Whether to use the SfM depths for scale estimation (True by default).
+
+        Returns:
+            scene_scale (float): An estimate of how far objects in the scene are from the cameras that captured them
+        """
+        if use_sfm_depths:
+            # Estimate the scene scale as the median across the median distances from cameras to the
+            # sfm points they see. If there is not too much variance in how far the cameras are from the scene
+            # this gives a rough estimate of the scene scale.
+            median_depth_per_camera = []
+            for image_meta in sfm_scene.images:
+                points = sfm_scene.points[image_meta.point_indices]
+                dist_to_points = np.linalg.norm(points - image_meta.origin, axis=1)
+                median_dist = np.median(dist_to_points)
+                median_depth_per_camera.append(median_dist)
+            return float(np.median(median_depth_per_camera))
+        else:
+            # The old way used the maximum distance from any camera to the centroid of all cameras
+            # which worked well for orbit scans with a central point of interest but not so much
+            # for other types of capture (e.g. drone footage).
+            # This code is around as a reference and so we can compare the new behavior to the old
+            # but is not used
+            origins = np.stack([cam.origin for cam in sfm_scene.images], axis=0)
+            centroid = np.mean(origins, axis=0)
+            dists = np.linalg.norm(origins - centroid, axis=1)
+            return np.max(dists)
+
+    @staticmethod
     def new_run(
         dataset_path: pathlib.Path,
         config: Config = Config(),
@@ -852,18 +927,20 @@ class SceneOptimizationRunner:
             transforms.append(CropScene(crop_bbox))
         transform = Compose(*transforms)
 
-        train_dataset = SfmDataset(
-            dataset_path=pathlib.Path(dataset_path),
-            test_every=use_every_n_as_val,
-            split="train",
-            transform=transform,
-        )
-        val_dataset = SfmDataset(
-            dataset_path=pathlib.Path(dataset_path),
-            test_every=use_every_n_as_val,
-            split="test",
-            transform=transform,
-        )
+        sfm_scene: SfmScene
+        cache: DatasetCache
+        sfm_scene, cache = load_colmap_scene(dataset_path=dataset_path)
+        sfm_scene, cache = transform(sfm_scene, cache)
+
+        indices = np.arange(sfm_scene.num_images)
+        mask = np.ones(len(indices), dtype=bool)
+        mask[::use_every_n_as_val] = False
+        train_indices = indices[mask]
+        val_indices = indices[~mask]
+
+        train_dataset = SfmDataset(sfm_scene, train_indices)
+        val_dataset = SfmDataset(sfm_scene, val_indices)
+
         SceneOptimizationRunner.logger.info(
             f"Created dataset training and test datasets with {len(train_dataset)} training images and {len(val_dataset)} test images."
         )
@@ -876,7 +953,7 @@ class SceneOptimizationRunner:
         max_steps = config.max_epochs * len(train_dataset)
         optimizer = GaussianSplatOptimizer(
             model,
-            scene_scale=train_dataset.scene_scale * 1.1,
+            scene_scale=SceneOptimizationRunner._compute_scene_scale(train_dataset.sfm_scene) * 1.1,
             mean_lr_decay_exponent=0.01 ** (1.0 / max_steps),
         )
 
@@ -916,8 +993,12 @@ class SceneOptimizationRunner:
 
         return SceneOptimizationRunner(
             config=config,
-            trainset=train_dataset,
-            valset=val_dataset,
+            dataset_path=dataset_path,
+            sfm_scene=sfm_scene,
+            dataset_transform=transform,
+            dataset_cache=cache,
+            train_indices=train_indices,
+            val_indices=val_indices,
             model=model,
             optimizer=optimizer,
             pose_adjust_model=pose_adjust_model,
@@ -957,21 +1038,27 @@ class SceneOptimizationRunner:
             save_results (bool): Whether to save results to disk.
             save_eval_images (bool): Whether to save evaluation images during training.
         """
-        if checkpoint.has_config:
-            assert checkpoint.config is not None, "Checkpoint must contain a configuration."
-            config = Config(**checkpoint.config)
+        config = Config(**checkpoint.config)
 
-            np.random.seed(config.seed)
-            random.seed(config.seed)
-            torch.manual_seed(config.seed)
-        else:
-            SceneOptimizationRunner.logger.warning(
-                "Checkpoint does not contain a configuration. Using default configuration."
-            )
-            config = Config()
+        np.random.seed(config.seed)
+        random.seed(config.seed)
+        torch.manual_seed(config.seed)
 
-        assert checkpoint.train_dataset is not None, "Checkpoint must contain a training dataset."
-        assert checkpoint.eval_dataset is not None, "Checkpoint must contain a validation dataset."
+        if not checkpoint.dataset_path.exists():
+            raise FileNotFoundError(f"Checkpoint dataset path {checkpoint.dataset_path} does not exist.")
+
+        sfm_scene: SfmScene
+        cache: DatasetCache
+        sfm_scene, cache = load_colmap_scene(dataset_path=checkpoint.dataset_path)
+        sfm_scene, cache = checkpoint.dataset_transform(sfm_scene, cache)
+
+        if "train" not in checkpoint.dataset_splits:
+            raise ValueError("Checkpoint does not have 'train' split")
+        if "val" not in checkpoint.dataset_splits:
+            raise ValueError("Checkpoint does not have 'val' split")
+
+        train_indices = checkpoint.dataset_splits["train"]
+        val_indices = checkpoint.dataset_splits["val"]
 
         SceneOptimizationRunner.logger.info(f"Loaded checkpoint with {checkpoint.splats.num_gaussians:,} Gaussians.")
 
@@ -985,26 +1072,20 @@ class SceneOptimizationRunner:
             )
         )
 
-        if not checkpoint.has_optimizer:
-            SceneOptimizationRunner.logger.warning(
-                "Checkpoint does not contain an optimizer. The model will not be trainable."
-            )
-            step = -1
-        else:
-            assert checkpoint.optimizer is not None, "Checkpoint must contain an optimizer."
-            assert checkpoint.step is not None, "Checkpoint must contain a training step."
-            step = checkpoint.step
-
         return SceneOptimizationRunner(
             config=config,
-            trainset=checkpoint.train_dataset,
-            valset=checkpoint.eval_dataset,
+            dataset_path=checkpoint.dataset_path,
+            sfm_scene=sfm_scene,
+            dataset_transform=checkpoint.dataset_transform,
+            dataset_cache=cache,
+            train_indices=train_indices,
+            val_indices=val_indices,
             model=checkpoint.splats,
             optimizer=checkpoint.optimizer,
             pose_adjust_model=checkpoint.pose_adjust_model,
             pose_adjust_optimizer=checkpoint.pose_adjust_optimizer,
             pose_adjust_scheduler=checkpoint.pose_adjust_scheduler,
-            start_step=step,
+            start_step=checkpoint.step,
             run_name=run_name,
             image_render_path=image_render_path,
             stats_path=stats_path,
@@ -1019,10 +1100,14 @@ class SceneOptimizationRunner:
     def __init__(
         self,
         config: Config,
-        trainset: SfmDataset,
-        valset: SfmDataset,
+        dataset_path: pathlib.Path,
+        sfm_scene: SfmScene,
+        dataset_transform: BaseTransform,
+        dataset_cache: DatasetCache,
+        train_indices: np.ndarray,
+        val_indices: np.ndarray,
         model: GaussianSplat3d,
-        optimizer: GaussianSplatOptimizer | None,
+        optimizer: GaussianSplatOptimizer,
         pose_adjust_model: CameraPoseAdjustment | None,
         pose_adjust_optimizer: torch.optim.Adam | None,
         pose_adjust_scheduler: torch.optim.lr_scheduler.ExponentialLR | None,
@@ -1044,8 +1129,11 @@ class SceneOptimizationRunner:
 
         Args:
             config (Config): Configuration object containing model parameters.
-            trainset (SfmDataset): The training dataset.
-            valset (SfmDataset): The validation dataset.
+            sfm_scene (SfmScene): The Structure-from-Motion scene.
+            dataset_transform (BaseTransform): The transform used to normalize/scale/resample the SfmScene.
+            dataset_cache (DatasetCache): The dataset cache for efficient data loading.
+            train_indices (np.ndarray): The indices for the training set.
+            val_indices (np.ndarray): The indices for the validation set.
             model (GaussianSplat3d): The Gaussian Splatting model to train.
             optimizer (GaussianSplatOptimizer | None): The optimizer for the model if training.
                 Note: You can pass in a None optimizer if you want to use the model only for evaluation.
@@ -1078,8 +1166,13 @@ class SceneOptimizationRunner:
         self._pose_adjust_scheduler = pose_adjust_scheduler
         self._start_step = start_step
 
-        self._training_dataset: SfmDataset = trainset
-        self._validation_dataset: SfmDataset = valset
+        self._sfm_scene = sfm_scene
+        self._dataset_cache = dataset_cache
+        self._dataset_transform = dataset_transform
+        self._dataset_path = dataset_path
+        self._training_dataset = SfmDataset(sfm_scene=sfm_scene, dataset_indices=train_indices)
+        self._validation_dataset = SfmDataset(sfm_scene=sfm_scene, dataset_indices=val_indices)
+
         self.device = model.device
 
         self._run_name = run_name
@@ -1393,7 +1486,9 @@ class SceneOptimizationRunner:
                 if self._checkpoints_path is not None:
                     ckpt_path = self._checkpoints_path / pathlib.Path(f"ckpt_{self._global_step:04d}.pt")
                     self.logger.info(f"Saving checkpoint at epoch {epoch + 1} to {ckpt_path}.")
-                    self.checkpoint.save(ckpt_path)
+                    ply_path = self._checkpoints_path / pathlib.Path(f"ckpt_{self._global_step:04d}.ply")
+                    self.logger.info(f"Saving PLY file at epoch {epoch + 1} to {ply_path}.")
+                    self._save_checkpoint_and_ply(ckpt_path, ply_path)
 
             # Run evaluation if we've reached a percentage of the total epochs specified in eval_at_percent
             if epoch in [(pct * self.config.max_epochs // 100) - 1 for pct in self.config.eval_at_percent]:
@@ -1412,15 +1507,19 @@ class SceneOptimizationRunner:
             # If we already saved the final checkpoint at 100%, create a symlink to it so there is always a ckpt_final.pt
             final_ckpt_path = self._checkpoints_path / pathlib.Path(f"ckpt_{self._global_step:04d}.pt")
             final_ckpt_symlink_path = self._checkpoints_path / pathlib.Path("ckpt_final.pt")
+            final_ply_path = self._checkpoints_path / pathlib.Path(f"ckpt_{self._global_step:04d}.ply")
+            final_ply_symlink_path = self._checkpoints_path / pathlib.Path("ckpt_final.ply")
             self.logger.info(
                 f"Training completed. Creating symlink {final_ckpt_symlink_path} pointing to final checkpoint at {final_ckpt_path}."
             )
             final_ckpt_symlink_path.symlink_to(final_ckpt_path.absolute())
+            final_ply_symlink_path.symlink_to(final_ply_path.absolute())
         elif self._checkpoints_path is not None and 100 not in self.config.save_at_percent:
-            final_ckpt_path = self._checkpoints_path / pathlib.Path(f"ckpt_{self._global_step:04d}.pt")
-            self.logger.info(f"Training completed. Saving final checkpoint at {final_ckpt_path}.")
-            # Save the final checkpoint after training is complete
-            self.checkpoint.save(self._checkpoints_path / pathlib.Path(f"ckpt_final.pt"))
+            ckpt_path = self._checkpoints_path / pathlib.Path(f"ckpt_final.pt")
+            self.logger.info(f"Saving checkpoint at epoch {epoch + 1} to {ckpt_path}.")
+            ply_path = self._checkpoints_path / pathlib.Path(f"ckpt_final.ply")
+            self.logger.info(f"Saving PLY file at epoch {epoch + 1} to {ply_path}.")
+            self._save_checkpoint_and_ply(ckpt_path, ply_path)
         else:
             self.logger.info("Training completed. No checkpoints path specified, not saving final checkpoint.")
 

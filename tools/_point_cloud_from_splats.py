@@ -6,19 +6,21 @@ import torch
 import tqdm
 from skimage import feature, morphology
 
-from ..checkpoint import Checkpoint
+from fvdb import GaussianSplat3d
 
 
 @torch.no_grad()
-def extract_point_cloud_from_checkpoint(
-    checkpoint: Checkpoint,
+def point_cloud_from_splats(
+    model: GaussianSplat3d,
+    camera_to_world_matrices: torch.Tensor,
+    projection_matrices: torch.Tensor,
+    image_sizes: torch.Tensor,
     near: float = 0.1,
     far: float = 1e10,
     depth_image_downsample_factor: int = 1,
     canny_edge_std: float = 1.0,
     canny_mask_dilation: int = 5,
     dtype: torch.dtype = torch.float16,
-    device: torch.device | str = "cuda",
     show_progress: bool = True,
 ) -> tuple[torch.Tensor, torch.Tensor]:
     """
@@ -26,7 +28,13 @@ def extract_point_cloud_from_checkpoint(
     using Canny edge detection on the depth images.
 
     Args:
-        checkpoint (Checkpoint): A checkpoint containing the Gaussian splat model and camera parameters.
+        model (GaussianSplat3d): The Gaussian splat model to extract a mesh from
+        camera_to_world_matrices (torch.Tensor): A (C, 4, 4)-shaped Tensor containing the camera to world
+            matrices to render depth images from for mesh extraction where C is the number of camera views.
+        projection_matrices (torch.Tensor): A (C, 3, 3)-shaped Tensor containing the perspective projection matrices
+            used to render images for mesh extraction where C is the number of camera views.
+        image_sizes (torch.Tensor): A (C, 2)-shaped Tensor containing the width and height of each image to extract
+            from the Gaussian splat where C is the number of camera views.
         near (float): Near plane distance below which to ignore depth samples (default is 0.1).
         far (float): Far plane distance above which to ignore depth samples (default is 1e10).
         depth_image_downsample_factor (int): Factor by which to downsample the depth images before extracting points
@@ -38,7 +46,6 @@ def extract_point_cloud_from_checkpoint(
             before Canny edge detection (default is 1.0). Set to 0.0 to disable canny edge filtering.
         canny_mask_dilation (int): Dilation size for the Canny edge mask (default is 5).
         dtype (torch.dtype): Data type for the point cloud and colors (default is torch.float16).
-        device (torch.device | str): Device to use (default is "cuda").
         show_progress (bool): Whether to show a progress bar (default is True).
 
     Returns:
@@ -46,17 +53,7 @@ def extract_point_cloud_from_checkpoint(
         colors (torch.Tensor): A [num_points, 3] shaped tensor of RGB colors for the points.
     """
 
-    model = checkpoint.splats.to(device)
-    camera_to_world_matrices = checkpoint.camera_to_world_matrices
-    projection_matrices = checkpoint.projection_matrices
-    image_sizes = checkpoint.image_sizes
-
-    if camera_to_world_matrices is None:
-        raise ValueError("Camera to world matrices are not available in the checkpoint.")
-    if projection_matrices is None:
-        raise ValueError("Projection matrices are not available in the checkpoint.")
-    if image_sizes is None:
-        raise ValueError("Image sizes are not available in the checkpoint.")
+    device = model.device
 
     points_list = []
     colors_list = []
@@ -75,8 +72,8 @@ def extract_point_cloud_from_checkpoint(
         inv_projection_matrix = torch.linalg.inv(projection_matrix).contiguous()
 
         image_size = image_sizes[i]
-        image_width = int(image_size[1].item())
         image_height = int(image_size[0].item())
+        image_width = int(image_size[1].item())
 
         # We set near and far planes to 0.0 and 1e10 respectively to avoid clipping
         # in the rendering process. Instead, we will use the provided near and far planes

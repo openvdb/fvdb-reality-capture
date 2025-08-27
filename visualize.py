@@ -7,43 +7,38 @@ import time
 
 import torch
 import tyro
-from training import SceneOptimizationRunner
-from training.checkpoint import Checkpoint
+from viewer import Viewer
+
+from fvdb import GaussianSplat3d
 
 
 def main(
-    checkpoint_path: pathlib.Path,
-    dataset_path: pathlib.Path | None = None,
+    ply_path: pathlib.Path,
+    viewer_port: int = 8080,
+    verbose: bool = False,
     device: str | torch.device = "cuda",
 ):
     """
     Visualize a scene in a saved checkpoint file.
 
     Args:
-        checkpoint_path (pathlib.Path): Path to the checkpoint file containing the Gaussian splat model.
-        dataset_path (pathlib.Path | None): Path to the dataset used for training or None to use the dataset
-            in the checkpoint if it is available (default is None).
+        ply_path (pathlib.Path): Path to a PLY file containing the Gaussian splat model.
+        viewer_port (int): The port to expose the viewer server on
+        verbose (bool): If True, then the viewer will log verbosely.
         device (str | torch.device): Device to use for computation (default is "cuda").
     """
     logging.basicConfig(level=logging.INFO, format="%(levelname)s : %(message)s")
 
-    checkpoint: Checkpoint = Checkpoint.load(
-        checkpoint_path,
-        device=device,
-        dataset_path=dataset_path,
-    )
+    viewer = Viewer(port=viewer_port, verbose=verbose)
 
-    # The runner will create a visualization for us so we'll just create one pause while the
-    # viewer is running.
-    runner = SceneOptimizationRunner.from_checkpoint(
-        checkpoint=checkpoint,
-        results_path=pathlib.Path("results"),
-        disable_viewer=False,
-        log_tensorboard_every=100,
-        log_images_to_tensorboard=False,
-        save_eval_images=False,
-        save_results=False,
-    )
+    model, metadata = GaussianSplat3d.from_ply(ply_path, device)
+
+    bbmin = torch.min(model.means, dim=0).values
+    bbmax = torch.max(model.means, dim=0).values
+    bbdiagonal = torch.norm(bbmax - bbmin).item()
+    viewer.camera_far = 4 * bbdiagonal
+
+    splat_view = viewer.register_gaussian_splat_3d(name="model", gaussian_scene=model)
 
     logger = logging.getLogger("visualize")
     logger.info("Viewer running... Ctrl+C to exit.")

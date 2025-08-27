@@ -219,6 +219,8 @@ class DownsampleImages(BaseTransform):
             points=input_scene.points,
             points_err=input_scene.points_err,
             points_rgb=input_scene.points_rgb,
+            scene_bbox=input_scene.scene_bbox,
+            transformation_matrix=input_scene.transformation_matrix,
         )
 
         return output_scene, output_cache

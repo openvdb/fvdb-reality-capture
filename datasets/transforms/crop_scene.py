@@ -308,6 +308,7 @@ class CropScene(BaseTransform):
             points_rgb=masked_scene.points_rgb,
             points_err=masked_scene.points_err,
             scene_bbox=bbox,
+            transformation_matrix=input_scene.transformation_matrix,
         )
 
         return output_scene, output_cache

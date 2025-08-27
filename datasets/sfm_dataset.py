@@ -2,20 +2,15 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 import logging
-import pathlib
 from collections.abc import Iterable
-from typing import Any, Dict, List, Literal
+from typing import Any, Dict, Sequence
 
-import cv2
 import imageio.v2 as imageio
 import numpy as np
 import torch
 import torch.utils.data
-import tqdm
 
-from .dataset_cache import DatasetCache
-from .sfm_scene import SfmCameraMetadata, SfmImageMetadata, SfmScene, load_colmap_scene
-from .transforms import BaseTransform, Identity
+from .sfm_scene import SfmCameraMetadata, SfmImageMetadata, SfmScene
 
 
 class SfmDataset(torch.utils.data.Dataset, Iterable):
@@ -37,11 +32,8 @@ class SfmDataset(torch.utils.data.Dataset, Iterable):
 
     def __init__(
         self,
-        dataset_path: pathlib.Path,
-        test_every: int = 100,
-        split: Literal["train", "test", "all"] = "train",
-        transform: BaseTransform = Identity(),
-        image_indices: List[int] | None = None,
+        sfm_scene: SfmScene,
+        dataset_indices: Sequence[int] | np.ndarray | torch.Tensor | None = None,
         patch_size: int | None = None,
         return_visible_points: bool = False,
     ):
@@ -49,87 +41,50 @@ class SfmDataset(torch.utils.data.Dataset, Iterable):
         Create a new SfmDataset instance.
 
         Args:
-            dataset_path: Path to the SfM dataset directory.
-            test_every: If > 0, every Nth image will be used for testing.
-            split: The split of the dataset to use. Options are "train", "test", or "all". If "train", only
-                training images will be used. If "test", only testing images will be used.
-                If "all", all images will be used.
-            image_indices: Optional list of image indices to include in the dataset. If None, all images will be used.
+            sfm_scene: The SfmScene for this dataset
+            dataset_indices: Indices of images to include in the dataset. If None, all images will be used.
             patch_size: If not None, images will be randomly cropped to this size.
             return_visible_points: If True, depths of visible points will be loaded and included in each datum.
         """
         self._logger = logging.getLogger(f"{self.__class__.__module__}.{self.__class__.__name__}")
 
-        self._dataset_path = dataset_path
+        self._sfm_scene = sfm_scene
 
-        sfm_scene: SfmScene
-        base_cache: DatasetCache
-        sfm_scene, base_cache = load_colmap_scene(dataset_path=dataset_path)
-
-        self._transform = transform
-        self._sfm_scene, self._cache = self._transform(sfm_scene, base_cache)
-
-        self._test_every = test_every
-        self._split: Literal["train", "test", "all"] = split
         self.patch_size = patch_size
         self._return_visible_points = return_visible_points
 
         # If you specified image indices, we'll filter the dataset to only include those images.
-        indices = np.arange(self._sfm_scene.num_images) if image_indices is None else np.array(image_indices)
-        if self._split == "train":
-            self._indices = indices[indices % self._test_every != 0]
-        elif self._split == "test":
-            self._indices = indices[indices % self._test_every == 0]
-        elif self._split == "all":
-            self._indices = indices
+        if dataset_indices is None:
+            dataset_indices = np.arange(self._sfm_scene.num_images)
+        elif isinstance(dataset_indices, torch.Tensor):
+            dataset_indices = dataset_indices.cpu().numpy()
         else:
-            raise ValueError(f"Split must be one of 'train', 'test', or 'all'. Got {self._split}.")
+            dataset_indices = np.asarray(dataset_indices)
+        if dataset_indices.dtype not in (np.int16, np.int32, np.int64, np.uint16, np.uint32, np.uint64):
+            raise ValueError("Dataset indices must be integers")
+        dataset_indices = dataset_indices.astype(np.int64)
 
-    def state_dict(self) -> Dict[str, Any]:
+        self._indices = dataset_indices
+
+    @property
+    def sfm_scene(self) -> SfmScene:
         """
-        Get the state of the dataset as a dictionary.
-
-        This is useful for saving the dataset state to disk or for debugging purposes.
+        Returns the SfmScene associated with this dataset.
 
         Returns:
-            Dict[str, Any]: A dictionary containing the dataset state.
+            sfm_scene (SfmScene): The SfmScene associated with this dataset.
         """
-        return {
-            "dataset_path": str(self._dataset_path),
-            "test_every": self._test_every,
-            "split": self._split,
-            "transform": self._transform.state_dict(),
-            "image_indices": self._indices.tolist(),
-            "patch_size": self.patch_size,
-            "return_visible_points": self._return_visible_points,
-        }
+        return self._sfm_scene
 
-    @staticmethod
-    def from_state_dict(state_dict: Dict[str, Any], map_path: pathlib.Path | None = None) -> "SfmDataset":
+    @property
+    def indices(self) -> np.ndarray:
         """
-        Create a new SfmDataset instance from a state dictionary.
-
-        Args:
-            state_dict: A dictionary containing the dataset state.
-            map_path: Optional path to the dataset directory. If provided, this will override the path in the state_dict.
+        Return the indices of the images in the SfmScene used in the dataset.
 
         Returns:
-            SfmDataset: A new SfmDataset instance with the state loaded from the dictionary.
+            np.ndarray: The indices of the images in the SfmScene used in the dataset.
         """
-        dataset_path = map_path if map_path is not None else pathlib.Path(state_dict["dataset_path"])
-        if not dataset_path.exists():
-            raise FileNotFoundError(f"Dataset path {dataset_path} does not exist.")
-
-        dataset = SfmDataset(
-            dataset_path=map_path if map_path is not None else pathlib.Path(state_dict["dataset_path"]),
-            test_every=state_dict["test_every"],
-            split=state_dict["split"],
-            transform=BaseTransform.from_state_dict(state_dict["transform"]),
-            image_indices=state_dict["image_indices"],
-            patch_size=state_dict["patch_size"],
-            return_visible_points=state_dict["return_visible_points"],
-        )
-        return dataset
+        return self._indices
 
     @property
     def scene_bbox(self) -> np.ndarray:
@@ -143,41 +98,6 @@ class SfmDataset(torch.utils.data.Dataset, Iterable):
             torch.Tensor: A tensor of shape (2, 3) representing the bounding box of the scene.
         """
         return self._sfm_scene.scene_bbox.reshape([2, 3])
-
-    @property
-    def transform(self) -> BaseTransform:
-        """
-        Get the transform applied to the dataset.
-
-        This is useful if you want to access the transform directly or modify it.
-
-        Returns:
-            BaseTransform: The transform applied to the dataset.
-        """
-        return self._transform
-
-    @property
-    def split(self) -> Literal["train", "test", "all"]:
-        """
-        Get the split of the dataset (train, test, or all).
-
-        This is useful for understanding how the dataset is split and can be used to filter images based on the split.
-
-        Returns:
-            Literal["train", "test", "all"]: The split of the dataset.
-        """
-        return self._split
-
-    @property
-    def cache(self) -> DatasetCache:
-        """
-        Get the image dataset cache for this dataset.
-        This is useful if you're building new properties for the dataset or want to access the cache directly.
-
-        Returns:
-            DatasetCache: The image dataset cache for this dataset.
-        """
-        return self._cache
 
     @property
     def camera_to_world_matrices(self) -> np.ndarray:
@@ -215,20 +135,6 @@ class SfmDataset(torch.utils.data.Dataset, Iterable):
             np.ndarray: An Nx2 array of image sizes for the cameras in the dataset.
         """
         return np.array([self[i]["image"].shape[:2] for i in range(len(self))], dtype=np.int32)
-
-    @property
-    def scene_scale(self) -> float:
-        """
-        Get the scale of the scene defined as the maximum distance of any image pose origin from the
-        median of all image pose origins after normalization.
-
-        This is useful for understanding the scale of the scene and can be used for scaling the points
-        in the scene to a unit sphere or other normalization.
-
-        Returns:
-            float: The scale of the scene.
-        """
-        return self._sfm_scene.scene_scale
 
     @property
     def points(self) -> np.ndarray:
@@ -371,41 +277,3 @@ class SfmDataset(torch.utils.data.Dataset, Iterable):
 
 
 __all__ = ["SfmDataset"]
-
-if __name__ == "__main__":
-    import argparse
-
-    import imageio.v2 as imageio
-    import tqdm
-
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--data_dir", type=str, default="data/360_v2/garden")
-    parser.add_argument("--factor", type=int, default=4)
-    args = parser.parse_args()
-
-    # Parse COLMAP data.
-    dataset = SfmDataset(
-        dataset_path=args.data_dir,
-        test_every=8,
-        split="train",
-        return_visible_points=True,
-    )
-    print(f"Dataset: {len(dataset)} images.")
-
-    imsize = None
-    writer = imageio.get_writer("results/points.mp4", fps=30)
-    for data in tqdm.tqdm(dataset, desc="Plotting points"):  # type: ignore
-        image = data["image"].numpy().astype(np.uint8)
-        # Make sure all images we write are the same size. We use the first image to determine the size of the video.
-        # This is done because some images have slightly different sizes due to undistortion.
-        imsize = image.shape if imsize is None else imsize
-        if image.shape != imsize:
-            new_image = np.zeros(imsize, dtype=np.uint8)
-            new_image[: image.shape[0], : image.shape[1]] = image[: imsize[0], : imsize[1]]
-            image = new_image
-        points = data["points"].numpy()
-        depths = data["depths"].numpy()
-        for x, y in points:  # type: ignore
-            cv2.circle(image, (int(x), int(y)), 2, (255, 0, 0), -1)
-        writer.append_data(image)
-    writer.close()

@@ -6,16 +6,16 @@ import tqdm
 
 from fvdb import GaussianSplat3d, Grid
 
-from ..checkpoint import Checkpoint
-
 
 @torch.no_grad()
-def extract_tsdf_from_checkpoint(
-    checkpoint: Checkpoint,
+def tsdf_from_splats(
+    model: GaussianSplat3d,
+    camera_to_world_matrices: torch.Tensor,
+    projection_matrices: torch.Tensor,
+    image_sizes: torch.Tensor,
     truncation_margin: float,
     near: float = 0.1,
     far: float = 1e10,
-    device: torch.device | str = "cuda",
     dtype: torch.dtype = torch.float16,
     feature_dtype: torch.dtype = torch.uint8,
     show_progress: bool = True,
@@ -27,11 +27,16 @@ def extract_tsdf_from_checkpoint(
     (https://www.microsoft.com/en-us/research/publication/kinectfusion-real-time-3d-reconstruction-and-interaction-using-a-moving-depth-camera/)
 
     Args:
-        checkpoint (Checkpoint): A checkpoint containing the Gaussian splat model and camera parameters.
+        model (GaussianSplat3d): The Gaussian splat model to extract a mesh from
+        camera_to_world_matrices (torch.Tensor): A (C, 4, 4)-shaped Tensor containing the camera to world
+            matrices to render depth images from for mesh extraction where C is the number of camera views.
+        projection_matrices (torch.Tensor): A (C, 3, 3)-shaped Tensor containing the perspective projection matrices
+            used to render images for mesh extraction where C is the number of camera views.
+        image_sizes (torch.Tensor): A (C, 2)-shaped Tensor containing the height and width of each image to extract
+            from the Gaussian splat where C is the number of camera views.
         truncation_margin (float): Margin for truncating the TSDF, in world units.
         near (float): Near plane distance below which to ignore depth samples (default is 0.0).
         far (float): Far plane distance above which to ignore depth samples (default is 1e10).
-        device (torch.device | str): Device to use (default is "cuda").
         dtype: Data type for the TSDF and weights. Default is torch.float16.
         feature_dtype: Data type for the features (default is torch.uint8 which is good for RGB colors).
         show_progress (bool): Whether to show a progress bar (default is True).
@@ -42,21 +47,26 @@ def extract_tsdf_from_checkpoint(
         features (torch.Tensor): A tensor of features (e.g., colors) indexed by the grid.
     """
 
-    model: GaussianSplat3d = checkpoint.splats.to(device)
+    device = model.device
 
-    camera_to_world_matrices = checkpoint.camera_to_world_matrices
-    projection_matrices = checkpoint.projection_matrices
-    image_sizes = checkpoint.image_sizes
+    num_cameras = camera_to_world_matrices.shape[0]
+    if camera_to_world_matrices.shape != (num_cameras, 4, 4):
+        raise ValueError(
+            f"Expected camera_to_world_matrices to have shape (C, 4, 4) where C is the number of cameras, but got {camera_to_world_matrices.shape}"
+        )
 
-    if camera_to_world_matrices is None:
-        raise ValueError("Camera to world matrices are not available in the checkpoint.")
-    if projection_matrices is None:
-        raise ValueError("Projection matrices are not available in the checkpoint.")
-    if image_sizes is None:
-        raise ValueError("Image sizes are not available in the checkpoint.")
+    if projection_matrices.shape != (num_cameras, 3, 3):
+        raise ValueError(
+            f"Expected projection_matrices to have shape (C, 3, 3) where C is the number of cameras, but got {projection_matrices.shape}"
+        )
+
+    if image_sizes.shape != (num_cameras, 2):
+        raise ValueError(
+            f"Expected image_sizes to have shape (C, 2) where C is the number of cameras, but got {image_sizes.shape}"
+        )
 
     voxel_size = truncation_margin / 2.0
-    accum_grid = Grid.from_dense(dense_dims=1, ijk_min=0, voxel_size=voxel_size, origin=0.0, device=model.device)
+    accum_grid = Grid.from_zero_voxels(voxel_size=voxel_size, origin=0.0, device=model.device)
     tsdf = torch.zeros(accum_grid.num_voxels, device=model.device, dtype=dtype)
     weights = torch.zeros(accum_grid.num_voxels, device=model.device, dtype=dtype)
     features = torch.zeros((accum_grid.num_voxels, model.num_channels), device=model.device, dtype=feature_dtype)
