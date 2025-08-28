@@ -6,7 +6,7 @@ import pathlib
 import unittest
 
 import cv2
-from fvdb_3dgs.io import DatasetCache, load_colmap_dataset
+from fvdb_3dgs.io import Cache, load_colmap_dataset
 from fvdb_3dgs.sfm_scene import SfmCameraMetadata, SfmImageMetadata, SfmScene
 from fvdb_3dgs.transforms import DownsampleImages
 
@@ -34,7 +34,7 @@ class BasicSfmSceneTest(unittest.TestCase):
     def test_sfm_scene_creation_creation(self):
 
         scene: SfmScene
-        cache: DatasetCache
+        cache: Cache
         scene, cache = load_colmap_dataset(self.dataset_path)
 
         self.assertEqual(len(scene.cameras), self.expected_num_cameras)
@@ -60,13 +60,13 @@ class BasicSfmSceneTest(unittest.TestCase):
         transform = DownsampleImages(downsample_factor)
 
         scene: SfmScene
-        cache: DatasetCache
+        cache: Cache
         scene, cache = load_colmap_dataset(self.dataset_path)
 
         transformed_scene, cache = transform(scene, cache)
 
         self.assertIsInstance(transformed_scene, SfmScene)
-        self.assertIsInstance(cache, DatasetCache)
+        self.assertIsInstance(cache, Cache)
 
         for camera_id, camera_metadata in transformed_scene.cameras.items():
             self.assertIsInstance(camera_metadata, SfmCameraMetadata)

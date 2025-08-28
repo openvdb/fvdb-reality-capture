@@ -104,7 +104,7 @@ class FileLock:
         os.close(fd)
 
 
-class DatasetCache:
+class Cache:
     """
     A simple SQLite-based dataset cache for storing and retrieving datasets.
 
@@ -173,9 +173,9 @@ class DatasetCache:
         self, db_path: pathlib.Path, cache_id: int, root_folder_id: int, current_folder_id: int, _private: Any = None
     ):
         """
-        Create a new `DatasetCache` instance with the specified database path, cache ID, root folder ID, and current folder ID.
+        Create a new `Cache` instance with the specified database path, cache ID, root folder ID, and current folder ID.
 
-        Note: You should not create a `DatasetCache` instance directly. Instead, use the `DatasetCache.get_cache()` method to create a cache
+        Note: You should not create a `Cache` instance directly. Instead, use the `Cache.get_cache()` method to create a cache
         or the `make_folder` method to create a folder within a cache.
 
         Args:
@@ -184,11 +184,11 @@ class DatasetCache:
             root_folder_id (int): The unique ID of the root folder for this cache in the database.
             current_folder_id (int): The unique ID of the current folder for this cache in the database.
             _private (Any): A private parameter to prevent direct instantiation of the class.
-                This should be set to `DatasetCache.__SECRET__` when calling this constructor.
+                This should be set to `Cache.__SECRET__` when calling this constructor.
         """
-        if _private != DatasetCache.__SECRET__:
+        if _private != Cache.__SECRET__:
             raise RuntimeError(
-                "Do not create a `DatasetCache` instance directly. Instead use `DatasetCache.get_cache()` to create a cache "
+                "Do not create a `Cache` instance directly. Instead use `Cache.get_cache()` to create a cache "
                 "or make_folder to make a folder within a cache."
             )
         self._db_path = db_path
@@ -203,9 +203,9 @@ class DatasetCache:
         self._file_lock_shared = FileLock(self.cache_root_path / "file_lock.lock", exclusive=False)
 
     @staticmethod
-    def get_cache(cache_root: pathlib.Path, name: str, description: str) -> "DatasetCache":
+    def get_cache(cache_root: pathlib.Path, name: str, description: str) -> "Cache":
         """
-        Get or create a new `DatasetCache` with the given name and description.
+        Get or create a new `Cache` with the given name and description.
         The name should be a nonempty string consisting only of alphanumeric characters and underscores.
 
         If a cache with the given name already exists, it will return the existing cache.
@@ -216,15 +216,15 @@ class DatasetCache:
             description (str): A description of the cache. This can be any string.
 
         Returns:
-            DatasetCache: An instance of `DatasetCache` representing the cache.
+            Cache: An instance of `Cache` representing the cache.
         """
         db_path = cache_root / f"cache_{name}.db"
         if not cache_root.exists():
             cache_root.mkdir(parents=True, exist_ok=True)
         with FileLock(db_path.with_suffix(".lock")):
-            cache_id, root_folder_id = DatasetCache._initialize_database(db_path, name, description)
+            cache_id, root_folder_id = Cache._initialize_database(db_path, name, description)
 
-        return DatasetCache(db_path, cache_id, root_folder_id, root_folder_id, _private=DatasetCache.__SECRET__)
+        return Cache(db_path, cache_id, root_folder_id, root_folder_id, _private=Cache.__SECRET__)
 
     @property
     def db_path(self) -> pathlib.Path:
@@ -617,7 +617,7 @@ class DatasetCache:
                         data = f.read()
                 else:
                     raise ValueError(
-                        f"Unknown data type {data_type} for image property. Must be one of {DatasetCache.known_data_types}"
+                        f"Unknown data type {data_type} for image property. Must be one of {Cache.known_data_types}"
                     )
             finally:
                 cursor.close()
@@ -697,7 +697,7 @@ class DatasetCache:
             "path": file_path,
         }
 
-    def make_folder(self, name: str, description: str = "") -> "DatasetCache":
+    def make_folder(self, name: str, description: str = "") -> "Cache":
         self._validate_name(name, "Folder")
 
         with self._file_lock_exclusive:
@@ -740,12 +740,12 @@ class DatasetCache:
             finally:
                 cursor.close()
                 conn.close()
-            return DatasetCache(
+            return Cache(
                 db_path=self._db_path,
                 cache_id=self._cache_id,
                 root_folder_id=self._root_folder_id,
                 current_folder_id=new_folder_id,
-                _private=DatasetCache.__SECRET__,
+                _private=Cache.__SECRET__,
             )
 
     def clear_current_folder(self) -> None:
@@ -841,8 +841,8 @@ class DatasetCache:
                     (
                         name,
                         description,
-                        DatasetCache.magic_number,
-                        DatasetCache.version,
+                        Cache.magic_number,
+                        Cache.version,
                     ),
                 ).lastrowid
             else:

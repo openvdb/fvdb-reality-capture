@@ -4,7 +4,7 @@
 from abc import ABC, abstractmethod
 from typing import Any, TypeVar
 
-from ..io import DatasetCache
+from ..io import Cache
 from ..sfm_scene import SfmScene
 
 # Keeps track of names of registered transforms and their classes.
@@ -44,17 +44,17 @@ class BaseTransform(ABC):
         pass
 
     @abstractmethod
-    def __call__(self, input_scene: SfmScene, input_cache: DatasetCache) -> tuple[SfmScene, DatasetCache]:
+    def __call__(self, input_scene: SfmScene, input_cache: Cache) -> tuple[SfmScene, Cache]:
         """
         Apply the transform to the data.
 
         Args:
             input_scene (SfmScene): The input scene to transform.
-            input_cache (DatasetCache): The input cache to use to save intermediate results.
+            input_cache (Cache): The input cache to use to save intermediate results.
 
         Returns:
             output_scene (SfmScene): The transformed scene.
-            output_cache (DatasetCache): The cache to use for further transforms.
+            output_cache (Cache): The cache to use for further transforms.
         """
         pass
 

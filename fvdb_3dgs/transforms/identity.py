@@ -3,7 +3,7 @@
 #
 from typing import Any
 
-from ..io import DatasetCache
+from ..io import Cache
 from ..sfm_scene import SfmScene
 from .base_transform import BaseTransform, transform
 
@@ -24,17 +24,17 @@ class Identity(BaseTransform):
         """
         super().__init__()
 
-    def __call__(self, input_scene: SfmScene, input_cache: DatasetCache) -> tuple[SfmScene, DatasetCache]:
+    def __call__(self, input_scene: SfmScene, input_cache: Cache) -> tuple[SfmScene, Cache]:
         """
         Perform the identity transform on the input scene and cache.
 
         Args:
             input_scene (SfmScene): The input scene containing images to be downsampled.
-            input_cache (DatasetCache): The cache where the downsampled images will be stored.
+            input_cache (Cache): The cache where the downsampled images will be stored.
 
         Returns:
             output_scene (SfmScene): The input scene, unchanged.
-            output_cache (DatasetCache): The input cache, unchanged.
+            output_cache (Cache): The input cache, unchanged.
         """
 
         return input_scene, input_cache

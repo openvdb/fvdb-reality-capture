@@ -25,7 +25,7 @@ from torchmetrics.image.lpip import LearnedPerceptualImagePatchSimilarity
 
 from fvdb import GaussianSplat3d
 
-from ..io import DatasetCache, load_colmap_dataset
+from ..io import Cache, load_colmap_dataset
 from ..sfm_scene import SfmScene
 from ..transforms import (
     BaseTransform,
@@ -929,7 +929,7 @@ class SceneOptimizationRunner:
         transform = Compose(*transforms)
 
         sfm_scene: SfmScene
-        cache: DatasetCache
+        cache: Cache
         sfm_scene, cache = load_colmap_dataset(dataset_path)
         sfm_scene, cache = transform(sfm_scene, cache)
 
@@ -1049,7 +1049,7 @@ class SceneOptimizationRunner:
             raise FileNotFoundError(f"Checkpoint dataset path {checkpoint.dataset_path} does not exist.")
 
         sfm_scene: SfmScene
-        cache: DatasetCache
+        cache: Cache
         sfm_scene, cache = load_colmap_dataset(checkpoint.dataset_path)
         sfm_scene, cache = checkpoint.dataset_transform(sfm_scene, cache)
 
@@ -1104,7 +1104,7 @@ class SceneOptimizationRunner:
         dataset_path: pathlib.Path,
         sfm_scene: SfmScene,
         dataset_transform: BaseTransform,
-        dataset_cache: DatasetCache,
+        dataset_cache: Cache,
         train_indices: np.ndarray,
         val_indices: np.ndarray,
         model: GaussianSplat3d,
@@ -1132,7 +1132,7 @@ class SceneOptimizationRunner:
             config (Config): Configuration object containing model parameters.
             sfm_scene (SfmScene): The Structure-from-Motion scene.
             dataset_transform (BaseTransform): The transform used to normalize/scale/resample the SfmScene.
-            dataset_cache (DatasetCache): The dataset cache for efficient data loading.
+            dataset_cache (Cache): The dataset cache for efficient data loading.
             train_indices (np.ndarray): The indices for the training set.
             val_indices (np.ndarray): The indices for the validation set.
             model (GaussianSplat3d): The Gaussian Splatting model to train.

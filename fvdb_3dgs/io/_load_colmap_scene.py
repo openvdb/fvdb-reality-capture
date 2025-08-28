@@ -8,7 +8,7 @@ import numpy as np
 import tqdm
 
 from ..sfm_scene import SfmCameraMetadata, SfmCameraType, SfmImageMetadata, SfmScene
-from ._cache import DatasetCache
+from ._cache import Cache
 from ._colmap_utils import Camera as ColmapCamera
 from ._colmap_utils import Image as ColmapImage
 from ._colmap_utils import SceneManager
@@ -103,7 +103,7 @@ def _load_colmap_internal(colmap_path: pathlib.Path) -> SceneManager:
     return scene_manager
 
 
-def load_colmap_dataset(colmap_path: pathlib.Path) -> tuple[SfmScene, DatasetCache]:
+def load_colmap_dataset(colmap_path: pathlib.Path) -> tuple[SfmScene, Cache]:
     """
     Load an `SfmScene` (with a cache to store derived quantities) from the output of a COLMAP
     structure-from-motion (SfM) pipeline. COLMAP produces a directory of images, a set of
@@ -116,14 +116,14 @@ def load_colmap_dataset(colmap_path: pathlib.Path) -> tuple[SfmScene, DatasetCac
 
     Returns:
         sfm_scene (SfmScene): An in-memory representation of the SfmScene for the output of the COLMAP run.
-        cache (DatasetCache): A cache to store quantities that are expensive to compute but are needed during training.
+        cache (Cache): A cache to store quantities that are expensive to compute but are needed during training.
             This function will store the visibility map between images and 3D points in the cache if it is not present.
     """
 
     scene_manager = _load_colmap_internal(colmap_path)
     num_images = len(scene_manager.images)
 
-    cache = DatasetCache.get_cache(colmap_path / "_cache", "sfm_dataset_cache", "Cache for SFM dataset")
+    cache = Cache.get_cache(colmap_path / "_cache", "sfm_dataset_cache", "Cache for SFM dataset")
 
     logger = logging.getLogger(f"load colmap")  # FIXME: Proper logger name
 

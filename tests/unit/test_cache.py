@@ -11,10 +11,10 @@ import unittest
 
 import numpy as np
 import torch
-from fvdb_3dgs.io import DatasetCache
+from fvdb_3dgs.io import Cache
 
 
-class BasicDatasetCacheTest(unittest.TestCase):
+class BasicCacheTest(unittest.TestCase):
     def setUp(self):
         self.cache_name = "test_cache"
         self.cache_description = "A test cache for unit tests"
@@ -24,7 +24,7 @@ class BasicDatasetCacheTest(unittest.TestCase):
         if self.db_path.exists():
             self.db_path.unlink()
 
-        self.cache = DatasetCache.get_cache(
+        self.cache = Cache.get_cache(
             name=self.cache_name,
             description=self.cache_description,
             cache_root=self.cache_root,
@@ -266,7 +266,7 @@ def worker_mkfiles(cache_name, cache_description, cache_root, num_files, entry):
     image = np.random.rand(100, 100, 3) * 255
     image = image.astype(np.uint8)
 
-    cache = DatasetCache.get_cache(
+    cache = Cache.get_cache(
         name=cache_name,
         description=cache_description,
         cache_root=cache_root,
@@ -287,7 +287,7 @@ def worker_mkfolders(cache_name, cache_description, cache_root, num_folders, ent
     image = np.random.rand(100, 100, 3) * 255
     image = image.astype(np.uint8)
 
-    cache = DatasetCache.get_cache(
+    cache = Cache.get_cache(
         name=cache_name,
         description=cache_description,
         cache_root=cache_root,
@@ -306,7 +306,7 @@ def worker_mkfolders_and_files(cache_name, cache_description, cache_root, num_fo
     image = np.random.rand(100, 100, 3) * 255
     image = image.astype(np.uint8)
 
-    cache = DatasetCache.get_cache(
+    cache = Cache.get_cache(
         name=cache_name,
         description=cache_description,
         cache_root=cache_root,
@@ -328,7 +328,7 @@ def worker_mkfolders_and_files(cache_name, cache_description, cache_root, num_fo
     return
 
 
-class MultiProcessingTest(BasicDatasetCacheTest):
+class MultiProcessingTest(BasicCacheTest):
     def test_multiprocessing_create_files(self):
         # This test is a placeholder for multiprocessing tests.
         # In a real scenario, you would implement multiprocessing logic here.

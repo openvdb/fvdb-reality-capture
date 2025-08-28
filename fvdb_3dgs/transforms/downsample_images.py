@@ -9,7 +9,7 @@ import cv2
 import imageio
 import tqdm
 
-from ..io import DatasetCache
+from ..io import Cache
 from ..sfm_scene import SfmImageMetadata, SfmScene
 from .base_transform import BaseTransform, transform
 
@@ -52,17 +52,17 @@ class DownsampleImages(BaseTransform):
         self._rescaled_jpeg_quality = rescaled_jpeg_quality
         self._logger = logging.getLogger(f"{self.__class__.__module__}.{self.__class__.__name__}")
 
-    def __call__(self, input_scene: SfmScene, input_cache: DatasetCache) -> tuple[SfmScene, DatasetCache]:
+    def __call__(self, input_scene: SfmScene, input_cache: Cache) -> tuple[SfmScene, Cache]:
         """
         Perform the downsampling transform on the input scene and cache.
 
         Args:
             input_scene (SfmScene): The input scene containing images to be downsampled.
-            input_cache (DatasetCache): The cache where the downsampled images will be stored.
+            input_cache (Cache): The cache where the downsampled images will be stored.
 
         Returns:
             output_scene (SfmScene): A new SfmScene with paths to downsampled images.
-            output_cache (DatasetCache): The cache containing the downsampled images with a prefix
+            output_cache (Cache): The cache containing the downsampled images with a prefix
                 set according to the downsampling parameters.
         """
         if self._image_downsample_factor == 1:

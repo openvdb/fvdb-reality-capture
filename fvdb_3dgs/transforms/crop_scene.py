@@ -11,7 +11,7 @@ import numpy as np
 import tqdm
 from scipy.spatial import ConvexHull
 
-from ..io import DatasetCache
+from ..io import Cache
 from ..sfm_scene import SfmImageMetadata, SfmScene
 from .base_transform import BaseTransform, transform
 
@@ -98,7 +98,7 @@ class CropScene(BaseTransform):
             "composite_into_existing_masks": self._composite_with_existing_masks,
         }
 
-    def __call__(self, input_scene: SfmScene, input_cache: DatasetCache) -> tuple[SfmScene, DatasetCache]:
+    def __call__(self, input_scene: SfmScene, input_cache: Cache) -> tuple[SfmScene, Cache]:
         """
         Apply the cropping transform to the scene.
 

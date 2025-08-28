@@ -13,7 +13,7 @@ import numpy as np
 import torch
 import tqdm
 import tyro
-from fvdb_3dgs.io import DatasetCache, load_colmap_dataset
+from fvdb_3dgs.io import Cache, load_colmap_dataset
 from fvdb_3dgs.sfm_scene import SfmScene
 from fvdb_3dgs.training import Config, SceneOptimizationRunner, SfmDataset
 from fvdb_3dgs.transforms import (
@@ -246,7 +246,7 @@ def main(
     )
 
     sfm_scene: SfmScene
-    cache: DatasetCache
+    cache: Cache
     sfm_scene, cache = load_colmap_dataset(dataset_path)
     sfm_scene, cache = transform(sfm_scene, cache)
 
