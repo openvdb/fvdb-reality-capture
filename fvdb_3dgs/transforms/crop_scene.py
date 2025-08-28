@@ -11,7 +11,7 @@ import numpy as np
 import tqdm
 from scipy.spatial import ConvexHull
 
-from ..dataset_cache import DatasetCache
+from ..io import DatasetCache
 from ..sfm_scene import SfmImageMetadata, SfmScene
 from .base_transform import BaseTransform, transform
 

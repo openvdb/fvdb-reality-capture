@@ -16,7 +16,7 @@ from typing import Dict, List
 import yaml
 
 sys.path.insert(0, str(pathlib.Path(__file__).parent.parent.parent.resolve()))
-from training import Config, SceneOptimizationRunner
+from fvdb_3dgs.training import Config, SceneOptimizationRunner
 
 logger = logging.getLogger("train benchmark checkpoints")
 

@@ -1,0 +1,13 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "fvdb_3dgs"
+version = "0.1.0"
+description = "3D Gaussian Splatting Example Project using fVDB."
+dependencies = []
+
+# pyproject.toml
+[tool.setuptools.packages.find]
+include = ["fvdb_3dgs*"]    # Glob patterns for package names

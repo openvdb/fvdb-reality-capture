@@ -9,7 +9,7 @@ import cv2
 import imageio
 import tqdm
 
-from ..dataset_cache import DatasetCache
+from ..io import DatasetCache
 from ..sfm_scene import SfmImageMetadata, SfmScene
 from .base_transform import BaseTransform, transform
 

@@ -1,7 +1,6 @@
 # Copyright Contributors to the OpenVDB Project
 # SPDX-License-Identifier: Apache-2.0
 #
-import torch
 
 from ._mesh_from_splats import mesh_from_splats
 from ._mesh_from_splats_dlnr import mesh_from_splats_dlnr

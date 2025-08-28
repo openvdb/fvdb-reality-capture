@@ -17,9 +17,17 @@ import torch
 import torch.nn.functional as F
 import torch.utils.data
 import tqdm
-from datasets import DatasetCache, SfmDataset, SfmScene
-from datasets.sfm_scene import load_colmap_scene
-from datasets.transforms import (
+from fvdb.optim import GaussianSplatOptimizer
+from sklearn.neighbors import NearestNeighbors
+from torch.utils.tensorboard import SummaryWriter
+from torchmetrics.image import PeakSignalNoiseRatio, StructuralSimilarityIndexMeasure
+from torchmetrics.image.lpip import LearnedPerceptualImagePatchSimilarity
+
+from fvdb import GaussianSplat3d
+
+from ..io import DatasetCache, load_colmap_dataset
+from ..sfm_scene import SfmScene
+from ..transforms import (
     BaseTransform,
     Compose,
     CropScene,
@@ -27,17 +35,10 @@ from datasets.transforms import (
     NormalizeScene,
     PercentileFilterPoints,
 )
-from fvdb.optim import GaussianSplatOptimizer
-from sklearn.neighbors import NearestNeighbors
-from torch.utils.tensorboard import SummaryWriter
-from torchmetrics.image import PeakSignalNoiseRatio, StructuralSimilarityIndexMeasure
-from torchmetrics.image.lpip import LearnedPerceptualImagePatchSimilarity
-from viewer import Viewer
-
-from fvdb import GaussianSplat3d
-
+from ..viewer import Viewer
 from .camera_pose_adjust import CameraPoseAdjustment
 from .checkpoint import Checkpoint
+from .sfm_dataset import SfmDataset
 from .utils import make_unique_name_directory_based_on_time
 
 
@@ -929,7 +930,7 @@ class SceneOptimizationRunner:
 
         sfm_scene: SfmScene
         cache: DatasetCache
-        sfm_scene, cache = load_colmap_scene(dataset_path=dataset_path)
+        sfm_scene, cache = load_colmap_dataset(dataset_path)
         sfm_scene, cache = transform(sfm_scene, cache)
 
         indices = np.arange(sfm_scene.num_images)
@@ -1049,7 +1050,7 @@ class SceneOptimizationRunner:
 
         sfm_scene: SfmScene
         cache: DatasetCache
-        sfm_scene, cache = load_colmap_scene(dataset_path=checkpoint.dataset_path)
+        sfm_scene, cache = load_colmap_dataset(checkpoint.dataset_path)
         sfm_scene, cache = checkpoint.dataset_transform(sfm_scene, cache)
 
         if "train" not in checkpoint.dataset_splits:

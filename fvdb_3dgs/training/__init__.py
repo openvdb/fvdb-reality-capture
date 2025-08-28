@@ -4,9 +4,6 @@
 
 from .checkpoint import Checkpoint
 from .scene_optimization_runner import Config, SceneOptimizationRunner
+from .sfm_dataset import SfmDataset
 
-__all__ = [
-    "SceneOptimizationRunner",
-    "Config",
-    "Checkpoint",
-]
+__all__ = ["SceneOptimizationRunner", "Config", "Checkpoint", "SfmDataset"]

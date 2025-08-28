@@ -1,24 +1,6 @@
 # 3D Gaussian Splatting with ƒVDB
 
-1. Prereqs:
-   fvdb conda environment with ƒVDB installed. See the
-   [ƒVDB README](https://github.com/NVIDIA-Omniverse/openvdb/blob/feature/fvdb/fvdb/README.md).
+This is an example project that uses fVDB to build a library for training Gaussian Splats from
+the output of a structure-from-motion SfM pipeline.
 
-2. Setup the environment:
-
-    ```bash
-    conda activate fvdb
-    ```
-
-3. Download the example data
-
-    ```bash
-    ./download_example-data.py
-    ```
-
-4. Run the `train.py` example
-    ```bash
-    python train.py --dataset-path data/360_v2/[scene_name]
-    ```
-
-5. View the results in a browser at `http://localhost:8080`
+The library can be used programmatically from Python or via a set of provided command line scripts.

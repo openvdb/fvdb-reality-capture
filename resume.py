@@ -7,8 +7,7 @@ import time
 
 import torch
 import tyro
-from training import SceneOptimizationRunner
-from training.checkpoint import Checkpoint
+from fvdb_3dgs.training import Checkpoint, SceneOptimizationRunner
 
 
 def main(

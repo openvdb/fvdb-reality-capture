@@ -6,15 +6,12 @@ import functools
 import multiprocessing
 import pathlib
 import shutil
-import sys
 import tempfile
 import unittest
 
-sys.path.append(pathlib.Path(__file__).parent.parent.parent.as_posix())
-
 import numpy as np
 import torch
-from datasets.dataset_cache import DatasetCache
+from fvdb_3dgs.io import DatasetCache
 
 
 class BasicDatasetCacheTest(unittest.TestCase):

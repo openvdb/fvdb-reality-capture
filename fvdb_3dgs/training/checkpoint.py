@@ -7,11 +7,11 @@ from typing import Sequence
 
 import numpy as np
 import torch
-from datasets.transforms import BaseTransform
 from fvdb.optim import GaussianSplatOptimizer
 
 from fvdb import GaussianSplat3d
 
+from ..transforms import BaseTransform
 from .camera_pose_adjust import CameraPoseAdjustment
 
 

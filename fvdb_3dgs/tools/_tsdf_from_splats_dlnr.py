@@ -4,9 +4,10 @@
 import numpy as np
 import torch
 import tqdm
-from foundation_models.dlnr import DLNRModel
 
 from fvdb import GaussianSplat3d, Grid
+
+from ..foundation_models.dlnr import DLNRModel
 
 
 def debug_plot(

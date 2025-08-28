@@ -11,9 +11,9 @@ import torch
 import torch.nn.functional as F
 import torch.utils.data
 import yaml
-
-sys.path.insert(0, str(pathlib.Path(__file__).parent.parent.parent.resolve()))
-from training import Checkpoint, Config
+from fvdb_3dgs.io import DatasetCache, load_colmap_dataset
+from fvdb_3dgs.sfm_scene import SfmScene
+from fvdb_3dgs.training import Checkpoint, Config, SfmDataset
 
 from fvdb import GaussianSplat3d
 
@@ -45,13 +45,17 @@ class Benchmark3dgs:
         # Load the checkpoint
         self.checkpoint = Checkpoint.load(pathlib.Path(checkpoint_path), device=device)
 
-        if self.checkpoint.config is None:
-            raise ValueError("No configuration found in checkpoint")
-        if self.checkpoint.train_dataset is None:
+        sfm_scene: SfmScene
+        cache: DatasetCache
+        sfm_scene, cache = load_colmap_dataset(self.checkpoint.dataset_path)
+        sfm_scene, cache = self.checkpoint.dataset_transform(sfm_scene, cache)
+
+        if "train" not in self.checkpoint.dataset_splits:
             raise ValueError("No training dataset found in checkpoint")
+        train_indices = self.checkpoint.dataset_splits["train"]
 
         self.config = Config(**self.checkpoint.config)
-        self.train_dataset = self.checkpoint.train_dataset
+        self.train_dataset = SfmDataset(sfm_scene, train_indices)
 
         step = self.checkpoint.step if self.checkpoint.step is not None else 0
 

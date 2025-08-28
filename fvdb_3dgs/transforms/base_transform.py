@@ -4,7 +4,7 @@
 from abc import ABC, abstractmethod
 from typing import Any, TypeVar
 
-from ..dataset_cache import DatasetCache
+from ..io import DatasetCache
 from ..sfm_scene import SfmScene
 
 # Keeps track of names of registered transforms and their classes.

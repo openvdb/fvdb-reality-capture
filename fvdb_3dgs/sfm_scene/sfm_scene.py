@@ -3,7 +3,6 @@
 #
 import numpy as np
 
-from .base_dataset_reader import BaseDatasetReader
 from .sfm_metadata import SfmCameraMetadata, SfmImageMetadata
 
 
@@ -69,31 +68,6 @@ class SfmScene:
         self._points_rgb = points_rgb
         self._transformation_matrix = transformation_matrix if transformation_matrix is not None else np.eye(4)
         self._scene_bbox = scene_bbox
-
-    @classmethod
-    def from_dataset_reader(
-        cls,
-        dataset_reader: BaseDatasetReader,
-    ) -> "SfmScene":
-        """
-        Create an SfmScene instance from a dataset reader.
-
-        Args:
-            dataset_path: Path to the dataset directory.
-            dataset_reader: An instance of BaseDatasetReader that provides the data.
-
-        Returns:
-            An instance of SfmScene containing the loaded data.
-        """
-        (
-            cameras,
-            images,
-            points,
-            points_err,
-            points_rgb,
-        ) = dataset_reader.load_data()
-
-        return cls(cameras, images, points, points_err, points_rgb)
 
     def filter_points(self, mask: np.ndarray) -> "SfmScene":
         """

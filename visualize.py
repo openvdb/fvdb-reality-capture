@@ -7,7 +7,7 @@ import time
 
 import torch
 import tyro
-from viewer import Viewer
+from fvdb_3dgs.viewer import Viewer
 
 from fvdb import GaussianSplat3d
 

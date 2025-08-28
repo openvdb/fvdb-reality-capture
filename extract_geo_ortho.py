@@ -8,10 +8,10 @@ import numpy as np
 import torch
 import tyro
 import utm
-from datasets import SfmDataset
 from osgeo import gdal, gdal_array, osr
 from pyproj import Transformer
 from scipy.interpolate import griddata
+from splats_fvdb.training import SfmDataset
 
 from fvdb import GaussianSplat3d
 

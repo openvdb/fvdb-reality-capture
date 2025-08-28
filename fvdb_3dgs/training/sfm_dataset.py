@@ -10,7 +10,7 @@ import numpy as np
 import torch
 import torch.utils.data
 
-from .sfm_scene import SfmCameraMetadata, SfmImageMetadata, SfmScene
+from ..sfm_scene import SfmCameraMetadata, SfmImageMetadata, SfmScene
 
 
 class SfmDataset(torch.utils.data.Dataset, Iterable):

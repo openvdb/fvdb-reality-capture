@@ -7,7 +7,7 @@ from typing import Any, Literal
 import numpy as np
 import pyproj
 
-from ..dataset_cache import DatasetCache
+from ..io import DatasetCache
 from ..sfm_scene import SfmScene
 from .base_transform import BaseTransform, transform
 

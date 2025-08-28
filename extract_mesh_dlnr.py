@@ -7,7 +7,7 @@ import pathlib
 import point_cloud_utils as pcu
 import torch
 import tyro
-from tools import mesh_from_splats_dlnr
+from fvdb_3dgs.tools import mesh_from_splats_dlnr
 
 from fvdb import GaussianSplat3d
 

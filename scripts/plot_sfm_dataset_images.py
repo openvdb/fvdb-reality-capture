@@ -9,10 +9,10 @@ import cv2
 import imageio.v2 as imageio
 import numpy as np
 import tqdm
-from datasets import SfmDataset
-from datasets.dataset_cache import DatasetCache
-from datasets.sfm_scene import SfmScene, load_colmap_scene
-from datasets.transforms import DownsampleImages
+from fvdb_3dgs.io import DatasetCache, load_colmap_dataset
+from fvdb_3dgs.sfm_scene import SfmScene
+from fvdb_3dgs.training import SfmDataset
+from fvdb_3dgs.transforms import DownsampleImages
 
 if __name__ == "__main__":
 
@@ -24,7 +24,7 @@ if __name__ == "__main__":
     dataset_path = pathlib.Path(args.dataset_path)
     sfm_scene: SfmScene
     base_cache: DatasetCache
-    sfm_scene, cache = load_colmap_scene(dataset_path=dataset_path)
+    sfm_scene, cache = load_colmap_dataset(dataset_path)
     transform = DownsampleImages(image_downsample_factor=args.image_downsample_factor)
     sfm_scene, cache = transform(sfm_scene, cache)
 
