@@ -25,7 +25,7 @@ from torchmetrics.image.lpip import LearnedPerceptualImagePatchSimilarity
 
 from fvdb import GaussianSplat3d
 
-from ..io import Cache, load_colmap_dataset
+from ..io import Cache, load_colmap_scene
 from ..sfm_scene import SfmScene
 from ..transforms import (
     BaseTransform,
@@ -930,7 +930,7 @@ class SceneOptimizationRunner:
 
         sfm_scene: SfmScene
         cache: Cache
-        sfm_scene, cache = load_colmap_dataset(dataset_path)
+        sfm_scene, cache = load_colmap_scene(dataset_path)
         sfm_scene, cache = transform(sfm_scene, cache)
 
         indices = np.arange(sfm_scene.num_images)
@@ -1050,7 +1050,7 @@ class SceneOptimizationRunner:
 
         sfm_scene: SfmScene
         cache: Cache
-        sfm_scene, cache = load_colmap_dataset(checkpoint.dataset_path)
+        sfm_scene, cache = load_colmap_scene(checkpoint.dataset_path)
         sfm_scene, cache = checkpoint.dataset_transform(sfm_scene, cache)
 
         if "train" not in checkpoint.dataset_splits:

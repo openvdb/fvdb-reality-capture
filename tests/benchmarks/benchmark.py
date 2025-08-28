@@ -11,7 +11,7 @@ import torch
 import torch.nn.functional as F
 import torch.utils.data
 import yaml
-from fvdb_3dgs.io import Cache, load_colmap_dataset
+from fvdb_3dgs.io import Cache, load_colmap_scene
 from fvdb_3dgs.sfm_scene import SfmScene
 from fvdb_3dgs.training import Checkpoint, Config, SfmDataset
 
@@ -47,7 +47,7 @@ class Benchmark3dgs:
 
         sfm_scene: SfmScene
         cache: Cache
-        sfm_scene, cache = load_colmap_dataset(self.checkpoint.dataset_path)
+        sfm_scene, cache = load_colmap_scene(self.checkpoint.dataset_path)
         sfm_scene, cache = self.checkpoint.dataset_transform(sfm_scene, cache)
 
         if "train" not in self.checkpoint.dataset_splits:

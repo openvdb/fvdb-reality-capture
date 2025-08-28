@@ -103,7 +103,7 @@ def _load_colmap_internal(colmap_path: pathlib.Path) -> SceneManager:
     return scene_manager
 
 
-def load_colmap_dataset(colmap_path: pathlib.Path) -> tuple[SfmScene, Cache]:
+def load_colmap_scene(colmap_path: pathlib.Path) -> tuple[SfmScene, Cache]:
     """
     Load an `SfmScene` (with a cache to store derived quantities) from the output of a COLMAP
     structure-from-motion (SfM) pipeline. COLMAP produces a directory of images, a set of
