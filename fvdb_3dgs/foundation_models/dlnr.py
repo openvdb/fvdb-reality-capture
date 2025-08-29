@@ -4,9 +4,7 @@
 import logging
 from argparse import Namespace
 
-import requests
 import torch
-import tqdm
 from dlnr_lite import DLNR, InputPadder
 
 from .config import get_weights_path_for_model

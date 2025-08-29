@@ -20,7 +20,7 @@ import tqdm
 from fvdb.optim import GaussianSplatOptimizer
 from sklearn.neighbors import NearestNeighbors
 from torch.utils.tensorboard import SummaryWriter
-from torchmetrics.image import PeakSignalNoiseRatio, StructuralSimilarityIndexMeasure
+from torchmetrics.image import StructuralSimilarityIndexMeasure
 
 from fvdb import GaussianSplat3d
 
@@ -38,6 +38,7 @@ from ..viewer import Viewer
 from .camera_pose_adjust import CameraPoseAdjustment
 from .checkpoint import Checkpoint
 from .lpips import LPIPSLoss
+from .psnr import PSNR
 from .sfm_dataset import SfmDataset
 from .utils import make_unique_name_directory_based_on_time
 
@@ -1167,7 +1168,7 @@ class SceneOptimizationRunner:
 
         # Losses & Metrics.
         self._ssim = StructuralSimilarityIndexMeasure(data_range=1.0).to(model.device)
-        self._psnr = PeakSignalNoiseRatio(data_range=1.0).to(model.device)
+        self._psnr = PSNR(max_value=1.0).to(model.device)
         if self.config.lpips_net == "alex":
             self._lpips = LPIPSLoss(backbone="alex").to(model.device)
         elif self.config.lpips_net == "vgg":
