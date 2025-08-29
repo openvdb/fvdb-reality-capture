@@ -21,7 +21,6 @@ from fvdb.optim import GaussianSplatOptimizer
 from sklearn.neighbors import NearestNeighbors
 from torch.utils.tensorboard import SummaryWriter
 from torchmetrics.image import PeakSignalNoiseRatio, StructuralSimilarityIndexMeasure
-from torchmetrics.image.lpip import LearnedPerceptualImagePatchSimilarity
 
 from fvdb import GaussianSplat3d
 
@@ -38,6 +37,7 @@ from ..transforms import (
 from ..viewer import Viewer
 from .camera_pose_adjust import CameraPoseAdjustment
 from .checkpoint import Checkpoint
+from .lpips import LPIPSLoss
 from .sfm_dataset import SfmDataset
 from .utils import make_unique_name_directory_based_on_time
 
@@ -752,36 +752,6 @@ class SceneOptimizationRunner:
         """
         return self._checkpoints_path
 
-    @property
-    def ssim_loss(self) -> StructuralSimilarityIndexMeasure:
-        """
-        Get the SSIM loss metric used for evaluating the model.
-
-        Returns:
-            StructuralSimilarityIndexMeasure: The SSIM loss metric instance.
-        """
-        return self._ssim
-
-    @property
-    def lpips_loss(self) -> LearnedPerceptualImagePatchSimilarity:
-        """
-        Get the LPIPS loss metric used for evaluating the model.
-
-        Returns:
-            LearnedPerceptualImagePatchSimilarity: The LPIPS loss metric instance.
-        """
-        return self._lpips
-
-    @property
-    def psnr_loss(self) -> PeakSignalNoiseRatio:
-        """
-        Get the PSNR loss metric used for evaluating the model.
-
-        Returns:
-            PeakSignalToNoiseRatio: The PSNR loss metric instance.
-        """
-        return self._psnr
-
     @staticmethod
     def _init_model(
         config: Config,
@@ -1199,10 +1169,10 @@ class SceneOptimizationRunner:
         self._ssim = StructuralSimilarityIndexMeasure(data_range=1.0).to(model.device)
         self._psnr = PeakSignalNoiseRatio(data_range=1.0).to(model.device)
         if self.config.lpips_net == "alex":
-            self._lpips = LearnedPerceptualImagePatchSimilarity(net_type="alex", normalize=True).to(model.device)
+            self._lpips = LPIPSLoss(backbone="alex").to(model.device)
         elif self.config.lpips_net == "vgg":
             # The 3DGS official repo uses lpips vgg, which is equivalent with the following:
-            self._lpips = LearnedPerceptualImagePatchSimilarity(net_type="vgg", normalize=False).to(model.device)
+            self._lpips = LPIPSLoss(backbone="vgg").to(model.device)
         else:
             raise ValueError(f"Unknown LPIPS network: {self.config.lpips_net}")
 
@@ -1344,7 +1314,7 @@ class SceneOptimizationRunner:
 
                     # Image losses
                     l1loss = F.l1_loss(colors, pixels)
-                    ssimloss = 1.0 - self.ssim_loss(pixels.permute(0, 3, 1, 2), colors.permute(0, 3, 1, 2))
+                    ssimloss = 1.0 - self._ssim(pixels.permute(0, 3, 1, 2), colors.permute(0, 3, 1, 2))
                     loss = l1loss * (1.0 - self.config.ssim_lambda) + ssimloss * self.config.ssim_lambda
 
                     # Rgularize opacity to ensure Gaussian's don't become too opaque
@@ -1589,9 +1559,9 @@ class SceneOptimizationRunner:
 
             ground_truth_image = ground_truth_image.permute(0, 3, 1, 2)  # [1, 3, H, W]
             predicted_image = predicted_image.permute(0, 3, 1, 2)  # [1, 3, H, W]
-            metrics["psnr"].append(self.psnr_loss(predicted_image, ground_truth_image))
-            metrics["ssim"].append(self.ssim_loss(predicted_image, ground_truth_image))
-            metrics["lpips"].append(self.lpips_loss(predicted_image, ground_truth_image))
+            metrics["psnr"].append(self._psnr(predicted_image, ground_truth_image))
+            metrics["ssim"].append(self._ssim(predicted_image, ground_truth_image))
+            metrics["lpips"].append(self._lpips(predicted_image, ground_truth_image))
 
         evaluation_time /= len(valloader)
 

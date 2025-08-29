@@ -9,7 +9,7 @@ import torch
 import tqdm
 from dlnr_lite import DLNR, InputPadder
 
-from .config import get_pretrained_weights_path
+from .config import get_weights_path_for_model
 
 
 class DLNRModel:
@@ -38,32 +38,15 @@ class DLNRModel:
 
         self._logger = logging.getLogger(f"{self.__class__.__module__}.{self.__class__.__name__}")
         if backbone == "middleburry":
-            weights_url = middleburry_weights_url
-            path_to_weights = get_pretrained_weights_path() / "middlebury_dlnr.pth"
+            path_to_weights = get_weights_path_for_model(
+                "middlebury_dlnr.pth", middleburry_weights_url, model_name="Middleburry"
+            )
         elif backbone == "things":
-            weights_url = sceneflow_weights_url
-            path_to_weights = get_pretrained_weights_path() / "sceneflow_dlnr.pth"
+            path_to_weights = get_weights_path_for_model(
+                "sceneflow_dlnr.pth", sceneflow_weights_url, model_name="SceneFlow"
+            )
         else:
             raise ValueError(f"Unknown backbone: {backbone}")
-
-        if not path_to_weights.exists():
-            self._logger.info(f"Weights not found at {path_to_weights}. Downloading from {weights_url}.")
-            response = requests.get(weights_url, stream=True)
-            if response.status_code == 200:
-                total_size = int(response.headers.get("content-length", 0))
-                assert total_size > 0, "Downloaded file is empty."
-                with open(path_to_weights, "wb") as f:
-                    with tqdm.tqdm(
-                        total=total_size, unit="B", unit_scale=True, desc=f"Downloading DNLR {backbone} weights"
-                    ) as progress_bar:
-                        for chunk in response.iter_content(chunk_size=8192):
-                            f.write(chunk)
-                            progress_bar.update(len(chunk))
-                self._logger.info("Weights downloaded successfully.")
-            else:
-                raise RuntimeError(
-                    f"Failed to download weights from {weights_url}. Status code: {response.status_code}"
-                )
 
         self._DLNR_args = Namespace(
             corr_implementation="reg",
