@@ -327,7 +327,7 @@ class ViewerLogger:
                 "Num Gaussians": 0,
                 "Loss": 0.0,
                 "SSIM Loss": 0.0,
-                "LPIPS Loss": 0.0,
+                "L1 Loss": 0.0,
                 "GPU Memory Usage": 0,
                 "Pose Regularization": 0.0,
             },
@@ -434,7 +434,7 @@ class ViewerLogger:
         self._training_metrics_view["Num Gaussians"] = num_gaussians
         self._training_metrics_view["Loss"] = loss
         self._training_metrics_view["SSIM Loss"] = ssimloss
-        self._training_metrics_view["LPIPS Loss"] = l1loss
+        self._training_metrics_view["L1 Loss"] = l1loss
         self._training_metrics_view["GPU Memory Usage"] = f"{mem:3.2f} GiB"
         if pose_regulation is not None:
             self._training_metrics_view["Pose Regularization"] = f"{pose_regulation:.3e}"
