@@ -838,14 +838,14 @@ class SceneOptimizationRunner:
 
     @staticmethod
     def new_run(
-        dataset_path: pathlib.Path,
+        dataset_path: str | pathlib.Path,
         config: Config = Config(),
         run_name: str | None = None,
         image_downsample_factor: int = 4,
         points_percentile_filter: float = 0.0,
         normalization_type: Literal["none", "pca", "ecef2enu", "similarity"] = "pca",
         crop_bbox: tuple[float, float, float, float, float, float] | None = None,
-        results_path: pathlib.Path = pathlib.Path("results"),
+        results_path: str | pathlib.Path = pathlib.Path("results"),
         device: str | torch.device = "cuda",
         use_every_n_as_val: int = 100,
         disable_viewer: bool = False,
@@ -858,7 +858,7 @@ class SceneOptimizationRunner:
         Create a `Runner` instance for a new training run.
 
         Args:
-            dataset_path (pathlib.Path): Path to the dataset directory containing the SFM data.
+            dataset_path (str | pathlib.Path): Path to the dataset directory containing the SFM data.
             config (Config): Configuration object containing model parameters.
             run_name (str | None): Optional name for the run. If None, a unique name will be generated.
                 If a run with the same name already exists, an exception will be raised.
@@ -868,7 +868,7 @@ class SceneOptimizationRunner:
             crop_bbox (tuple[float, float, float, float, float, float] | None): Optional bounding box to crop the scene data.
                 In the form [x_min, y_min, z_min, x_max, y_max, z_max].
                 If None, no cropping will be applied.
-            results_path (pathlib.Path): Base path where results will be saved.
+            results_path (str | pathlib.Path): Base path where results will be saved.
             device (str | torch.device): The device to run the model on (e.g., "cuda" or "cpu").
             use_every_n_as_val (int): How often to use a training image as a validation image
             disable_viewer (bool): Whether to disable the viewer for this run.
@@ -880,6 +880,12 @@ class SceneOptimizationRunner:
         Returns:
             Runner: A `Runner` instance initialized with the specified configuration and datasets.
         """
+        if isinstance(dataset_path, str):
+            dataset_path = pathlib.Path(dataset_path)
+
+        if isinstance(results_path, str):
+            results_path = pathlib.Path(results_path)
+
         np.random.seed(config.seed)
         random.seed(config.seed)
         torch.manual_seed(config.seed)
@@ -900,9 +906,8 @@ class SceneOptimizationRunner:
         transform = Compose(*transforms)
 
         sfm_scene: SfmScene
-        cache: Cache
-        sfm_scene, cache = load_colmap_scene(dataset_path)
-        sfm_scene, cache = transform(sfm_scene, cache)
+        sfm_scene = load_colmap_scene(dataset_path)
+        sfm_scene = transform(sfm_scene)
 
         indices = np.arange(sfm_scene.num_images)
         mask = np.ones(len(indices), dtype=bool)
@@ -968,7 +973,6 @@ class SceneOptimizationRunner:
             dataset_path=dataset_path,
             sfm_scene=sfm_scene,
             dataset_transform=transform,
-            dataset_cache=cache,
             train_indices=train_indices,
             val_indices=val_indices,
             model=model,
@@ -991,7 +995,7 @@ class SceneOptimizationRunner:
     @staticmethod
     def from_checkpoint(
         checkpoint: Checkpoint,
-        results_path: pathlib.Path = pathlib.Path("results"),
+        results_path: pathlib.Path | str = pathlib.Path("results"),
         disable_viewer: bool = False,
         log_tensorboard_every: int = 100,
         log_images_to_tensorboard: bool = False,
@@ -1003,13 +1007,16 @@ class SceneOptimizationRunner:
 
         Args:
             checkpoint (Checkpoint): The checkpoint to load from.
-            results_path (pathlib.Path): Base path where results will be saved.
+            results_path (pathlib.Path | str): Base path where results will be saved.
             disable_viewer (bool): Whether to disable the viewer for this run.
             log_tensorboard_every (int): How often to log metrics to TensorBoard.
             log_images_to_tensorboard (bool): Whether to log images to TensorBoard.
             save_results (bool): Whether to save results to disk.
             save_eval_images (bool): Whether to save evaluation images during training.
         """
+        if isinstance(results_path, str):
+            results_path = pathlib.Path(results_path)
+
         config = Config(**checkpoint.config)
 
         np.random.seed(config.seed)
@@ -1020,9 +1027,8 @@ class SceneOptimizationRunner:
             raise FileNotFoundError(f"Checkpoint dataset path {checkpoint.dataset_path} does not exist.")
 
         sfm_scene: SfmScene
-        cache: Cache
-        sfm_scene, cache = load_colmap_scene(checkpoint.dataset_path)
-        sfm_scene, cache = checkpoint.dataset_transform(sfm_scene, cache)
+        sfm_scene = load_colmap_scene(checkpoint.dataset_path)
+        sfm_scene = checkpoint.dataset_transform(sfm_scene)
 
         if "train" not in checkpoint.dataset_splits:
             raise ValueError("Checkpoint does not have 'train' split")
@@ -1049,7 +1055,6 @@ class SceneOptimizationRunner:
             dataset_path=checkpoint.dataset_path,
             sfm_scene=sfm_scene,
             dataset_transform=checkpoint.dataset_transform,
-            dataset_cache=cache,
             train_indices=train_indices,
             val_indices=val_indices,
             model=checkpoint.splats,
@@ -1075,7 +1080,6 @@ class SceneOptimizationRunner:
         dataset_path: pathlib.Path,
         sfm_scene: SfmScene,
         dataset_transform: BaseTransform,
-        dataset_cache: Cache,
         train_indices: np.ndarray,
         val_indices: np.ndarray,
         model: GaussianSplat3d,
@@ -1103,7 +1107,6 @@ class SceneOptimizationRunner:
             config (Config): Configuration object containing model parameters.
             sfm_scene (SfmScene): The Structure-from-Motion scene.
             dataset_transform (BaseTransform): The transform used to normalize/scale/resample the SfmScene.
-            dataset_cache (Cache): The dataset cache for efficient data loading.
             train_indices (np.ndarray): The indices for the training set.
             val_indices (np.ndarray): The indices for the validation set.
             model (GaussianSplat3d): The Gaussian Splatting model to train.
@@ -1139,7 +1142,6 @@ class SceneOptimizationRunner:
         self._start_step = start_step
 
         self._sfm_scene = sfm_scene
-        self._dataset_cache = dataset_cache
         self._dataset_transform = dataset_transform
         self._dataset_path = dataset_path
         self._training_dataset = SfmDataset(sfm_scene=sfm_scene, dataset_indices=train_indices)
@@ -1231,7 +1233,9 @@ class SceneOptimizationRunner:
 
         # Progress bar to track training progress
         if self.config.max_steps is not None:
-            print(f"Using max_steps={self.config.max_steps} (overriding computed {computed_total_steps} steps)")
+            self.logger.info(
+                f"Using max_steps={self.config.max_steps} (overriding computed {computed_total_steps} steps)"
+            )
         pbar = tqdm.tqdm(range(0, total_steps), unit="imgs", desc="Training")
 
         # Flag to break out of outer epoch loop when max_steps is reached
@@ -1338,7 +1342,11 @@ class SceneOptimizationRunner:
                     loss.backward(retain_graph=not is_last)
 
                 # Update the log in the progress bar
-                pbar.set_description(f"loss={loss.item():.3f}| " f"sh degree={sh_degree_to_use}| ")
+                pbar.set_description(
+                    f"loss={loss.item():.3f}| "
+                    f"sh degree={sh_degree_to_use}| "
+                    f"num gaussians={self.model.num_gaussians:,}"
+                )
 
                 # Refine the gaussians via splitting/duplication/pruning
                 if (
@@ -1355,7 +1363,7 @@ class SceneOptimizationRunner:
                         use_scales=use_scales_for_refinement,
                         use_screen_space_scales=use_screen_space_scales_for_refinement,
                     )
-                    self.logger.info(
+                    self.logger.debug(
                         f"Step {self._global_step:,}: Refinement: {num_dup:,} duplicated, {num_split:,} split, {num_prune:,} pruned. "
                         f"Num Gaussians: {self.model.num_gaussians:,} (before: {num_gaussians_before:,})"
                     )
@@ -1376,7 +1384,7 @@ class SceneOptimizationRunner:
                         self.optimizer.remove_gaussians(outside_mask)
                         ng_post = self.model.num_gaussians
                         nclip = ng_prior - ng_post
-                        self.logger.info(
+                        self.logger.debug(
                             f"Clipped {nclip:,} Gaussians outside the crop bounding box min={bbox_min}, max={bbox_max}."
                         )
 

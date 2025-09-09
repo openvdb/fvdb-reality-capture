@@ -380,6 +380,16 @@ class SfmImageMetadata:
         return self._camera_id
 
     @property
+    def image_size(self) -> tuple[int, int]:
+        """
+        Return the resolution of the image in pixels as a tuple of the form (height, width)
+
+        Returns:
+            tuple[int, int]: The image resolution as (height, width).
+        """
+        return self._camera_metadata.height, self._camera_metadata.width
+
+    @property
     def image_path(self) -> str:
         """
         Return the file path to the image.

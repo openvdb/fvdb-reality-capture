@@ -190,26 +190,24 @@ class NormalizeScene(BaseTransform):
         self._normalization_transform = None
         self._logger = logging.getLogger(f"{self.__class__.__module__}.{self.__class__.__name__}")
 
-    def __call__(self, input_scene: SfmScene, input_cache: Cache) -> tuple[SfmScene, Cache]:
+    def __call__(self, input_scene: SfmScene) -> SfmScene:
         """
         Normalize the SfmScene using the specified normalization type.
 
         Args:
             input_scene (SfmScene): Input SfmScene object containing camera and point data
-            input_cache (Cache): The input cache, which is not modified by this transform.
 
         Returns:
             output_scene (SfmScene): A new SfmScene after applying the normalization transform.
-            output_cache (Cache): The input cache, unchanged by this transform.
         """
         self._logger.info(f"Normalizing SfmScene with normalization type: {self._normalization_type}")
 
         normalization_transform = self._compute_normalization_transform(input_scene)
         if normalization_transform is None:
             self._logger.warning("Returning the input scene unchanged.")
-            return input_scene, input_cache
+            return input_scene
 
-        return input_scene.apply_transformation_matrix(normalization_transform), input_cache
+        return input_scene.apply_transformation_matrix(normalization_transform)
 
     def _compute_normalization_transform(self, input_scene: SfmScene) -> np.ndarray | None:
         """

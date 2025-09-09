@@ -51,17 +51,15 @@ class PercentileFilterPoints(BaseTransform):
         self._percentile_min = np.asarray(percentile_min).astype(np.float32)
         self._percentile_max = np.asarray(percentile_max).astype(np.float32)
 
-    def __call__(self, input_scene: SfmScene, input_cache: Cache) -> tuple[SfmScene, Cache]:
+    def __call__(self, input_scene: SfmScene) -> SfmScene:
         """
         Apply the percentile filtering transform to the input scene and cache.
 
         Args:
             input_scene (SfmScene): The input scene containing points to be filtered.
-            input_cache (Cache): The input cache, which is not modified by this transform.
 
         Returns:
             output_scene (SfmScene): A new SfmScene with points filtered based on the specified percentile bounds.
-            output_cache (Cache): The input cache, unchanged by this transform.
         """
         self._logger.info(
             f"Filtering points based on percentiles: min={self._percentile_min}, max={self._percentile_max}"
@@ -71,7 +69,7 @@ class PercentileFilterPoints(BaseTransform):
 
         if np.all(percentile_min <= 0) and np.any(percentile_max >= 100):
             self._logger.info("No points will be filtered out, returning the input scene unchanged.")
-            return input_scene, input_cache
+            return input_scene
 
         points = input_scene.points
         lower_boundx = np.percentile(points[:, 0], percentile_min[0])
@@ -104,7 +102,7 @@ class PercentileFilterPoints(BaseTransform):
         output_scene = input_scene.filter_points(good_map)
 
         # Note: The input_cache is returned unchanged as this transform does not modify the cache.
-        return output_scene, input_cache
+        return output_scene
 
     def state_dict(self) -> dict[str, Any]:
         """

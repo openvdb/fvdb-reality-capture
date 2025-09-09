@@ -44,17 +44,15 @@ class BaseTransform(ABC):
         pass
 
     @abstractmethod
-    def __call__(self, input_scene: SfmScene, input_cache: Cache) -> tuple[SfmScene, Cache]:
+    def __call__(self, input_scene: SfmScene) -> SfmScene:
         """
         Apply the transform to the data.
 
         Args:
             input_scene (SfmScene): The input scene to transform.
-            input_cache (Cache): The input cache to use to save intermediate results.
 
         Returns:
             output_scene (SfmScene): The transformed scene.
-            output_cache (Cache): The cache to use for further transforms.
         """
         pass
 

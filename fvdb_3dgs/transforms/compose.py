@@ -35,10 +35,10 @@ class Compose(BaseTransform):
             if not isinstance(transform, BaseTransform):
                 raise TypeError(f"Expected a BaseTransform instance, got {type(transform)} instead.")
 
-    def __call__(self, input_scene: SfmScene, input_cache: Cache) -> tuple[SfmScene, Cache]:
+    def __call__(self, input_scene: SfmScene) -> SfmScene:
         for transform in self.transforms:
-            input_scene, input_cache = transform(input_scene, input_cache)
-        return input_scene, input_cache
+            input_scene = transform(input_scene)
+        return input_scene
 
     def state_dict(self) -> dict[str, Any]:
         """

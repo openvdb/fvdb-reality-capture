@@ -24,20 +24,18 @@ class Identity(BaseTransform):
         """
         super().__init__()
 
-    def __call__(self, input_scene: SfmScene, input_cache: Cache) -> tuple[SfmScene, Cache]:
+    def __call__(self, input_scene: SfmScene) -> SfmScene:
         """
         Perform the identity transform on the input scene and cache.
 
         Args:
             input_scene (SfmScene): The input scene containing images to be downsampled.
-            input_cache (Cache): The cache where the downsampled images will be stored.
 
         Returns:
             output_scene (SfmScene): The input scene, unchanged.
-            output_cache (Cache): The input cache, unchanged.
         """
 
-        return input_scene, input_cache
+        return input_scene
 
     @staticmethod
     def name() -> str:

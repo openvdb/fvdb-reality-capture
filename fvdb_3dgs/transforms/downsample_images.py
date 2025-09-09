@@ -52,30 +52,28 @@ class DownsampleImages(BaseTransform):
         self._rescaled_jpeg_quality = rescaled_jpeg_quality
         self._logger = logging.getLogger(f"{self.__class__.__module__}.{self.__class__.__name__}")
 
-    def __call__(self, input_scene: SfmScene, input_cache: Cache) -> tuple[SfmScene, Cache]:
+    def __call__(self, input_scene: SfmScene) -> SfmScene:
         """
         Perform the downsampling transform on the input scene and cache.
 
         Args:
             input_scene (SfmScene): The input scene containing images to be downsampled.
-            input_cache (Cache): The cache where the downsampled images will be stored.
 
         Returns:
             output_scene (SfmScene): A new SfmScene with paths to downsampled images.
-            output_cache (Cache): The cache containing the downsampled images with a prefix
-                set according to the downsampling parameters.
         """
         if self._image_downsample_factor == 1:
             self._logger.info("Image downsample factor is 1, skipping downsampling.")
-            return input_scene, input_cache
+            return input_scene
 
         if len(input_scene.images) == 0:
             self._logger.warning("No images found in the SfmScene. Returning the input scene unchanged.")
-            return input_scene, input_cache
+            return input_scene
         if len(input_scene.cameras) == 0:
             self._logger.warning("No cameras found in the SfmScene. Returning the input scene unchanged.")
-            return input_scene, input_cache
+            return input_scene
 
+        input_cache: Cache = input_scene.cache
         cache_prefix = f"downsampled_{self._image_downsample_factor}x_{self._image_type}_q{self._rescaled_jpeg_quality}_m{self._rescale_sampling_mode}"
         output_cache = input_cache.make_folder(
             cache_prefix, description=f"Rescaled images by a factor of {self._image_downsample_factor}"
@@ -221,9 +219,10 @@ class DownsampleImages(BaseTransform):
             points_rgb=input_scene.points_rgb,
             scene_bbox=input_scene.scene_bbox,
             transformation_matrix=input_scene.transformation_matrix,
+            cache=output_cache,
         )
 
-        return output_scene, output_cache
+        return output_scene
 
     @staticmethod
     def name() -> str:

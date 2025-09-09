@@ -3,6 +3,7 @@
 #
 import numpy as np
 
+from ..io import Cache
 from .sfm_metadata import SfmCameraMetadata, SfmImageMetadata
 
 
@@ -35,8 +36,9 @@ class SfmScene:
         points: np.ndarray,
         points_err: np.ndarray,
         points_rgb: np.ndarray,
-        scene_bbox: np.ndarray | None = None,
-        transformation_matrix: np.ndarray | None = None,
+        scene_bbox: np.ndarray | None,
+        transformation_matrix: np.ndarray | None,
+        cache: Cache,
     ):
         """
         Initialize the SfmScene with cameras, images, and points.
@@ -68,6 +70,11 @@ class SfmScene:
         self._points_rgb = points_rgb
         self._transformation_matrix = transformation_matrix if transformation_matrix is not None else np.eye(4)
         self._scene_bbox = scene_bbox
+        self._cache = cache
+
+    @property
+    def cache(self) -> Cache:
+        return self._cache
 
     def filter_points(self, mask: np.ndarray) -> "SfmScene":
         """
@@ -80,14 +87,14 @@ class SfmScene:
         Returns:
             SfmScene: A new SfmScene instance with filtered points and corresponding metadata.
         """
-        visible_point_indices = set(np.argwhere(mask)[0].tolist())
+        visible_point_indices = set(np.argwhere(mask).ravel().tolist())
         remap_indices = np.cumsum(mask, dtype=int)
         filtered_images = []
         image_meta: SfmImageMetadata
         for image_meta in self._images:
             old_visible_points = set(image_meta.point_indices.tolist())
             old_visible_points_filtered = old_visible_points.intersection(visible_point_indices)
-            remapped_points = remap_indices[np.array(list(old_visible_points_filtered), dtype=np.int64)]
+            remapped_points = remap_indices[np.array(list(old_visible_points_filtered), dtype=np.int64)] - 1
             filtered_images.append(
                 SfmImageMetadata(
                     world_to_camera_matrix=image_meta.world_to_camera_matrix,
@@ -113,6 +120,52 @@ class SfmScene:
             points_rgb=filtered_points_rgb,
             scene_bbox=self._scene_bbox,
             transformation_matrix=self._transformation_matrix,
+            cache=self.cache,
+        )
+
+    def filter_images(self, mask: np.ndarray) -> "SfmScene":
+        """
+        Filter the images in the scene based on a Boolean mask.
+
+        Args:
+            mask (np.ndarray): A Boolean array of shape (M,) where M is the number of images.
+                               True values indicate that the corresponding image should be kept.
+
+        Returns:
+            SfmScene: A new SfmScene instance with filtered images and corresponding metadata.
+        """
+        filtered_images = [img for img, keep in zip(self._images, mask) if keep]
+        return SfmScene(
+            cameras=self._cameras,
+            images=filtered_images,
+            points=self._points,
+            points_err=self._points_err,
+            points_rgb=self._points_rgb,
+            scene_bbox=self._scene_bbox,
+            transformation_matrix=self._transformation_matrix,
+            cache=self.cache,
+        )
+
+    def select_images(self, indices: np.ndarray) -> "SfmScene":
+        """
+        Select specific images from the scene based on their indices.
+
+        Args:
+            indices (np.ndarray): An array of integer indices specifying which images to select.
+
+        Returns:
+            SfmScene: A new SfmScene instance with the selected images and corresponding metadata.
+        """
+        filtered_images = [self._images[i] for i in indices]
+        return SfmScene(
+            cameras=self._cameras,
+            images=filtered_images,
+            points=self._points,
+            points_err=self._points_err,
+            points_rgb=self._points_rgb,
+            scene_bbox=self._scene_bbox,
+            transformation_matrix=self._transformation_matrix,
+            cache=self.cache,
         )
 
     def apply_transformation_matrix(self, transformation_matrix: np.ndarray) -> "SfmScene":
@@ -156,7 +209,19 @@ class SfmScene:
             points_rgb=self._points_rgb,
             scene_bbox=bbox,
             transformation_matrix=transformation_matrix,
+            cache=self.cache,
         )
+
+    @property
+    def image_centers(self):
+        """
+        Returns the position where each image was captured in the scene.
+
+        Returns:
+            np.ndarray: A (N, 3) array representing the 3D positions of the image centers.
+        """
+
+        return np.stack([img.origin for img in self.images])
 
     @property
     def transformation_matrix(self) -> np.ndarray:

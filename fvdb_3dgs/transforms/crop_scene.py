@@ -98,7 +98,7 @@ class CropScene(BaseTransform):
             "composite_into_existing_masks": self._composite_with_existing_masks,
         }
 
-    def __call__(self, input_scene: SfmScene, input_cache: Cache) -> tuple[SfmScene, Cache]:
+    def __call__(self, input_scene: SfmScene) -> SfmScene:
         """
         Apply the cropping transform to the scene.
 
@@ -114,6 +114,8 @@ class CropScene(BaseTransform):
             raise ValueError("Bounding box must be a 1D array of shape (6,)")
 
         self._logger.info(f"Cropping scene to bounding box: {self._bbox}")
+
+        input_cache: Cache = input_scene.cache
 
         output_cache_prefix = f"{self.name()}_{self._bbox[0]}_{self._bbox[1]}_{self._bbox[2]}_{self._bbox[3]}_{self._bbox[4]}_{self._bbox[5]}_{self._mask_format}_{self._composite_with_existing_masks}"
         output_cache_prefix = output_cache_prefix.replace(" ", "_")  # Ensure no spaces in the cache prefix
@@ -145,7 +147,7 @@ class CropScene(BaseTransform):
         new_image_metadata = []
 
         regenerate_cache = False
-        if output_cache.num_files != len(masked_scene.images):
+        if output_cache.num_files != len(masked_scene.images) + 1:
             if output_cache.num_files == 0:
                 self._logger.info(f"No masks found in the cache for cropping.")
             else:
@@ -153,6 +155,32 @@ class CropScene(BaseTransform):
                     f"Inconsistent number of masks for images. Expected {len(masked_scene.images)}, found {output_cache.num_files}. "
                     f"Clearing cache and regenerating masks."
                 )
+            output_cache.clear_current_folder()
+            regenerate_cache = True
+        if output_cache.has_file("transform"):
+            _, transform_data = output_cache.read_file("transform")
+            cached_transform: np.ndarray | None = transform_data.get("transform", None)
+            if cached_transform is None:
+                self._logger.info(
+                    f"Transform metadata does not match expected format. No 'transform' key in cached file."
+                )
+                output_cache.clear_current_folder()
+                regenerate_cache = True
+            elif not isinstance(cached_transform, np.ndarray) or cached_transform.shape != (4, 4):
+                self._logger.info(
+                    f"Transform metadata does not match expected format. Expected 'transform'."
+                    f"Clearing the cache and regenerating transform."
+                )
+                output_cache.clear_current_folder()
+                regenerate_cache = True
+            elif not np.allclose(cached_transform, input_scene.transformation_matrix):
+                self._logger.info(
+                    f"Cached transform does not match input scene transform. Clearing the cache and regenerating transform."
+                )
+                output_cache.clear_current_folder()
+                regenerate_cache = True
+        else:
+            self._logger.info("No transform found in cache, regenerating.")
             output_cache.clear_current_folder()
             regenerate_cache = True
 
@@ -192,13 +220,11 @@ class CropScene(BaseTransform):
             )
 
         if regenerate_cache:
+            output_cache.write_file("transform", {"transform": input_scene.transformation_matrix}, data_type="pt")
             self._logger.info(f"Computing image masks for cropping and saving to cache.")
             new_image_metadata = []
 
-            # Compute the bounding box of the masked points. We're going to use these to compute masks for the images images
-            min_x, min_y, min_z, max_x, max_y, max_z = np.concatenate(
-                (np.min(masked_scene.points, axis=0), np.max(masked_scene.points, axis=0))
-            ).tolist()
+            min_x, min_y, min_z, max_x, max_y, max_z = bbox
 
             # (8, 4)-shaped array representing the corners of the bounding cube containing the input points
             # in homogeneous coordinates
@@ -309,6 +335,7 @@ class CropScene(BaseTransform):
             points_err=masked_scene.points_err,
             scene_bbox=bbox,
             transformation_matrix=input_scene.transformation_matrix,
+            cache=output_cache,
         )
 
-        return output_scene, output_cache
+        return output_scene

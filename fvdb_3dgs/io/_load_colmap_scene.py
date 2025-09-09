@@ -103,7 +103,7 @@ def _load_colmap_internal(colmap_path: pathlib.Path) -> SceneManager:
     return scene_manager
 
 
-def load_colmap_scene(colmap_path: pathlib.Path) -> tuple[SfmScene, Cache]:
+def load_colmap_scene(colmap_path: pathlib.Path | str) -> SfmScene:
     """
     Load an `SfmScene` (with a cache to store derived quantities) from the output of a COLMAP
     structure-from-motion (SfM) pipeline. COLMAP produces a directory of images, a set of
@@ -112,13 +112,13 @@ def load_colmap_scene(colmap_path: pathlib.Path) -> tuple[SfmScene, Cache]:
     indices of which points are seen from which images.
 
     Args:
-        colmap_path (pathlib.Path): The path to the output of a COLMAP run.
+        colmap_path (pathlib.Path | str): The path to the output of a COLMAP run.
 
     Returns:
         sfm_scene (SfmScene): An in-memory representation of the SfmScene for the output of the COLMAP run.
-        cache (Cache): A cache to store quantities that are expensive to compute but are needed during training.
-            This function will store the visibility map between images and 3D points in the cache if it is not present.
     """
+    if isinstance(colmap_path, str):
+        colmap_path = pathlib.Path(colmap_path)
 
     scene_manager = _load_colmap_internal(colmap_path)
     num_images = len(scene_manager.images)
@@ -239,6 +239,8 @@ def load_colmap_scene(colmap_path: pathlib.Path) -> tuple[SfmScene, Cache]:
         points_err=points_err,
         points_rgb=points_rgb,
         scene_bbox=None,
+        transformation_matrix=None,
+        cache=cache,
     )
 
-    return sfm_scene, cache
+    return sfm_scene
