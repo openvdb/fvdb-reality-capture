@@ -219,7 +219,11 @@ def load_colmap_scene(colmap_path: pathlib.Path | str) -> SfmScene:
             camera_metadata=loaded_cameras[image_camera_ids[i]],
             image_path=str(image_absolute_paths[i].absolute()),
             mask_path=image_mask_absolute_paths[i],
-            point_indices=point_indices[image_colmap_ids[i]].copy(),
+            point_indices=(
+                point_indices[image_colmap_ids[i]].copy()
+                if image_colmap_ids[i] in point_indices
+                else np.empty((0,), dtype=np.int32)
+            ),
             image_id=i,
         )
         for i in range(len(image_file_names))
