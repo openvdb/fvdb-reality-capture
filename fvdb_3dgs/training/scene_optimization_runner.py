@@ -24,13 +24,14 @@ from torchmetrics.image import StructuralSimilarityIndexMeasure
 
 from fvdb import GaussianSplat3d
 
-from ..io import Cache, load_colmap_scene
+from ..io import load_colmap_scene
 from ..sfm_scene import SfmScene
 from ..transforms import (
     BaseTransform,
     Compose,
     CropScene,
     DownsampleImages,
+    FilterImagesWithLowPoints,
     NormalizeScene,
     PercentileFilterPoints,
 )
@@ -287,20 +288,19 @@ class ViewerLogger:
             verbose: If True, print additional information about the viewer.
         """
 
-        cam_to_world_matrices, projection_matrices, images = [], [], []
+        self._logger = logging.getLogger(f"{self.__class__.__module__}.{self.__class__.__name__}")
+        cam_to_world_matrices, projection_matrices, images, image_sizes = [], [], [], []
         camera_positions = []
         for data in train_dataset:
             cam_to_world_matrices.append(data["camera_to_world"])
             projection_matrices.append(data["projection"])
             camera_positions.append(data["camera_to_world"][:3, 3].cpu().numpy())
             images.append(data["image"])
-
-        scene_center = np.mean(camera_positions, axis=0)
-        scene_radius = np.max(np.linalg.norm(camera_positions - scene_center, axis=1))
+            image_sizes.append([data["image"].shape[0], data["image"].shape[1]])
 
         cam_to_world_matrices = np.stack(cam_to_world_matrices, axis=0)
         projection_matrices = np.stack(projection_matrices, axis=0)
-        images = np.stack(images, axis=0)
+        image_sizes = np.stack(image_sizes, axis=0)
 
         self.viewer = Viewer(port=viewer_port, verbose=verbose)
         bbmin, bbmax = train_dataset.points.min(axis=0), train_dataset.points.max(axis=0)
@@ -308,13 +308,21 @@ class ViewerLogger:
         self.viewer.camera_far = 3.0 * bbox_diagonal_length
         self._splat_model_view = self.viewer.register_gaussian_splat_3d(name="Model", gaussian_scene=splat_scene)
 
+        sfm_scene = train_dataset.sfm_scene
+        scene_extent = sfm_scene.points.max(0) - sfm_scene.points.min(0)
+        axis_scale = 0.01 * float(np.linalg.norm(scene_extent))
+        self._logger.info(f"Using scene extent = {scene_extent} for viewer. Scaling camera view axis by {axis_scale}.")
+
         self._train_camera_view = self.viewer.register_camera_view(
             name="Training Cameras",
             cam_to_world_matrices=cam_to_world_matrices,
             projection_matrices=projection_matrices,
+            image_sizes=image_sizes,
             images=images,
-            axis_length=0.05 * scene_radius,
-            axis_thickness=0.1 * 0.05 * scene_radius,
+            frustum_line_width=2.0,
+            frustum_scale=1.0 * axis_scale,
+            axis_length=2.0 * axis_scale,
+            axis_thickness=0.1 * axis_scale,
             show_images=False,
             enabled=False,
         )
@@ -449,8 +457,6 @@ class SceneOptimizationRunner:
 
     __PRIVATE__ = object()
 
-    logger = logging.getLogger("Runner")
-
     def _save_statistics(self, step: int, stage: str, stats: dict) -> None:
         """
         Save statistics in a dict to a JSON file.
@@ -461,11 +467,11 @@ class SceneOptimizationRunner:
             stats: A dictionary containing statistics to save.
         """
         if self._stats_path is None:
-            self.logger.info("No stats path specified, skipping statistics save.")
+            self._logger.info("No stats path specified, skipping statistics save.")
             return
         stats_path = self._stats_path / pathlib.Path(f"stats_{stage}_{step:04d}.json")
 
-        self.logger.info(f"Saving {stage} statistics at step {step} to path {stats_path}.")
+        self._logger.info(f"Saving {stage} statistics at step {step} to path {stats_path}.")
 
         with open(stats_path, "w") as f:
             json.dump(stats, f, indent=4)
@@ -486,12 +492,12 @@ class SceneOptimizationRunner:
             ground_truth_image: The ground truth image tensor to save.
         """
         if self._image_render_path is None:
-            self.logger.debug("No image render path specified, skipping image save.")
+            self._logger.debug("No image render path specified, skipping image save.")
             return
         eval_render_directory_path = self._image_render_path / pathlib.Path(f"{stage}_{step:04d}")
         eval_render_directory_path.mkdir(parents=True, exist_ok=True)
         image_path = eval_render_directory_path / pathlib.Path(image_name)
-        self.logger.info(f"Saving {stage} image at step {step} to {image_path}")
+        self._logger.info(f"Saving {stage} image at step {step} to {image_path}")
         canvas = torch.cat([predicted_image, ground_truth_image], dim=2).squeeze(0).cpu().numpy()
         imageio.imwrite(
             str(image_path),
@@ -523,16 +529,14 @@ class SceneOptimizationRunner:
             checkpoints_path (pathlib.Path): Path to save model checkpoints.
             tensorboard_path (pathlib.Path): Path to save TensorBoard logs.
         """
+        logger = logging.getLogger(f"{__name__}.SceneOptimizationRunner")
 
-        logger = logging.getLogger("Runner")
         if not save_results:
-            SceneOptimizationRunner.logger.info(
-                "No results will be saved. You can set `save_results=True` to save the training run."
-            )
+            logger.info("No results will be saved. You can set `save_results=True` to save the training run.")
             # If no results are saved and you didn't pass a run name, we'll generate a unique one
             if run_name is None:
                 run_name = str(uuid.uuid4())
-                SceneOptimizationRunner.logger.info(f"Generated a unique run name '{run_name}' for this run.")
+                logger.info(f"Generated a unique run name '{run_name}' for this run.")
             return run_name, None, None, None, None
 
         results_base_path.mkdir(exist_ok=True)
@@ -820,6 +824,9 @@ class SceneOptimizationRunner:
             # this gives a rough estimate of the scene scale.
             median_depth_per_camera = []
             for image_meta in sfm_scene.images:
+                # Don't use cameras that don't see any points in the estimate
+                if len(image_meta.point_indices) == 0:
+                    continue
                 points = sfm_scene.points[image_meta.point_indices]
                 dist_to_points = np.linalg.norm(points - image_meta.origin, axis=1)
                 median_dist = np.median(dist_to_points)
@@ -845,6 +852,7 @@ class SceneOptimizationRunner:
         points_percentile_filter: float = 0.0,
         normalization_type: Literal["none", "pca", "ecef2enu", "similarity"] = "pca",
         crop_bbox: tuple[float, float, float, float, float, float] | None = None,
+        min_points_per_image: int = 5,
         results_path: str | pathlib.Path = pathlib.Path("results"),
         device: str | torch.device = "cuda",
         use_every_n_as_val: int = 100,
@@ -868,6 +876,7 @@ class SceneOptimizationRunner:
             crop_bbox (tuple[float, float, float, float, float, float] | None): Optional bounding box to crop the scene data.
                 In the form [x_min, y_min, z_min, x_max, y_max, z_max].
                 If None, no cropping will be applied.
+            min_points_per_image (int): Minimum number of points that must be visible in an image for it to be included in the dataset.
             results_path (str | pathlib.Path): Base path where results will be saved.
             device (str | torch.device): The device to run the model on (e.g., "cuda" or "cpu").
             use_every_n_as_val (int): How often to use a training image as a validation image
@@ -890,6 +899,8 @@ class SceneOptimizationRunner:
         random.seed(config.seed)
         torch.manual_seed(config.seed)
 
+        logger = logging.getLogger(f"{__name__}.SceneOptimizationRunner")
+
         # Dataset transform
         transforms = [
             NormalizeScene(normalization_type=normalization_type),
@@ -900,6 +911,7 @@ class SceneOptimizationRunner:
             DownsampleImages(
                 image_downsample_factor=image_downsample_factor,
             ),
+            FilterImagesWithLowPoints(min_num_points=min_points_per_image),
         ]
         if crop_bbox is not None:
             transforms.append(CropScene(crop_bbox))
@@ -918,13 +930,13 @@ class SceneOptimizationRunner:
         train_dataset = SfmDataset(sfm_scene, train_indices)
         val_dataset = SfmDataset(sfm_scene, val_indices)
 
-        SceneOptimizationRunner.logger.info(
+        logger.info(
             f"Created dataset training and test datasets with {len(train_dataset)} training images and {len(val_dataset)} test images."
         )
 
         # Initialize model
         model = SceneOptimizationRunner._init_model(config, device, train_dataset)
-        SceneOptimizationRunner.logger.info(f"Model initialized with {model.num_gaussians:,} Gaussians")
+        logger.info(f"Model initialized with {model.num_gaussians:,} Gaussians")
 
         # Initialize optimizer
         max_steps = config.max_epochs * len(train_dataset)
@@ -1017,6 +1029,7 @@ class SceneOptimizationRunner:
         if isinstance(results_path, str):
             results_path = pathlib.Path(results_path)
 
+        logger = logging.getLogger(f"{__name__}.SceneOptimizationRunner")
         config = Config(**checkpoint.config)
 
         np.random.seed(config.seed)
@@ -1038,7 +1051,7 @@ class SceneOptimizationRunner:
         train_indices = checkpoint.dataset_splits["train"]
         val_indices = checkpoint.dataset_splits["val"]
 
-        SceneOptimizationRunner.logger.info(f"Loaded checkpoint with {checkpoint.splats.num_gaussians:,} Gaussians.")
+        logger.info(f"Loaded checkpoint with {checkpoint.splats.num_gaussians:,} Gaussians.")
 
         # Setup output directories.
         run_name, image_render_path, stats_path, checkpoints_path, tensorboard_path = (
@@ -1131,7 +1144,7 @@ class SceneOptimizationRunner:
         if _private is not SceneOptimizationRunner.__PRIVATE__:
             raise ValueError("Runner should only be initialized through `new_run` or `resume_from_checkpoint`.")
 
-        self.logger = logging.getLogger("Runner")
+        self._logger = logging.getLogger(f"{self.__class__.__module__}.{self.__class__.__name__}")
 
         self._cfg = config
         self._model = model
@@ -1233,7 +1246,7 @@ class SceneOptimizationRunner:
 
         # Progress bar to track training progress
         if self.config.max_steps is not None:
-            self.logger.info(
+            self._logger.info(
                 f"Using max_steps={self.config.max_steps} (overriding computed {computed_total_steps} steps)"
             )
         pbar = tqdm.tqdm(range(0, total_steps), unit="imgs", desc="Training")
@@ -1363,7 +1376,7 @@ class SceneOptimizationRunner:
                         use_scales=use_scales_for_refinement,
                         use_screen_space_scales=use_screen_space_scales_for_refinement,
                     )
-                    self.logger.debug(
+                    self._logger.debug(
                         f"Step {self._global_step:,}: Refinement: {num_dup:,} duplicated, {num_split:,} split, {num_prune:,} pruned. "
                         f"Num Gaussians: {self.model.num_gaussians:,} (before: {num_gaussians_before:,})"
                     )
@@ -1384,7 +1397,7 @@ class SceneOptimizationRunner:
                         self.optimizer.remove_gaussians(outside_mask)
                         ng_post = self.model.num_gaussians
                         nclip = ng_prior - ng_post
-                        self.logger.debug(
+                        self._logger.debug(
                             f"Clipped {nclip:,} Gaussians outside the crop bounding box min={bbox_min}, max={bbox_max}."
                         )
 
@@ -1459,21 +1472,21 @@ class SceneOptimizationRunner:
             # Save the model if we've reached a percentage of the total epochs specified in save_at_percent
             if epoch in [(pct * self.config.max_epochs // 100) - 1 for pct in self.config.save_at_percent]:
                 if self._global_step <= self._start_step and self._checkpoints_path is not None:
-                    self.logger.info(
+                    self._logger.info(
                         f"Skipping checkpoint save at epoch {epoch + 1} (before start step {self._start_step})."
                     )
                     continue
                 if self._checkpoints_path is not None:
                     ckpt_path = self._checkpoints_path / pathlib.Path(f"ckpt_{self._global_step:04d}.pt")
-                    self.logger.info(f"Saving checkpoint at epoch {epoch + 1} to {ckpt_path}.")
+                    self._logger.info(f"Saving checkpoint at epoch {epoch + 1} to {ckpt_path}.")
                     ply_path = self._checkpoints_path / pathlib.Path(f"ckpt_{self._global_step:04d}.ply")
-                    self.logger.info(f"Saving PLY file at epoch {epoch + 1} to {ply_path}.")
+                    self._logger.info(f"Saving PLY file at epoch {epoch + 1} to {ply_path}.")
                     self._save_checkpoint_and_ply(ckpt_path, ply_path)
 
             # Run evaluation if we've reached a percentage of the total epochs specified in eval_at_percent
             if epoch in [(pct * self.config.max_epochs // 100) - 1 for pct in self.config.eval_at_percent]:
                 if self._global_step <= self._start_step:
-                    self.logger.info(
+                    self._logger.info(
                         f"Skipping evaluation at epoch {epoch + 1} (before start step {self._start_step})."
                     )
                     continue
@@ -1489,19 +1502,19 @@ class SceneOptimizationRunner:
             final_ckpt_symlink_path = self._checkpoints_path / pathlib.Path("ckpt_final.pt")
             final_ply_path = self._checkpoints_path / pathlib.Path(f"ckpt_{self._global_step:04d}.ply")
             final_ply_symlink_path = self._checkpoints_path / pathlib.Path("ckpt_final.ply")
-            self.logger.info(
+            self._logger.info(
                 f"Training completed. Creating symlink {final_ckpt_symlink_path} pointing to final checkpoint at {final_ckpt_path}."
             )
             final_ckpt_symlink_path.symlink_to(final_ckpt_path.absolute())
             final_ply_symlink_path.symlink_to(final_ply_path.absolute())
         elif self._checkpoints_path is not None and 100 not in self.config.save_at_percent:
             ckpt_path = self._checkpoints_path / pathlib.Path(f"ckpt_final.pt")
-            self.logger.info(f"Saving checkpoint at epoch {epoch + 1} to {ckpt_path}.")
+            self._logger.info(f"Saving checkpoint at epoch {epoch + 1} to {ckpt_path}.")
             ply_path = self._checkpoints_path / pathlib.Path(f"ckpt_final.ply")
-            self.logger.info(f"Saving PLY file at epoch {epoch + 1} to {ply_path}.")
+            self._logger.info(f"Saving PLY file at epoch {epoch + 1} to {ply_path}.")
             self._save_checkpoint_and_ply(ckpt_path, ply_path)
         else:
-            self.logger.info("Training completed. No checkpoints path specified, not saving final checkpoint.")
+            self._logger.info("Training completed. No checkpoints path specified, not saving final checkpoint.")
 
         return self.checkpoint
 
@@ -1516,7 +1529,7 @@ class SceneOptimizationRunner:
         Args:
             stage (str): The name of the evaluation stage used for logging.
         """
-        self.logger.info("Running evaluation...")
+        self._logger.info("Running evaluation...")
         device = self.device
 
         valloader = torch.utils.data.DataLoader(self.validation_dataset, batch_size=1, shuffle=False, num_workers=1)
@@ -1577,8 +1590,8 @@ class SceneOptimizationRunner:
         psnr = torch.stack(metrics["psnr"]).mean()
         ssim = torch.stack(metrics["ssim"]).mean()
         lpips = torch.stack(metrics["lpips"]).mean()
-        self.logger.info(f"Evaluation for stage {stage} completed. Average time per image: {evaluation_time:.3f}s")
-        self.logger.info(f"PSNR: {psnr.item():.3f}, SSIM: {ssim.item():.4f}, LPIPS: {lpips.item():.3f}")
+        self._logger.info(f"Evaluation for stage {stage} completed. Average time per image: {evaluation_time:.3f}s")
+        self._logger.info(f"PSNR: {psnr.item():.3f}, SSIM: {ssim.item():.4f}, LPIPS: {lpips.item():.3f}")
 
         # Save stats as json
         stats = {

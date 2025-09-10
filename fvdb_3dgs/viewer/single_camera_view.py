@@ -29,6 +29,7 @@ class SingleCameraView:
         axis_thickness: float,
         frustum_line_width: float,
         frustum_scale: float,
+        frustum_color: np.ndarray,
         show_image: bool,
         visible: bool,
     ):
@@ -48,6 +49,7 @@ class SingleCameraView:
             axis_thickness (float): The world-unit thickness (2x the radius) of the axis lines in the camera frustum view.
             frustum_line_width (float): The width of the frustum lines in pixels.
             frustum_scale (float): The scale factor for the frustum in the camera frustum view.
+            frustum_color (np.ndarray): The RGB color of the frustum lines as a 3-element array.
             show_image (bool): Whether to show the image in the camera view.
             visible (bool): If True, the camera frustum and axes will be visible in the viewer.
         """
@@ -60,6 +62,16 @@ class SingleCameraView:
         self._initial_axis_length = axis_length
         self._frustum_line_width = frustum_line_width
         self._frustum_scale = frustum_scale
+        self._frustum_color = frustum_color
+
+        if not isinstance(frustum_color, (torch.Tensor, np.ndarray)):
+            raise TypeError("frustum_color must be a torch.Tensor or np.ndarray")
+
+        if frustum_color.shape != (3,):
+            raise ValueError("frustum_color must be a 3-element array representing RGB color")
+
+        if np.any(frustum_color < 0) or np.any(frustum_color > 1):
+            raise ValueError("frustum_color values must be in the range [0, 1]")
 
         if not isinstance(cam_to_world_matrix, (torch.Tensor, np.ndarray)):
             raise TypeError("cam_to_world_matrix must be a torch.Tensor or np.ndarray")
@@ -84,8 +96,6 @@ class SingleCameraView:
 
         if len(image_dimensions) != 2:
             raise ValueError("image_dimensions must be a sequence of two integers (height, width)")
-        if not all(isinstance(dim, (int, float)) for dim in image_dimensions):
-            raise TypeError("image_dimensions must be a sequence of numbers")
 
         self._image_size: tuple[int, int] = (int(image_dimensions[0]), int(image_dimensions[1]))
 
@@ -119,6 +129,7 @@ class SingleCameraView:
             wxyz=quaternion,
             axes_length=self._axis_length,
             axes_radius=self._axis_radius,
+            origin_radius=2.0 * self._axis_radius,
             visible=visible,
         )
 
@@ -131,6 +142,7 @@ class SingleCameraView:
             jpeg_quality=50,
             line_width=self._frustum_line_width,
             scale=self._frustum_scale,
+            color=self._frustum_color,
             visible=visible,
         )
 
@@ -338,6 +350,7 @@ class SingleCameraView:
 
         self._axis_radius = value / 2.0
         self._frame_scene_handle.axes_radius = self._axis_radius
+        self._frame_scene_handle.origin_radius = 2.0 * self._axis_radius
 
     @property
     def frustum_line_width(self) -> float:

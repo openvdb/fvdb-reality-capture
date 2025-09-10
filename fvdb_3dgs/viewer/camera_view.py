@@ -28,11 +28,13 @@ class CameraView:
         viewer_handle: ViewerHandle,
         cam_to_world_matrices: Sequence[torch.Tensor | np.ndarray] | torch.Tensor | np.ndarray,
         projection_matrices: Sequence[torch.Tensor | np.ndarray] | torch.Tensor | np.ndarray,
-        image_dimensions: Sequence[int | float],
+        image_dimensions: np.ndarray | torch.Tensor,
         images: Sequence[torch.Tensor | np.ndarray] | torch.Tensor | np.ndarray | None,
         axis_length: float,
         axis_thickness: float,
         frustum_line_width: float,
+        frustum_scale: float,
+        frustum_color: Sequence[float] | np.ndarray,
         show_images: bool,
         enabled: bool = True,
     ):
@@ -51,8 +53,7 @@ class CameraView:
                 representing the camera-to-world transformation matrices, where N is the number of cameras.
             projection_matrices (Sequence[torch.Tensor | np.ndarray] | torch.Tensor | np.ndarray): A sequence of N 3x3 tensors or numpy arrays
                 representing the projection matrices for the cameras, where N is the number of cameras.
-            image_dimensions (Sequence[int | float]): A sequence of two integers or floats representing the height
-                and width of the images associated with the cameras.
+            image_dimensions (np.ndarray | torch.Tensor): An array or Tensor of shape (N, 2) containing the height and width of each camera image.
             images (Sequence[torch.Tensor | np.ndarray] | torch.Tensor | np.ndarray): A sequence of N images (as numpy arrays or tensors) corresponding to the cameras.
                 If None, no images will be displayed in the camera frustum view.
             axis_length (float): The length of the axis lines in the camera frustum view.
@@ -69,8 +70,14 @@ class CameraView:
         self._axis_thickness = axis_thickness
         self._show_images = show_images
         self._frustum_line_width = frustum_line_width
-        self._frustum_scale = 0.3
+        self._frustum_color = np.asarray(frustum_color, dtype=np.float32)
+        self._frustum_scale = frustum_scale
         self._enabled = enabled
+
+        if not isinstance(image_dimensions, (np.ndarray, torch.Tensor)):
+            raise ValueError("image_dimensions must be a numpy array or torch tensor.")
+        if isinstance(image_dimensions, torch.Tensor):
+            image_dimensions = image_dimensions.cpu().numpy()
 
         self._camera_views: dict[int, SingleCameraView] = {}
 
@@ -84,18 +91,33 @@ class CameraView:
             cam_to_world_matrix: np.ndarray | torch.Tensor = cam_to_world_matrices[i]
             projection_matrix: np.ndarray | torch.Tensor = projection_matrices[i]
             image: np.ndarray | torch.Tensor | None = images[i] if images is not None else None
+            if image is not None:
+                if not isinstance(image, (np.ndarray, torch.Tensor)):
+                    raise ValueError(f"Image {i} must be a numpy array or torch tensor. Got {type(image)} instead.")
+                if not (image.ndim == 3 or image.ndim == 2):
+                    raise ValueError(
+                        f"Image {i} must be a 2D (grayscale) or 3D (color) array. Got {image.ndim}D instead."
+                    )
+
+                if image.shape[0] != image_dimensions[i, 0] or image.shape[1] != image_dimensions[i, 1]:
+                    raise ValueError(
+                        f"Image {i} dimensions {image.shape} do not match the specified image width/height {image_dimensions[i]}."
+                    )
+                if image.ndim == 3 and image.shape[2] not in (3, 4):
+                    raise ValueError(f"Image {i} must have 3 (RGB) or 4 (RGBA) channels. Got {image.shape[2]} instead.")
 
             self._camera_views[i] = SingleCameraView(
                 name=f"{self._name} Camera {i}",
                 viewer_handle=viewer_handle,
                 cam_to_world_matrix=cam_to_world_matrix,
                 projection_matrix=projection_matrix,
-                image_dimensions=image_dimensions,
+                image_dimensions=image_dimensions[i],
                 image=image,
                 axis_length=self._axis_length,
                 axis_thickness=self.axis_thickness,
                 frustum_line_width=self._frustum_line_width,
                 frustum_scale=self._frustum_scale,
+                frustum_color=self._frustum_color,
                 show_image=self._show_images,
                 visible=self._enabled,
             )
@@ -104,12 +126,12 @@ class CameraView:
         gui = self._viewer_handle.gui
 
         # Constants for controlling range of gui sliders
-        self._MIN_FRUSTUM_LINE_WIDTH = 1.0
-        self._MAX_FRUSTUM_LINE_WIDTH = 5.0
-        self._FRUSTUM_LINE_WIDTH_INCR = 0.5
-        self._MIN_FRUSTUM_SCALE = 0.1
-        self._MAX_FRUSTUM_SCALE = 3.0
-        self._FRUSTUM_SCALE_INCR = 0.1
+        self._MIN_FRUSTUM_LINE_WIDTH = 1.0 * self._frustum_line_width
+        self._MAX_FRUSTUM_LINE_WIDTH = 5.0 * self._frustum_line_width
+        self._FRUSTUM_LINE_WIDTH_INCR = 0.5 * self._frustum_line_width
+        self._MIN_FRUSTUM_SCALE = 0.1 * self._frustum_scale
+        self._MAX_FRUSTUM_SCALE = 100.0 * self._frustum_scale
+        self._FRUSTUM_SCALE_INCR = 0.1 * self._frustum_scale
 
         # These are factors because they multiply the initial values
         self._AXIS_MIN_FACTOR = 0.1

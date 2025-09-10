@@ -224,6 +224,17 @@ class SfmScene:
         return np.stack([img.origin for img in self.images])
 
     @property
+    def image_sizes(self) -> np.ndarray:
+        """
+        Return the dimensions of each image in the scene as a numpy array of shape (N, 2)
+        where N is the number of images and each entry is (height, width).
+
+        Returns:
+            np.ndarray: A (N, 2) array representing the dimensions of each image in the scene.
+        """
+        return np.array([[img.camera_metadata.height, img.camera_metadata.width] for img in self._images])
+
+    @property
     def transformation_matrix(self) -> np.ndarray:
         """
         Return the 4x4 transformation matrix for the scene which encodes the transformation

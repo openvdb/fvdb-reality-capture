@@ -94,10 +94,13 @@ class Viewer(object):
         name: str,
         cam_to_world_matrices: Sequence[torch.Tensor | np.ndarray] | torch.Tensor | np.ndarray,
         projection_matrices: Sequence[torch.Tensor | np.ndarray] | torch.Tensor | np.ndarray,
+        image_sizes: np.ndarray | torch.Tensor,
         images: Sequence[torch.Tensor | np.ndarray] | torch.Tensor | np.ndarray | None = None,
-        axis_length: float = 1.0,
-        axis_thickness: float = 0.01,
+        axis_length: float = 0.5,
+        axis_thickness: float = 0.0125,
         frustum_line_width: float = 2.0,
+        frustum_scale: float = 1.0,
+        frustum_color: Sequence[float] | np.ndarray = (0.0, 1.0, 0.0),
         show_images: bool = True,
         enabled: bool = True,
     ):
@@ -116,14 +119,19 @@ class Viewer(object):
                 A sequence of projection matrices, or a single tensor/array.
                 Each matrix should have shape (3, 3) and represent the projection transformation from camera space to image space.
                 If a single tensor/array is provided, it should have shape (N, 3, 3) where N is the number of cameras.
+            image_sizes (np.ndarray): An array of shape (N, 2) containing the height and width of each camera image.
             images (Sequence[torch.Tensor | np.ndarray] | torch.Tensor | np.ndarray | None):
-                A sequence of images (as numpy arrays or tensors) corresponding to the cameras.
+                An optional sequence of images (as numpy arrays or tensors) viewed by each camera.
                 If None, no images will be displayed in the camera frustum view.
                 Each image should have shape (H, W, C) for RGB images or (H, W) for grayscale images.
                 If a single tensor/array is provided, it should have shape (N, H, W, C) or (N, H, W) where N is the number of cameras.
-            axis_length (float): The length of the camera axes in the viewer. Defaults to 1.0.
-            axis_thickness (float): The thickness of the camera axes in the viewer. Defaults to 0.01.
-            frustum_line_width (float): The width of the lines representing the camera frustums in the viewer. Defaults to 2.0.
+                The width and height of each image should match the corresponding size in `image_sizes`.
+            axis_length (float): The length of the camera axes in the viewer in world units. Defaults to 0.5.
+            axis_thickness (float): The thickness (diameter) of the camera axis lines in world units. Defaults to 0.0125.
+            frustum_line_width (float): The width of the lines representing the camera frustums in pixel units. Defaults to 2.0.
+            frustum_scale (float): The length of the optical axis of the camera frustums in world units
+                (_i.e._ the distance from the camera position to the view plane). Defaults to 1.0.
+            frustum_color (Sequence[float] | np.ndarray): The RGB color of the camera frustum lines.
             show_images (bool): If True, the camera images will be displayed in the viewer. Defaults to True.
             enabled: (bool): If True, the camera view UI is enabled and the cameras will be rendered.
                 If False, the camera view UI is disabled and the cameras will not be rendered. Defaults to True.
@@ -131,28 +139,28 @@ class Viewer(object):
         if name in self._camera_frustum_views:
             raise ValueError(f"A camera view with the name '{name}' is already registered.")
 
-        if not isinstance(images, (np.ndarray, torch.Tensor)):
-            raise TypeError("cam_to_world_matrices must be a numpy array or a torch tensor.")
+        if not isinstance(image_sizes, (np.ndarray, torch.Tensor)):
+            raise ValueError("image_sizes must be a numpy array or torch tensor.")
+        if isinstance(image_sizes, torch.Tensor):
+            image_sizes = image_sizes.cpu().numpy()
+        if image_sizes.ndim != 2 or image_sizes.shape[1] != 2:
+            raise ValueError("image_sizes must have shape (N, 2) where N is the number of cameras.")
 
-        if isinstance(images, torch.Tensor):
-            images = images.cpu().numpy()
+        if image_sizes.shape[0] != len(cam_to_world_matrices) or image_sizes.shape[0] != len(projection_matrices):
+            raise ValueError("The number of image sizes must match the number of camera matrices provided.")
 
-        if images.ndim not in (3, 4):
-            raise ValueError(
-                f"images must be a 4D tensor with shape (N, H, W, C) or a 3D tensor with shape (N, H, W). Got images.shape = {images.shape}."
-            )
-
-        img_dims = images.shape[1:3]
         camer_frustum_view = CameraView(
             name=name,
             viewer_handle=self._handle,
             cam_to_world_matrices=cam_to_world_matrices,
             projection_matrices=projection_matrices,
             images=images,
-            image_dimensions=img_dims,
+            image_dimensions=image_sizes,
             axis_length=axis_length,
             axis_thickness=axis_thickness,
             frustum_line_width=frustum_line_width,
+            frustum_scale=frustum_scale,
+            frustum_color=frustum_color,
             show_images=show_images,
             enabled=enabled,
         )
