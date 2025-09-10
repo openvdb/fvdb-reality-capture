@@ -6,7 +6,7 @@ import logging
 import os
 from typing import Literal, Sequence
 
-import imageio
+import cv2
 import numpy as np
 import tqdm
 from scipy.spatial import ConvexHull
@@ -291,9 +291,9 @@ class CropScene(BaseTransform):
                     if image_meta.mask_path.strip().endswith(".npy"):
                         existing_mask = np.load(image_meta.mask_path)
                     elif image_meta.mask_path.strip().endswith(".png"):
-                        existing_mask = imageio.imread(image_meta.mask_path)
+                        existing_mask = cv2.imread(image_meta.mask_path, cv2.IMREAD_GRAYSCALE)
                     elif image_meta.mask_path.strip().endswith(".jpg"):
-                        existing_mask = imageio.imread(image_meta.mask_path)
+                        existing_mask = cv2.imread(image_meta.mask_path, cv2.IMREAD_GRAYSCALE)
                     else:
                         raise ValueError(f"Unsupported mask file format: {image_meta.mask_path}")
                     if existing_mask.ndim == 3:

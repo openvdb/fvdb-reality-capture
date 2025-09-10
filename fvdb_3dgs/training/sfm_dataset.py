@@ -5,7 +5,7 @@ import logging
 from collections.abc import Iterable
 from typing import Any, Dict, Sequence
 
-import imageio.v2 as imageio
+import cv2
 import numpy as np
 import torch
 import torch.utils.data
@@ -217,7 +217,7 @@ class SfmDataset(torch.utils.data.Dataset, Iterable):
         image_meta: SfmImageMetadata = self._sfm_scene.images[index]
         camera_meta: SfmCameraMetadata = image_meta.camera_metadata
 
-        image = imageio.imread(image_meta.image_path)[..., :3]
+        image = cv2.imread(image_meta.image_path)
         image = camera_meta.undistort_image(image)
 
         projection_matrix = camera_meta.projection_matrix.copy()  # undistorted projection matrix
@@ -244,7 +244,7 @@ class SfmDataset(torch.utils.data.Dataset, Iterable):
 
         # If you passed in masks, we'll set set these in the data dictionary
         if image_meta.mask_path != "":
-            mask = imageio.imread(image_meta.mask_path)
+            mask = cv2.imread(image_meta.mask_path, cv2.IMREAD_GRAYSCALE)
             mask = mask > 127
 
             data["mask_path"] = image_meta.mask_path

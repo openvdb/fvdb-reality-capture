@@ -6,7 +6,6 @@ import argparse
 import pathlib
 
 import cv2
-import imageio.v2 as imageio
 import numpy as np
 import tqdm
 from fvdb_3dgs.io import Cache, load_colmap_scene
@@ -49,4 +48,4 @@ if __name__ == "__main__":
         depths = data["depths"]
         for x, y in points:  # type: ignore
             cv2.circle(image, (int(x), int(y)), 2, (255, 0, 0), -1)
-        imageio.imsave(f"{i:04d}_points.png", image)
+        cv2.imwrite("{i:04d}_points.png", image)

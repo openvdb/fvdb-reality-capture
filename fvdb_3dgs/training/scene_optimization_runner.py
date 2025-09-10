@@ -11,7 +11,7 @@ import uuid
 from dataclasses import dataclass, field
 from typing import List, Literal
 
-import imageio
+import cv2
 import numpy as np
 import torch
 import torch.nn.functional as F
@@ -499,7 +499,7 @@ class SceneOptimizationRunner:
         image_path = eval_render_directory_path / pathlib.Path(image_name)
         self._logger.info(f"Saving {stage} image at step {step} to {image_path}")
         canvas = torch.cat([predicted_image, ground_truth_image], dim=2).squeeze(0).cpu().numpy()
-        imageio.imwrite(
+        cv2.imwrite(
             str(image_path),
             (canvas * 255).astype(np.uint8),
         )

@@ -6,7 +6,6 @@ import pathlib
 from typing import Any, Literal
 
 import cv2
-import imageio
 import tqdm
 
 from ..io import Cache
@@ -163,7 +162,7 @@ class DownsampleImages(BaseTransform):
             for _, image_meta in enumerate(pbar):
                 image_filename = pathlib.Path(image_meta.image_path).name
                 full_res_image_path = image_meta.image_path
-                full_res_img = imageio.imread(full_res_image_path)
+                full_res_img = cv2.imread(full_res_image_path)
                 img_h, img_w = full_res_img.shape[:2]
                 rescaled_img_h = int(img_h / self._image_downsample_factor)
                 rescaled_img_w = int(img_w / self._image_downsample_factor)

@@ -7,7 +7,7 @@ sys.path.append("..")
 
 import os
 
-import imageio
+import cv2
 import numpy as np
 from plyfile import PlyData, PlyElement
 from scipy.ndimage.interpolation import zoom
@@ -36,7 +36,7 @@ def main(args):
     camera_center = image.C()
 
     # load image, depth map, and normal map
-    image = imageio.imread(image_file)
+    image = cv2.imread(image_file)
 
     with open(depth_file, "rb") as fid:
         w = int("".join(iter(lambda: fid.read(1), "&")))

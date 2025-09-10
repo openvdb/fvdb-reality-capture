@@ -11,7 +11,7 @@ import signal
 import sqlite3
 from typing import Any
 
-import imageio
+import cv2
 import numpy as np
 import torch
 
@@ -548,8 +548,10 @@ class Cache:
                     )
 
                 file_path = self._get_path_for_folder(cursor, self._current_folder_id) / f"{name}.{data_type}"
-                if data_type == "jpg" or data_type == "png":
-                    imageio.v2.imwrite(file_path, data, quality=quality)
+                if data_type == "jpg":
+                    cv2.imwrite(str(file_path), data, [cv2.IMWRITE_JPEG_QUALITY, quality])
+                elif data_type == "png":
+                    cv2.imwrite(str(file_path), data)
                 elif data_type == "pt":
                     torch.save(data, file_path)
                 elif data_type == "npy":
@@ -604,7 +606,7 @@ class Cache:
                     )
 
                 if data_type == "jpg" or data_type == "png":
-                    data = imageio.v2.imread(file_path)
+                    data = cv2.imread(str(file_path), cv2.IMREAD_UNCHANGED)
                 elif data_type == "pt":
                     data = torch.load(file_path, weights_only=False)
                 elif data_type == "npy":
