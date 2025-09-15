@@ -4,7 +4,6 @@
 from abc import ABC, abstractmethod
 from typing import Any, TypeVar
 
-from ..io import Cache
 from ..sfm_scene import SfmScene
 
 # Keeps track of names of registered transforms and their classes.
@@ -28,9 +27,7 @@ def transform(cls: DerivedTransform) -> DerivedTransform:
         raise TypeError(f"Transform {cls} must inherit from BaseTransform.")
 
     if cls.name() in REGISTERED_TRANSFORMS:
-        raise ValueError(
-            f"Transform name '{cls.name()}' is already registered. You must use unique names for each transform."
-        )
+        del REGISTERED_TRANSFORMS[cls.name()]
 
     REGISTERED_TRANSFORMS[cls.name()] = cls
 

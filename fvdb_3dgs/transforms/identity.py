@@ -3,7 +3,6 @@
 #
 from typing import Any
 
-from ..io import Cache
 from ..sfm_scene import SfmScene
 from .base_transform import BaseTransform, transform
 

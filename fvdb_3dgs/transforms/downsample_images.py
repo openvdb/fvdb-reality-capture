@@ -8,8 +8,7 @@ from typing import Any, Literal
 import cv2
 import tqdm
 
-from ..io import Cache
-from ..sfm_scene import SfmImageMetadata, SfmScene
+from ..sfm_scene import SfmCacbhe, SfmImageMetadata, SfmScene
 from .base_transform import BaseTransform, transform
 
 
@@ -72,7 +71,7 @@ class DownsampleImages(BaseTransform):
             self._logger.warning("No cameras found in the SfmScene. Returning the input scene unchanged.")
             return input_scene
 
-        input_cache: Cache = input_scene.cache
+        input_cache: SfmCacbhe = input_scene.cache
         cache_prefix = f"downsampled_{self._image_downsample_factor}x_{self._image_type}_q{self._rescaled_jpeg_quality}_m{self._rescale_sampling_mode}"
         output_cache = input_cache.make_folder(
             cache_prefix, description=f"Rescaled images by a factor of {self._image_downsample_factor}"
@@ -163,6 +162,7 @@ class DownsampleImages(BaseTransform):
                 image_filename = pathlib.Path(image_meta.image_path).name
                 full_res_image_path = image_meta.image_path
                 full_res_img = cv2.imread(full_res_image_path)
+                assert full_res_img is not None, f"Failed to load image {full_res_image_path}"
                 img_h, img_w = full_res_img.shape[:2]
                 rescaled_img_h = int(img_h / self._image_downsample_factor)
                 rescaled_img_w = int(img_w / self._image_downsample_factor)
