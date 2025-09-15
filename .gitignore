@@ -62,3 +62,11 @@ logs
 tests/data/
 *.lock
 *.db
+
+
+**/results/
+/data/
+*.pt
+*.pth
+*.log
+*.nsys-rep
