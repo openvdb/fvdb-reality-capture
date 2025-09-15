@@ -6,7 +6,6 @@ import pathlib
 import unittest
 
 import cv2
-from fvdb_3dgs.io import Cache, load_colmap_scene
 from fvdb_3dgs.sfm_scene import SfmCameraMetadata, SfmImageMetadata, SfmScene
 from fvdb_3dgs.transforms import DownsampleImages
 
@@ -33,9 +32,7 @@ class BasicSfmSceneTest(unittest.TestCase):
 
     def test_sfm_scene_creation_creation(self):
 
-        scene: SfmScene
-        cache: Cache
-        scene, cache = load_colmap_scene(self.dataset_path)
+        scene: SfmScene = SfmScene.from_colmap(self.dataset_path)
 
         self.assertEqual(len(scene.cameras), self.expected_num_cameras)
         self.assertEqual(len(scene.images), self.expected_num_images)
@@ -52,6 +49,7 @@ class BasicSfmSceneTest(unittest.TestCase):
             # These are big images so only test a few of them
             if i % 20 == 0:
                 img = cv2.imread(image_metadata.image_path)
+                assert img is not None
                 self.assertTrue(img.shape[0] == image_metadata.camera_metadata.height)
                 self.assertTrue(img.shape[1] == image_metadata.camera_metadata.width)
 
@@ -59,14 +57,11 @@ class BasicSfmSceneTest(unittest.TestCase):
         downsample_factor = 8
         transform = DownsampleImages(downsample_factor)
 
-        scene: SfmScene
-        cache: Cache
-        scene, cache = load_colmap_scene(self.dataset_path)
+        scene: SfmScene = SfmScene.from_colmap(self.dataset_path)
 
-        transformed_scene, cache = transform(scene, cache)
+        transformed_scene = transform(scene)
 
         self.assertIsInstance(transformed_scene, SfmScene)
-        self.assertIsInstance(cache, Cache)
 
         for camera_id, camera_metadata in transformed_scene.cameras.items():
             self.assertIsInstance(camera_metadata, SfmCameraMetadata)
@@ -80,6 +75,7 @@ class BasicSfmSceneTest(unittest.TestCase):
             # These are big images so only test a few of them
             if i % 20 == 0:
                 img = cv2.imread(image_metadata.image_path)
+                assert img is not None
                 self.assertTrue(img.shape[0] == image_metadata.camera_metadata.height)
                 self.assertTrue(img.shape[1] == image_metadata.camera_metadata.width)
 

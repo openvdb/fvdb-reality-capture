@@ -8,7 +8,6 @@ import pathlib
 import cv2
 import numpy as np
 import tqdm
-from fvdb_3dgs.io import Cache, load_colmap_scene
 from fvdb_3dgs.sfm_scene import SfmScene
 from fvdb_3dgs.training import SfmDataset
 from fvdb_3dgs.transforms import DownsampleImages
@@ -21,11 +20,8 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     dataset_path = pathlib.Path(args.dataset_path)
-    sfm_scene: SfmScene
-    base_cache: Cache
-    sfm_scene, cache = load_colmap_scene(dataset_path)
+    sfm_scene: SfmScene = SfmScene.from_colmap(dataset_path)
     transform = DownsampleImages(image_downsample_factor=args.image_downsample_factor)
-    sfm_scene, cache = transform(sfm_scene, cache)
 
     # Parse COLMAP data.
     dataset = SfmDataset(
