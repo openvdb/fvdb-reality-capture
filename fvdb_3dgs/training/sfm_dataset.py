@@ -9,6 +9,7 @@ import cv2
 import numpy as np
 import torch
 import torch.utils.data
+import torchvision
 
 from ..sfm_scene import SfmCameraMetadata, SfmImageMetadata, SfmScene
 
@@ -217,10 +218,9 @@ class SfmDataset(torch.utils.data.Dataset, Iterable):
         image_meta: SfmImageMetadata = self._sfm_scene.images[index]
         camera_meta: SfmCameraMetadata = image_meta.camera_metadata
 
-        image = cv2.imread(image_meta.image_path, cv2.IMREAD_UNCHANGED)
-        assert image is not None, f"Failed to load image: {image_meta.image_path}"
-        image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-        assert image.ndim == 2 or image.ndim == 3, f"Image must be 2D or 3D, got {image.ndim}D"
+        data = torchvision.io.read_file(image_meta.image_path)
+        image = torchvision.io.decode_jpeg(data, device="cpu").permute(1,2,0).numpy()
+
         if image.ndim == 2:
             image = image[:, :, None]
         image = camera_meta.undistort_image(image)
