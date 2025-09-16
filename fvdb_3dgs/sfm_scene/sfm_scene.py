@@ -1,9 +1,12 @@
 # Copyright Contributors to the OpenVDB Project
 # SPDX-License-Identifier: Apache-2.0
 #
+import pathlib
+
 import numpy as np
 
-from ..io import Cache
+from ._load_colmap_scene import load_colmap_scene
+from .sfm_cache import SfmCache
 from .sfm_metadata import SfmCameraMetadata, SfmImageMetadata
 
 
@@ -38,7 +41,7 @@ class SfmScene:
         points_rgb: np.ndarray,
         scene_bbox: np.ndarray | None,
         transformation_matrix: np.ndarray | None,
-        cache: Cache,
+        cache: SfmCache,
     ):
         """
         Initialize the SfmScene with cameras, images, and points.
@@ -72,8 +75,36 @@ class SfmScene:
         self._scene_bbox = scene_bbox
         self._cache = cache
 
+    @classmethod
+    def from_colmap(cls, colmap_path: str | pathlib.Path) -> "SfmScene":
+        """
+        Load an `SfmScene` (with a cache to store derived quantities) from the output of a COLMAP
+        structure-from-motion (SfM) pipeline. COLMAP produces a directory of images, a set of
+        correspondence points, as well as a lightweight SqLite database containing image poses
+        (camera to world matrices), camera intrinsics (projection matrices, camera type, etc.), and
+        indices of which points are seen from which images.
+
+        Args:
+            colmap_path (str | pathlib.Path): The path to the output of a COLMAP run.
+        """
+
+        if isinstance(colmap_path, str):
+            colmap_path = pathlib.Path(colmap_path)
+
+        cameras, images, points, points_err, points_rgb, cache = load_colmap_scene(colmap_path)
+        return cls(
+            cameras=cameras,
+            images=images,
+            points=points,
+            points_err=points_err,
+            points_rgb=points_rgb,
+            scene_bbox=None,
+            transformation_matrix=None,
+            cache=cache,
+        )
+
     @property
-    def cache(self) -> Cache:
+    def cache(self) -> SfmCache:
         return self._cache
 
     def filter_points(self, mask: np.ndarray) -> "SfmScene":

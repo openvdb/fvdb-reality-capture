@@ -11,8 +11,7 @@ import numpy as np
 import tqdm
 from scipy.spatial import ConvexHull
 
-from ..io import Cache
-from ..sfm_scene import SfmImageMetadata, SfmScene
+from ..sfm_scene import SfmCache, SfmImageMetadata, SfmScene
 from .base_transform import BaseTransform, transform
 
 
@@ -115,7 +114,7 @@ class CropScene(BaseTransform):
 
         self._logger.info(f"Cropping scene to bounding box: {self._bbox}")
 
-        input_cache: Cache = input_scene.cache
+        input_cache: SfmCache = input_scene.cache
 
         output_cache_prefix = f"{self.name()}_{self._bbox[0]}_{self._bbox[1]}_{self._bbox[2]}_{self._bbox[3]}_{self._bbox[4]}_{self._bbox[5]}_{self._mask_format}_{self._composite_with_existing_masks}"
         output_cache_prefix = output_cache_prefix.replace(" ", "_")  # Ensure no spaces in the cache prefix
@@ -292,8 +291,10 @@ class CropScene(BaseTransform):
                         existing_mask = np.load(image_meta.mask_path)
                     elif image_meta.mask_path.strip().endswith(".png"):
                         existing_mask = cv2.imread(image_meta.mask_path, cv2.IMREAD_GRAYSCALE)
+                        assert existing_mask is not None, f"Failed to load mask {image_meta.mask_path}"
                     elif image_meta.mask_path.strip().endswith(".jpg"):
                         existing_mask = cv2.imread(image_meta.mask_path, cv2.IMREAD_GRAYSCALE)
+                        assert existing_mask is not None, f"Failed to load mask {image_meta.mask_path}"
                     else:
                         raise ValueError(f"Unsupported mask file format: {image_meta.mask_path}")
                     if existing_mask.ndim == 3:

@@ -217,7 +217,11 @@ class SfmDataset(torch.utils.data.Dataset, Iterable):
         image_meta: SfmImageMetadata = self._sfm_scene.images[index]
         camera_meta: SfmCameraMetadata = image_meta.camera_metadata
 
-        image = cv2.imread(image_meta.image_path)
+        image = cv2.imread(image_meta.image_path, cv2.IMREAD_UNCHANGED)
+        assert image is not None, f"Failed to load image: {image_meta.image_path}"
+        assert image.ndim == 2 or image.ndim == 3, f"Image must be 2D or 3D, got {image.ndim}D"
+        if image.ndim == 2:
+            image = image[:, :, None]
         image = camera_meta.undistort_image(image)
 
         projection_matrix = camera_meta.projection_matrix.copy()  # undistorted projection matrix
@@ -245,6 +249,7 @@ class SfmDataset(torch.utils.data.Dataset, Iterable):
         # If you passed in masks, we'll set set these in the data dictionary
         if image_meta.mask_path != "":
             mask = cv2.imread(image_meta.mask_path, cv2.IMREAD_GRAYSCALE)
+            assert mask is not None, f"Failed to load mask: {image_meta.mask_path}"
             mask = mask > 127
 
             data["mask_path"] = image_meta.mask_path

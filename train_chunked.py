@@ -13,7 +13,6 @@ import numpy as np
 import torch
 import tqdm
 import tyro
-from fvdb_3dgs.io import load_colmap_scene
 from fvdb_3dgs.sfm_scene import SfmScene
 from fvdb_3dgs.training import Config, SceneOptimizationRunner, SfmDataset
 from fvdb_3dgs.transforms import (
@@ -245,8 +244,7 @@ def main(
         ),
     )
 
-    sfm_scene: SfmScene
-    sfm_scene = transform(load_colmap_scene(dataset_path))
+    sfm_scene: SfmScene = transform(SfmScene.from_colmap(dataset_path))
 
     indices = np.arange(sfm_scene.num_images)
     mask = np.ones(len(indices), dtype=bool)

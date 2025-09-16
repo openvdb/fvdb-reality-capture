@@ -17,14 +17,12 @@ import torch
 import torch.nn.functional as F
 import torch.utils.data
 import tqdm
-from fvdb.optim import GaussianSplatOptimizer
 from sklearn.neighbors import NearestNeighbors
 from torch.utils.tensorboard import SummaryWriter
 from torchmetrics.image import StructuralSimilarityIndexMeasure
 
 from fvdb import GaussianSplat3d
 
-from ..io import load_colmap_scene
 from ..sfm_scene import SfmScene
 from ..transforms import (
     BaseTransform,
@@ -38,6 +36,7 @@ from ..transforms import (
 from ..viewer import Viewer
 from .camera_pose_adjust import CameraPoseAdjustment
 from .checkpoint import Checkpoint
+from .gaussian_splat_optimizer import GaussianSplatOptimizer
 from .lpips import LPIPSLoss
 from .psnr import PSNR
 from .sfm_dataset import SfmDataset
@@ -601,15 +600,7 @@ class SceneOptimizationRunner:
         )
 
     @torch.no_grad()
-    def _save_checkpoint_and_ply(self, ckpt_path: pathlib.Path, ply_path: pathlib.Path):
-        """
-        Saves a checkpoint and a PLY file to disk
-        """
-        if self._checkpoints_path is None:
-            return
-
-        self.checkpoint.save(ckpt_path)
-
+    def _splat_metadata(self) -> dict[str, torch.Tensor | float | int | str]:
         training_camera_to_world_matrices = torch.from_numpy(self._training_dataset.camera_to_world_matrices).to(
             dtype=torch.float32, device=self.device
         )
@@ -625,16 +616,27 @@ class SceneOptimizationRunner:
             torch.float32
         )
 
-        metadata_to_save = {
+        return {
             "normalization_transform": normalization_transform,
             "camera_to_world_matrices": training_camera_to_world_matrices,
             "projection_matrices": training_projection_matrices,
             "image_sizes": training_image_sizes,
             "scene_scale": SceneOptimizationRunner._compute_scene_scale(self.training_dataset.sfm_scene),
         }
+
+    @torch.no_grad()
+    def _save_checkpoint_and_ply(self, ckpt_path: pathlib.Path, ply_path: pathlib.Path):
+        """
+        Saves a checkpoint and a PLY file to disk
+        """
+        if self._checkpoints_path is None:
+            return
+
+        self.checkpoint.save(ckpt_path)
+
         self.model.save_ply(
             ply_path,
-            metadata=metadata_to_save,
+            metadata=self._splat_metadata(),
         )
 
     @property
@@ -917,15 +919,18 @@ class SceneOptimizationRunner:
             transforms.append(CropScene(crop_bbox))
         transform = Compose(*transforms)
 
-        sfm_scene: SfmScene
-        sfm_scene = load_colmap_scene(dataset_path)
+        sfm_scene: SfmScene = SfmScene.from_colmap(dataset_path)
         sfm_scene = transform(sfm_scene)
 
         indices = np.arange(sfm_scene.num_images)
-        mask = np.ones(len(indices), dtype=bool)
-        mask[::use_every_n_as_val] = False
-        train_indices = indices[mask]
-        val_indices = indices[~mask]
+        if use_every_n_as_val > 0:
+            mask = np.ones(len(indices), dtype=bool)
+            mask[::use_every_n_as_val] = False
+            train_indices = indices[mask]
+            val_indices = indices[~mask]
+        else:
+            train_indices = indices
+            val_indices = np.array([], dtype=int)
 
         train_dataset = SfmDataset(sfm_scene, train_indices)
         val_dataset = SfmDataset(sfm_scene, val_indices)
@@ -1039,8 +1044,7 @@ class SceneOptimizationRunner:
         if not checkpoint.dataset_path.exists():
             raise FileNotFoundError(f"Checkpoint dataset path {checkpoint.dataset_path} does not exist.")
 
-        sfm_scene: SfmScene
-        sfm_scene = load_colmap_scene(checkpoint.dataset_path)
+        sfm_scene: SfmScene = SfmScene.from_colmap(checkpoint.dataset_path)
         sfm_scene = checkpoint.dataset_transform(sfm_scene)
 
         if "train" not in checkpoint.dataset_splits:
@@ -1192,7 +1196,7 @@ class SceneOptimizationRunner:
         else:
             raise ValueError(f"Unknown LPIPS network: {self.config.lpips_net}")
 
-    def train(self):
+    def train(self) -> tuple[GaussianSplat3d, dict[str, torch.Tensor | float | int | str]]:
         """
         Run the training loop for the Gaussian Splatting model.
 
@@ -1485,6 +1489,8 @@ class SceneOptimizationRunner:
 
             # Run evaluation if we've reached a percentage of the total epochs specified in eval_at_percent
             if epoch in [(pct * self.config.max_epochs // 100) - 1 for pct in self.config.eval_at_percent]:
+                if len(self.validation_dataset) == 0:
+                    continue
                 if self._global_step <= self._start_step:
                     self._logger.info(
                         f"Skipping evaluation at epoch {epoch + 1} (before start step {self._start_step})."
@@ -1516,7 +1522,7 @@ class SceneOptimizationRunner:
         else:
             self._logger.info("Training completed. No checkpoints path specified, not saving final checkpoint.")
 
-        return self.checkpoint
+        return self._model, self._splat_metadata()
 
     @torch.no_grad()
     def eval(self, stage: str = "val"):

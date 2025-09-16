@@ -47,7 +47,7 @@ def main(
 
     viewer = Viewer(port=viewer_port, verbose=verbose)
 
-    sfm_scene: fvdb_3dgs.SfmScene = fvdb_3dgs.io.load_colmap_scene(dataset_path)
+    sfm_scene: fvdb_3dgs.SfmScene = fvdb_3dgs.SfmScene.from_colmap(dataset_path)
     sfm_scene = Compose(
         DownsampleImages(image_downsample_factor),
         NormalizeScene("pca"),

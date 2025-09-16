@@ -6,8 +6,7 @@ from typing import Any, Sequence
 
 import numpy as np
 
-from ..io import Cache
-from ..sfm_scene import SfmScene
+from ..sfm_scene import SfmCache, SfmScene
 from .base_transform import BaseTransform, transform
 
 

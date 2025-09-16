@@ -11,11 +11,8 @@ import torch
 import torch.nn.functional as F
 import torch.utils.data
 import yaml
-from fvdb_3dgs.io import Cache, load_colmap_scene
 from fvdb_3dgs.sfm_scene import SfmScene
 from fvdb_3dgs.training import Checkpoint, Config, SfmDataset
-
-from fvdb import GaussianSplat3d
 
 logger = logging.getLogger("Benchmark 3dgs")
 
@@ -45,10 +42,8 @@ class Benchmark3dgs:
         # Load the checkpoint
         self.checkpoint = Checkpoint.load(pathlib.Path(checkpoint_path), device=device)
 
-        sfm_scene: SfmScene
-        cache: Cache
-        sfm_scene, cache = load_colmap_scene(self.checkpoint.dataset_path)
-        sfm_scene, cache = self.checkpoint.dataset_transform(sfm_scene, cache)
+        sfm_scene: SfmScene = SfmScene.from_colmap(self.checkpoint.dataset_path)
+        sfm_scene = self.checkpoint.dataset_transform(sfm_scene)
 
         if "train" not in self.checkpoint.dataset_splits:
             raise ValueError("No training dataset found in checkpoint")
