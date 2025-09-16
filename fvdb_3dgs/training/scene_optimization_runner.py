@@ -498,6 +498,7 @@ class SceneOptimizationRunner:
         image_path = eval_render_directory_path / pathlib.Path(image_name)
         self._logger.info(f"Saving {stage} image at step {step} to {image_path}")
         canvas = torch.cat([predicted_image, ground_truth_image], dim=2).squeeze(0).cpu().numpy()
+        canvas = cv2.cvtColor(canvas, cv2.COLOR_RGB2BGR)
         cv2.imwrite(
             str(image_path),
             (canvas * 255).astype(np.uint8),

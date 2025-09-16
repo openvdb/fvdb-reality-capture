@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 import math
-from dataclasses import dataclass
+
 from typing import Any, Callable, Dict, List, Tuple, Union
 
 import torch
@@ -12,7 +12,6 @@ import torch.optim
 from fvdb import GaussianSplat3d
 
 
-@dataclass
 class GaussianSplatOptimizer:
     """
     Optimzier for training Gaussian Splat radiance fields over a collection of posed images.
@@ -21,42 +20,53 @@ class GaussianSplatOptimizer:
     (i.e. means, covariances, opacities, spherical harmonics).
     It also handles splitting/duplicating/deleting Gaussians based on their opacity and gradients following the
     algorithm in the original Gaussian Splatting paper (https://arxiv.org/abs/2308.04079).
-
-    Args:
-        module (GaussianSplat3d): The module representing the Gaussian Splatting scene (e.g. fvdb.nn.GaussianSplat3D).
-        mean_lr_decay_exponent (float): The exponent to decay the learning rate for the means. Default: 1.0.
-        scene_scale (float): The scale of the scene, used to scale the learning rates. Default: 1.0.
-
-        prune_opacity_threshold (float): The opacity threshold below which to prune a Gaussian. Default: 0.005.
-        prune_scale3d_threshold (float): The 3D scale threshold above which to prune a Gaussian. Default: 0.1.
-        prune_scale2d_threshold (float): The 2D scale threshold above which to prune a Gaussian. Default: 0.15.
-
-        grow_grad2d_threshold (float): The 2D gradient threshold above which to grow a Gaussian. Default: 0.0002.
-        grow_scale3d_threshold (float): The 3D scale threshold below which to grow a Gaussian. Default: 0.01.
-        grow_scale2d_threshold (float): The 2D scale threshold below which to grow a Gaussian. Default: 0.05.
-
-        absgrad (bool): Whether to use the absolute value of the gradients for refinement. Default: False.
-        revised_opacity (bool): Whether to use the revised opacity formulation from https://arxiv.org/abs/2404.06109. Default: False.
     """
 
-    module: GaussianSplat3d
-    mean_lr_decay_exponent: float = 1.0
-    scene_scale: float = 1.0
+    def __init__(self,
+                 model: GaussianSplat3d,
+                 mean_lr_decay_exponent: float = 1.0,
+                 scene_scale: float = 1.0,
+                 prune_opacity_threshold: float = 0.005,
+                 prune_scale3d_threshold: float = 0.1,
+                 prune_scale2d_threshold: float = 0.15,
+                 grow_grad2d_threshold: float = 0.0002,
+                 grow_scale3d_threshold: float = 0.01,
+                 grow_scale2d_threshold: float = 0.05,
+                 absgrad: bool = False,
+                 revised_opacity: bool = False):
+        """
+        Create a new GaussianSplatOptimizer for the given GaussianSplat3d model.
 
-    prune_opacity_threshold: float = 0.005
-    prune_scale3d_threshold: float = 0.1
-    prune_scale2d_threshold: float = 0.15
+        Args:
+            module (GaussianSplat3d): The module representing the Gaussian Splatting scene (e.g. fvdb.nn.GaussianSplat3D).
+            mean_lr_decay_exponent (float): The exponent to decay the learning rate for the means. Default: 1.0.
+            scene_scale (float): The scale of the scene, used to scale the learning rates. Default: 1.0.
 
-    grow_grad2d_threshold: float = 0.0002
-    grow_scale3d_threshold: float = 0.01
-    grow_scale2d_threshold: float = 0.05
+            prune_opacity_threshold (float): The opacity threshold below which to prune a Gaussian. Default: 0.005.
+            prune_scale3d_threshold (float): The 3D scale threshold above which to prune a Gaussian. Default: 0.1.
+            prune_scale2d_threshold (float): The 2D scale threshold above which to prune a Gaussian. Default: 0.15.
 
-    absgrad: bool = False
-    revised_opacity: bool = False
+            grow_grad2d_threshold (float): The 2D gradient threshold above which to grow a Gaussian. Default: 0.0002.
+            grow_scale3d_threshold (float): The 3D scale threshold below which to grow a Gaussian. Default: 0.01.
+            grow_scale2d_threshold (float): The 2D scale threshold below which to grow a Gaussian. Default: 0.05.
 
-    def __post_init__(self):
+            absgrad (bool): Whether to use the absolute value of the gradients for refinement. Default: False.
+            revised_opacity (bool): Whether to use the revised opacity formulation from https://arxiv.org/abs/2404.06109. Default: False.
+        """
+        self._model = model
+        self._mean_lr_decay_exponent = mean_lr_decay_exponent
+        self._scene_scale = scene_scale
+        self._prune_opacity_threshold = prune_opacity_threshold
+        self._prune_scale3d_threshold = prune_scale3d_threshold
+        self._prune_scale2d_threshold = prune_scale2d_threshold
+        self._grow_grad2d_threshold = grow_grad2d_threshold
+        self._grow_scale3d_threshold = grow_scale3d_threshold
+        self._grow_scale2d_threshold = grow_scale2d_threshold
+        self._absgrad = absgrad
+        self._revised_opacity = revised_opacity
+
         default_lrs = {
-            "means": 1.6e-4 * self.scene_scale,
+            "means": 1.6e-4 * self._scene_scale,
             "scales": 5e-3,
             "quats": 1e-3,
             "opacities": 5e-2,
@@ -64,9 +74,9 @@ class GaussianSplatOptimizer:
             "shN": 2.5e-3 / 20,
         }
 
-        self.module.accumulate_mean_2d_gradients = True
+        self._model.accumulate_mean_2d_gradients = True
 
-        if self.absgrad:
+        if self._absgrad:
             raise NotImplementedError("absgrad is not yet implemented")
 
         batch_size = 1
@@ -78,24 +88,24 @@ class GaussianSplatOptimizer:
         lr_batch_rescale = math.sqrt(float(batch_size))
         self._optimizers = {
             "means": torch.optim.Adam(
-                [{"params": self.module.means, "lr": default_lrs["means"] * lr_batch_rescale, "name": "means"}],
+                [{"params": self._model.means, "lr": default_lrs["means"] * lr_batch_rescale, "name": "means"}],
                 eps=1e-15 / lr_batch_rescale,
                 betas=(1.0 - batch_size * (1.0 - 0.9), 1.0 - batch_size * (1.0 - 0.999)),
             ),
             "scales": torch.optim.Adam(
-                [{"params": self.module.log_scales, "lr": default_lrs["scales"] * lr_batch_rescale, "name": "scales"}],
+                [{"params": self._model.log_scales, "lr": default_lrs["scales"] * lr_batch_rescale, "name": "scales"}],
                 eps=1e-15 / lr_batch_rescale,
                 betas=(1.0 - batch_size * (1.0 - 0.9), 1.0 - batch_size * (1.0 - 0.999)),
             ),
             "quats": torch.optim.Adam(
-                [{"params": self.module.quats, "lr": default_lrs["quats"] * lr_batch_rescale, "name": "quats"}],
+                [{"params": self._model.quats, "lr": default_lrs["quats"] * lr_batch_rescale, "name": "quats"}],
                 eps=1e-15 / lr_batch_rescale,
                 betas=(1.0 - batch_size * (1.0 - 0.9), 1.0 - batch_size * (1.0 - 0.999)),
             ),
             "opacities": torch.optim.Adam(
                 [
                     {
-                        "params": self.module.logit_opacities,
+                        "params": self._model.logit_opacities,
                         "lr": default_lrs["opacities"] * lr_batch_rescale,
                         "name": "opacities",
                     }
@@ -104,12 +114,12 @@ class GaussianSplatOptimizer:
                 betas=(1.0 - batch_size * (1.0 - 0.9), 1.0 - batch_size * (1.0 - 0.999)),
             ),
             "sh0": torch.optim.Adam(
-                [{"params": self.module.sh0, "lr": default_lrs["sh0"] * lr_batch_rescale, "name": "sh0"}],
+                [{"params": self._model.sh0, "lr": default_lrs["sh0"] * lr_batch_rescale, "name": "sh0"}],
                 eps=1e-15 / lr_batch_rescale,
                 betas=(1.0 - batch_size * (1.0 - 0.9), 1.0 - batch_size * (1.0 - 0.999)),
             ),
             "shN": torch.optim.Adam(
-                [{"params": self.module.shN, "lr": default_lrs["shN"] * lr_batch_rescale, "name": "shN"}],
+                [{"params": self._model.shN, "lr": default_lrs["shN"] * lr_batch_rescale, "name": "shN"}],
                 eps=1e-15 / lr_batch_rescale,
                 betas=(1.0 - batch_size * (1.0 - 0.9), 1.0 - batch_size * (1.0 - 0.999)),
             ),
@@ -117,7 +127,7 @@ class GaussianSplatOptimizer:
 
         # means has a learning rate schedule, that end at 0.01 of the initial value
         self._means_lr_scheduler = torch.optim.lr_scheduler.ExponentialLR(
-            self._optimizers["means"], gamma=self.mean_lr_decay_exponent
+            self._optimizers["means"], gamma=self._mean_lr_decay_exponent
         )
 
         # Number of times we've called backward since zeroing the gradients
@@ -128,7 +138,7 @@ class GaussianSplatOptimizer:
         def _count_accumulation_steps_backward_hook(_):
             self._num_grad_accumulation_steps += 1
 
-        self.module.means.register_hook(_count_accumulation_steps_backward_hook)
+        self._model.means.register_hook(_count_accumulation_steps_backward_hook)
 
     def step(self):
         for optimizer in self._optimizers.values():
@@ -144,15 +154,15 @@ class GaussianSplatOptimizer:
         return {
             "optimizers": {name: optimizer.state_dict() for name, optimizer in self._optimizers.items()},
             "means_lr_scheduler": self._means_lr_scheduler.state_dict(),
-            "mean_lr_decay_exponent": self.mean_lr_decay_exponent,
-            "prune_opacity_threshold": self.prune_opacity_threshold,
-            "prune_scale3d_threshold": self.prune_scale3d_threshold,
-            "prune_scale2d_threshold": self.prune_scale2d_threshold,
-            "grow_grad2d_threshold": self.grow_grad2d_threshold,
-            "grow_scale3d_threshold": self.grow_scale3d_threshold,
-            "grow_scale2d_threshold": self.grow_scale2d_threshold,
-            "absgrad": self.absgrad,
-            "revised_opacity": self.revised_opacity,
+            "mean_lr_decay_exponent": self._mean_lr_decay_exponent,
+            "prune_opacity_threshold": self._prune_opacity_threshold,
+            "prune_scale3d_threshold": self._prune_scale3d_threshold,
+            "prune_scale2d_threshold": self._prune_scale2d_threshold,
+            "grow_grad2d_threshold": self._grow_grad2d_threshold,
+            "grow_scale3d_threshold": self._grow_scale3d_threshold,
+            "grow_scale2d_threshold": self._grow_scale2d_threshold,
+            "absgrad": self._absgrad,
+            "revised_opacity": self._revised_opacity,
             "version": 2,
         }
 
@@ -163,20 +173,20 @@ class GaussianSplatOptimizer:
         for name, optimizer in self._optimizers.items():
             optimizer.load_state_dict(state_dict["optimizers"][name])
         self._means_lr_scheduler.load_state_dict(state_dict["means_lr_scheduler"])
-        self.mean_lr_decay_exponent = state_dict["mean_lr_decay_exponent"]
-        self.prune_opacity_threshold = state_dict["prune_opacity_threshold"]
-        self.prune_scale3d_threshold = state_dict["prune_scale3d_threshold"]
-        self.prune_scale2d_threshold = state_dict["prune_scale2d_threshold"]
-        self.grow_grad2d_threshold = state_dict["grow_grad2d_threshold"]
-        self.grow_scale3d_threshold = state_dict["grow_scale3d_threshold"]
-        self.grow_scale2d_threshold = state_dict["grow_scale2d_threshold"]
-        self.absgrad = state_dict["absgrad"]
-        self.revised_opacity = state_dict["revised_opacity"]
+        self._mean_lr_decay_exponent = state_dict["mean_lr_decay_exponent"]
+        self._prune_opacity_threshold = state_dict["prune_opacity_threshold"]
+        self._prune_scale3d_threshold = state_dict["prune_scale3d_threshold"]
+        self._prune_scale2d_threshold = state_dict["prune_scale2d_threshold"]
+        self._grow_grad2d_threshold = state_dict["grow_grad2d_threshold"]
+        self._grow_scale3d_threshold = state_dict["grow_scale3d_threshold"]
+        self._grow_scale2d_threshold = state_dict["grow_scale2d_threshold"]
+        self._absgrad = state_dict["absgrad"]
+        self._revised_opacity = state_dict["revised_opacity"]
 
     @torch.no_grad()
     def refine_gaussians(self, use_scales: bool = False, use_screen_space_scales: bool = False):
         if use_screen_space_scales:
-            if not self.module.accumulate_max_2d_radii:
+            if not self._model.accumulate_max_2d_radii:
                 raise ValueError(
                     "use_screen_space_scales is set to True but the model is not configured to "
                     + "track screen space scales. Set model.accumulate_max_2d_radii = True."
@@ -192,7 +202,7 @@ class GaussianSplatOptimizer:
         # Prune Gaussians whose opacity is below a threshold or whose screen space spatial extent is too large
         n_prune = self._prune_gs(use_scales, use_screen_space_scales)
         # Reset running statistics used to determine which Gaussians to add/split/prune
-        self.module.reset_accumulated_gradient_state()
+        self._model.reset_accumulated_gradient_state()
 
         return n_dupli, n_split, n_prune
 
@@ -200,7 +210,7 @@ class GaussianSplatOptimizer:
     def reset_opacities(self):
         """Reset the opacities to the given (post-sigmoid) value."""
 
-        value = self.prune_opacity_threshold * 2.0
+        value = self._prune_opacity_threshold * 2.0
 
         def param_fn(name: str, p: torch.Tensor) -> torch.Tensor:
             if name == "opacities":
@@ -213,7 +223,7 @@ class GaussianSplatOptimizer:
 
         # update the parameters and the state in the optimizers
         new_opac = self._update_optimizer("opacities", param_fn, optimizer_fn)
-        self.module.logit_opacities = new_opac
+        self._model.logit_opacities = new_opac
 
     @torch.no_grad()
     def _grow_gs(self, use_screen_space_scales) -> Tuple[int, int]:
@@ -236,16 +246,16 @@ class GaussianSplatOptimizer:
         # loss to decide which Gaussians to add/split/prune
         # count is the number of times a Gaussian has been projected (i.e. included in the loss gradient computation)
         # grad_2d is the sum of the gradients of the projected Gaussians (dL/dμ2D) over the last N steps
-        count = self.module.accumulated_gradient_step_counts.clamp_min(1)
+        count = self._model.accumulated_gradient_step_counts.clamp_min(1)
         if self._num_grad_accumulation_steps > 1:
             count *= self._num_grad_accumulation_steps
 
-        grads = self.module.accumulated_mean_2d_gradient_norms / count
+        grads = self._model.accumulated_mean_2d_gradient_norms / count
         device = grads.device
 
         # If the 2D projected gradient is high and the spatial size is small, duplicate the Gaussian
-        is_grad_high = grads > self.grow_grad2d_threshold
-        is_small = self.module.scales.max(dim=-1).values <= self.grow_scale3d_threshold * self.scene_scale
+        is_grad_high = grads > self._grow_grad2d_threshold
+        is_small = self._model.scales.max(dim=-1).values <= self._grow_scale3d_threshold * self._scene_scale
         is_dupli = is_grad_high & is_small
         n_dupli: int = int(is_dupli.sum().item())
 
@@ -255,7 +265,7 @@ class GaussianSplatOptimizer:
 
         # If the 2D projected spatial extent exceeds the threshold, split the Gaussian
         if use_screen_space_scales:
-            is_split |= self.module.accumulated_max_2d_radii > self.grow_scale2d_threshold
+            is_split |= self._model.accumulated_max_2d_radii > self._grow_scale2d_threshold
         n_split: int = int(is_split.sum().item())
 
         # Hardcode these for now but could be made configurable
@@ -277,15 +287,15 @@ class GaussianSplatOptimizer:
     @torch.no_grad()
     def _prune_gs(self, use_scales: bool = False, use_screen_space_scales: bool = False) -> int:
         # Prune any Gaussians whose opacity is below the threshold or whose (2D projected) spatial extent is too large
-        is_prune = self.module.opacities.flatten() < self.prune_opacity_threshold
+        is_prune = self._model.opacities.flatten() < self._prune_opacity_threshold
         if use_scales:
-            is_too_big = self.module.scales.max(dim=-1).values > self.prune_scale3d_threshold * self.scene_scale
+            is_too_big = self._model.scales.max(dim=-1).values > self._prune_scale3d_threshold * self._scene_scale
             # The INRIA code also implements sreen-size pruning but
             # it's actually not being used due to a bug:
             # https://github.com/graphdeco-inria/gaussian-splatting/issues/123
             # We implement it here for completeness but it doesn't really get used
             if use_screen_space_scales:
-                is_too_big |= self.module.accumulated_max_2d_radii > self.prune_scale2d_threshold
+                is_too_big |= self._model.accumulated_max_2d_radii > self._prune_scale2d_threshold
 
             is_prune = is_prune | is_too_big
 
@@ -335,8 +345,8 @@ class GaussianSplatOptimizer:
         sel = torch.where(mask)[0]
         rest = torch.where(~mask)[0]
 
-        scales = self.module.scales[sel]  # [N,]
-        quats = F.normalize(self.module.quats[sel], dim=-1)
+        scales = self._model.scales[sel]  # [N,]
+        quats = F.normalize(self._model.quats[sel], dim=-1)
         rotmats = _normalized_quat_to_rotmat(quats)  # [N, 3, 3]
         samples = torch.einsum(
             "nij,nj,bnj->bni",
@@ -355,7 +365,7 @@ class GaussianSplatOptimizer:
                 # TODO: Adjust scale factor for splitting
                 p_split = torch.log(scales / 1.6).repeat(split_factor, 1)  # [2N, 3]
                 p_rest = p[rest]
-            elif name == "opacities" and self.revised_opacity:
+            elif name == "opacities" and self._revised_opacity:
                 new_opacities = 1.0 - torch.sqrt(1.0 - torch.sigmoid(p[sel]))
                 p_split = torch.logit(new_opacities).repeat(repeats)  # [2N]
                 p_rest = p[rest]
@@ -458,12 +468,12 @@ class GaussianSplatOptimizer:
             names: A list of key names to update. If None, update all. Default: None.
         """
         params = {
-            "means": self.module.means,
-            "scales": self.module.log_scales,
-            "quats": self.module.quats,
-            "opacities": self.module.logit_opacities,
-            "sh0": self.module.sh0,
-            "shN": self.module.shN,
+            "means": self._model.means,
+            "scales": self._model.log_scales,
+            "quats": self._model.quats,
+            "opacities": self._model.logit_opacities,
+            "sh0": self._model.sh0,
+            "shN": self._model.shN,
         }
         if names is None:
             # If names is not provided, update all parameters
@@ -471,7 +481,7 @@ class GaussianSplatOptimizer:
 
         for name in names:
             params[name] = self._update_optimizer(name, param_fn, optimizer_fn)
-        self.module.set_state(
+        self._model.set_state(
             params["means"],
             params["quats"],
             params["scales"],

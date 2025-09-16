@@ -61,7 +61,7 @@ def main(
 
     projection_matrices = np.stack([img.camera_metadata.projection_matrix for img in sfm_scene.images], axis=0)
 
-    images = [np.asarray(cv2.imread(str(img.image_path))) for img in sfm_scene.images]
+    images = [np.asarray(cv2.cvtColor(cv2.imread(str(img.image_path)), cv2.COLOR_BGR2RGB)) for img in sfm_scene.images]
     viewer.camera_far = 100.0 * float(np.linalg.norm(scene_extent))
     viewer.register_camera_view(
         "cameras",
