@@ -11,7 +11,7 @@ import numpy as np
 import tqdm
 from scipy.spatial import ConvexHull
 
-from ..sfm_scene import SfmCacbhe, SfmImageMetadata, SfmScene
+from ..sfm_scene import SfmCache, SfmImageMetadata, SfmScene
 from .base_transform import BaseTransform, transform
 
 
@@ -114,7 +114,7 @@ class CropScene(BaseTransform):
 
         self._logger.info(f"Cropping scene to bounding box: {self._bbox}")
 
-        input_cache: SfmCacbhe = input_scene.cache
+        input_cache: SfmCache = input_scene.cache
 
         output_cache_prefix = f"{self.name()}_{self._bbox[0]}_{self._bbox[1]}_{self._bbox[2]}_{self._bbox[3]}_{self._bbox[4]}_{self._bbox[5]}_{self._mask_format}_{self._composite_with_existing_masks}"
         output_cache_prefix = output_cache_prefix.replace(" ", "_")  # Ensure no spaces in the cache prefix

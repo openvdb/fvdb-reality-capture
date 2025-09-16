@@ -11,7 +11,7 @@ import unittest
 
 import numpy as np
 import torch
-from fvdb_3dgs.io import Cache
+from fvdb_3dgs.sfm_scene import SfmCache
 
 
 class BasicCacheTest(unittest.TestCase):
@@ -24,7 +24,7 @@ class BasicCacheTest(unittest.TestCase):
         if self.db_path.exists():
             self.db_path.unlink()
 
-        self.cache = Cache.get_cache(
+        self.cache = SfmCache.get_cache(
             name=self.cache_name,
             description=self.cache_description,
             cache_root=self.cache_root,
@@ -266,7 +266,7 @@ def worker_mkfiles(cache_name, cache_description, cache_root, num_files, entry):
     image = np.random.rand(100, 100, 3) * 255
     image = image.astype(np.uint8)
 
-    cache = Cache.get_cache(
+    cache = SfmCache.get_cache(
         name=cache_name,
         description=cache_description,
         cache_root=cache_root,
@@ -287,7 +287,7 @@ def worker_mkfolders(cache_name, cache_description, cache_root, num_folders, ent
     image = np.random.rand(100, 100, 3) * 255
     image = image.astype(np.uint8)
 
-    cache = Cache.get_cache(
+    cache = SfmCache.get_cache(
         name=cache_name,
         description=cache_description,
         cache_root=cache_root,
@@ -306,7 +306,7 @@ def worker_mkfolders_and_files(cache_name, cache_description, cache_root, num_fo
     image = np.random.rand(100, 100, 3) * 255
     image = image.astype(np.uint8)
 
-    cache = Cache.get_cache(
+    cache = SfmCache.get_cache(
         name=cache_name,
         description=cache_description,
         cache_root=cache_root,

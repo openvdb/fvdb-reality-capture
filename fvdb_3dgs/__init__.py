@@ -3,7 +3,7 @@
 #
 
 from . import foundation_models, tools, training, transforms, viewer
-from .sfm_scene import SfmCacbhe, SfmCameraMetadata, SfmImageMetadata, SfmScene
+from .sfm_scene import SfmCache, SfmCameraMetadata, SfmImageMetadata, SfmScene
 from .tools import download_example_data
 
 __all__ = [
@@ -17,5 +17,5 @@ __all__ = [
     "SfmScene",
     "SfmCameraMetadata",
     "SfmImageMetadata",
-    "SfmCacbhe",
+    "SfmCache",
 ]

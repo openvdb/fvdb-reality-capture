@@ -6,7 +6,7 @@ import pathlib
 import numpy as np
 
 from ._load_colmap_scene import load_colmap_scene
-from .sfm_cache import SfmCacbhe
+from .sfm_cache import SfmCache
 from .sfm_metadata import SfmCameraMetadata, SfmImageMetadata
 
 
@@ -41,7 +41,7 @@ class SfmScene:
         points_rgb: np.ndarray,
         scene_bbox: np.ndarray | None,
         transformation_matrix: np.ndarray | None,
-        cache: SfmCacbhe,
+        cache: SfmCache,
     ):
         """
         Initialize the SfmScene with cameras, images, and points.
@@ -104,7 +104,7 @@ class SfmScene:
         )
 
     @property
-    def cache(self) -> SfmCacbhe:
+    def cache(self) -> SfmCache:
         return self._cache
 
     def filter_points(self, mask: np.ndarray) -> "SfmScene":

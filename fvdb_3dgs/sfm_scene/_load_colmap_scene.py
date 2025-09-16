@@ -10,7 +10,7 @@ import tqdm
 from ._colmap_utils import Camera as ColmapCamera
 from ._colmap_utils import Image as ColmapImage
 from ._colmap_utils import SceneManager
-from .sfm_cache import SfmCacbhe
+from .sfm_cache import SfmCache
 from .sfm_metadata import SfmCameraMetadata, SfmCameraType, SfmImageMetadata
 
 
@@ -120,7 +120,7 @@ def load_colmap_scene(colmap_path: pathlib.Path):
     scene_manager = _load_colmap_internal(colmap_path)
     num_images = len(scene_manager.images)
 
-    cache = SfmCacbhe.get_cache(colmap_path / "_cache", "sfm_dataset_cache", "Cache for SFM dataset")
+    cache = SfmCache.get_cache(colmap_path / "_cache", "sfm_dataset_cache", "Cache for SFM dataset")
 
     logger = logging.getLogger(f"load colmap")  # FIXME: Proper logger name
 

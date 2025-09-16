@@ -104,7 +104,7 @@ class FileLock:
         os.close(fd)
 
 
-class SfmCacbhe:
+class SfmCache:
     """
     A simple SQLite-based dataset cache for storing and retrieving datasets.
 
@@ -186,7 +186,7 @@ class SfmCacbhe:
             _private (Any): A private parameter to prevent direct instantiation of the class.
                 This should be set to `Cache.__SECRET__` when calling this constructor.
         """
-        if _private != SfmCacbhe.__SECRET__:
+        if _private != SfmCache.__SECRET__:
             raise RuntimeError(
                 "Do not create a `Cache` instance directly. Instead use `Cache.get_cache()` to create a cache "
                 "or make_folder to make a folder within a cache."
@@ -203,7 +203,7 @@ class SfmCacbhe:
         self._file_lock_shared = FileLock(self.cache_root_path / "file_lock.lock", exclusive=False)
 
     @staticmethod
-    def get_cache(cache_root: pathlib.Path, name: str, description: str) -> "SfmCacbhe":
+    def get_cache(cache_root: pathlib.Path, name: str, description: str) -> "SfmCache":
         """
         Get or create a new `Cache` with the given name and description.
         The name should be a nonempty string consisting only of alphanumeric characters and underscores.
@@ -222,9 +222,9 @@ class SfmCacbhe:
         if not cache_root.exists():
             cache_root.mkdir(parents=True, exist_ok=True)
         with FileLock(db_path.with_suffix(".lock")):
-            cache_id, root_folder_id = SfmCacbhe._initialize_database(db_path, name, description)
+            cache_id, root_folder_id = SfmCache._initialize_database(db_path, name, description)
 
-        return SfmCacbhe(db_path, cache_id, root_folder_id, root_folder_id, _private=SfmCacbhe.__SECRET__)
+        return SfmCache(db_path, cache_id, root_folder_id, root_folder_id, _private=SfmCache.__SECRET__)
 
     @property
     def db_path(self) -> pathlib.Path:
@@ -619,7 +619,7 @@ class SfmCacbhe:
                         data = f.read()
                 else:
                     raise ValueError(
-                        f"Unknown data type {data_type} for image property. Must be one of {SfmCacbhe.known_data_types}"
+                        f"Unknown data type {data_type} for image property. Must be one of {SfmCache.known_data_types}"
                     )
             finally:
                 cursor.close()
@@ -699,7 +699,7 @@ class SfmCacbhe:
             "path": file_path,
         }
 
-    def make_folder(self, name: str, description: str = "") -> "SfmCacbhe":
+    def make_folder(self, name: str, description: str = "") -> "SfmCache":
         self._validate_name(name, "Folder")
 
         with self._file_lock_exclusive:
@@ -742,12 +742,12 @@ class SfmCacbhe:
             finally:
                 cursor.close()
                 conn.close()
-            return SfmCacbhe(
+            return SfmCache(
                 db_path=self._db_path,
                 cache_id=self._cache_id,
                 root_folder_id=self._root_folder_id,
                 current_folder_id=new_folder_id,
-                _private=SfmCacbhe.__SECRET__,
+                _private=SfmCache.__SECRET__,
             )
 
     def clear_current_folder(self) -> None:
@@ -843,8 +843,8 @@ class SfmCacbhe:
                     (
                         name,
                         description,
-                        SfmCacbhe.magic_number,
-                        SfmCacbhe.version,
+                        SfmCache.magic_number,
+                        SfmCache.version,
                     ),
                 ).lastrowid
             else:
