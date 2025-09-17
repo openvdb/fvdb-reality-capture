@@ -103,10 +103,6 @@ class SfmScene:
             cache=cache,
         )
 
-    @property
-    def cache(self) -> SfmCache:
-        return self._cache
-
     def filter_points(self, mask: np.ndarray) -> "SfmScene":
         """
         Filter the points in the scene based on a boolean mask.
@@ -244,6 +240,10 @@ class SfmScene:
         )
 
     @property
+    def cache(self) -> SfmCache:
+        return self._cache
+
+    @property
     def image_centers(self):
         """
         Returns the position where each image was captured in the scene.
@@ -252,6 +252,8 @@ class SfmScene:
             np.ndarray: A (N, 3) array representing the 3D positions of the image centers.
         """
 
+        if not self._images:
+            return np.zeros((0, 3))
         return np.stack([img.origin for img in self.images])
 
     @property
@@ -263,6 +265,8 @@ class SfmScene:
         Returns:
             np.ndarray: A (N, 2) array representing the dimensions of each image in the scene.
         """
+        if not self._images:
+            return np.zeros((0, 2), dtype=int)
         return np.array([[img.camera_metadata.height, img.camera_metadata.width] for img in self._images])
 
     @property
@@ -281,6 +285,8 @@ class SfmScene:
         Returns:
             np.ndarray: A (N, 4, 4) array representing the world-to-camera transformation matrices.
         """
+        if not self._images:
+            return np.zeros((0, 4, 4))
         return np.stack([image.world_to_camera_matrix for image in self._images], axis=0)
 
     @property
@@ -291,8 +297,22 @@ class SfmScene:
         Returns:
             np.ndarray: A (N, 4, 4) array representing the camera-to-world transformation matrices.
         """
+        if not self._images:
+            return np.zeros((0, 4, 4))
         return np.stack([image.camera_to_world_matrix for image in self._images], axis=0)
 
+    @property
+    def projection_matrices(self) -> np.ndarray:
+        """
+        Return the projection matrices for each image in the scene.
+
+        Returns:
+            np.ndarray: A (N, 3, 3) array representing the projection matrices.
+        """
+        if not self._images:
+            return np.zeros((0, 3, 3))
+        return np.stack([image.camera_metadata.projection_matrix for image in self._images], axis=0)
+    
     @property
     def num_images(self) -> int:
         """
