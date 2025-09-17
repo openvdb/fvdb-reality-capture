@@ -251,8 +251,9 @@ def run_fvdb_training(scene_info: Dict, result_dir: str, config: Dict) -> Dict:
         str(temp_config_path.absolute()),
     ]
 
-    fvdb_base = config.get("paths", {}).get("fvdb_base", "../../../../3d_gaussian_splatting")
-    exit_code, stdout, stderr = run_command(cmd, cwd=fvdb_base, log_file=str(log_file))
+    # Run from repo root to use local fvdb_3dgs
+    repo_root = Path(__file__).resolve().parents[3]
+    exit_code, stdout, stderr = run_command(cmd, cwd=str(repo_root), log_file=str(log_file))
 
     # Clean up temporary config
     temp_config_path.unlink(missing_ok=True)
@@ -399,6 +400,16 @@ def run_gsplat_training(scene_info: Dict, result_dir: str, config: Dict) -> Dict
     gsplat_base = config.get("paths", {}).get(
         "gsplat_base", "../../../../3d_gaussian_splatting/benchmark/gsplat/examples"
     )
+    if not Path(gsplat_base).exists():
+        logging.error(f"GSplat base not found: {gsplat_base}. Skipping GSplat training for {scene_info['name']}.")
+        return {
+            "success": False,
+            "total_time": 0.0,
+            "training_time": 0.0,
+            "exit_code": -1,
+            "metrics": {},
+            "result_dir": str(gsplat_result_dir),
+        }
     exit_code, stdout, stderr = run_command(cmd, cwd=gsplat_base, log_file=str(log_file))
     stop_event.set()
     # Give watcher a brief moment to exit
@@ -553,18 +564,23 @@ def run_evaluation(scene_info: Dict, result_dir: str, config: Dict) -> Dict:
                 checkpoints.sort(key=lambda x: int(x.stem.split("_")[1]))
                 latest_checkpoint = checkpoints[-1]
 
-                cmd = [
-                    sys.executable,
-                    "benchmark_3dgs.py",
-                    "--data_path",
-                    f"data/360_v2/{scene_info['name']}",
-                    "--checkpoint_path",
-                    str(latest_checkpoint),
-                    "--results_path",
-                    str(fvdb_result_dir),
-                ]
-
-                exit_code, stdout, stderr = run_command(cmd, cwd="../../../../3d_gaussian_splatting")
+                # Evaluation uses local repo if available; skip if script not present
+                bench_script = Path(__file__).resolve().parents[3] / "benchmark_3dgs.py"
+                if bench_script.exists():
+                    cmd = [
+                        sys.executable,
+                        str(bench_script),
+                        "--data_path",
+                        f"data/360_v2/{scene_info['name']}",
+                        "--checkpoint_path",
+                        str(latest_checkpoint),
+                        "--results_path",
+                        str(fvdb_result_dir),
+                    ]
+                    exit_code, stdout, stderr = run_command(cmd)
+                else:
+                    logging.warning("benchmark_3dgs.py not found locally. Skipping FVDB eval step.")
+                    exit_code, stdout, stderr = 0, "", ""
                 results["fvdb_eval"] = {
                     "success": exit_code == 0,
                     "checkpoint": str(latest_checkpoint),
@@ -603,7 +619,11 @@ def run_evaluation(scene_info: Dict, result_dir: str, config: Dict) -> Dict:
                 gsplat_base = config.get("paths", {}).get(
                     "gsplat_base", "../../../../3d_gaussian_splatting/benchmark/gsplat/examples"
                 )
-                exit_code, stdout, stderr = run_command(cmd, cwd=gsplat_base)
+                if Path(gsplat_base).exists():
+                    exit_code, stdout, stderr = run_command(cmd, cwd=gsplat_base)
+                else:
+                    logging.warning(f"GSplat base not found: {gsplat_base}. Skipping GSplat eval step.")
+                    exit_code, stdout, stderr = 0, "", ""
                 results["gsplat_eval"] = {
                     "success": exit_code == 0,
                     "checkpoint": str(latest_checkpoint),

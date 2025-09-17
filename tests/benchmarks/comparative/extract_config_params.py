@@ -18,43 +18,22 @@ logger = logging.getLogger("extract_config_params")
 
 
 def count_dataset_images(data_dir: str) -> int:
-    """Count the number of images in the dataset using COLMAP dataset reader."""
-    # Try multiple possible project root locations
-    possible_roots = [
-        # From tests/benchmarks/comparative -> benchmarks -> tests -> 3d_gaussian_splatting
-        Path(__file__).parent.parent.parent.parent.resolve(),
-        # From /workspace/benchmark -> /workspace/openvdb/fvdb/projects/3d_gaussian_splatting
-        Path("/workspace/openvdb/fvdb/projects/3d_gaussian_splatting").resolve(),
-        # Current working directory approach
-        Path.cwd().parent.parent.parent.resolve() if "comparative" in str(Path.cwd()) else None,
-    ]
+    """Count dataset images using fvdb_3dgs SfmScene loader (no external deps)."""
+    repo_root = Path(__file__).resolve().parents[3]
+    if str(repo_root) not in sys.path:
+        sys.path.insert(0, str(repo_root))
+        logger.info(f"Added repo root to sys.path: {repo_root}")
 
-    project_root = None
-    for root in possible_roots:
-        if root and (root / "datasets" / "sfm_scene" / "colmap_dataset_reader.py").exists():
-            project_root = root
-            break
-
-    if not project_root:
-        raise ImportError(
-            f"Could not find 3d_gaussian_splatting project root. Tried: {[str(r) for r in possible_roots if r]}"
-        )
-
-    if str(project_root) not in sys.path:
-        sys.path.insert(0, str(project_root))
-        logger.info(f"Added project root to sys.path: {project_root}")
-
-    # Import using direct import which works in the container
-    from datasets.sfm_scene.colmap_dataset_reader import ColmapDatasetReader
+    # Local import after sys.path update
+    from fvdb_3dgs.sfm_scene.sfm_scene import SfmScene  # type: ignore
 
     data_path = Path(data_dir)
     if not data_path.exists():
         raise FileNotFoundError(f"Data directory {data_dir} does not exist")
 
-    # Create COLMAP dataset reader and get image count
-    reader = ColmapDatasetReader(colmap_path=data_path)
-    num_images = reader.num_images
-    logger.info(f"Found {num_images} images in dataset using COLMAP reader")
+    scene = SfmScene.from_colmap(data_path)
+    num_images = scene.num_images
+    logger.info(f"Found {num_images} images in dataset using fvdb_3dgs SfmScene")
     return num_images
 
 
