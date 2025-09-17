@@ -6,7 +6,22 @@ build-backend = "setuptools.build_meta"
 name = "fvdb_3dgs"
 version = "0.1.0"
 description = "3D Gaussian Splatting Example Project using fVDB."
-dependencies = []
+dependencies = [
+    "dlnr_lite",
+    "numpy>=2.0.0",
+    "opencv-python-headless",
+    "point-cloud-utils",
+    "pyproj",
+    "scikit-image",
+    "scipy",
+    "tensorboard",
+    "torch>=2.8.0",
+    "torchmetrics",
+    "torchvision",
+    "tqdm",
+    "tyro",
+    "viser",
+]
 
 # pyproject.toml
 [tool.setuptools.packages.find]
