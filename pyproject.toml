@@ -16,7 +16,6 @@ dependencies = [
     "scipy",
     "tensorboard",
     "torch>=2.8.0",
-    "torchmetrics",
     "torchvision",
     "tqdm",
     "tyro",

@@ -24,7 +24,6 @@ dependencies:
   # 3dgs training
   - gdown
   - tensorboard
-  - torchmetrics
   - viser
   - pip:
     - pye57
