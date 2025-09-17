@@ -65,7 +65,7 @@ class SfmDataset(torch.utils.data.Dataset, Iterable):
             raise ValueError("Dataset indices must be integers")
         dataset_indices = dataset_indices.astype(np.int64)
 
-        self._indices = dataset_indices
+        self._indices: np.ndarray = dataset_indices
 
     @property
     def sfm_scene(self) -> SfmScene:
@@ -110,7 +110,7 @@ class SfmDataset(torch.utils.data.Dataset, Iterable):
         Returns:
             np.ndarray: An Nx4x4 array of camera to world matrices for the cameras in the dataset.
         """
-        return np.stack([self[i]["camera_to_world"].numpy() for i in range(len(self))], axis=0)
+        return self.sfm_scene.camera_to_world_matrices[self._indices]
 
     @property
     def projection_matrices(self) -> np.ndarray:
@@ -122,7 +122,7 @@ class SfmDataset(torch.utils.data.Dataset, Iterable):
         Returns:
             np.ndarray: An Nx3x3 array of projection matrices for the cameras in the dataset.
         """
-        return np.stack([self[i]["projection"].numpy() for i in range(len(self))], axis=0)
+        return self.sfm_scene.projection_matrices[self._indices]
 
     @property
     def image_sizes(self) -> np.ndarray:
@@ -135,7 +135,7 @@ class SfmDataset(torch.utils.data.Dataset, Iterable):
         Returns:
             np.ndarray: An Nx2 array of image sizes for the cameras in the dataset.
         """
-        return np.array([self[i]["image"].shape[:2] for i in range(len(self))], dtype=np.int32)
+        return self.sfm_scene.image_sizes[self._indices]
 
     @property
     def points(self) -> np.ndarray:
@@ -146,7 +146,7 @@ class SfmDataset(torch.utils.data.Dataset, Iterable):
         Returns:
             np.ndarray: An Nx3 array of 3D points in the scene.
         """
-        return self._sfm_scene.points
+        return self.sfm_scene.points
 
     @property
     def visible_point_indices(self) -> np.ndarray:
