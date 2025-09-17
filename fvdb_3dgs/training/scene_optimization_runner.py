@@ -19,9 +19,9 @@ import torch.utils.data
 import tqdm
 from sklearn.neighbors import NearestNeighbors
 from torch.utils.tensorboard import SummaryWriter
-from torchmetrics.image import StructuralSimilarityIndexMeasure
 
 from fvdb import GaussianSplat3d
+from fvdb.utils.metrics import psnr, ssim
 
 from ..sfm_scene import SfmScene
 from ..transforms import (
@@ -38,7 +38,6 @@ from .camera_pose_adjust import CameraPoseAdjustment
 from .checkpoint import Checkpoint
 from .gaussian_splat_optimizer import GaussianSplatOptimizer
 from .lpips import LPIPSLoss
-from .psnr import PSNR
 from .sfm_dataset import SfmDataset
 from .utils import make_unique_name_directory_based_on_time
 
@@ -1187,8 +1186,8 @@ class SceneOptimizationRunner:
         self._viewer = ViewerLogger(self.model, self._training_dataset) if not disable_viewer else None
 
         # Losses & Metrics.
-        self._ssim = StructuralSimilarityIndexMeasure(data_range=1.0).to(model.device)
-        self._psnr = PSNR(max_value=1.0).to(model.device)
+        self._ssim = ssim
+        self._psnr = psnr
         if self.config.lpips_net == "alex":
             self._lpips = LPIPSLoss(backbone="alex").to(model.device)
         elif self.config.lpips_net == "vgg":
@@ -1337,7 +1336,10 @@ class SceneOptimizationRunner:
 
                     # Image losses
                     l1loss = F.l1_loss(colors, pixels)
-                    ssimloss = 1.0 - self._ssim(pixels.permute(0, 3, 1, 2), colors.permute(0, 3, 1, 2))
+                    ssimloss = 1.0 - self._ssim(
+                        colors.permute(0, 3, 1, 2).contiguous(),
+                        pixels.permute(0, 3, 1, 2).contiguous(),
+                    )
                     loss = l1loss * (1.0 - self.config.ssim_lambda) + ssimloss * self.config.ssim_lambda
 
                     # Rgularize opacity to ensure Gaussian's don't become too opaque
@@ -1586,8 +1588,8 @@ class SceneOptimizationRunner:
                 self._global_step, stage, f"image_{i:04d}.jpg", predicted_image, ground_truth_image
             )
 
-            ground_truth_image = ground_truth_image.permute(0, 3, 1, 2)  # [1, 3, H, W]
-            predicted_image = predicted_image.permute(0, 3, 1, 2)  # [1, 3, H, W]
+            ground_truth_image = ground_truth_image.permute(0, 3, 1, 2).contiguous()  # [1, 3, H, W]
+            predicted_image = predicted_image.permute(0, 3, 1, 2).contiguous()  # [1, 3, H, W]
             metrics["psnr"].append(self._psnr(predicted_image, ground_truth_image))
             metrics["ssim"].append(self._ssim(predicted_image, ground_truth_image))
             metrics["lpips"].append(self._lpips(predicted_image, ground_truth_image))
