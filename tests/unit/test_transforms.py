@@ -8,7 +8,7 @@ import unittest
 import cv2
 import numpy as np
 from fvdb_3dgs.sfm_scene import SfmCameraMetadata, SfmImageMetadata, SfmScene
-from fvdb_3dgs.transforms import DownsampleImages, FilterImagesWithLowPoints, PercentileFilterPoints, CropScene
+from fvdb_3dgs.transforms import DownsampleImages, FilterImagesWithLowPoints, PercentileFilterPoints, CropScene, Identity
 
 
 class BasicSfmSceneTest(unittest.TestCase):
@@ -27,6 +27,39 @@ class BasicSfmSceneTest(unittest.TestCase):
             4: (10630, 14180),
             5: (10628, 14177),
         }
+
+    def test_identity_transform(self):
+        transform = Identity()
+
+        scene: SfmScene = SfmScene.from_colmap(self.dataset_path)
+
+        transformed_scene = transform(scene)
+
+        self.assertIsInstance(transformed_scene, SfmScene)
+        self.assertTrue(np.all(transformed_scene.points == scene.points))
+        self.assertTrue(np.all(transformed_scene.points_err == scene.points_err))
+        self.assertEqual(len(transformed_scene.images), len(scene.images))
+        for i, image_metadata in enumerate(transformed_scene.images):
+            self.assertIsInstance(image_metadata, SfmImageMetadata)
+            self.assertTrue(np.all(image_metadata.point_indices == scene.images[i].point_indices))
+            self.assertTrue(np.all(image_metadata.camera_to_world_matrix == scene.images[i].camera_to_world_matrix))
+            self.assertTrue(np.all(image_metadata.world_to_camera_matrix == scene.images[i].world_to_camera_matrix))
+            self.assertEqual(image_metadata.image_id, scene.images[i].image_id)
+            self.assertEqual(image_metadata.image_path, scene.images[i].image_path)
+            self.assertEqual(image_metadata.mask_path, scene.images[i].mask_path)
+            self.assertEqual(image_metadata.camera_id, scene.images[i].camera_id)
+            self.assertIsInstance(image_metadata.camera_metadata, SfmCameraMetadata)
+            self.assertEqual(image_metadata.camera_metadata.camera_type, scene.images[i].camera_metadata.camera_type)
+            self.assertEqual(image_metadata.camera_metadata.width, scene.images[i].camera_metadata.width)
+            self.assertEqual(image_metadata.camera_metadata.height, scene.images[i].camera_metadata.height)
+            self.assertTrue(np.all(image_metadata.camera_metadata.distortion_parameters == scene.images[i].camera_metadata.distortion_parameters))
+        self.assertEqual(len(transformed_scene.cameras), len(scene.cameras))
+        for camera_id, camera_metadata in transformed_scene.cameras.items():
+            self.assertIsInstance(camera_metadata, SfmCameraMetadata)
+            self.assertEqual(camera_metadata.camera_type, scene.cameras[camera_id].camera_type)
+            self.assertEqual(camera_metadata.width, scene.cameras[camera_id].width)
+            self.assertEqual(camera_metadata.height, scene.cameras[camera_id].height)
+            self.assertTrue(np.all(camera_metadata.distortion_parameters == scene.cameras[camera_id].distortion_parameters))
 
     def test_downsample_images(self):
         downsample_factor = 16
