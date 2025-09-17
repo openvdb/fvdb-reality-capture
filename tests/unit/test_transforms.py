@@ -158,6 +158,13 @@ class BasicSfmSceneTest(unittest.TestCase):
             transformed_scene = transform(scene)
 
     def test_crop_scene(self):
+        # These bounds were determined by looking at the point cloud in a 3D viewer
+        # and finding a reasonable bounding box that would crop out some points
+        # but still leave a good number of points.
+        # NOTE: These bounds are specific to this dataset and won't work for other datasets.
+        # The format is [min_x, min_y, min_z, max_x, max_y, max_z]
+        # NOTE: The dataset is in EPSG:26917 (UTM zone 17N) so the bounds are in meters
+        # and are quite large.
         min_bound = [ 1075540.25 , -4780800.5  ,  4043418.775] 
         max_bound = [ 1090150.75 , -4772843.5  ,  4058591.925]
         dowsample_transform = DownsampleImages(16) # Cropping with large images is very slow, so downsample first
