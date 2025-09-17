@@ -17,7 +17,7 @@ import torch
 import torch.nn.functional as F
 import torch.utils.data
 import tqdm
-from sklearn.neighbors import NearestNeighbors
+from scipy.spatial.ckdtree import cKDTree
 from torch.utils.tensorboard import SummaryWriter
 
 from fvdb import GaussianSplat3d
@@ -287,18 +287,6 @@ class ViewerLogger:
         """
 
         self._logger = logging.getLogger(f"{self.__class__.__module__}.{self.__class__.__name__}")
-        cam_to_world_matrices, projection_matrices, images, image_sizes = [], [], [], []
-        camera_positions = []
-        for data in train_dataset:
-            cam_to_world_matrices.append(data["camera_to_world"])
-            projection_matrices.append(data["projection"])
-            camera_positions.append(data["camera_to_world"][:3, 3].cpu().numpy())
-            images.append(data["image"])
-            image_sizes.append([data["image"].shape[0], data["image"].shape[1]])
-
-        cam_to_world_matrices = np.stack(cam_to_world_matrices, axis=0)
-        projection_matrices = np.stack(projection_matrices, axis=0)
-        image_sizes = np.stack(image_sizes, axis=0)
 
         self.viewer = Viewer(port=viewer_port, verbose=verbose)
         bbmin, bbmax = train_dataset.points.min(axis=0), train_dataset.points.max(axis=0)
@@ -313,10 +301,10 @@ class ViewerLogger:
 
         self._train_camera_view = self.viewer.register_camera_view(
             name="Training Cameras",
-            cam_to_world_matrices=cam_to_world_matrices,
-            projection_matrices=projection_matrices,
-            image_sizes=image_sizes,
-            images=images,
+            cam_to_world_matrices=train_dataset.camera_to_world_matrices,
+            projection_matrices=train_dataset.projection_matrices,
+            image_sizes=train_dataset.image_sizes,
+            images=None,
             frustum_line_width=2.0,
             frustum_scale=1.0 * axis_scale,
             axis_length=2.0 * axis_scale,
@@ -776,8 +764,8 @@ class SceneOptimizationRunner:
         """
 
         def _knn(x_np: np.ndarray, k: int = 4) -> torch.Tensor:
-            model = NearestNeighbors(n_neighbors=k, metric="euclidean").fit(x_np)
-            distances, _ = model.kneighbors(x_np)
+            kd_tree = cKDTree(x_np)
+            distances, _ = kd_tree.query(x_np, k=k)
             return torch.from_numpy(distances).to(device=device, dtype=torch.float32)
 
         def _rgb_to_sh(rgb: torch.Tensor) -> torch.Tensor:
