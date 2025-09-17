@@ -122,7 +122,11 @@ class SfmDataset(torch.utils.data.Dataset, Iterable):
         Returns:
             np.ndarray: An Nx3x3 array of projection matrices for the cameras in the dataset.
         """
-        return self.sfm_scene.projection_matrices[self._indices]
+        # in fvdb_3dgs/training/sfm_dataset.py
+        return np.stack(
+            [self._sfm_scene.images[i].camera_metadata.projection_matrix for i in self._indices],
+            axis=0,
+        )
 
     @property
     def image_sizes(self) -> np.ndarray:
