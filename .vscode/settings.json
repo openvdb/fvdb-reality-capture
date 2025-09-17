@@ -1,0 +1,34 @@
+{
+    "files.trimTrailingWhitespace": true,
+    "files.insertFinalNewline": true,
+    "editor.rulers": [ 100 ],
+    "terminal.integrated.defaultLocation": "editor",
+    "[python]": {
+        "editor.defaultFormatter": "ms-python.black-formatter",
+        "editor.formatOnSave": true,
+        "editor.codeActionsOnSave": {
+            "source.organizeImports": "explicit"
+        },
+    },
+    "python.analysis.typeCheckingMode": "basic",
+    "python.testing.unittestArgs": [
+        "-v", "-s", "."
+    ],
+    "python.testing.pytestEnabled": true,
+    "python.testing.unittestEnabled": false,
+    "python.testing.pytestArgs": [
+        "-v",
+        "tests"
+    ],
+    "black-formatter.args": [
+        "--target-version=py311",
+        "--line-length=120"
+    ],
+    "python.analysis.diagnosticSeverityOverrides": {
+        "reportPrivateImportUsage": "none",
+    },
+    "isort.args": [
+        "--profile", "black"
+    ],
+    "json.format.keepLines": true,
+}

@@ -6,10 +6,11 @@ import pathlib
 import unittest
 
 import cv2
-from fvdb_3dgs.sfm_scene import SfmCameraMetadata, SfmImageMetadata, SfmScene
-from fvdb_3dgs.transforms import DownsampleImages
 import numpy as np
 from scipy.spatial.transform import Rotation as R
+
+from fvdb_3dgs.sfm_scene import SfmCameraMetadata, SfmImageMetadata, SfmScene
+from fvdb_3dgs.transforms import DownsampleImages
 
 
 class BasicSfmSceneTest(unittest.TestCase):
@@ -38,7 +39,7 @@ class BasicSfmSceneTest(unittest.TestCase):
         self.assertEqual(len(scene.images), self.expected_num_images)
 
         translation = np.array([10.0, 0.0, 0.0])
-        rotation = R.from_euler('xyz', 2.0 * np.pi * np.random.rand(3)).as_matrix()
+        rotation = R.from_euler("xyz", 2.0 * np.pi * np.random.rand(3)).as_matrix()
         scaling = np.diag([1.0, 2.0, 1.0])
         transform_matrix = np.eye(4)
         transform_matrix[:3, :3] = rotation @ scaling
@@ -46,15 +47,15 @@ class BasicSfmSceneTest(unittest.TestCase):
 
         transformed_scene = scene.apply_transformation_matrix(transform_matrix)
 
-        self.assertTrue(np.allclose(transformed_scene.transformation_matrix, transform_matrix @ scene.transformation_matrix))
+        self.assertTrue(
+            np.allclose(transformed_scene.transformation_matrix, transform_matrix @ scene.transformation_matrix)
+        )
         self.assertEqual(len(transformed_scene.images), len(scene.images))
         self.assertEqual(len(transformed_scene.cameras), len(scene.cameras))
         self.assertEqual(len(transformed_scene.points), len(scene.points))
 
-        expected_c2w = np.stack(
-            [transform_matrix @ image.camera_to_world_matrix for image in scene.images], axis=0)
-        expected_w2c = np.stack(
-            [np.linalg.inv(expected_c2w[i]) for i in range(len(scene.images))], axis=0)
+        expected_c2w = np.stack([transform_matrix @ image.camera_to_world_matrix for image in scene.images], axis=0)
+        expected_w2c = np.stack([np.linalg.inv(expected_c2w[i]) for i in range(len(scene.images))], axis=0)
 
         self.assertTrue(np.allclose(transformed_scene.camera_to_world_matrices, expected_c2w))
         self.assertTrue(np.allclose(transformed_scene.world_to_camera_matrices, expected_w2c))
@@ -144,7 +145,7 @@ class BasicSfmSceneTest(unittest.TestCase):
         self.assertEqual(len(scene.points_err), len(filtered_scene.points_err))
         self.assertTrue(np.all(filtered_scene.scene_bbox == scene.scene_bbox))
 
-    def test_filter_images_empty_mask(self):   
+    def test_filter_images_empty_mask(self):
         scene: SfmScene = SfmScene.from_colmap(self.dataset_path)
 
         self.assertEqual(len(scene.images), self.expected_num_images)

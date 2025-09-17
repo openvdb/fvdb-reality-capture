@@ -7,11 +7,20 @@ import unittest
 
 import cv2
 import numpy as np
+
 from fvdb_3dgs.sfm_scene import SfmCameraMetadata, SfmImageMetadata, SfmScene
-from fvdb_3dgs.transforms import DownsampleImages, FilterImagesWithLowPoints, PercentileFilterPoints, CropScene, Identity
+from fvdb_3dgs.transforms import (
+    Compose,
+    CropScene,
+    DownsampleImages,
+    FilterImagesWithLowPoints,
+    Identity,
+    NormalizeScene,
+    PercentileFilterPoints,
+)
 
 
-class BasicSfmSceneTest(unittest.TestCase):
+class BasicSfmSceneTransformTest(unittest.TestCase):
     def setUp(self):
         # TODO: Auto-download this dataset if it doesn't exist.
         # NOTE: For now, we assume you've downloaded this dataset. We'll do this automatically
@@ -28,6 +37,94 @@ class BasicSfmSceneTest(unittest.TestCase):
             5: (10628, 14177),
         }
 
+    def assert_scenes_match(self, scene1: SfmScene, scene2: SfmScene):
+        self.assertTrue(np.all(scene2.points == scene1.points))
+        self.assertTrue(np.all(scene2.points_err == scene1.points_err))
+        self.assertEqual(len(scene2.images), len(scene1.images))
+        for i, image_metadata in enumerate(scene2.images):
+            self.assertIsInstance(image_metadata, SfmImageMetadata)
+            self.assertTrue(np.all(image_metadata.point_indices == scene1.images[i].point_indices))
+            self.assertTrue(np.all(image_metadata.camera_to_world_matrix == scene1.images[i].camera_to_world_matrix))
+            self.assertTrue(np.all(image_metadata.world_to_camera_matrix == scene1.images[i].world_to_camera_matrix))
+            self.assertEqual(image_metadata.image_id, scene1.images[i].image_id)
+            self.assertEqual(image_metadata.image_path, scene1.images[i].image_path)
+            self.assertEqual(image_metadata.mask_path, scene1.images[i].mask_path)
+            self.assertEqual(image_metadata.camera_id, scene1.images[i].camera_id)
+            self.assertIsInstance(image_metadata.camera_metadata, SfmCameraMetadata)
+            self.assertEqual(image_metadata.camera_metadata.camera_type, scene1.images[i].camera_metadata.camera_type)
+            self.assertEqual(image_metadata.camera_metadata.width, scene1.images[i].camera_metadata.width)
+            self.assertEqual(image_metadata.camera_metadata.height, scene1.images[i].camera_metadata.height)
+            self.assertTrue(
+                np.all(
+                    image_metadata.camera_metadata.distortion_parameters
+                    == scene1.images[i].camera_metadata.distortion_parameters
+                )
+            )
+        self.assertEqual(len(scene2.cameras), len(scene1.cameras))
+        for camera_id, camera_metadata in scene2.cameras.items():
+            self.assertIsInstance(camera_metadata, SfmCameraMetadata)
+            self.assertEqual(camera_metadata.camera_type, scene1.cameras[camera_id].camera_type)
+            self.assertEqual(camera_metadata.width, scene1.cameras[camera_id].width)
+            self.assertEqual(camera_metadata.height, scene1.cameras[camera_id].height)
+            self.assertTrue(
+                np.all(camera_metadata.distortion_parameters == scene1.cameras[camera_id].distortion_parameters)
+            )
+
+    def test_normalize_scene_pca(self):
+        transform = NormalizeScene(normalization_type="pca")
+
+        scene: SfmScene = SfmScene.from_colmap(self.dataset_path)
+
+        transformed_scene = transform(scene)
+
+        cov = np.cov(transformed_scene.points, rowvar=False)
+        scale = np.diag(1.0 / np.diag(cov))
+        normalized_cov = scale @ cov
+        self.assertTrue(np.allclose(normalized_cov, np.eye(3)))
+
+        for i, image_metadata in enumerate(transformed_scene.images):
+            self.assertIsInstance(image_metadata, SfmImageMetadata)
+            expected_c2w = transformed_scene.transformation_matrix @ scene.camera_to_world_matrices[i]
+            self.assertTrue(np.allclose(image_metadata.camera_to_world_matrix, expected_c2w))
+
+    def test_normalize_scene_similarity(self):
+        transform = NormalizeScene(normalization_type="similarity")
+
+        scene: SfmScene = SfmScene.from_colmap(self.dataset_path)
+
+        transformed_scene = transform(scene)
+
+        for i, image_metadata in enumerate(transformed_scene.images):
+            self.assertIsInstance(image_metadata, SfmImageMetadata)
+            expected_c2w = transformed_scene.transformation_matrix @ scene.camera_to_world_matrices[i]
+            self.assertTrue(np.allclose(image_metadata.camera_to_world_matrix, expected_c2w))
+
+    def test_normalize_scene_ecef2enu(self):
+        transform = NormalizeScene(normalization_type="ecef2enu")
+
+        scene: SfmScene = SfmScene.from_colmap(self.dataset_path)
+
+        transformed_scene = transform(scene)
+
+        for i, image_metadata in enumerate(transformed_scene.images):
+            self.assertIsInstance(image_metadata, SfmImageMetadata)
+            expected_c2w = transformed_scene.transformation_matrix @ scene.camera_to_world_matrices[i]
+            self.assertTrue(np.allclose(image_metadata.camera_to_world_matrix, expected_c2w))
+
+    def test_normalize_scene_none(self):
+        transform = NormalizeScene(normalization_type="none")
+
+        scene: SfmScene = SfmScene.from_colmap(self.dataset_path)
+
+        transformed_scene = transform(scene)
+
+        self.assertTrue(np.all(transformed_scene.points == scene.points))
+
+        for i, image_metadata in enumerate(transformed_scene.images):
+            self.assertIsInstance(image_metadata, SfmImageMetadata)
+            expected_c2w = scene.camera_to_world_matrices[i]
+            self.assertTrue(np.allclose(image_metadata.camera_to_world_matrix, expected_c2w))
+
     def test_identity_transform(self):
         transform = Identity()
 
@@ -35,31 +132,7 @@ class BasicSfmSceneTest(unittest.TestCase):
 
         transformed_scene = transform(scene)
 
-        self.assertIsInstance(transformed_scene, SfmScene)
-        self.assertTrue(np.all(transformed_scene.points == scene.points))
-        self.assertTrue(np.all(transformed_scene.points_err == scene.points_err))
-        self.assertEqual(len(transformed_scene.images), len(scene.images))
-        for i, image_metadata in enumerate(transformed_scene.images):
-            self.assertIsInstance(image_metadata, SfmImageMetadata)
-            self.assertTrue(np.all(image_metadata.point_indices == scene.images[i].point_indices))
-            self.assertTrue(np.all(image_metadata.camera_to_world_matrix == scene.images[i].camera_to_world_matrix))
-            self.assertTrue(np.all(image_metadata.world_to_camera_matrix == scene.images[i].world_to_camera_matrix))
-            self.assertEqual(image_metadata.image_id, scene.images[i].image_id)
-            self.assertEqual(image_metadata.image_path, scene.images[i].image_path)
-            self.assertEqual(image_metadata.mask_path, scene.images[i].mask_path)
-            self.assertEqual(image_metadata.camera_id, scene.images[i].camera_id)
-            self.assertIsInstance(image_metadata.camera_metadata, SfmCameraMetadata)
-            self.assertEqual(image_metadata.camera_metadata.camera_type, scene.images[i].camera_metadata.camera_type)
-            self.assertEqual(image_metadata.camera_metadata.width, scene.images[i].camera_metadata.width)
-            self.assertEqual(image_metadata.camera_metadata.height, scene.images[i].camera_metadata.height)
-            self.assertTrue(np.all(image_metadata.camera_metadata.distortion_parameters == scene.images[i].camera_metadata.distortion_parameters))
-        self.assertEqual(len(transformed_scene.cameras), len(scene.cameras))
-        for camera_id, camera_metadata in transformed_scene.cameras.items():
-            self.assertIsInstance(camera_metadata, SfmCameraMetadata)
-            self.assertEqual(camera_metadata.camera_type, scene.cameras[camera_id].camera_type)
-            self.assertEqual(camera_metadata.width, scene.cameras[camera_id].width)
-            self.assertEqual(camera_metadata.height, scene.cameras[camera_id].height)
-            self.assertTrue(np.all(camera_metadata.distortion_parameters == scene.cameras[camera_id].distortion_parameters))
+        self.assert_scenes_match(scene, transformed_scene)
 
     def test_downsample_images(self):
         downsample_factor = 16
@@ -86,7 +159,7 @@ class BasicSfmSceneTest(unittest.TestCase):
                 assert img is not None
                 self.assertTrue(img.shape[0] == image_metadata.camera_metadata.height)
                 self.assertTrue(img.shape[1] == image_metadata.camera_metadata.width)
-    
+
     def test_filter_images_with_low_points(self):
         min_num_points = 300
         transform = FilterImagesWithLowPoints(min_num_points)
@@ -155,10 +228,16 @@ class BasicSfmSceneTest(unittest.TestCase):
             self.assertTrue(np.all(image_metadata.point_indices >= 0))
             self.assertTrue(np.all(image_metadata.point_indices < transformed_scene.points.shape[0]))
 
-        self.assertTrue(np.all(transformed_scene.points[:, 0] > min_x) and np.all(transformed_scene.points[:, 0] < max_x))
-        self.assertTrue(np.all(transformed_scene.points[:, 1] > min_y) and np.all(transformed_scene.points[:, 1] < max_y))
-        self.assertTrue(np.all(transformed_scene.points[:, 2] > min_z) and np.all(transformed_scene.points[:, 2] < max_z))
-    
+        self.assertTrue(
+            np.all(transformed_scene.points[:, 0] > min_x) and np.all(transformed_scene.points[:, 0] < max_x)
+        )
+        self.assertTrue(
+            np.all(transformed_scene.points[:, 1] > min_y) and np.all(transformed_scene.points[:, 1] < max_y)
+        )
+        self.assertTrue(
+            np.all(transformed_scene.points[:, 2] > min_z) and np.all(transformed_scene.points[:, 2] < max_z)
+        )
+
     def test_percentile_filter_points_no_points_removed(self):
         percentile_min = (0, 0, 0)
         percentile_max = (100, 100, 100)
@@ -198,9 +277,9 @@ class BasicSfmSceneTest(unittest.TestCase):
         # The format is [min_x, min_y, min_z, max_x, max_y, max_z]
         # NOTE: The dataset is in EPSG:26917 (UTM zone 17N) so the bounds are in meters
         # and are quite large.
-        min_bound = [ 1075540.25 , -4780800.5  ,  4043418.775] 
-        max_bound = [ 1090150.75 , -4772843.5  ,  4058591.925]
-        dowsample_transform = DownsampleImages(16) # Cropping with large images is very slow, so downsample first
+        min_bound = [1075540.25, -4780800.5, 4043418.775]
+        max_bound = [1090150.75, -4772843.5, 4058591.925]
+        dowsample_transform = DownsampleImages(16)  # Cropping with large images is very slow, so downsample first
         transform = CropScene(min_bound + max_bound)
 
         scene: SfmScene = SfmScene.from_colmap(self.dataset_path)
@@ -220,6 +299,23 @@ class BasicSfmSceneTest(unittest.TestCase):
             self.assertTrue(np.all(image_metadata.point_indices >= 0))
             self.assertTrue(np.all(image_metadata.point_indices < transformed_scene.points.shape[0]))
             self.assertTrue(np.all(image_metadata.point_indices < scene.points.shape[0]))
+
+    def test_compose(self):
+        min_bound = [1075540.25, -4780800.5, 4043418.775]
+        max_bound = [1090150.75, -4772843.5, 4058591.925]
+        normalize_transform = NormalizeScene(normalization_type="similarity")
+        dowsample_transform = DownsampleImages(16)  # Cropping with large images is very slow, so downsample first
+        crop_transform = CropScene(min_bound + max_bound)
+
+        scene = SfmScene.from_colmap(self.dataset_path)
+
+        scene_1 = crop_transform(dowsample_transform(normalize_transform(scene)))
+        scene_2 = Compose(
+            NormalizeScene(normalization_type="similarity"), DownsampleImages(16), CropScene(min_bound + max_bound)
+        )(scene)
+
+        self.assert_scenes_match(scene_1, scene_2)
+
 
 if __name__ == "__main__":
     unittest.main()

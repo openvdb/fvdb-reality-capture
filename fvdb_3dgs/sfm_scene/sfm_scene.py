@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 import pathlib
+from typing import Sequence
 
 import numpy as np
 
@@ -103,12 +104,12 @@ class SfmScene:
             cache=cache,
         )
 
-    def filter_points(self, mask: np.ndarray) -> "SfmScene":
+    def filter_points(self, mask: np.ndarray | Sequence[bool]) -> "SfmScene":
         """
         Filter the points in the scene based on a boolean mask.
 
         Args:
-            mask (np.ndarray): A boolean array of shape (N,) where N is the number of points.
+            mask (np.ndarray | Sequence[bool]): A boolean array of shape (N,) where N is the number of points.
                                True values indicate that the corresponding point should be kept.
 
         Returns:
@@ -150,12 +151,12 @@ class SfmScene:
             cache=self.cache,
         )
 
-    def filter_images(self, mask: np.ndarray) -> "SfmScene":
+    def filter_images(self, mask: np.ndarray | Sequence[bool]) -> "SfmScene":
         """
         Filter the images in the scene based on a Boolean mask.
 
         Args:
-            mask (np.ndarray): A Boolean array of shape (M,) where M is the number of images.
+            mask (np.ndarray | Sequence[bool]): A Boolean array of shape (M,) where M is the number of images.
                                True values indicate that the corresponding image should be kept.
 
         Returns:
@@ -173,12 +174,12 @@ class SfmScene:
             cache=self.cache,
         )
 
-    def select_images(self, indices: np.ndarray) -> "SfmScene":
+    def select_images(self, indices: np.ndarray | Sequence[int]) -> "SfmScene":
         """
         Select specific images from the scene based on their indices.
 
         Args:
-            indices (np.ndarray): An array of integer indices specifying which images to select.
+            indices (np.ndarray | Sequence[int]): An array of integer indices specifying which images to select.
 
         Returns:
             SfmScene: A new SfmScene instance with the selected images and corresponding metadata.
@@ -312,7 +313,7 @@ class SfmScene:
         if not self._images:
             return np.zeros((0, 3, 3))
         return np.stack([image.camera_metadata.projection_matrix for image in self._images], axis=0)
-    
+
     @property
     def num_images(self) -> int:
         """
