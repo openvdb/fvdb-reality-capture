@@ -37,6 +37,17 @@ class BasicSfmSceneTransformTest(unittest.TestCase):
             5: (10628, 14177),
         }
 
+        # These bounds were determined by looking at the point cloud in a 3D viewer
+        # and finding a reasonable bounding box that would crop out some points
+        # but still leave a good number of points.
+        # NOTE: These bounds are specific to this dataset and won't work for other datasets.
+        # The format is [min_x, min_y, min_z, max_x, max_y, max_z]
+        # NOTE: The dataset is in EPSG:26917 (UTM zone 17N) so the bounds are in meters
+        # and are quite large.
+        min_bound = [1075540.25, -4780800.5, 4043418.775]
+        max_bound = [1090150.75, -4772843.5, 4058591.925]
+        self.crop_bounds = min_bound + max_bound
+
     def assert_scenes_match(self, scene1: SfmScene, scene2: SfmScene):
         self.assertTrue(np.all(scene2.points == scene1.points))
         self.assertTrue(np.all(scene2.points_err == scene1.points_err))
@@ -270,17 +281,8 @@ class BasicSfmSceneTransformTest(unittest.TestCase):
             transformed_scene = transform(scene)
 
     def test_crop_scene(self):
-        # These bounds were determined by looking at the point cloud in a 3D viewer
-        # and finding a reasonable bounding box that would crop out some points
-        # but still leave a good number of points.
-        # NOTE: These bounds are specific to this dataset and won't work for other datasets.
-        # The format is [min_x, min_y, min_z, max_x, max_y, max_z]
-        # NOTE: The dataset is in EPSG:26917 (UTM zone 17N) so the bounds are in meters
-        # and are quite large.
-        min_bound = [1075540.25, -4780800.5, 4043418.775]
-        max_bound = [1090150.75, -4772843.5, 4058591.925]
         dowsample_transform = DownsampleImages(16)  # Cropping with large images is very slow, so downsample first
-        transform = CropScene(min_bound + max_bound)
+        transform = CropScene(self.crop_bounds)
 
         scene: SfmScene = SfmScene.from_colmap(self.dataset_path)
         scene = dowsample_transform(scene)
@@ -301,17 +303,15 @@ class BasicSfmSceneTransformTest(unittest.TestCase):
             self.assertTrue(np.all(image_metadata.point_indices < scene.points.shape[0]))
 
     def test_compose(self):
-        min_bound = [1075540.25, -4780800.5, 4043418.775]
-        max_bound = [1090150.75, -4772843.5, 4058591.925]
         normalize_transform = NormalizeScene(normalization_type="similarity")
         dowsample_transform = DownsampleImages(16)  # Cropping with large images is very slow, so downsample first
-        crop_transform = CropScene(min_bound + max_bound)
+        crop_transform = CropScene(self.crop_bounds)
 
         scene = SfmScene.from_colmap(self.dataset_path)
 
         scene_1 = crop_transform(dowsample_transform(normalize_transform(scene)))
         scene_2 = Compose(
-            NormalizeScene(normalization_type="similarity"), DownsampleImages(16), CropScene(min_bound + max_bound)
+            NormalizeScene(normalization_type="similarity"), DownsampleImages(16), CropScene(self.crop_bounds)
         )(scene)
 
         self.assert_scenes_match(scene_1, scene_2)
