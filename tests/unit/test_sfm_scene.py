@@ -10,15 +10,15 @@ import numpy as np
 from scipy.spatial.transform import Rotation as R
 
 from fvdb_3dgs.sfm_scene import SfmCameraMetadata, SfmImageMetadata, SfmScene
-from fvdb_3dgs.transforms import DownsampleImages
+from fvdb_3dgs.tools import download_example_data
 
 
 class BasicSfmSceneTest(unittest.TestCase):
     def setUp(self):
-        # TODO: Auto-download this dataset if it doesn't exist.
-        # NOTE: For now, we assume you've downloaded this dataset. We'll do this automatically
-        # when we have access to S3 buckets
-        self.dataset_path = pathlib.Path(__file__).parent.parent.parent / "data" / "glomap_gettysburg_small_scaled"
+        # Auto-download this dataset if it doesn't exist.
+        self.dataset_path = pathlib.Path(__file__).parent.parent.parent / "data" / "gettysburg"
+        if not self.dataset_path.exists():
+            download_example_data("gettysburg", self.dataset_path.parent)
 
         self.expected_num_images = 154
         self.expected_num_cameras = 5
