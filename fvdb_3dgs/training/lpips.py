@@ -680,7 +680,7 @@ class LPIPSNetwork(torch.nn.Module):
         self.lins = torch.nn.ModuleList(self.lins)
 
         if pretrained:
-            weights_url = f"https://www.fwilliams.info/files/lpips_models/{backbone}.pth"
+            weights_url = f"https://fvdb-data.s3.us-east-2.amazonaws.com/fvdb-reality-capture/{backbone}.pth"
             path_to_weights = get_weights_path_for_model(f"{backbone}.pth", weights_url, model_name=backbone)
             self.load_state_dict(torch.load(path_to_weights, map_location="cpu", weights_only=False), strict=False)
 
