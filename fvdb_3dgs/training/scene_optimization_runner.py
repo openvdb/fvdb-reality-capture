@@ -1394,7 +1394,7 @@ class SceneOptimizationRunner:
                         )
 
                 # Reset the opacity parameters every so often
-                if self._global_step % reset_opacities_every_step == 0:
+                if self._global_step % reset_opacities_every_step == 0 and self._global_step > 0:
                     self.optimizer.reset_opacities()
 
                 # Step the Gaussian optimizer
