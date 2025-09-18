@@ -2,7 +2,6 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 import math
-
 from typing import Any, Callable, Dict, List, Tuple, Union
 
 import torch
@@ -22,18 +21,20 @@ class GaussianSplatOptimizer:
     algorithm in the original Gaussian Splatting paper (https://arxiv.org/abs/2308.04079).
     """
 
-    def __init__(self,
-                 model: GaussianSplat3d,
-                 mean_lr_decay_exponent: float = 1.0,
-                 scene_scale: float = 1.0,
-                 prune_opacity_threshold: float = 0.005,
-                 prune_scale3d_threshold: float = 0.1,
-                 prune_scale2d_threshold: float = 0.15,
-                 grow_grad2d_threshold: float = 0.0002,
-                 grow_scale3d_threshold: float = 0.01,
-                 grow_scale2d_threshold: float = 0.05,
-                 absgrad: bool = False,
-                 revised_opacity: bool = False):
+    def __init__(
+        self,
+        model: GaussianSplat3d,
+        mean_lr_decay_exponent: float = 1.0,
+        scene_scale: float = 1.0,
+        prune_opacity_threshold: float = 0.005,
+        prune_scale3d_threshold: float = 0.1,
+        prune_scale2d_threshold: float = 0.15,
+        grow_grad2d_threshold: float = 0.0002,
+        grow_scale3d_threshold: float = 0.01,
+        grow_scale2d_threshold: float = 0.05,
+        absgrad: bool = False,
+        revised_opacity: bool = False,
+    ):
         """
         Create a new GaussianSplatOptimizer for the given GaussianSplat3d model.
 

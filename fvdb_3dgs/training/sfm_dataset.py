@@ -122,7 +122,11 @@ class SfmDataset(torch.utils.data.Dataset, Iterable):
         Returns:
             np.ndarray: An Nx3x3 array of projection matrices for the cameras in the dataset.
         """
-        return self.sfm_scene.projection_matrices[self._indices]
+        # in fvdb_3dgs/training/sfm_dataset.py
+        return np.stack(
+            [self._sfm_scene.images[i].camera_metadata.projection_matrix for i in self._indices],
+            axis=0,
+        )
 
     @property
     def image_sizes(self) -> np.ndarray:
@@ -220,10 +224,10 @@ class SfmDataset(torch.utils.data.Dataset, Iterable):
 
         if image_meta.image_path.endswith(".jpg") or image_meta.image_path.endswith(".jpeg"):
             data = torchvision.io.read_file(image_meta.image_path)
-            image = torchvision.io.decode_jpeg(data, device="cpu").permute(1,2,0).numpy()
+            image = torchvision.io.decode_jpeg(data, device="cpu").permute(1, 2, 0).numpy()
         elif image_meta.image_path.endswith(".png"):
             data = torchvision.io.read_file(image_meta.image_path)
-            image = torchvision.io.decode_png(data, device="cpu").permute(1,2,0).numpy()
+            image = torchvision.io.decode_png(data, device="cpu").permute(1, 2, 0).numpy()
         else:
             image = cv2.imread(image_meta.image_path, cv2.IMREAD_UNCHANGED)
             assert image is not None, f"Failed to load image: {image_meta.image_path}"
