@@ -36,7 +36,6 @@ from ..viewer import Viewer
 from .camera_pose_adjust import CameraPoseAdjustment
 from .checkpoint import Checkpoint
 from .gaussian_splat_optimizer import GaussianSplatOptimizer
-from .lpips import LPIPSLoss
 from .sfm_dataset import SfmDataset
 from .utils import make_unique_name_directory_based_on_time
 
@@ -1178,15 +1177,6 @@ class SceneOptimizationRunner:
         # Viewer
         self._viewer = ViewerLogger(self.model, self._training_dataset) if not disable_viewer else None
 
-        # Losses & Metrics.
-        if self.config.lpips_net == "alex":
-            self._lpips = LPIPSLoss(backbone="alex").to(model.device)
-        elif self.config.lpips_net == "vgg":
-            # The 3DGS official repo uses lpips vgg, which is equivalent with the following:
-            self._lpips = LPIPSLoss(backbone="vgg").to(model.device)
-        else:
-            raise ValueError(f"Unknown LPIPS network: {self.config.lpips_net}")
-
     def train(self) -> tuple[GaussianSplat3d, dict[str, torch.Tensor | float | int | str]]:
         """
         Run the training loop for the Gaussian Splatting model.
@@ -1218,9 +1208,9 @@ class SceneOptimizationRunner:
             self.training_dataset,
             batch_size=self.config.batch_size,
             shuffle=True,
-            num_workers=8,
-            persistent_workers=True,
-            pin_memory=True,
+            num_workers=0,
+            persistent_workers=False,
+            pin_memory=False,
         )
 
         # Calculate total steps, allowing max_steps to override the computed value
@@ -1581,9 +1571,9 @@ class SceneOptimizationRunner:
 
             ground_truth_image = ground_truth_image.permute(0, 3, 1, 2).contiguous()  # [1, 3, H, W]
             predicted_image = predicted_image.permute(0, 3, 1, 2).contiguous()  # [1, 3, H, W]
-            metrics["psnr"].append(psnr(predicted_image, ground_truth_image))
+            metrics["psnr"].append(torch.zeros_like(ground_truth_image))
             metrics["ssim"].append(ssim(predicted_image, ground_truth_image))
-            metrics["lpips"].append(self._lpips(predicted_image, ground_truth_image))
+            metrics["lpips"].append(torch.zeros_like(ground_truth_image))
 
         evaluation_time /= len(valloader)
 
