@@ -499,6 +499,9 @@ def extract_training_metrics(output: str, total_time: float) -> Dict[str, Any]:
         steps = re.findall(pattern, output)
         all_steps.extend(steps)
 
+    # Also capture steps from FVDB tqdm description lines like "... 41999/42000 [..] loss=..| ..."
+    # We already parse steps from "(\d+)/\d+" above; keep as is.
+
     if all_steps:
         # Remove commas and convert to int, then find the maximum step
         step_numbers = [int(step.replace(",", "")) for step in all_steps]
@@ -532,19 +535,23 @@ def extract_training_metrics(output: str, total_time: float) -> Dict[str, Any]:
             pass
 
     # Extract final Gaussian count
-    # Try GSplat pattern first: "Now having X GSs"
-    gaussian_pattern_gsplat = r"Now having (\d+) GSs"
-    gaussian_matches = re.findall(gaussian_pattern_gsplat, output)
-    if gaussian_matches:
-        metrics["final_gaussian_count"] = int(gaussian_matches[-1])  # Use the last (most recent) count
-    else:
-        # Try FVDB pattern: "Num Gaussians: X (before: Y)"
-        gaussian_pattern_fvdb = r"Num Gaussians: ([\d,]+) \(before:"
-        gaussian_matches = re.findall(gaussian_pattern_fvdb, output)
-        if gaussian_matches:
-            # Remove commas from the number
-            count_str = gaussian_matches[-1].replace(",", "")
-            metrics["final_gaussian_count"] = int(count_str)
+    # New FVDB progress format example in pbar: "loss=0.021| sh degree=3| num gaussians=817,140"
+    # Old FVDB summary debug format: "Num Gaussians: X (before: Y)"
+    # GSplat format: "Now having X GSs"
+    gaussian_patterns = [
+        r"num gaussians=([\d,]+)",  # new FVDB
+        r"Num Gaussians: ([\d,]+) \(before:",  # old FVDB
+        r"Now having (\d+) GSs",  # GSplat
+    ]
+    for _pat in gaussian_patterns:
+        _matches = re.findall(_pat, output)
+        if _matches:
+            count_str = _matches[-1].replace(",", "")
+            try:
+                metrics["final_gaussian_count"] = int(count_str)
+                break
+            except Exception:
+                pass
 
     # Calculate final metrics
     if metrics["loss_values"]:
@@ -814,19 +821,21 @@ def extract_gaussian_count_from_logs(result_dir: str, scene: str) -> Tuple[Optio
                 output = f.read()
             import re
 
-            # Try GSplat pattern first: "Now having X GSs"
-            gaussian_pattern_gsplat = r"Now having (\d+) GSs"
-            gaussian_matches = re.findall(gaussian_pattern_gsplat, output)
-            if gaussian_matches:
-                fvdb_count = int(gaussian_matches[-1])
-            else:
-                # Try FVDB pattern: "Num Gaussians: X (before: Y)"
-                gaussian_pattern_fvdb = r"Num Gaussians: ([\d,]+) \(before:"
-                gaussian_matches = re.findall(gaussian_pattern_fvdb, output)
+            # Support multiple formats (new FVDB, old FVDB, GSplat)
+            patterns = [
+                r"num gaussians=([\d,]+)",
+                r"Num Gaussians: ([\d,]+) \(before:",
+                r"Now having (\d+) GSs",
+            ]
+            for _pat in patterns:
+                gaussian_matches = re.findall(_pat, output)
                 if gaussian_matches:
-                    # Remove commas from the number
                     count_str = gaussian_matches[-1].replace(",", "")
-                    fvdb_count = int(count_str)
+                    try:
+                        fvdb_count = int(count_str)
+                        break
+                    except Exception:
+                        pass
 
     # Extract from GSplat log
     if gsplat_result_dir.exists():
@@ -836,19 +845,21 @@ def extract_gaussian_count_from_logs(result_dir: str, scene: str) -> Tuple[Optio
                 output = f.read()
             import re
 
-            # Try GSplat pattern first: "Now having X GSs"
-            gaussian_pattern_gsplat = r"Now having (\d+) GSs"
-            gaussian_matches = re.findall(gaussian_pattern_gsplat, output)
-            if gaussian_matches:
-                gsplat_count = int(gaussian_matches[-1])
-            else:
-                # Try FVDB pattern: "Num Gaussians: X (before: Y)"
-                gaussian_pattern_fvdb = r"Num Gaussians: ([\d,]+) \(before:"
-                gaussian_matches = re.findall(gaussian_pattern_fvdb, output)
+            # Support multiple formats (GSplat, old FVDB, new FVDB in case of mixed logs)
+            patterns = [
+                r"Now having (\d+) GSs",
+                r"Num Gaussians: ([\d,]+) \(before:",
+                r"num gaussians=([\d,]+)",
+            ]
+            for _pat in patterns:
+                gaussian_matches = re.findall(_pat, output)
                 if gaussian_matches:
-                    # Remove commas from the number
                     count_str = gaussian_matches[-1].replace(",", "")
-                    gsplat_count = int(count_str)
+                    try:
+                        gsplat_count = int(count_str)
+                        break
+                    except Exception:
+                        pass
 
     return fvdb_count, gsplat_count
 
@@ -1071,8 +1082,9 @@ def generate_enhanced_comparative_report(scenes: List[str], result_dir: str) -> 
                 report = json.load(f)
 
             # Extract data
-            fvdb_time = report.get("comparison", {}).get("fvdb_time", 0)
-            gsplat_time = report.get("comparison", {}).get("gsplat_time", 0)
+            cmp = report.get("comparison", {})
+            fvdb_time = cmp.get("fvdb_training_time", cmp.get("fvdb_total_time", 0))
+            gsplat_time = cmp.get("gsplat_training_time", cmp.get("gsplat_total_time", 0))
             fvdb_psnr = report.get("fvdb_training", {}).get("metrics", {}).get("psnr", 0)
             gsplat_psnr = report.get("gsplat_training", {}).get("metrics", {}).get("psnr", 0)
             fvdb_gaussians = report.get("fvdb_training", {}).get("metrics", {}).get("final_gaussian_count", 0)
@@ -1248,8 +1260,9 @@ def generate_summary_charts(scenes: List[str], result_dir: str) -> None:
                 report = json.load(f)
 
             # Extract data
-            fvdb_time = report.get("comparison", {}).get("fvdb_time", 0)
-            gsplat_time = report.get("comparison", {}).get("gsplat_time", 0)
+            cmp = report.get("comparison", {})
+            fvdb_time = cmp.get("fvdb_training_time", cmp.get("fvdb_total_time", 0))
+            gsplat_time = cmp.get("gsplat_training_time", cmp.get("gsplat_total_time", 0))
             fvdb_psnr = report.get("fvdb_training", {}).get("metrics", {}).get("psnr", 0)
             gsplat_psnr = report.get("gsplat_training", {}).get("metrics", {}).get("psnr", 0)
             fvdb_gaussians = report.get("fvdb_training", {}).get("metrics", {}).get("final_gaussian_count", 0)
