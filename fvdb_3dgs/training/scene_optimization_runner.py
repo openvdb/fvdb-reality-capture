@@ -17,11 +17,10 @@ import torch
 import torch.nn.functional as F
 import torch.utils.data
 import tqdm
-from scipy.spatial import cKDTree
-from torch.utils.tensorboard import SummaryWriter
-
 from fvdb import GaussianSplat3d
 from fvdb.utils.metrics import psnr, ssim
+from scipy.spatial import cKDTree
+from torch.utils.tensorboard import SummaryWriter
 
 from ..sfm_scene import SfmScene
 from ..transforms import (
@@ -1174,8 +1173,6 @@ class SceneOptimizationRunner:
         self._viewer = ViewerLogger(self.model, self._training_dataset) if not disable_viewer else None
 
         # Losses & Metrics.
-        self._ssim = ssim
-        self._psnr = psnr
         if self.config.lpips_net == "alex":
             self._lpips = LPIPSLoss(backbone="alex").to(model.device)
         elif self.config.lpips_net == "vgg":
@@ -1324,7 +1321,7 @@ class SceneOptimizationRunner:
 
                     # Image losses
                     l1loss = F.l1_loss(colors, pixels)
-                    ssimloss = 1.0 - self._ssim(
+                    ssimloss = 1.0 - ssim(
                         colors.permute(0, 3, 1, 2).contiguous(),
                         pixels.permute(0, 3, 1, 2).contiguous(),
                     )
@@ -1578,23 +1575,23 @@ class SceneOptimizationRunner:
 
             ground_truth_image = ground_truth_image.permute(0, 3, 1, 2).contiguous()  # [1, 3, H, W]
             predicted_image = predicted_image.permute(0, 3, 1, 2).contiguous()  # [1, 3, H, W]
-            metrics["psnr"].append(self._psnr(predicted_image, ground_truth_image))
-            metrics["ssim"].append(self._ssim(predicted_image, ground_truth_image))
+            metrics["psnr"].append(psnr(predicted_image, ground_truth_image))
+            metrics["ssim"].append(ssim(predicted_image, ground_truth_image))
             metrics["lpips"].append(self._lpips(predicted_image, ground_truth_image))
 
         evaluation_time /= len(valloader)
 
-        psnr = torch.stack(metrics["psnr"]).mean()
-        ssim = torch.stack(metrics["ssim"]).mean()
-        lpips = torch.stack(metrics["lpips"]).mean()
+        psnr_mean = torch.stack(metrics["psnr"]).mean()
+        ssim_mean = torch.stack(metrics["ssim"]).mean()
+        lpips_mean = torch.stack(metrics["lpips"]).mean()
         self._logger.info(f"Evaluation for stage {stage} completed. Average time per image: {evaluation_time:.3f}s")
-        self._logger.info(f"PSNR: {psnr.item():.3f}, SSIM: {ssim.item():.4f}, LPIPS: {lpips.item():.3f}")
+        self._logger.info(f"PSNR: {psnr_mean.item():.3f}, SSIM: {ssim_mean.item():.4f}, LPIPS: {lpips_mean.item():.3f}")
 
         # Save stats as json
         stats = {
-            "psnr": psnr.item(),
-            "ssim": ssim.item(),
-            "lpips": lpips.item(),
+            "psnr": psnr_mean.item(),
+            "ssim": ssim_mean.item(),
+            "lpips": lpips_mean.item(),
             "evaluation_time": evaluation_time,
             "num_gaussians": self.model.num_gaussians,
         }
@@ -1603,11 +1600,21 @@ class SceneOptimizationRunner:
         # Log to tensorboard if enabled
         if self._tensorboard_logger is not None:
             self._tensorboard_logger.log_evaluation_iteration(
-                self._global_step, psnr.item(), ssim.item(), lpips.item(), evaluation_time, self.model.num_gaussians
+                self._global_step,
+                psnr_mean.item(),
+                ssim_mean.item(),
+                lpips_mean.item(),
+                evaluation_time,
+                self.model.num_gaussians,
             )
 
         # Upate the viewer with evaluation results
         if self._viewer is not None:
             self._viewer.log_evaluation_iteration(
-                self._global_step, psnr.item(), ssim.item(), lpips.item(), evaluation_time, self.model.num_gaussians
+                self._global_step,
+                psnr_mean.item(),
+                ssim_mean.item(),
+                lpips_mean.item(),
+                evaluation_time,
+                self.model.num_gaussians,
             )
