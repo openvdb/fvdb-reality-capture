@@ -335,8 +335,6 @@ class SfmImageMetadata:
             SfmImageMetadata: A new `SfmImageMetadata` object with the transformed matrices.
         """
         new_camera_to_world_matrix = transformation_matrix @ self.camera_to_world_matrix
-        scaling = np.linalg.norm(new_camera_to_world_matrix[0, :3], axis=0)
-        new_camera_to_world_matrix[:3, :3] = new_camera_to_world_matrix[:3, :3] / scaling[None, None]
         new_world_to_camera_matrix = np.linalg.inv(new_camera_to_world_matrix)
 
         return SfmImageMetadata(

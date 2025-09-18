@@ -47,10 +47,17 @@ def _download_one_dataset(dataset_name: str, dataset_url: str, dataset_download_
 def download_example_data(dataset="mipnerf360", download_path: str | pathlib.Path = pathlib.Path.cwd() / "data"):
 
     # dataset urls
-    dataset_urls = {"mipnerf360": "http://storage.googleapis.com/gresearch/refraw360/360_v2.zip"}
+
+    dataset_urls = {
+        "mipnerf360": "https://fvdb-data.s3.us-east-2.amazonaws.com/fvdb-reality-capture/360_v2.zip",
+        "gettysburg": "https://fvdb-data.s3.us-east-2.amazonaws.com/fvdb-reality-capture/gettysburg.zip",
+    }
 
     # where each dataset goes
-    dataset_directories = {"mipnerf360": "360_v2"}
+    dataset_directories = {
+        "mipnerf360": "360_v2",
+        "gettysburg": "gettysburg",
+    }
 
     if isinstance(download_path, str):
         download_path = pathlib.Path(download_path)

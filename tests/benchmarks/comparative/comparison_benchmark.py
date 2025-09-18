@@ -251,8 +251,25 @@ def run_fvdb_training(scene_info: Dict, result_dir: str, config: Dict) -> Dict:
         str(temp_config_path.absolute()),
     ]
 
-    fvdb_base = config.get("paths", {}).get("fvdb_base", "../../../../3d_gaussian_splatting")
-    exit_code, stdout, stderr = run_command(cmd, cwd=fvdb_base, log_file=str(log_file))
+    # Run from fvdb-realitycapture repo root (contains tests/benchmarks/generate_benchmark_checkpoints.py)
+    repo_root = None
+    for candidate in [
+        (Path(__file__).resolve().parents[3] if len(Path(__file__).resolve().parents) >= 4 else None),
+        Path("/workspace/fvdb-realitycapture"),
+        Path("/workspace/benchmark").parent,  # if running from /workspace/benchmark
+    ]:
+        if (
+            candidate
+            and candidate.exists()
+            and (candidate / "tests/benchmarks/generate_benchmark_checkpoints.py").exists()
+        ):
+            repo_root = candidate
+            break
+    if repo_root is None:
+        raise FileNotFoundError(
+            "Could not locate fvdb-realitycapture repo root containing tests/benchmarks/generate_benchmark_checkpoints.py"
+        )
+    exit_code, stdout, stderr = run_command(cmd, cwd=str(repo_root), log_file=str(log_file))
 
     # Clean up temporary config
     temp_config_path.unlink(missing_ok=True)
@@ -360,9 +377,9 @@ def run_gsplat_training(scene_info: Dict, result_dir: str, config: Dict) -> Dict
     logging.info(f"GSplat command: {' '.join(cmd)}")
 
     # Start a background watcher to detect the first training step in the log
-    import threading as _threading  # local import to avoid polluting module scope
-    import re as _re
     import os as _os
+    import re as _re
+    import threading as _threading  # local import to avoid polluting module scope
 
     first_step_time: dict = {"t": None}
     stop_event = _threading.Event()
@@ -399,6 +416,16 @@ def run_gsplat_training(scene_info: Dict, result_dir: str, config: Dict) -> Dict
     gsplat_base = config.get("paths", {}).get(
         "gsplat_base", "../../../../3d_gaussian_splatting/benchmark/gsplat/examples"
     )
+    if not Path(gsplat_base).exists():
+        logging.error(f"GSplat base not found: {gsplat_base}. Skipping GSplat training for {scene_info['name']}.")
+        return {
+            "success": False,
+            "total_time": 0.0,
+            "training_time": 0.0,
+            "exit_code": -1,
+            "metrics": {},
+            "result_dir": str(gsplat_result_dir),
+        }
     exit_code, stdout, stderr = run_command(cmd, cwd=gsplat_base, log_file=str(log_file))
     stop_event.set()
     # Give watcher a brief moment to exit
@@ -478,6 +505,9 @@ def extract_training_metrics(output: str, total_time: float) -> Dict[str, Any]:
         steps = re.findall(pattern, output)
         all_steps.extend(steps)
 
+    # Also capture steps from FVDB tqdm description lines like "... 41999/42000 [..] loss=..| ..."
+    # We already parse steps from "(\d+)/\d+" above; keep as is.
+
     if all_steps:
         # Remove commas and convert to int, then find the maximum step
         step_numbers = [int(step.replace(",", "")) for step in all_steps]
@@ -511,19 +541,23 @@ def extract_training_metrics(output: str, total_time: float) -> Dict[str, Any]:
             pass
 
     # Extract final Gaussian count
-    # Try GSplat pattern first: "Now having X GSs"
-    gaussian_pattern_gsplat = r"Now having (\d+) GSs"
-    gaussian_matches = re.findall(gaussian_pattern_gsplat, output)
-    if gaussian_matches:
-        metrics["final_gaussian_count"] = int(gaussian_matches[-1])  # Use the last (most recent) count
-    else:
-        # Try FVDB pattern: "Num Gaussians: X (before: Y)"
-        gaussian_pattern_fvdb = r"Num Gaussians: ([\d,]+) \(before:"
-        gaussian_matches = re.findall(gaussian_pattern_fvdb, output)
-        if gaussian_matches:
-            # Remove commas from the number
-            count_str = gaussian_matches[-1].replace(",", "")
-            metrics["final_gaussian_count"] = int(count_str)
+    # New FVDB progress format example in pbar: "loss=0.021| sh degree=3| num gaussians=817,140"
+    # Old FVDB summary debug format: "Num Gaussians: X (before: Y)"
+    # GSplat format: "Now having X GSs"
+    gaussian_patterns = [
+        r"num gaussians=([\d,]+)",  # new FVDB
+        r"Num Gaussians: ([\d,]+) \(before:",  # old FVDB
+        r"Now having (\d+) GSs",  # GSplat
+    ]
+    for _pat in gaussian_patterns:
+        _matches = re.findall(_pat, output)
+        if _matches:
+            count_str = _matches[-1].replace(",", "")
+            try:
+                metrics["final_gaussian_count"] = int(count_str)
+                break
+            except Exception:
+                pass
 
     # Calculate final metrics
     if metrics["loss_values"]:
@@ -553,18 +587,23 @@ def run_evaluation(scene_info: Dict, result_dir: str, config: Dict) -> Dict:
                 checkpoints.sort(key=lambda x: int(x.stem.split("_")[1]))
                 latest_checkpoint = checkpoints[-1]
 
-                cmd = [
-                    sys.executable,
-                    "benchmark_3dgs.py",
-                    "--data_path",
-                    f"data/360_v2/{scene_info['name']}",
-                    "--checkpoint_path",
-                    str(latest_checkpoint),
-                    "--results_path",
-                    str(fvdb_result_dir),
-                ]
-
-                exit_code, stdout, stderr = run_command(cmd, cwd="../../../../3d_gaussian_splatting")
+                # Evaluation uses local repo if available; skip if script not present
+                bench_script = Path(__file__).resolve().parents[3] / "benchmark_3dgs.py"
+                if bench_script.exists():
+                    cmd = [
+                        sys.executable,
+                        str(bench_script),
+                        "--data_path",
+                        f"data/360_v2/{scene_info['name']}",
+                        "--checkpoint_path",
+                        str(latest_checkpoint),
+                        "--results_path",
+                        str(fvdb_result_dir),
+                    ]
+                    exit_code, stdout, stderr = run_command(cmd)
+                else:
+                    logging.warning("benchmark_3dgs.py not found locally. Skipping FVDB eval step.")
+                    exit_code, stdout, stderr = 0, "", ""
                 results["fvdb_eval"] = {
                     "success": exit_code == 0,
                     "checkpoint": str(latest_checkpoint),
@@ -603,7 +642,11 @@ def run_evaluation(scene_info: Dict, result_dir: str, config: Dict) -> Dict:
                 gsplat_base = config.get("paths", {}).get(
                     "gsplat_base", "../../../../3d_gaussian_splatting/benchmark/gsplat/examples"
                 )
-                exit_code, stdout, stderr = run_command(cmd, cwd=gsplat_base)
+                if Path(gsplat_base).exists():
+                    exit_code, stdout, stderr = run_command(cmd, cwd=gsplat_base)
+                else:
+                    logging.warning(f"GSplat base not found: {gsplat_base}. Skipping GSplat eval step.")
+                    exit_code, stdout, stderr = 0, "", ""
                 results["gsplat_eval"] = {
                     "success": exit_code == 0,
                     "checkpoint": str(latest_checkpoint),
@@ -784,19 +827,21 @@ def extract_gaussian_count_from_logs(result_dir: str, scene: str) -> Tuple[Optio
                 output = f.read()
             import re
 
-            # Try GSplat pattern first: "Now having X GSs"
-            gaussian_pattern_gsplat = r"Now having (\d+) GSs"
-            gaussian_matches = re.findall(gaussian_pattern_gsplat, output)
-            if gaussian_matches:
-                fvdb_count = int(gaussian_matches[-1])
-            else:
-                # Try FVDB pattern: "Num Gaussians: X (before: Y)"
-                gaussian_pattern_fvdb = r"Num Gaussians: ([\d,]+) \(before:"
-                gaussian_matches = re.findall(gaussian_pattern_fvdb, output)
+            # Support multiple formats (new FVDB, old FVDB, GSplat)
+            patterns = [
+                r"num gaussians=([\d,]+)",
+                r"Num Gaussians: ([\d,]+) \(before:",
+                r"Now having (\d+) GSs",
+            ]
+            for _pat in patterns:
+                gaussian_matches = re.findall(_pat, output)
                 if gaussian_matches:
-                    # Remove commas from the number
                     count_str = gaussian_matches[-1].replace(",", "")
-                    fvdb_count = int(count_str)
+                    try:
+                        fvdb_count = int(count_str)
+                        break
+                    except Exception:
+                        pass
 
     # Extract from GSplat log
     if gsplat_result_dir.exists():
@@ -806,19 +851,21 @@ def extract_gaussian_count_from_logs(result_dir: str, scene: str) -> Tuple[Optio
                 output = f.read()
             import re
 
-            # Try GSplat pattern first: "Now having X GSs"
-            gaussian_pattern_gsplat = r"Now having (\d+) GSs"
-            gaussian_matches = re.findall(gaussian_pattern_gsplat, output)
-            if gaussian_matches:
-                gsplat_count = int(gaussian_matches[-1])
-            else:
-                # Try FVDB pattern: "Num Gaussians: X (before: Y)"
-                gaussian_pattern_fvdb = r"Num Gaussians: ([\d,]+) \(before:"
-                gaussian_matches = re.findall(gaussian_pattern_fvdb, output)
+            # Support multiple formats (GSplat, old FVDB, new FVDB in case of mixed logs)
+            patterns = [
+                r"Now having (\d+) GSs",
+                r"Num Gaussians: ([\d,]+) \(before:",
+                r"num gaussians=([\d,]+)",
+            ]
+            for _pat in patterns:
+                gaussian_matches = re.findall(_pat, output)
                 if gaussian_matches:
-                    # Remove commas from the number
                     count_str = gaussian_matches[-1].replace(",", "")
-                    gsplat_count = int(count_str)
+                    try:
+                        gsplat_count = int(count_str)
+                        break
+                    except Exception:
+                        pass
 
     return fvdb_count, gsplat_count
 
@@ -1041,8 +1088,9 @@ def generate_enhanced_comparative_report(scenes: List[str], result_dir: str) -> 
                 report = json.load(f)
 
             # Extract data
-            fvdb_time = report.get("comparison", {}).get("fvdb_time", 0)
-            gsplat_time = report.get("comparison", {}).get("gsplat_time", 0)
+            cmp = report.get("comparison", {})
+            fvdb_time = cmp.get("fvdb_training_time", cmp.get("fvdb_total_time", 0))
+            gsplat_time = cmp.get("gsplat_training_time", cmp.get("gsplat_total_time", 0))
             fvdb_psnr = report.get("fvdb_training", {}).get("metrics", {}).get("psnr", 0)
             gsplat_psnr = report.get("gsplat_training", {}).get("metrics", {}).get("psnr", 0)
             fvdb_gaussians = report.get("fvdb_training", {}).get("metrics", {}).get("final_gaussian_count", 0)
@@ -1218,8 +1266,9 @@ def generate_summary_charts(scenes: List[str], result_dir: str) -> None:
                 report = json.load(f)
 
             # Extract data
-            fvdb_time = report.get("comparison", {}).get("fvdb_time", 0)
-            gsplat_time = report.get("comparison", {}).get("gsplat_time", 0)
+            cmp = report.get("comparison", {})
+            fvdb_time = cmp.get("fvdb_training_time", cmp.get("fvdb_total_time", 0))
+            gsplat_time = cmp.get("gsplat_training_time", cmp.get("gsplat_total_time", 0))
             fvdb_psnr = report.get("fvdb_training", {}).get("metrics", {}).get("psnr", 0)
             gsplat_psnr = report.get("gsplat_training", {}).get("metrics", {}).get("psnr", 0)
             fvdb_gaussians = report.get("fvdb_training", {}).get("metrics", {}).get("final_gaussian_count", 0)

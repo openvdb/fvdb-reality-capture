@@ -17,7 +17,7 @@ import torch
 import torch.nn.functional as F
 import torch.utils.data
 import tqdm
-from scipy.spatial.ckdtree import cKDTree
+from scipy.spatial import cKDTree
 from torch.utils.tensorboard import SummaryWriter
 
 from fvdb import GaussianSplat3d

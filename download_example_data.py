@@ -1,80 +1,37 @@
-#!/usr/bin/env python
 # Copyright Contributors to the OpenVDB Project
 # SPDX-License-Identifier: Apache-2.0
 #
-"""Script to download benchmark dataset(s)"""
 
-import os
-import subprocess
-from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
 import tyro
 
 # dataset names
-dataset_names = Literal["mipnerf360"]
-
-# dataset urls
-urls = {"mipnerf360": "http://storage.googleapis.com/gresearch/refraw360/360_v2.zip"}
-
-# rename maps
-dataset_rename_map = {"mipnerf360": "360_v2"}
+dataset_names = Literal[
+    "all",
+    "mipnerf360",
+    "gettysburg",
+]
 
 
-@dataclass
-class DownloadData:
-    dataset: dataset_names = "mipnerf360"
-    save_dir: Path = Path(os.getcwd() + "/data")
+def main(
+    dataset: dataset_names = "all",
+    download_path: str | Path = Path.cwd() / "data",
+):
+    """
+    Download example datasets used in FVDB-RealityCapture.
 
-    def main(self):
-        self.save_dir.mkdir(parents=True, exist_ok=True)
-        self.dataset_download(self.dataset)
+    Args:
+        dataset (str): Name of the dataset to download. Options are "mipnerf360" or "gettysburg".
+        download_path (str | Path): Path to the directory where the dataset will be downloaded.
+            Default is the current working directory + "data".
+    """
 
-    def dataset_download(self, dataset: dataset_names):
-        (self.save_dir / dataset_rename_map[dataset]).mkdir(parents=True, exist_ok=True)
+    from fvdb_3dgs.tools._download_example_data import download_example_data
 
-        file_name = Path(urls[dataset]).name
-
-        # download
-        download_command = [
-            "wget",
-            "-P",
-            str(self.save_dir / dataset_rename_map[dataset]),
-            urls[dataset],
-        ]
-        try:
-            subprocess.run(download_command, check=True)
-            print("File file downloaded succesfully.")
-        except subprocess.CalledProcessError as e:
-            print(f"Error downloading file: {e}")
-
-        # if .zip
-        if Path(urls[dataset]).suffix == ".zip":
-            extract_command = [
-                "unzip",
-                self.save_dir / dataset_rename_map[dataset] / file_name,
-                "-d",
-                self.save_dir / dataset_rename_map[dataset],
-            ]
-        # if .tar
-        else:
-            extract_command = [
-                "tar",
-                "-xvzf",
-                self.save_dir / dataset_rename_map[dataset] / file_name,
-                "-C",
-                self.save_dir / dataset_rename_map[dataset],
-            ]
-
-        # extract
-        try:
-            subprocess.run(extract_command, check=True)
-            os.remove(self.save_dir / dataset_rename_map[dataset] / file_name)
-            print("Extraction complete.")
-        except subprocess.CalledProcessError as e:
-            print(f"Extraction failed: {e}")
+    download_example_data(dataset, download_path)
 
 
 if __name__ == "__main__":
-    tyro.cli(DownloadData).main()
+    tyro.cli(main)

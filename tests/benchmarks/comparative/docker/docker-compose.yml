@@ -9,8 +9,8 @@ services:
         reservations:
           devices:
             - driver: nvidia
-              device_ids: ["0"]
-              capabilities: [gpu]
+              device_ids: [ "0" ]
+              capabilities: [ gpu ]
     environment:
       - NVIDIA_VISIBLE_DEVICES=0
       - NVIDIA_DRIVER_CAPABILITIES=compute,utility
@@ -19,11 +19,12 @@ services:
     volumes:
       - ../../../../data:/workspace/data
       - ../results:/workspace/results
-      - ../../../../../../../:/workspace/openvdb
+      - ../../../../../fvdb:/workspace/fvdb
+      - ../../../../:/workspace/fvdb-realitycapture
       - ..:/workspace/benchmark
     ports:
-      - "8080:8080"  # FVDB viewer
-      - "8081:8081"  # GSplat viewer
+      - "8080:8080" # FVDB viewer
+      - "8081:8081" # GSplat viewer
     working_dir: /workspace/benchmark
     stdin_open: true
     tty: true
@@ -31,9 +32,11 @@ services:
     command: >
       bash -c "
         set -e
-        git config --global --add safe.directory /workspace/openvdb &&
+        git config --global --add safe.directory /workspace/fvdb &&
+        git config --global --add safe.directory /workspace/fvdb-realitycapture &&
         echo 'Building FVDB...' &&
-        cd /workspace/openvdb/fvdb &&
+        cd /workspace/fvdb &&
+        echo $PWD &&
         source /opt/conda/etc/profile.d/conda.sh &&
         conda activate benchmark &&
         echo 'Conda environment activated, starting build...' &&
