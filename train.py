@@ -8,6 +8,7 @@ from typing import Literal
 
 import torch
 import tyro
+
 from fvdb_3dgs.training import Config, SceneOptimizationRunner
 
 
@@ -48,6 +49,7 @@ def main(
         log_images_to_tensorboard=log_images_to_tensorboard,
         save_results=save_results,
         save_eval_images=save_eval_images,
+        dataset_type="e57"
     )
 
     runner.train()

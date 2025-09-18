@@ -36,6 +36,7 @@ from ..viewer import Viewer
 from .camera_pose_adjust import CameraPoseAdjustment
 from .checkpoint import Checkpoint
 from .gaussian_splat_optimizer import GaussianSplatOptimizer
+from .load_e57 import load_e57_scene
 from .lpips import LPIPSLoss
 from .sfm_dataset import SfmDataset
 from .utils import make_unique_name_directory_based_on_time
@@ -850,6 +851,7 @@ class SceneOptimizationRunner:
         log_images_to_tensorboard: bool = False,
         save_eval_images: bool = False,
         save_results: bool = True,
+        dataset_type: str = "colmap",
     ) -> "SceneOptimizationRunner":
         """
         Create a `Runner` instance for a new training run.
@@ -906,7 +908,13 @@ class SceneOptimizationRunner:
             transforms.append(CropScene(crop_bbox))
         transform = Compose(*transforms)
 
-        sfm_scene: SfmScene = SfmScene.from_colmap(dataset_path)
+        if dataset_type == "colmap":
+            sfm_scene: SfmScene = SfmScene.from_colmap(dataset_path)
+        elif dataset_type == "e57":
+            sfm_scene: SfmScene = load_e57_scene(dataset_path, downsample_point_factor=1)
+
+        assert sfm_scene is not None
+
         sfm_scene = transform(sfm_scene)
 
         indices = np.arange(sfm_scene.num_images)

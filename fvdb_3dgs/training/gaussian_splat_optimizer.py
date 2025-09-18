@@ -7,7 +7,6 @@ from typing import Any, Callable, Dict, List, Tuple, Union
 import torch
 import torch.nn.functional as F
 import torch.optim
-
 from fvdb import GaussianSplat3d
 
 
@@ -66,8 +65,16 @@ class GaussianSplatOptimizer:
         self._absgrad = absgrad
         self._revised_opacity = revised_opacity
 
+        # default_lrs = {
+        #     "means": 1.6e-4 * self._scene_scale,
+        #     "scales": 5e-3,
+        #     "quats": 1e-3,
+        #     "opacities": 5e-2,
+        #     "sh0": 2.5e-3,
+        #     "shN": 2.5e-3 / 20,
+        # }
         default_lrs = {
-            "means": 1.6e-4 * self._scene_scale,
+            "means": 0.0 * self._scene_scale,
             "scales": 5e-3,
             "quats": 1e-3,
             "opacities": 5e-2,
