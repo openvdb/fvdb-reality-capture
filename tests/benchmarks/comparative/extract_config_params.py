@@ -21,11 +21,15 @@ def count_dataset_images(data_dir: str) -> int:
     """Count dataset images using fvdb_3dgs SfmScene loader (no external deps)."""
     # Try to locate the FVDB repo root robustly inside container
     import os as _os
+
     candidates = [
-        Path(env) for env in [
+        Path(env)
+        for env in [
             # Allow override via environment
-            (_os.environ.get("FVDB_REPO_ROOT") or "")
-        ] if env
+            _os.environ.get("FVDB_REPO_ROOT")
+            or ""
+        ]
+        if env
     ] + [
         Path("/workspace/fvdb-realitycapture"),
         Path("/workspace/openvdb/fvdb"),
