@@ -258,11 +258,17 @@ def run_fvdb_training(scene_info: Dict, result_dir: str, config: Dict) -> Dict:
         Path("/workspace/fvdb-realitycapture"),
         Path("/workspace/benchmark").parent,  # if running from /workspace/benchmark
     ]:
-        if candidate and candidate.exists() and (candidate / "tests/benchmarks/generate_benchmark_checkpoints.py").exists():
+        if (
+            candidate
+            and candidate.exists()
+            and (candidate / "tests/benchmarks/generate_benchmark_checkpoints.py").exists()
+        ):
             repo_root = candidate
             break
     if repo_root is None:
-        raise FileNotFoundError("Could not locate fvdb-realitycapture repo root containing tests/benchmarks/generate_benchmark_checkpoints.py")
+        raise FileNotFoundError(
+            "Could not locate fvdb-realitycapture repo root containing tests/benchmarks/generate_benchmark_checkpoints.py"
+        )
     exit_code, stdout, stderr = run_command(cmd, cwd=str(repo_root), log_file=str(log_file))
 
     # Clean up temporary config
@@ -371,9 +377,9 @@ def run_gsplat_training(scene_info: Dict, result_dir: str, config: Dict) -> Dict
     logging.info(f"GSplat command: {' '.join(cmd)}")
 
     # Start a background watcher to detect the first training step in the log
-    import threading as _threading  # local import to avoid polluting module scope
-    import re as _re
     import os as _os
+    import re as _re
+    import threading as _threading  # local import to avoid polluting module scope
 
     first_step_time: dict = {"t": None}
     stop_event = _threading.Event()
