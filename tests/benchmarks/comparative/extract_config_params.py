@@ -19,7 +19,29 @@ logger = logging.getLogger("extract_config_params")
 
 def count_dataset_images(data_dir: str) -> int:
     """Count dataset images using fvdb_3dgs SfmScene loader (no external deps)."""
-    repo_root = Path(__file__).resolve().parents[3]
+    # Try to locate the FVDB repo root robustly inside container
+    import os as _os
+    candidates = [
+        Path(env) for env in [
+            # Allow override via environment
+            (_os.environ.get("FVDB_REPO_ROOT") or "")
+        ] if env
+    ] + [
+        Path("/workspace/fvdb-realitycapture"),
+        Path("/workspace/openvdb/fvdb"),
+        Path("/workspace/fvdb"),
+        (Path(__file__).resolve().parents[3] if len(Path(__file__).resolve().parents) >= 4 else None),
+    ]
+    repo_root = None
+    for c in candidates:
+        if c and c.exists():
+            repo_root = c
+            break
+    if repo_root is None:
+        raise ImportError(
+            "Could not find 3d_gaussian_splatting project root. "
+            "Tried: '/' , '/workspace/openvdb/fvdb', '/workspace/fvdb'"
+        )
     if str(repo_root) not in sys.path:
         sys.path.insert(0, str(repo_root))
         logger.info(f"Added repo root to sys.path: {repo_root}")

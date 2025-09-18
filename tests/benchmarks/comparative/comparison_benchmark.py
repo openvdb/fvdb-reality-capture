@@ -251,8 +251,18 @@ def run_fvdb_training(scene_info: Dict, result_dir: str, config: Dict) -> Dict:
         str(temp_config_path.absolute()),
     ]
 
-    # Run from repo root to use local fvdb_3dgs
-    repo_root = Path(__file__).resolve().parents[3]
+    # Run from fvdb-realitycapture repo root (contains tests/benchmarks/generate_benchmark_checkpoints.py)
+    repo_root = None
+    for candidate in [
+        (Path(__file__).resolve().parents[3] if len(Path(__file__).resolve().parents) >= 4 else None),
+        Path("/workspace/fvdb-realitycapture"),
+        Path("/workspace/benchmark").parent,  # if running from /workspace/benchmark
+    ]:
+        if candidate and candidate.exists() and (candidate / "tests/benchmarks/generate_benchmark_checkpoints.py").exists():
+            repo_root = candidate
+            break
+    if repo_root is None:
+        raise FileNotFoundError("Could not locate fvdb-realitycapture repo root containing tests/benchmarks/generate_benchmark_checkpoints.py")
     exit_code, stdout, stderr = run_command(cmd, cwd=str(repo_root), log_file=str(log_file))
 
     # Clean up temporary config
