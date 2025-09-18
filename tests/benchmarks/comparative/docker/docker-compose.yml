@@ -33,6 +33,7 @@ services:
       bash -c "
         set -e
         git config --global --add safe.directory /workspace/fvdb &&
+        git config --global --add safe.directory /workspace/fvdb-realitycapture &&
         echo 'Building FVDB...' &&
         cd /workspace/fvdb &&
         echo $PWD &&
