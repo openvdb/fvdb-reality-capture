@@ -609,6 +609,12 @@ class SceneOptimizationRunner:
             "projection_matrices": training_projection_matrices,
             "image_sizes": training_image_sizes,
             "scene_scale": SceneOptimizationRunner._compute_scene_scale(self.training_dataset.sfm_scene),
+            "eps2d": self.config.eps_2d,
+            "near_plane": self.config.near_plane,
+            "far_plane": self.config.far_plane,
+            "min_radius_2d": self.config.min_radius_2d,
+            "antialias": int(self.config.antialias),
+            "tile_size": self.config.tile_size,
         }
 
     @torch.no_grad()
