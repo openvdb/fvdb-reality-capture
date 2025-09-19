@@ -63,6 +63,7 @@ class E57Scan:
             self._scan_read = True
         return self.scan_data
 
+
     def get_points(self) -> np.ndarray:
         data = self._get_data()
         return np.column_stack(
@@ -82,6 +83,10 @@ class E57Scan:
                 data["colorBlue"],
             ]
         )
+
+    def get_rotation(self):
+        return self.e57.scan_position(self.index)
+
 
 class E57File:
     """
@@ -182,6 +187,17 @@ class E57File:
 
         return transform_matrix
 
+def load_scan_for_nksr(file_path: pathlib.Path, downsample_point_factor: int = 10):
+    e57_file = E57File(file_path)
+    scan = e57_file.get_scan(0)
+    points = scan.get_points()
+    points_rgb = scan.get_colors()
+    location = scan.get_rotation()
+
+    points = points[::downsample_point_factor]
+    points_rgb = points_rgb[::downsample_point_factor]
+
+    return points, points_rgb, location
 
 
 def load_single_e57(file_path: pathlib.Path,

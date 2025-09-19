@@ -911,7 +911,7 @@ class SceneOptimizationRunner:
         if dataset_type == "colmap":
             sfm_scene: SfmScene = SfmScene.from_colmap(dataset_path)
         elif dataset_type == "e57":
-            sfm_scene: SfmScene = load_e57_scene(dataset_path, downsample_point_factor=1)
+            sfm_scene: SfmScene = load_e57_scene(dataset_path, downsample_point_factor=2)
 
         assert sfm_scene is not None
 
