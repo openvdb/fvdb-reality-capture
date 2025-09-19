@@ -4,11 +4,13 @@
 import logging
 import pathlib
 import time
+from typing import Literal
 
 import cv2
-import fvdb_3dgs
 import numpy as np
 import tyro
+
+import fvdb_3dgs
 from fvdb_3dgs.transforms import (
     Compose,
     DownsampleImages,
@@ -32,6 +34,8 @@ def main(
     verbose: bool = False,
     image_downsample_factor: int = 8,
     show_images: bool = True,
+    points_percentile_filter: float = 0.0,
+    dataset_type: Literal["colmap", "e57"] = "colmap",
 ):
     """
     Visualize a scene in a saved checkpoint file.
@@ -47,11 +51,16 @@ def main(
 
     viewer = Viewer(port=viewer_port, verbose=verbose)
 
-    sfm_scene: fvdb_3dgs.SfmScene = fvdb_3dgs.SfmScene.from_colmap(dataset_path)
+    if dataset_type == "colmap":
+        sfm_scene: fvdb_3dgs.SfmScene = fvdb_3dgs.SfmScene.from_colmap(dataset_path)
+    elif dataset_type == "e57":
+        sfm_scene = fvdb_3dgs.SfmScene.from_e57(dataset_path, point_downsample_factor=20)
+    else:
+        raise ValueError(f"Unknown dataset type: {dataset_type}")
     sfm_scene = Compose(
         DownsampleImages(image_downsample_factor),
         NormalizeScene("pca"),
-        PercentileFilterPoints([5] * 3, [95] * 3),
+        PercentileFilterPoints([points_percentile_filter] * 3, [100.0 - points_percentile_filter] * 3),
         FilterImagesWithLowPoints(min_num_points=5),
     )(sfm_scene)
 
@@ -61,7 +70,14 @@ def main(
 
     projection_matrices = np.stack([img.camera_metadata.projection_matrix for img in sfm_scene.images], axis=0)
 
-    images = [np.asarray(cv2.cvtColor(cv2.imread(str(img.image_path)), cv2.COLOR_BGR2RGB)) for img in sfm_scene.images]
+    images = []
+    for img in sfm_scene.images:
+        cv_img = cv2.imread(str(img.image_path))
+        if cv_img is None:
+            raise ValueError(f"Could not read image {img.image_path}")
+        cv_img = cv2.cvtColor(cv_img, cv2.COLOR_BGR2RGB)
+        images.append(cv_img)
+
     viewer.camera_far = 100.0 * float(np.linalg.norm(scene_extent))
     viewer.register_camera_view(
         "cameras",

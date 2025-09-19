@@ -104,6 +104,34 @@ class SfmScene:
             cache=cache,
         )
 
+    @classmethod
+    def from_e57(cls, e57_path: str | pathlib.Path, point_downsample_factor: int = 1) -> "SfmScene":
+        """
+        Load an `SfmScene` (with a cache to store derived quantities) from a set of E57 files.
+
+        Args:
+            e57_path (str | pathlib.Path): The path to a directory containing E57 files.
+            point_downsample_factor (int): Factor by which to downsample the points loaded from the E57 files.
+                Defaults to 1 (i.e. no downsampling).
+        """
+
+        if isinstance(e57_path, str):
+            e57_path = pathlib.Path(e57_path)
+
+        from ._load_e57_scene import load_e57_dataset
+
+        cameras, images, points, points_rgb, points_err, cache = load_e57_dataset(e57_path, point_downsample_factor)
+        return cls(
+            cameras=cameras,
+            images=images,
+            points=points,
+            points_err=points_err,
+            points_rgb=points_rgb,
+            scene_bbox=None,
+            transformation_matrix=None,
+            cache=cache,
+        )
+
     def filter_points(self, mask: np.ndarray | Sequence[bool]) -> "SfmScene":
         """
         Filter the points in the scene based on a boolean mask.
