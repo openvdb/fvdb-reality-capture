@@ -9,7 +9,7 @@ from scipy.spatial.transform import Rotation
 from . import SfmCache, SfmCameraMetadata, SfmCameraType, SfmImageMetadata
 
 
-def load_e57_scan(
+def _load_e57_scan(
     e57_file: pye57.E57,
     camera_metadata: dict[int, SfmCameraMetadata],
     image_metadata: list[SfmImageMetadata],
@@ -18,6 +18,25 @@ def load_e57_scan(
     total_images: int,
     point_downsample_factor: int = 1,
 ):
+    """
+    Load points and images from a single E57 file into the provided metadata structures.
+
+    Args:
+        e57_file (pye57.E57): The E57 file to load.
+        camera_metadata (dict[int, SfmCameraMetadata]): Existing camera metadata to append to.
+        image_metadata (list[SfmImageMetadata]): Existing image metadata to append to.
+        cum_num_points (int): Cumulative number of points loaded so far (used for indexing).
+        cache (SfmCache): Cache to use for storing images.
+        total_images (int): Total number of images expected (used for zero-padding).
+        point_downsample_factor (int): Factor by which to downsample input points (since E57 files can be large).
+    Returns:
+        tuple: (image_metadata, camera_metadata, points, points_rgb, points_intensity) where
+            image_metadata (list[SfmImageMetadata]): Updated list of image metadata.
+            camera_metadata (dict[int, SfmCameraMetadata]): Updated camera metadata dictionary.
+            points (np.ndarray): Loaded points of shape (N, 3).
+            points_rgb (np.ndarray): Loaded point colors of shape (N, 3).
+            points_intensity (np.ndarray): Loaded point intensities of shape (N,).
+    """
     num_scans: int = e57_file.scan_count
     e57_path: str = e57_file.path
 
@@ -289,6 +308,21 @@ def load_e57_scan(
 
 
 def load_e57_dataset(dataset_path: pathlib.Path, point_downsample_factor: int = 1):
+    """
+    Load a dataset of posed images and points from a directory of E57 files.
+
+    Args:
+        dataset_path (pathlib.Path): Path to the directory containing E57 files.
+        point_downsample_factor (int): Factor by which to downsample input points (since E57 files can be large).
+
+    Returns:
+        tuple: (camera_metadata, image_metadata, points, points_rgb, points_intensity, cache) where
+            camera_metadata (dict[int, SfmCameraMetadata]): Dictionary mapping camera IDs to camera metadata.
+            image_metadata (list[SfmImageMetadata]): List of image metadata.
+            points (np.ndarray): Loaded points of shape (N, 3).
+            points_rgb (np.ndarray): Loaded point colors of shape (N, 3).
+            points_intensity (np.ndarray): Loaded point intensities of shape (N,).
+    """
     e57_files = sorted(list(dataset_path.glob("*.e57")))
     if len(e57_files) == 0:
         raise ValueError(f"No E57 files found in {dataset_path}")
@@ -324,7 +358,7 @@ def load_e57_dataset(dataset_path: pathlib.Path, point_downsample_factor: int = 
             scan_points,
             scan_points_rgb,
             scan_points_intensity,
-        ) = load_e57_scan(
+        ) = _load_e57_scan(
             e57_file,
             camera_metadata,
             image_metadata,
