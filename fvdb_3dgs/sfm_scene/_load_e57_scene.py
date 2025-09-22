@@ -279,10 +279,11 @@ def _load_e57_scan(
             world_to_cam_matrix[:3, :3] @ associated_scan_points.T + world_to_cam_matrix[:3, 3:4]
         )
         associated_scan_points_clip = projection_matrix @ associated_scan_points_cam
+        associated_scan_z = associated_scan_points_cam[2, :].T
         associated_scan_points_ndc = (associated_scan_points_clip[:2, :] / associated_scan_points_clip[2:3, :]).T
         visible_point_indices = (
             np.where(
-                (associated_scan_points_cam[2, :] > 0)
+                (associated_scan_z < 0)
                 & (associated_scan_points_ndc[:, 0] >= 0)
                 & (associated_scan_points_ndc[:, 0] < image_width)
                 & (associated_scan_points_ndc[:, 1] >= 0)
