@@ -44,19 +44,21 @@ def _download_one_dataset(dataset_name: str, dataset_url: str, dataset_download_
     shutil.unpack_archive(dataset_file_path, extract_dir=dataset_download_path)
 
 
-def download_example_data(dataset="mipnerf360", download_path: str | pathlib.Path = pathlib.Path.cwd() / "data"):
+def download_example_data(dataset="all", download_path: str | pathlib.Path = pathlib.Path.cwd() / "data"):
 
     # dataset urls
 
     dataset_urls = {
         "mipnerf360": "https://fvdb-data.s3.us-east-2.amazonaws.com/fvdb-reality-capture/360_v2.zip",
         "gettysburg": "https://fvdb-data.s3.us-east-2.amazonaws.com/fvdb-reality-capture/gettysburg.zip",
+        "safety_park": "https://fvdb-data.s3.us-east-2.amazonaws.com/fvdb-reality-capture/safety_park.zip",
     }
 
     # where each dataset goes
     dataset_directories = {
         "mipnerf360": "360_v2",
         "gettysburg": "gettysburg",
+        "safety_park": "safety_park",
     }
 
     if isinstance(download_path, str):
@@ -69,5 +71,4 @@ def download_example_data(dataset="mipnerf360", download_path: str | pathlib.Pat
             _download_one_dataset(dataset_name, dataset_urls[dataset_name], dataset_download_path)
     else:
         dataset_download_path = download_path / dataset_directories[dataset]
-        _download_one_dataset(dataset, dataset_urls[dataset], dataset_download_path)
         _download_one_dataset(dataset, dataset_urls[dataset], dataset_download_path)
