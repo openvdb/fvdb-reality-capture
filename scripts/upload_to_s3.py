@@ -32,28 +32,31 @@ class ProgressPercentage(object):
             sys.stdout.flush()
 
 
-def main(file_path: pathlib.Path):
+def main(source_file_path: pathlib.Path, destination_file_path: pathlib.Path):
     """
     Upload a file to the fvdb-data S3 bucket. This only works for developers with write access to the bucket.
 
     Args:
-        file_path (pathlib.Path): Path to the file to upload.
+        source_file_path (pathlib.Path): Path to the file to upload.
+        destination_file_path (pathlib.Path): Path to the file in the S3 bucket. Will be prefixed with "fvdb-reality-capture".
     """
 
     logging.basicConfig(level=logging.INFO)
     logger = logging.getLogger(__name__)
 
-    if not file_path.exists():
-        raise FileNotFoundError(f"File {file_path} does not exist.")
-    if not file_path.is_file():
-        raise ValueError(f"Path {file_path} is not a file.")
+    if not source_file_path.exists():
+        raise FileNotFoundError(f"File {source_file_path} does not exist.")
+    if not source_file_path.is_file():
+        raise ValueError(f"Path {source_file_path} is not a file.")
 
-    logger.info(f"Uploading file {file_path} to S3 bucket fvdb-data...")
+    fvdb_prefix = "fvdb-reality-capture"
+
+    logger.info(f"Uploading file {source_file_path} to S3 bucket fvdb-data as {fvdb_prefix}/{destination_file_path}...")
     s3 = boto3.client("s3")
 
-    local_file_path = str(file_path)
+    local_file_path = str(source_file_path)
     bucket_name = "fvdb-data"
-    s3_object_key = str(pathlib.Path("fvdb-reality-capture") / file_path.name)
+    s3_object_key = str(pathlib.Path(fvdb_prefix) / str(destination_file_path))
 
     try:
         s3.upload_file(local_file_path, bucket_name, s3_object_key, Callback=ProgressPercentage(local_file_path))
