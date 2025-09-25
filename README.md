@@ -1,6 +1,4 @@
-# 3D Gaussian Splatting with ƒVDB
+# Reality Capture with ƒVDB
 
-This is an example project that uses fVDB to build a library for training Gaussian Splats from
-the output of a structure-from-motion SfM pipeline.
-
-The library can be used programmatically from Python or via a set of provided command line scripts.
+This is a toolbox for reality capture tasks built on top of [ƒVDB](https://github.com/openvdb/fvdb-core).
+The tools in this library can be used programmatically from Python or via a set of provided command line scripts.

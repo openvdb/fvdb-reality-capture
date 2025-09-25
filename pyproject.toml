@@ -4,8 +4,23 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "fvdb_reality_capture"
-version = "0.1.0"
-description = "3D Gaussian Splatting Example Project using fVDB."
+version = "0.0.0"
+description = "fVDB Reality Capture Toolbox."
+authors = [
+    {name = "Fracis Williams", email = "francis@fwilliams.info"},
+    {name = "Jonathan Swartz", email = "jonathan@jswartz.info"},
+    {name = "Mark Harris", email = "MHarris@nvidia.com"},
+    {name = "Matthew Cong", email = "mcong@nvidia.com"},
+    {name = "Brent Bartlett", email = "bbartlett@nvidia.com"},
+    {name = "Zoe Lalena", email = "zlalena@nvidia.com"},
+    {name = "Christopher Horvath", email = "chorvath@nvidia.com"},
+    {name = "Efty Sifakis", email = "esifakis@nvidia.com"},
+    {name = "Andrew Reidmeyer", email = "areidmeyer@nvidia.com"},
+    {name = "Petra Hapalova", email = "phapalova@nvidia.com"},
+    {name = "Ken Museth", email = "kmuseth@nvidia.com"},
+]
+license="Apache-2.0"
+license-files = ["LICEN[CS]E*"]
 dependencies = [
     "dlnr_lite",
     "numpy>=2.0.0",
@@ -22,6 +37,10 @@ dependencies = [
     "tyro",
     "viser",
 ]
+
+[project.urls]
+Homepage = "https://github.com/openvdb/fvdb-reality-capture"
+Issues = "https://github.com/openvdb/fvdb-reality-capture/issues"
 
 # pyproject.toml
 [tool.setuptools.packages.find]
