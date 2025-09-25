@@ -52,12 +52,14 @@ class Config:
 
     # Number of training epochs -- i.e. number of times we will visit each image in the dataset
     max_epochs: int = 200
+    # Number of gaussians limit
+    max_num_gaussians: int = 1000000
     # Optional maximum number of training steps (overrides max_epochs * dataset_size if set)
     max_steps: int | None = None
     # Percentage of total epochs at which we perform evaluation on the validation set. i.e. 10 means perform evaluation after 10% of the epochs.
-    eval_at_percent: List[int] = field(default_factory=lambda: [10, 20, 30, 40, 50, 75, 100])
+    eval_at_percent: List[int] = field(default_factory=lambda: [25, 100])
     # Percentage of total epochs at which we save the model checkpoint. i.e. 10 means save a checkpoint after 10% of the epochs.
-    save_at_percent: List[int] = field(default_factory=lambda: [10, 20, 30, 40, 50, 75, 100])
+    save_at_percent: List[int] = field(default_factory=lambda: [25, 100])
 
     #
     # Gaussian Optimization Parameters
@@ -90,11 +92,17 @@ class Config:
     # When to stop refining (split/duplicate/merge) Gaussians during optimization
     refine_stop_epoch: int = 100
     # How often to refine (split/duplicate/merge) Gaussians during optimization
-    refine_every_epoch: float = 0.75
+    refine_every_epoch: float = 1.0
     # How often to reset the opacities of the Gaussians during optimization
-    reset_opacities_every_epoch: int = 16
+    reset_opacities_every_epoch: int = 25
     # When to stop using the 2d projected scale for refinement (default of 0 is to never use it)
     refine_using_scale2d_stop_epoch: int = 0
+    # Choose refinement gradient threshold based on percentile of splat values
+    grow_grad2d_threshold_percentile: float = 90
+    # Choose refinement 3D split threshold based on absolute value in scene units or default to 1 percent of scene extent
+    grow_scale3d_threshold_in_scene_units: float | None = None
+    # Choose refinement 3D prune threshold based on absolute value in scene units or default to 10 percent of scene extent
+    prune_scale3d_threshold_in_scene_units: float | None = None
     # Whether to ignore masks during training
     ignore_masks: bool = False
     # Whether to remove Gaussians that fall outside the scene bounding box
@@ -112,8 +120,11 @@ class Config:
     pose_opt_reg: float = 1e-6
     # Learning rate decay factor for camera pose optimization (will decay to this fraction of initial lr)
     pose_opt_lr_decay: float = 1.0
+    # Which epoch to start optimizing camera positions. Default to when refinement stops
+    pose_opt_start_epoch: int = refine_stop_epoch
     # Which epoch to stop optimizing camera postions. Default matches max training epochs.
     pose_opt_stop_epoch: int = max_epochs
+
     # Standard devation for the normal distribution used for camera pose optimization's random iniitilaization
     pose_opt_init_std: float = 1e-4
 
@@ -937,11 +948,28 @@ class SceneOptimizationRunner:
         logger.info(f"Model initialized with {model.num_gaussians:,} Gaussians")
 
         # Initialize optimizer
+        scene_scale_value = SceneOptimizationRunner._compute_scene_scale(train_dataset.sfm_scene) * 1.1
+
+        if config.grow_scale3d_threshold_in_scene_units is not None:
+            grow_scale = config.grow_scale3d_threshold_in_scene_units / scene_scale_value
+        else:
+            grow_scale = 0.01
+
+        if config.prune_scale3d_threshold_in_scene_units is not None:
+            prune_scale = config.prune_scale3d_threshold_in_scene_units / scene_scale_value
+        else:
+            prune_scale = 0.1
+
+
+        logger.info(f"scene scale is: {scene_scale_value} with grow scale of {grow_scale}")
         max_steps = config.max_epochs * len(train_dataset)
         optimizer = GaussianSplatOptimizer(
             model,
-            scene_scale=SceneOptimizationRunner._compute_scene_scale(train_dataset.sfm_scene) * 1.1,
+            scene_scale=scene_scale_value,
             mean_lr_decay_exponent=0.01 ** (1.0 / max_steps),
+            grow_grad2d_threshold_percentile=config.grow_grad2d_threshold_percentile,
+            grow_scale3d_threshold=grow_scale,
+            prune_scale3d_threshold=prune_scale
         )
 
         # Optional camera position optimizer
@@ -1238,6 +1266,7 @@ class SceneOptimizationRunner:
             self.config.increase_sh_degree_every_epoch * len(self.training_dataset)
         )
         pose_opt_stop_step: int = int(self.config.pose_opt_stop_epoch * len(self.training_dataset))
+        pose_opt_start_step: int = int(self.config.pose_opt_start_epoch * len(self.training_dataset))
 
         # Progress bar to track training progress
         if self.config.max_steps is not None:
@@ -1275,7 +1304,7 @@ class SceneOptimizationRunner:
                 # Camera pose optimization
                 image_ids = minibatch["image_id"].to(self.device)  # [B]
                 if self.pose_adjust_model is not None:
-                    if self._global_step < pose_opt_stop_step:
+                    if self._global_step < pose_opt_stop_step and self._global_step > pose_opt_start_step:
                         cam_to_world_mats = self.pose_adjust_model(cam_to_world_mats, image_ids)
                     else:
                         # After pose_opt_stop_iter, don't track gradients through pose adjustment
@@ -1343,7 +1372,7 @@ class SceneOptimizationRunner:
 
                     # If you're optimizing poses, regularize the pose parameters so the poses
                     # don't drift too far from the initial values
-                    if self.pose_adjust_model is not None and self._global_step < pose_opt_stop_step:
+                    if self.pose_adjust_model is not None and self._global_step < pose_opt_stop_step and self._global_step > pose_opt_start_step:
                         pose_params = self.pose_adjust_model.pose_embeddings(image_ids)
                         pose_reg = torch.mean(torch.abs(pose_params))
                         loss = loss + self.config.pose_opt_reg * pose_reg
@@ -1364,6 +1393,7 @@ class SceneOptimizationRunner:
                     self._global_step > refine_start_step
                     and self._global_step % refine_every_step == 0
                     and self._global_step < refine_stop_step
+                    and self.model.num_gaussians < self._cfg.max_num_gaussians
                 ):
                     num_gaussians_before: int = self.model.num_gaussians
                     use_scales_for_refinement: bool = self._global_step > reset_opacities_every_step
@@ -1374,7 +1404,7 @@ class SceneOptimizationRunner:
                         use_scales=use_scales_for_refinement,
                         use_screen_space_scales=use_screen_space_scales_for_refinement,
                     )
-                    self._logger.debug(
+                    self._logger.info(
                         f"Step {self._global_step:,}: Refinement: {num_dup:,} duplicated, {num_split:,} split, {num_prune:,} pruned. "
                         f"Num Gaussians: {self.model.num_gaussians:,} (before: {num_gaussians_before:,})"
                     )
@@ -1429,7 +1459,7 @@ class SceneOptimizationRunner:
                         l1loss.item(),
                         ssimloss.item(),
                         torch.cuda.max_memory_allocated() / 1024**3,
-                        pose_loss=pose_reg.item() if self.config.optimize_camera_poses else None,
+                        pose_loss=pose_reg.item() if self.config.optimize_camera_poses and self._global_step > pose_opt_start_step else None,
                         gt_img=pixels,
                         pred_img=colors,
                     )
@@ -1445,7 +1475,7 @@ class SceneOptimizationRunner:
                         mem=torch.cuda.max_memory_allocated() / 1024**3,
                         num_gaussians=self.model.num_gaussians,
                         current_sh_degree=sh_degree_to_use,
-                        pose_regulation=pose_reg.item() if self.config.optimize_camera_poses else None,
+                        pose_regulation=pose_reg.item() if self.config.optimize_camera_poses and self._global_step > pose_opt_start_step else None,
                     )
                     if self.config.optimize_camera_poses:
                         self._viewer.update_camera_poses(cam_to_world_mats, image_ids)

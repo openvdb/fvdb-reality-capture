@@ -57,6 +57,7 @@ releases/
 /data/*
 !tests/data
 .vscode/launch.json
+.vscode/settings.json
 lightning_logs
 logs
 tests/data/

@@ -4,10 +4,10 @@
 import math
 from typing import Any, Callable, Dict, List, Tuple, Union
 
+import numpy as np
 import torch
 import torch.nn.functional as F
 import torch.optim
-
 from fvdb import GaussianSplat3d
 
 
@@ -29,7 +29,7 @@ class GaussianSplatOptimizer:
         prune_opacity_threshold: float = 0.005,
         prune_scale3d_threshold: float = 0.1,
         prune_scale2d_threshold: float = 0.15,
-        grow_grad2d_threshold: float = 0.0002,
+        grow_grad2d_threshold_percentile: float = 90,
         grow_scale3d_threshold: float = 0.01,
         grow_scale2d_threshold: float = 0.05,
         absgrad: bool = False,
@@ -60,11 +60,13 @@ class GaussianSplatOptimizer:
         self._prune_opacity_threshold = prune_opacity_threshold
         self._prune_scale3d_threshold = prune_scale3d_threshold
         self._prune_scale2d_threshold = prune_scale2d_threshold
-        self._grow_grad2d_threshold = grow_grad2d_threshold
+        self._grow_grad2d_threshold_percentile = grow_grad2d_threshold_percentile
+        self._grow_grad2d_threshold = None
         self._grow_scale3d_threshold = grow_scale3d_threshold
         self._grow_scale2d_threshold = grow_scale2d_threshold
         self._absgrad = absgrad
         self._revised_opacity = revised_opacity
+        self.refine_count = 0
 
         default_lrs = {
             "means": 1.6e-4 * self._scene_scale,
@@ -247,6 +249,8 @@ class GaussianSplatOptimizer:
         # loss to decide which Gaussians to add/split/prune
         # count is the number of times a Gaussian has been projected (i.e. included in the loss gradient computation)
         # grad_2d is the sum of the gradients of the projected Gaussians (dL/dμ2D) over the last N steps
+
+
         count = self._model.accumulated_gradient_step_counts.clamp_min(1)
         if self._num_grad_accumulation_steps > 1:
             count *= self._num_grad_accumulation_steps
@@ -254,8 +258,35 @@ class GaussianSplatOptimizer:
         grads = self._model.accumulated_mean_2d_gradient_norms / count
         device = grads.device
 
+        # if self.refine_count == 0:
+            # on first refinement step we will init the abs value of the grow_grad2d_threshold
+        grads_numpy = grads.cpu().numpy()
+        percentile_value = np.percentile(grads_numpy,self._grow_grad2d_threshold_percentile)
+        self._grow_grad2d_threshold = percentile_value
+        print(f"set threshold to: {percentile_value}")
+
+
+
         # If the 2D projected gradient is high and the spatial size is small, duplicate the Gaussian
+        assert self._grow_grad2d_threshold is not None
+
         is_grad_high = grads > self._grow_grad2d_threshold
+
+        # os.makedirs("grad_2d_plots",exist_ok=True)
+        # os.makedirs("grad_2d_scatter",exist_ok=True)
+
+        # fig, ax = plt.subplots()
+        # ax.hist(grads_numpy,256,range=[0,0.0004])
+        # plt.setp(ax.get_xticklabels(), rotation=45)
+        # plt.savefig("grad_2d_plots/grad2d_histo_"+str(self.refine_count).zfill(6)+".png")
+        # plt.close(fig)
+
+
+        # colors = (grads_numpy/self._grow_grad2d_threshold).clip(0,1)*100
+        # plt.scatter(self._model.means[:,0].cpu().numpy(),self._model.means[:,1].cpu().numpy(),c=colors,cmap='jet',s=1)
+        # plt.savefig("grad_2d_scatter/grad2d_scatter_"+str(self.refine_count).zfill(6)+".png")
+        # plt.clf()
+
         is_small = self._model.scales.max(dim=-1).values <= self._grow_scale3d_threshold * self._scene_scale
         is_dupli = is_grad_high & is_small
         n_dupli: int = int(is_dupli.sum().item())
@@ -283,6 +314,10 @@ class GaussianSplatOptimizer:
         # Now split the Gaussians
         if n_split > 0:
             self.subdivide_gaussians(mask=is_split, split_factor=split_factor)
+
+
+        self.refine_count = self.refine_count + 1
+
         return n_dupli, n_split
 
     @torch.no_grad()
@@ -490,3 +525,4 @@ class GaussianSplatOptimizer:
             params["sh0"],
             params["shN"],
         )
+
