@@ -11,8 +11,9 @@ import torch
 import torch.nn.functional as F
 import torch.utils.data
 import yaml
-from fvdb_3dgs.sfm_scene import SfmScene
-from fvdb_3dgs.training import Checkpoint, Config, SfmDataset
+
+from fvdb_reality_capture.sfm_scene import SfmScene
+from fvdb_reality_capture.training import Checkpoint, Config, SfmDataset
 
 logger = logging.getLogger("Benchmark 3dgs")
 

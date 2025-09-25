@@ -28,7 +28,7 @@ def main(
             Default is the current working directory + "data".
     """
 
-    from fvdb_3dgs.tools._download_example_data import download_example_data
+    from fvdb_reality_capture.tools._download_example_data import download_example_data
 
     download_example_data(dataset, download_path)
 

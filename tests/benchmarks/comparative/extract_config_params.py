@@ -18,7 +18,7 @@ logger = logging.getLogger("extract_config_params")
 
 
 def count_dataset_images(data_dir: str) -> int:
-    """Count dataset images using fvdb_3dgs SfmScene loader (no external deps)."""
+    """Count dataset images using fvdb_reality_capture SfmScene loader (no external deps)."""
     # Try to locate the FVDB repo root robustly inside container
     import os as _os
 
@@ -51,7 +51,7 @@ def count_dataset_images(data_dir: str) -> int:
         logger.info(f"Added repo root to sys.path: {repo_root}")
 
     # Local import after sys.path update
-    from fvdb_3dgs.sfm_scene.sfm_scene import SfmScene  # type: ignore
+    from fvdb_reality_capture.sfm_scene.sfm_scene import SfmScene  # type: ignore
 
     data_path = Path(data_dir)
     if not data_path.exists():
@@ -59,7 +59,7 @@ def count_dataset_images(data_dir: str) -> int:
 
     scene = SfmScene.from_colmap(data_path)
     num_images = scene.num_images
-    logger.info(f"Found {num_images} images in dataset using fvdb_3dgs SfmScene")
+    logger.info(f"Found {num_images} images in dataset using fvdb_reality_capture SfmScene")
     return num_images
 
 

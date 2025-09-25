@@ -10,18 +10,18 @@ import cv2
 import numpy as np
 import tyro
 
-import fvdb_3dgs
-from fvdb_3dgs.transforms import (
+import fvdb_reality_capture
+from fvdb_reality_capture.transforms import (
     Compose,
     DownsampleImages,
     FilterImagesWithLowPoints,
     NormalizeScene,
     PercentileFilterPoints,
 )
-from fvdb_3dgs.viewer import Viewer
+from fvdb_reality_capture.viewer import Viewer
 
 
-def center_and_scale_scene(sfm_scene: fvdb_3dgs.SfmScene, scale: float) -> fvdb_3dgs.SfmScene:
+def center_and_scale_scene(sfm_scene: fvdb_reality_capture.SfmScene, scale: float) -> fvdb_reality_capture.SfmScene:
     centroid = np.median(sfm_scene.points, axis=0)
     transform = np.diag([scale, scale, scale, 1.0])
     transform[0:3, 3] = -centroid * scale
@@ -52,9 +52,9 @@ def main(
     viewer = Viewer(port=viewer_port, verbose=verbose)
 
     if dataset_type == "colmap":
-        sfm_scene: fvdb_3dgs.SfmScene = fvdb_3dgs.SfmScene.from_colmap(dataset_path)
+        sfm_scene: fvdb_reality_capture.SfmScene = fvdb_reality_capture.SfmScene.from_colmap(dataset_path)
     elif dataset_type == "e57":
-        sfm_scene = fvdb_3dgs.SfmScene.from_e57(dataset_path, point_downsample_factor=20)
+        sfm_scene = fvdb_reality_capture.SfmScene.from_e57(dataset_path, point_downsample_factor=20)
     else:
         raise ValueError(f"Unknown dataset type: {dataset_type}")
     sfm_scene = Compose(

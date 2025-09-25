@@ -9,8 +9,8 @@ import cv2
 import numpy as np
 from scipy.spatial.transform import Rotation as R
 
-from fvdb_3dgs.sfm_scene import SfmCameraMetadata, SfmImageMetadata, SfmScene
-from fvdb_3dgs.tools import download_example_data
+from fvdb_reality_capture.sfm_scene import SfmCameraMetadata, SfmImageMetadata, SfmScene
+from fvdb_reality_capture.tools import download_example_data
 
 
 class BasicSfmSceneTest(unittest.TestCase):

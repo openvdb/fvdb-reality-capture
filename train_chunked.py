@@ -13,17 +13,17 @@ import numpy as np
 import torch
 import tqdm
 import tyro
-from fvdb_3dgs.sfm_scene import SfmScene
-from fvdb_3dgs.training import Config, SceneOptimizationRunner, SfmDataset
-from fvdb_3dgs.transforms import (
+from fvdb import GaussianSplat3d
+
+from fvdb_reality_capture.sfm_scene import SfmScene
+from fvdb_reality_capture.training import Config, SceneOptimizationRunner, SfmDataset
+from fvdb_reality_capture.transforms import (
     Compose,
     DownsampleImages,
     NormalizeScene,
     PercentileFilterPoints,
 )
-from fvdb_3dgs.viewer import Viewer
-
-from fvdb import GaussianSplat3d
+from fvdb_reality_capture.viewer import Viewer
 
 
 def _make_unique_name_directory_based_on_time(results_base_path: pathlib.Path, prefix: str) -> tuple[str, pathlib.Path]:

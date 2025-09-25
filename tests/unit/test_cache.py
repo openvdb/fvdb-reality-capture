@@ -12,7 +12,7 @@ import unittest
 import numpy as np
 import torch
 
-from fvdb_3dgs.sfm_scene import SfmCache
+from fvdb_reality_capture.sfm_scene import SfmCache
 
 
 class BasicCacheTest(unittest.TestCase):

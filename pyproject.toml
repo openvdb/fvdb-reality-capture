@@ -3,7 +3,7 @@ requires = ["setuptools>=61.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "fvdb_3dgs"
+name = "fvdb_reality_capture"
 version = "0.1.0"
 description = "3D Gaussian Splatting Example Project using fVDB."
 dependencies = [
@@ -25,4 +25,4 @@ dependencies = [
 
 # pyproject.toml
 [tool.setuptools.packages.find]
-include = ["fvdb_3dgs*"]    # Glob patterns for package names
+include = ["fvdb_reality_capture*"]    # Glob patterns for package names

@@ -8,9 +8,9 @@ import unittest
 import cv2
 import numpy as np
 
-from fvdb_3dgs import SfmCameraMetadata, SfmImageMetadata, SfmScene
-from fvdb_3dgs.tools import download_example_data
-from fvdb_3dgs.transforms import (
+from fvdb_reality_capture import SfmCameraMetadata, SfmImageMetadata, SfmScene
+from fvdb_reality_capture.tools import download_example_data
+from fvdb_reality_capture.transforms import (
     Compose,
     CropScene,
     DownsampleImages,

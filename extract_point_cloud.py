@@ -7,9 +7,9 @@ import pathlib
 import point_cloud_utils as pcu
 import torch
 import tyro
-from fvdb_3dgs.tools import point_cloud_from_splats
-
 from fvdb import GaussianSplat3d
+
+from fvdb_reality_capture.tools import point_cloud_from_splats
 
 
 def main(

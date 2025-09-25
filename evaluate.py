@@ -6,7 +6,8 @@ import pathlib
 
 import torch
 import tyro
-from fvdb_3dgs.training import Checkpoint, SceneOptimizationRunner
+
+from fvdb_reality_capture.training import Checkpoint, SceneOptimizationRunner
 
 
 def main(

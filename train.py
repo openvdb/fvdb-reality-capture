@@ -8,7 +8,8 @@ from typing import Literal
 
 import torch
 import tyro
-from fvdb_3dgs.training import Config, SceneOptimizationRunner
+
+from fvdb_reality_capture.training import Config, SceneOptimizationRunner
 
 
 def main(
