@@ -8,8 +8,7 @@ import time
 import torch
 import tyro
 from fvdb import GaussianSplat3d
-
-from fvdb_reality_capture.viewer import Viewer
+from fvdb.viz import Viewer
 
 
 def main(
@@ -32,13 +31,12 @@ def main(
     viewer = Viewer(port=viewer_port, verbose=verbose)
 
     model, metadata = GaussianSplat3d.from_ply(ply_path, device)
-
-    bbmin = torch.min(model.means, dim=0).values
-    bbmax = torch.max(model.means, dim=0).values
-    bbdiagonal = torch.norm(bbmax - bbmin).item()
-    viewer.camera_far = 4 * bbdiagonal
-
-    splat_view = viewer.register_gaussian_splat_3d(name="model", gaussian_scene=model)
+    viewer.add_gaussian_splat3d(name="model", gaussian_splat_3d=model)
+    assert isinstance(metadata["camera_to_world_matrices"], torch.Tensor)
+    first_cam_pos = metadata["camera_to_world_matrices"][0, :3, 3]
+    viewer.set_camera_lookat(
+        camera_origin=first_cam_pos, lookat_point=model.means.mean(dim=0).cpu().numpy(), up_direction=[0, 0, 1]
+    )
 
     logger = logging.getLogger("visualize")
     logger.info("Viewer running... Ctrl+C to exit.")

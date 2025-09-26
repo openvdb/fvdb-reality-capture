@@ -19,7 +19,7 @@ import torch.utils.data
 import tqdm
 from fvdb import GaussianSplat3d
 from fvdb.utils.metrics import psnr, ssim
-from scipy.spatial import cKDTree
+from scipy.spatial import cKDTree  # type: ignore
 from torch.utils.tensorboard import SummaryWriter
 
 from ..sfm_scene import SfmScene
@@ -99,6 +99,10 @@ class Config:
     ignore_masks: bool = False
     # Whether to remove Gaussians that fall outside the scene bounding box
     remove_gaussians_outside_scene_bbox: bool = False
+    # Set a maximum number of Gaussians based on total GPU memory. This is a soft limit and may be exceeded slightly.
+    clip_max_gaussians_to_memory: bool = True
+    # Whether to adaptively set the threshold for refinement. Setting this to True will generally produce many more Gaussians.
+    adaptive_grad_2d_threshold: bool = False
 
     #
     # Pose optimization parameters
@@ -112,6 +116,8 @@ class Config:
     pose_opt_reg: float = 1e-6
     # Learning rate decay factor for camera pose optimization (will decay to this fraction of initial lr)
     pose_opt_lr_decay: float = 1.0
+    # At which epoch to start optimizing camera postions. Default matches when we stop refining Gaussians.
+    pose_opt_start_epoch: int = refine_stop_epoch
     # Which epoch to stop optimizing camera postions. Default matches max training epochs.
     pose_opt_stop_epoch: int = max_epochs
     # Standard devation for the normal distribution used for camera pose optimization's random iniitilaization
@@ -769,7 +775,7 @@ class SceneOptimizationRunner:
         """
 
         def _knn(x_np: np.ndarray, k: int = 4) -> torch.Tensor:
-            kd_tree = cKDTree(x_np)
+            kd_tree = cKDTree(x_np)  # type: ignore
             distances, _ = kd_tree.query(x_np, k=k)
             return torch.from_numpy(distances).to(device=device, dtype=torch.float32)
 
@@ -963,8 +969,11 @@ class SceneOptimizationRunner:
             torch.nn.utils.clip_grad_norm_(pose_adjust_model.parameters(), max_norm=1.0)
 
             # Add learning rate scheduler for pose optimization
+            pose_opt_start_step = int(config.pose_opt_start_epoch * len(train_dataset))
+            pose_opt_stop_step = int(config.pose_opt_stop_epoch * len(train_dataset))
+            num_pose_opt_steps = max(1, pose_opt_stop_step - pose_opt_start_step)
             pose_adjust_scheduler = torch.optim.lr_scheduler.ExponentialLR(
-                pose_adjust_optimizer, gamma=config.pose_opt_lr_decay ** (1.0 / max_steps)
+                pose_adjust_optimizer, gamma=config.pose_opt_lr_decay ** (1.0 / num_pose_opt_steps)
             )
 
         # Setup output directories.
@@ -1166,6 +1175,12 @@ class SceneOptimizationRunner:
 
         self._global_step: int = 0
 
+        if self.config.clip_max_gaussians_to_memory:
+            self._max_num_gaussians = int(0.9 * torch.cuda.get_device_properties(self.device).total_memory / 2048)
+            self._logger.info(
+                f"Setting max_num_gaussians to {self._max_num_gaussians:,} targetting 90% of total GPU memory"
+            )
+
         # Tensorboard
         self._tensorboard_logger = None
         if tensorboard_path is not None and optimizer is not None:
@@ -1237,6 +1252,7 @@ class SceneOptimizationRunner:
         increase_sh_degree_every_step: int = int(
             self.config.increase_sh_degree_every_epoch * len(self.training_dataset)
         )
+        pose_opt_start_step: int = int(self.config.pose_opt_start_epoch * len(self.training_dataset))
         pose_opt_stop_step: int = int(self.config.pose_opt_stop_epoch * len(self.training_dataset))
 
         # Progress bar to track training progress
@@ -1275,9 +1291,13 @@ class SceneOptimizationRunner:
                 # Camera pose optimization
                 image_ids = minibatch["image_id"].to(self.device)  # [B]
                 if self.pose_adjust_model is not None:
-                    if self._global_step < pose_opt_stop_step:
+                    if self._global_step == pose_opt_start_step:
+                        self._logger.info(
+                            f"Starting to optimize camera poses at step {self._global_step:,} (epoch {epoch})"
+                        )
+                    if pose_opt_start_step <= self._global_step < pose_opt_stop_step:
                         cam_to_world_mats = self.pose_adjust_model(cam_to_world_mats, image_ids)
-                    else:
+                    elif self._global_step >= pose_opt_stop_step:
                         # After pose_opt_stop_iter, don't track gradients through pose adjustment
                         with torch.no_grad():
                             cam_to_world_mats = self.pose_adjust_model(cam_to_world_mats, image_ids)
@@ -1343,10 +1363,15 @@ class SceneOptimizationRunner:
 
                     # If you're optimizing poses, regularize the pose parameters so the poses
                     # don't drift too far from the initial values
-                    if self.pose_adjust_model is not None and self._global_step < pose_opt_stop_step:
+                    if (
+                        self.pose_adjust_model is not None
+                        and pose_opt_start_step <= self._global_step < pose_opt_stop_step
+                    ):
                         pose_params = self.pose_adjust_model.pose_embeddings(image_ids)
                         pose_reg = torch.mean(torch.abs(pose_params))
                         loss = loss + self.config.pose_opt_reg * pose_reg
+                    else:
+                        pose_reg = torch.tensor(0.0, device=self.device)
 
                     # If we're splitting into crops, accumulate gradients, so pass retain_graph=True
                     # for every crop but the last one
@@ -1364,6 +1389,7 @@ class SceneOptimizationRunner:
                     self._global_step > refine_start_step
                     and self._global_step % refine_every_step == 0
                     and self._global_step < refine_stop_step
+                    and self.model.num_gaussians < self._max_num_gaussians
                 ):
                     num_gaussians_before: int = self.model.num_gaussians
                     use_scales_for_refinement: bool = self._global_step > reset_opacities_every_step
@@ -1400,7 +1426,11 @@ class SceneOptimizationRunner:
                         )
 
                 # Reset the opacity parameters every so often
-                if self._global_step % reset_opacities_every_step == 0 and self._global_step > 0:
+                if (
+                    self.config.reset_opacities_every_epoch > 0
+                    and self._global_step % reset_opacities_every_step == 0
+                    and self._global_step > 0
+                ):
                     self.optimizer.reset_opacities()
 
                 # Step the Gaussian optimizer
@@ -1409,7 +1439,7 @@ class SceneOptimizationRunner:
 
                 # If you enabled pose optimization, step the pose optimizer if we performed a
                 # pose update this iteration
-                if self.config.optimize_camera_poses and self._global_step < pose_opt_stop_step:
+                if self.config.optimize_camera_poses and pose_opt_start_step <= self._global_step < pose_opt_stop_step:
                     assert (
                         self.pose_adjust_optimizer is not None
                     ), "Pose optimizer should be initialized if pose optimization is enabled."
@@ -1505,8 +1535,13 @@ class SceneOptimizationRunner:
             self._logger.info(
                 f"Training completed. Creating symlink {final_ckpt_symlink_path} pointing to final checkpoint at {final_ckpt_path}."
             )
-            final_ckpt_symlink_path.symlink_to(final_ckpt_path.absolute())
-            final_ply_symlink_path.symlink_to(final_ply_path.absolute())
+            # Use relative paths for symlink so it works if you move the results directory
+            final_ckpt_symlink_path.absolute().symlink_to(
+                final_ckpt_path.absolute().relative_to(final_ckpt_symlink_path.absolute().parent)
+            )
+            final_ply_symlink_path.absolute().symlink_to(
+                final_ply_path.absolute().relative_to(final_ply_symlink_path.absolute().parent)
+            )
         elif self._checkpoints_path is not None and 100 not in self.config.save_at_percent:
             ckpt_path = self._checkpoints_path / pathlib.Path(f"ckpt_final.pt")
             self._logger.info(f"Saving checkpoint at epoch {epoch + 1} to {ckpt_path}.")

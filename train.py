@@ -29,8 +29,10 @@ def main(
     log_images_to_tensorboard: bool = False,
     save_results: bool = True,
     save_eval_images: bool = False,
+    verbose: bool = False,
 ):
-    logging.basicConfig(level=logging.INFO, format="%(levelname)s : %(message)s")
+    log_level = logging.DEBUG if verbose else logging.INFO
+    logging.basicConfig(level=log_level, format="%(levelname)s : %(message)s")
 
     runner = SceneOptimizationRunner.new_run(
         config=cfg,

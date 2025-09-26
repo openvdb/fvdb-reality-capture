@@ -1,13 +1,14 @@
 # Copyright Contributors to the OpenVDB Project
 # SPDX-License-Identifier: Apache-2.0
 #
+import logging
 import math
 from typing import Any, Callable, Dict, List, Tuple, Union
 
+import numpy as np
 import torch
 import torch.nn.functional as F
 import torch.optim
-
 from fvdb import GaussianSplat3d
 
 
@@ -29,9 +30,12 @@ class GaussianSplatOptimizer:
         prune_opacity_threshold: float = 0.005,
         prune_scale3d_threshold: float = 0.1,
         prune_scale2d_threshold: float = 0.15,
-        grow_grad2d_threshold: float = 0.0002,
+        grow_grad_2d_percentile_threshold: float | None = 0.9,
+        grow_grad2d_threshold: float | None = None,
         grow_scale3d_threshold: float = 0.01,
         grow_scale2d_threshold: float = 0.05,
+        scale_3d_threshold_relative_units: bool = True,
+        adaptive_grad2d_threshold: bool = False,
         absgrad: bool = False,
         revised_opacity: bool = False,
     ):
@@ -46,11 +50,16 @@ class GaussianSplatOptimizer:
             prune_opacity_threshold (float): The opacity threshold below which to prune a Gaussian. Default: 0.005.
             prune_scale3d_threshold (float): The 3D scale threshold above which to prune a Gaussian. Default: 0.1.
             prune_scale2d_threshold (float): The 2D scale threshold above which to prune a Gaussian. Default: 0.15.
-
-            grow_grad2d_threshold (float): The 2D gradient threshold above which to grow a Gaussian. Default: 0.0002.
+            grow_grad_2d_percentile_threshold (float | None): The percentile threshold for the 2D gradient above which to grow a Gaussian. Default: 0.9.
+                If this value is set, then grow_grad2d_threshold must be None. grow_grad_2d_percentile_threshold must be in the range [0.0, 1.0].
+            grow_grad2d_threshold (float | None): The 2D gradient threshold above which to grow a Gaussian. Default: None.
+                If this value is set, then grow_grad_2d_percentile_threshold must be None. In other implementations, this value is usually hardcoded to 0.0002.
             grow_scale3d_threshold (float): The 3D scale threshold below which to grow a Gaussian. Default: 0.01.
             grow_scale2d_threshold (float): The 2D scale threshold below which to grow a Gaussian. Default: 0.05.
-
+            scale_3d_threshold_relative_units (bool): Whether the 3D scale thresholds are in relative units (i.e. relative to the scene scale).
+                Used for `grow_scale3d_threshold` and `prune_scale3d_threshold`. If set to true, uses these values multiplied by `scene_scale`, otherwise
+                uses the values as-is. Default: True.
+            adaptive_grad2d_threshold (bool): Whether to adaptively set the threshold for refinement. Setting this to True will generally produce many more Gaussians. Default: False.
             absgrad (bool): Whether to use the absolute value of the gradients for refinement. Default: False.
             revised_opacity (bool): Whether to use the revised opacity formulation from https://arxiv.org/abs/2404.06109. Default: False.
         """
@@ -61,6 +70,20 @@ class GaussianSplatOptimizer:
         self._prune_scale3d_threshold = prune_scale3d_threshold
         self._prune_scale2d_threshold = prune_scale2d_threshold
         self._grow_grad2d_threshold = grow_grad2d_threshold
+        self._grow_grad_2d_percentile_threshold = grow_grad_2d_percentile_threshold
+        self._scale_3d_threshold_relative_units = scale_3d_threshold_relative_units
+        self._adaptive_grad2d_threshold = adaptive_grad2d_threshold
+        self._did_first_refinement = False  # First call to self.refine_gaussians sets this to True
+        self._logger = logging.getLogger(f"{self.__class__.__module__}.{self.__class__.__name__}")
+
+        if (self._grow_grad_2d_percentile_threshold is not None) and (self._grow_grad2d_threshold is not None):
+            raise ValueError(
+                "Either grow_grad_2d_percentile_threshold or grow_grad2d_threshold must be set, but not both."
+            )
+        if self._grow_grad_2d_percentile_threshold is None and self._grow_grad2d_threshold is None:
+            raise ValueError(
+                "Either grow_grad_2d_percentile_threshold or grow_grad2d_threshold must be set, but not both."
+            )
         self._grow_scale3d_threshold = grow_scale3d_threshold
         self._grow_scale2d_threshold = grow_scale2d_threshold
         self._absgrad = absgrad
@@ -160,15 +183,19 @@ class GaussianSplatOptimizer:
             "prune_scale3d_threshold": self._prune_scale3d_threshold,
             "prune_scale2d_threshold": self._prune_scale2d_threshold,
             "grow_grad2d_threshold": self._grow_grad2d_threshold,
+            "grow_grad_2d_percentile_threshold": self._grow_grad_2d_percentile_threshold,
+            "scale_3d_threshold_relative_units": self._scale_3d_threshold_relative_units,
             "grow_scale3d_threshold": self._grow_scale3d_threshold,
             "grow_scale2d_threshold": self._grow_scale2d_threshold,
+            "adaptive_grad2d_threshold": self._adaptive_grad2d_threshold,
+            "did_first_refinement": self._did_first_refinement,
             "absgrad": self._absgrad,
             "revised_opacity": self._revised_opacity,
-            "version": 2,
+            "version": 3,
         }
 
     def load_state_dict(self, state_dict: Dict[str, Any]):
-        if state_dict["version"] != 2:
+        if state_dict["version"] not in (2, 3):
             raise ValueError(f"Unsupported version: {state_dict['version']}")
 
         for name, optimizer in self._optimizers.items():
@@ -181,6 +208,17 @@ class GaussianSplatOptimizer:
         self._grow_grad2d_threshold = state_dict["grow_grad2d_threshold"]
         self._grow_scale3d_threshold = state_dict["grow_scale3d_threshold"]
         self._grow_scale2d_threshold = state_dict["grow_scale2d_threshold"]
+
+        if state_dict["version"] == 3:
+            self._adaptive_grad2d_threshold = state_dict["adaptive_grad2d_threshold"]
+            self._grow_grad_2d_percentile_threshold = state_dict["grow_grad_2d_percentile_threshold"]
+            self._scale_3d_threshold_relative_units = state_dict["scale_3d_threshold_relative_units"]
+            self._did_first_refinement = state_dict["did_first_refinement"]
+        else:
+            self._grow_grad_2d_percentile_threshold = None
+            self._scale_3d_threshold_relative_units = True
+            self._adaptive_grad2d_threshold = False
+            self._did_first_refinement = True
         self._absgrad = state_dict["absgrad"]
         self._revised_opacity = state_dict["revised_opacity"]
 
@@ -205,6 +243,7 @@ class GaussianSplatOptimizer:
         # Reset running statistics used to determine which Gaussians to add/split/prune
         self._model.reset_accumulated_gradient_state()
 
+        self._did_first_refinement = True
         return n_dupli, n_split, n_prune
 
     @torch.no_grad()
@@ -254,9 +293,43 @@ class GaussianSplatOptimizer:
         grads = self._model.accumulated_mean_2d_gradient_norms / count
         device = grads.device
 
+        if self._grow_grad_2d_percentile_threshold is not None and self._grow_grad2d_threshold is None:
+            # Rather than using a fixed threshold for splitting Gaussians, we split if the accumulated gradients
+            # for that Gaussian is above a certain percentile
+            # This ensures that we only split a certain fraction of the Gaussians at each refinement step
+            # and avoids the need to tune the threshold for different scenes
+            # Note that we can't use both a fixed threshold and a percentile threshold
+            if self._model.num_gaussians > 2**24:
+                # torch.quantile has a cap at 2**24 elements
+                # FIXME: Subsample the gradients instead of moving to numpy
+                gradient_threshold_value = float(
+                    np.quantile(grads.cpu().numpy(), self._grow_grad_2d_percentile_threshold)
+                )
+            else:
+                gradient_threshold_value = torch.quantile(grads, self._grow_grad_2d_percentile_threshold).item()
+
+            self._logger.debug("Using 2d gradient threshold value: %f", gradient_threshold_value)
+            if not self._adaptive_grad2d_threshold and not self._did_first_refinement:
+                self._logger.debug(
+                    "Adaptive grad2d threshold disabled. Setting fixed threshold to %f", gradient_threshold_value
+                )
+                self._grow_grad2d_threshold = gradient_threshold_value
+                self._grow_grad_2d_percentile_threshold = None
+        elif self._grow_grad_2d_percentile_threshold is None and self._grow_grad2d_threshold is not None:
+            gradient_threshold_value = self._grow_grad2d_threshold
+        else:
+            raise RuntimeError(
+                "Either grow_grad_2d_percentile_threshold or grow_grad2d_threshold must be set, but not both."
+            )
+
         # If the 2D projected gradient is high and the spatial size is small, duplicate the Gaussian
-        is_grad_high = grads > self._grow_grad2d_threshold
-        is_small = self._model.scales.max(dim=-1).values <= self._grow_scale3d_threshold * self._scene_scale
+        is_grad_high = grads > gradient_threshold_value
+        grow_threshold = (
+            self._grow_scale3d_threshold * self._scene_scale
+            if self._scale_3d_threshold_relative_units
+            else self._grow_scale3d_threshold
+        )
+        is_small = self._model.scales.max(dim=-1).values <= grow_threshold
         is_dupli = is_grad_high & is_small
         n_dupli: int = int(is_dupli.sum().item())
 
@@ -290,7 +363,12 @@ class GaussianSplatOptimizer:
         # Prune any Gaussians whose opacity is below the threshold or whose (2D projected) spatial extent is too large
         is_prune = self._model.opacities.flatten() < self._prune_opacity_threshold
         if use_scales:
-            is_too_big = self._model.scales.max(dim=-1).values > self._prune_scale3d_threshold * self._scene_scale
+            prune_threshold = (
+                self._prune_scale3d_threshold * self._scene_scale
+                if self._scale_3d_threshold_relative_units
+                else self._prune_scale3d_threshold
+            )
+            is_too_big = self._model.scales.max(dim=-1).values > prune_threshold
             # The INRIA code also implements sreen-size pruning but
             # it's actually not being used due to a bug:
             # https://github.com/graphdeco-inria/gaussian-splatting/issues/123
