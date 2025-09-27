@@ -3,7 +3,7 @@
 #
 from .base_transform import BaseTransform, transform
 from .compose import Compose
-from .crop_scene import CropScene
+from .crop_scene import CropScene, CropSceneToPoints
 from .downsample_images import DownsampleImages
 from .filter_images_with_low_points import FilterImagesWithLowPoints
 from .identity import Identity
@@ -19,5 +19,6 @@ __all__ = [
     "NormalizeScene",
     "PercentileFilterPoints",
     "Identity",
+    "CropSceneToPoints",
     "transform",
 ]
