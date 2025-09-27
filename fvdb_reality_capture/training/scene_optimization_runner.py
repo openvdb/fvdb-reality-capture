@@ -1097,7 +1097,7 @@ class SceneOptimizationRunner:
         pose_opt_start_step: int = int(self.config.pose_opt_start_epoch * len(self.training_dataset))
         pose_opt_stop_step: int = int(self.config.pose_opt_stop_epoch * len(self.training_dataset))
 
-        update_viewer_every_step = self.config.update_viewer_every_epochs * len(self.training_dataset)
+        update_viewer_every_step = int(self.config.update_viewer_every_epochs * len(self.training_dataset))
 
         # Progress bar to track training progress
         if self.config.max_steps is not None:
