@@ -261,7 +261,15 @@ class SfmDataset(torch.utils.data.Dataset, Iterable):
 
         # If you passed in masks, we'll set set these in the data dictionary
         if image_meta.mask_path != "":
-            mask = cv2.imread(image_meta.mask_path, cv2.IMREAD_GRAYSCALE)
+
+            img_data = torchvision.io.read_file(image_meta.mask_path)
+            if image_meta.mask_path.endswith(".jpg") or image_meta.mask_path.endswith(".jpeg"):
+                mask = torchvision.io.decode_jpeg(img_data, device="cpu")
+            elif image_meta.mask_path.endswith(".png"):
+                mask = torchvision.io.decode_png(img_data)
+
+            mask = mask[0,:,:].numpy().squeeze()
+
             assert mask is not None, f"Failed to load mask: {image_meta.mask_path}"
             mask = mask > 127
 

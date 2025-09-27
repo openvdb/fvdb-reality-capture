@@ -27,7 +27,7 @@ class CropScene(BaseTransform):
     def __init__(
         self,
         bbox: Sequence[float] | np.ndarray,
-        mask_format: Literal["png", "jpg", "npy"] = "png",
+        mask_format: Literal["png", "jpg", "npy"] = "jpg",
         composite_with_existing_masks: bool = True,
     ):
         """

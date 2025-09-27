@@ -908,8 +908,11 @@ class SceneOptimizationRunner:
         logger = logging.getLogger(f"{__name__}.SceneOptimizationRunner")
 
         # Dataset transform
-        transforms = [
+        transforms_norm = [
             NormalizeScene(normalization_type=normalization_type),
+
+        ]
+        transforms = [
             PercentileFilterPoints(
                 percentile_min=np.full((3,), points_percentile_filter),
                 percentile_max=np.full((3,), 100.0 - points_percentile_filter),
@@ -919,11 +922,33 @@ class SceneOptimizationRunner:
             ),
             FilterImagesWithLowPoints(min_num_points=min_points_per_image),
         ]
-        if crop_bbox is not None:
-            transforms.append(CropScene(crop_bbox))
-        transform = Compose(*transforms)
 
         sfm_scene: SfmScene = SfmScene.from_colmap(dataset_path)
+        transform = Compose(*transforms_norm)
+        sfm_scene = transform(sfm_scene)
+        print(f"normalized scene bbox original: {sfm_scene.scene_bbox}")
+
+        if crop_bbox is not None:
+            transforms.append(CropScene(crop_bbox))
+        elif points_percentile_filter > 0:
+            points = sfm_scene.points
+            percentile_min = [10,10,2]
+            # percentile_min=np.full((3,), points_percentile_filter)
+            # percentile_max=np.full((3,), 100.0 - points_percentile_filter)
+            percentile_max = [90,90,98]
+            lower_boundx = np.percentile(points[:, 0], percentile_min[0])
+            upper_boundx = np.percentile(points[:, 0], percentile_max[0])
+
+            lower_boundy = np.percentile(points[:, 1], percentile_min[1])
+            upper_boundy = np.percentile(points[:, 1], percentile_max[1])
+
+            lower_boundz = np.percentile(points[:, 2], percentile_min[2])
+            upper_boundz = np.percentile(points[:, 2], percentile_max[2])
+
+            scene_bbox = (lower_boundx, lower_boundy, lower_boundz, upper_boundx, upper_boundy, upper_boundz)
+            transforms.append(CropScene(scene_bbox))
+
+        transform = Compose(*transforms)
         sfm_scene = transform(sfm_scene)
 
         indices = np.arange(sfm_scene.num_images)
