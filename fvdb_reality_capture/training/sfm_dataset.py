@@ -266,9 +266,9 @@ class SfmDataset(torch.utils.data.Dataset, Iterable):
             if image_meta.mask_path.endswith(".jpg") or image_meta.mask_path.endswith(".jpeg"):
                 img_data = torchvision.io.read_file(image_meta.mask_path)
                 mask = torchvision.io.decode_jpeg(img_data, device="cpu")[0].numpy()
-            elif image_meta.image_path.endswith(".png"):
-                img_data = torchvision.io.read_file(image_meta.image_path)
-                image = torchvision.io.decode_png(img_data)[0].numpy()
+            elif image_meta.mask_path.endswith(".png"):
+                img_data = torchvision.io.read_file(image_meta.mask_path)
+                mask = torchvision.io.decode_png(img_data)[0].numpy()
             else:
                 mask = cv2.imread(image_meta.mask_path, cv2.IMREAD_GRAYSCALE)
                 assert mask is not None, f"Failed to load mask: {image_meta.mask_path}"

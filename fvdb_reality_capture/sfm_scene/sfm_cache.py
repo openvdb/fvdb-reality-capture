@@ -506,7 +506,7 @@ class SfmCache:
         data: Any,
         data_type: str,
         metadata: dict = {},
-        quality: int = 100,
+        quality: int = 98,
     ):
         if data_type not in self.known_data_types:
             raise ValueError(
