@@ -58,7 +58,7 @@ class Config:
     # Percentage of total epochs at which we perform evaluation on the validation set. i.e. 10 means perform evaluation after 10% of the epochs.
     eval_at_percent: List[int] = field(default_factory=lambda: [10, 20, 30, 40, 50, 75, 100])
     # Percentage of total epochs at which we save the model checkpoint. i.e. 10 means save a checkpoint after 10% of the epochs.
-    save_at_percent: List[int] = field(default_factory=lambda: [10, 20, 30, 40, 50, 75, 100])
+    save_at_percent: List[int] = field(default_factory=lambda: [20, 100])
     # How often to update the viewer with training statistics and the current splat model (in epochs)
     update_viewer_every_epochs: float = 2.0
 
