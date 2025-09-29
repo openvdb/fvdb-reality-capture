@@ -31,13 +31,18 @@ def main(
     viewer = Viewer(port=viewer_port, verbose=verbose)
 
     model, metadata = GaussianSplat3d.from_ply(ply_path, device)
-    viewer.add_gaussian_splat3d(name="model", gaussian_splat_3d=model)
+    viewer.add_gaussian_splat_3d(name="model", gaussian_splat_3d=model)
     assert isinstance(metadata["camera_to_world_matrices"], torch.Tensor)
     first_cam_pos = metadata["camera_to_world_matrices"][0, :3, 3]
     viewer.set_camera_lookat(
         camera_origin=first_cam_pos, lookat_point=model.means.mean(dim=0).cpu().numpy(), up_direction=[0, 0, 1]
     )
 
+    # TODO: Bring back after viewer fix
+    # assert isinstance(metadata["projection_matrices"], torch.Tensor)
+    # viewer.add_camera_view(
+    #     "training cameras", metadata["camera_to_world_matrices"].cpu(), metadata["projection_matrices"].cpu()
+    # )
     logger = logging.getLogger("visualize")
     logger.info("Viewer running... Ctrl+C to exit.")
     time.sleep(1000000)
