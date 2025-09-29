@@ -60,7 +60,7 @@ class Config:
     # Percentage of total epochs at which we save the model checkpoint. i.e. 10 means save a checkpoint after 10% of the epochs.
     save_at_percent: List[int] = field(default_factory=lambda: [10, 20, 30, 40, 50, 75, 100])
     # How often to update the viewer with training statistics and the current splat model (in epochs)
-    update_viewer_every_epochs: float = 1.0
+    update_viewer_every_epochs: float = 2.0
 
     #
     # Gaussian Optimization Parameters
@@ -104,8 +104,16 @@ class Config:
     remove_gaussians_outside_scene_bbox: bool = False
     # Set a maximum number of Gaussians based on total GPU memory. This is a soft limit and may be exceeded slightly.
     clip_max_gaussians_to_memory: bool = True
+    # Whether to set the grad_2d refinement threshold based on the histogram of grad_2d values. This is generally a good idea.
+    histogram_grad_2d_threshold: bool = True
     # Whether to adaptively set the threshold for refinement. Setting this to True will generally produce many more Gaussians.
     adaptive_grad_2d_threshold: bool = False
+    # What percentile of the grad_2d values to use as the threshold for refinement if histogram_grad_2d_threshold is True
+    grad_2d_percentile: float = 90.0
+    # If adaptive_grad_2d_threshold is False, then use this as the absolute threshold for refinement
+    absolute_grad_2d_threshold: float = 0.0002
+    # Whether to use scene scale or absolute units for scale3d thresholding during refinement
+    use_scene_scale_for_refinement: bool = True
 
     #
     # Pose optimization parameters
@@ -742,6 +750,7 @@ class SceneOptimizationRunner:
             ),
             DownsampleImages(
                 image_downsample_factor=image_downsample_factor,
+                rescaled_jpeg_quality=95,
             ),
             FilterImagesWithLowPoints(min_num_points=min_points_per_image),
         ]
@@ -776,11 +785,19 @@ class SceneOptimizationRunner:
         logger.info(f"Model initialized with {model.num_gaussians:,} Gaussians")
 
         # Initialize optimizer
+        grad_2d_percentile = config.grad_2d_percentile
+        if not (0.0 <= grad_2d_percentile <= 100.0):
+            raise ValueError(f"grad_2d_percentile must be in [0, 100], got {grad_2d_percentile}")
+        grad_2d_percentile = float(grad_2d_percentile) / 100.0
         max_steps = config.max_epochs * len(train_dataset)
         optimizer = GaussianSplatOptimizer(
             model,
             scene_scale=SceneOptimizationRunner._compute_scene_scale(train_dataset.sfm_scene) * 1.1,
             mean_lr_decay_exponent=0.01 ** (1.0 / max_steps),
+            grow_grad_2d_percentile_threshold=grad_2d_percentile if config.histogram_grad_2d_threshold else None,
+            grow_grad2d_threshold=config.absolute_grad_2d_threshold if not config.histogram_grad_2d_threshold else None,
+            adaptive_grad2d_threshold=config.adaptive_grad_2d_threshold,
+            scale_3d_threshold_relative_units=config.use_scene_scale_for_refinement,
         )
 
         # Optional camera position optimizer
@@ -1028,13 +1045,24 @@ class SceneOptimizationRunner:
         self._viewer = Viewer(ip_address="127.0.0.1", port=8080, verbose=False) if not disable_viewer else None
         if self._viewer is not None:
             with torch.no_grad():
-                self._viewer.add_gaussian_splat3d("Gaussian Scene", self.model)
+                self._viewer.add_gaussian_splat_3d("Gaussian Scene", self.model)
+                train_cam_poses = torch.from_numpy(self._training_dataset.camera_to_world_matrices).to(
+                    dtype=torch.float32
+                )
+                train_projection_matrices = torch.from_numpy(
+                    self._training_dataset.projection_matrices.astype(np.float32)
+                )
                 first_cam_pos = self._training_dataset.camera_to_world_matrices[0, :3, 3]
                 self._viewer.set_camera_lookat(
                     camera_origin=first_cam_pos,
                     lookat_point=self.model.means.mean(dim=0).cpu().numpy(),
                     up_direction=[0, 0, -1],
                 )
+                # self._viewer.add_camera_view(
+                #     name="Training Cameras",
+                #     camera_to_world_matrices=train_cam_poses,
+                #     projection_matrices=train_projection_matrices,
+                # )
         # Losses & Metrics.
         if self.config.lpips_net == "alex":
             self._lpips = LPIPSLoss(backbone="alex").to(model.device)
@@ -1310,7 +1338,7 @@ class SceneOptimizationRunner:
                 if self._viewer is not None and self._global_step % update_viewer_every_step == 0:
                     with torch.no_grad():
                         self._logger.debug(f"Updating viewer at step {self._global_step:,}")
-                        self._viewer.add_gaussian_splat3d("Gaussian Scene", self.model)
+                        self._viewer.add_gaussian_splat_3d("Gaussian Scene", self.model)
 
                 pbar.update(batch_size)
                 self._global_step = pbar.n
@@ -1475,4 +1503,4 @@ class SceneOptimizationRunner:
         # Update the viewer with evaluation results
         if self._viewer is not None:
             self._logger.debug(f"Updating viewer after evaluation at step {self._global_step:,}")
-            self._viewer.add_gaussian_splat3d("Gaussian Scene", self.model)
+            self._viewer.add_gaussian_splat_3d("Gaussian Scene", self.model)
