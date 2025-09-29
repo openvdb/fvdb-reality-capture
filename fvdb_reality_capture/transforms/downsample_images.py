@@ -31,7 +31,7 @@ class DownsampleImages(BaseTransform):
         image_downsample_factor: int,
         image_type: Literal["jpg", "png"] = "jpg",
         rescale_sampling_mode: int = cv2.INTER_AREA,
-        rescaled_jpeg_quality: int = 100,
+        rescaled_jpeg_quality: int = 98,
     ):
         """
         Create a new DownsampleImages transform instance with the specified downsampling factor
