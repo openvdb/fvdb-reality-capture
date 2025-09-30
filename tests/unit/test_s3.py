@@ -30,7 +30,7 @@ def test_upload_download_delete(s3_client):
         assert not s3.exists(uri, client=s3_client)
 
 
-def test_cacheing(s3_client):
+def test_caching(s3_client):
     with tempfile.TemporaryDirectory() as tmp_dir:
         tmp_path = pathlib.Path(tmp_dir) / "test.txt"
         tmp_path.write_text("test")
