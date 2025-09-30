@@ -43,7 +43,7 @@ def _check_cache_hit(
         return False
 
     # Compare modified date to upstream S3 object
-    s3 = boto3.client("s3")
+    s3 = client if client is not None else boto3.client("s3")
     try:
         s3_head = s3.head_object(Bucket=bucket, Key=key)
         s3_last_modified = s3_head["LastModified"].timestamp()
