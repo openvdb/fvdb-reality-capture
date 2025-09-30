@@ -28,7 +28,7 @@ def main(source_file_path: pathlib.Path, destination_file_path: pathlib.Path):
     fvdb_prefix = "fvdb-reality-capture"
     bucket = "fvdb-data"
 
-    uri = s3.upload(source_file_path, bucket, fvdb_prefix / destination_file_path)
+    uri = s3.upload(source_file_path, bucket, str(pathlib.Path(fvdb_prefix) / destination_file_path))
 
 
 if __name__ == "__main__":
