@@ -508,6 +508,24 @@ class SfmCache:
         metadata: dict = {},
         quality: int = 98,
     ):
+        """
+        Write a file to the current folder in this cache. If a file with the same name already exists, it will be overwritten.
+        The file name can only contain alphanumeric characters and underscores. The extension will be set automatically based on the `data_type` argument.
+
+        Args:
+            name (str): The name of the file to write. Must be a nonempty string consisting only of alphanumeric characters and underscores.
+            data (Any): The data to write to the file. The type of this data depends on the `data_type` argument.
+            data_type (str): The type of data being written. Must be one of the following:
+                - "jpg": JPEG image (data should be a NumPy array representing the image)
+                - "png": PNG image (data should be a NumPy array representing the image)
+                - "pt": PyTorch tensor (data should be a torch.Tensor)
+                - "npy": NumPy array (data should be a NumPy array)
+                - "json": JSON file (data should be a JSON-serializable Python object, e.g., dict or list)
+                - "txt": Text file (data should be a string)
+            metadata (dict): Optional metadata to associate with the file. This should be a dictionary that can be serialized to JSON.
+            quality (int): For JPEG images, the quality of the saved image (1-100). Higher values mean better quality and larger file size.
+                This argument is ignored for other data types.
+        """
         if data_type not in self.known_data_types:
             raise ValueError(
                 f"Unknown data type {data_type} for property {name}. Must be one of {self.known_data_types}"
@@ -580,6 +598,26 @@ class SfmCache:
             }
 
     def read_file(self, name: str) -> tuple[dict[str, Any], Any]:
+        """
+        Read a file and its metadata from the current folder in this cache.
+        The file name can only contain alphanumeric characters and underscores.
+        If no file with the given name exists, a ValueError will be raised.
+
+        Args:
+            name (str): The name of the file to read. Must be a nonempty string consisting only of alphanumeric characters and underscores.
+        Returns:
+            metadata (dict[str, Any]): A dictionary containing the metadata associated with the file, including:
+                - "data_type": The data type of the file (e.g., "jpg", "png", "pt", "npy", "json", "txt").
+                - "metadata": The metadata associated with the file (as a dictionary) stored by the user.
+                - "path": The absolute path to the file on disk.
+            data (Any): The data read from the file. The type of this data depends on the data type of the file:
+                - For "jpg" and "png" files, this will be a NumPy array representing the image.
+                - For "pt" files, this will be a torch.Tensor.
+                - For "npy" files, this will be a NumPy array.
+                - For "json" files, this will be a JSON-deserialized Python object (e.g., dict or list).
+                - For "txt" files, this will be a string.
+
+        """
         self._validate_name(name, "File")
 
         with self._file_lock_shared:
@@ -627,8 +665,17 @@ class SfmCache:
 
         return metadata, data
 
-    def delete_file(self, key: str) -> None:
-        self._validate_name(key, "File")
+    def delete_file(self, name: str) -> None:
+        """
+        Delete a file with the given name from the current folder in this cache.
+        The file name can only contain alphanumeric characters and underscores.
+        If no file with the given name exists, a ValueError will be raised.
+
+        Args:
+            name (str): The name of the file to delete. Must be a nonempty string consisting only of alphanumeric characters and underscores.
+
+        """
+        self._validate_name(name, "File")
 
         with self._file_lock_exclusive:
             conn = sqlite3.connect(self._db_path)
@@ -639,11 +686,11 @@ class SfmCache:
                     f"""
                     SELECT data_type FROM {self._files_table_name} WHERE name = ? AND folder_id = ?
                     """,
-                    (key, self._current_folder_id),
+                    (name, self._current_folder_id),
                 )
                 row = cursor.fetchone()
                 if row is None:
-                    raise ValueError(f"File '{key}' not found in the current folder.")
+                    raise ValueError(f"File '{name}' not found in the current folder.")
 
                 data_type = row[0]
 
@@ -651,25 +698,38 @@ class SfmCache:
                     f"""
                     DELETE FROM {self._files_table_name} WHERE name = ? AND folder_id = ?
                     """,
-                    (key, self._current_folder_id),
+                    (name, self._current_folder_id),
                 )
 
-                file_path = self._get_path_for_folder(cursor, self._current_folder_id) / f"{key}.{data_type}"
+                file_path = self._get_path_for_folder(cursor, self._current_folder_id) / f"{name}.{data_type}"
                 if file_path.exists():
                     file_path.unlink(missing_ok=True)
                 else:
                     raise FileNotFoundError(
-                        f"File '{key}' not found at path {file_path}. The cache is likely corrupted."
+                        f"File '{name}' not found at path {file_path}. The cache is likely corrupted."
                     )
                 conn.commit()
             except Exception as e:
                 conn.rollback()
-                raise RuntimeError(f"Failed to delete file '{key}': {e}")
+                raise RuntimeError(f"Failed to delete file '{name}': {e}")
             finally:
                 cursor.close()
                 conn.close()
 
     def get_file_metadata(self, key: str) -> dict[str, Any]:
+        """
+        Get the metadata for a file with the given name in the current folder in this cache.
+        The file name can only contain alphanumeric characters and underscores.
+        If no file with the given name exists, a ValueError will be raised.
+
+        Args:
+            key (str): The name of the file to get metadata for. Must be a nonempty string consisting only of alphanumeric characters and underscores.
+        Returns:
+            metadata (dict[str, Any]): A dictionary containing the metadata associated with the file, including:
+                - "data_type": The data type of the file (e.g., "jpg", "png", "pt", "npy", "json", "txt").
+                - "metadata": The metadata associated with the file (as a dictionary) stored by the user.
+                - "path": The absolute path to the file on disk.
+        """
         self._validate_name(key, "File")
 
         with self._file_lock_shared:
@@ -700,6 +760,18 @@ class SfmCache:
         }
 
     def make_folder(self, name: str, description: str = "") -> "SfmCache":
+        """
+        Create a new sub-folder with the given name in the current folder in this cache.
+        The folder name can only contain alphanumeric characters and underscores.
+        If a folder with the same name already exists, it will return an SfmCache instance for the existing folder.
+
+        Args:
+            name (str): The name of the folder to create. Must be a nonempty string consisting only of alphanumeric characters and underscores.
+            description (str): An optional description for the folder.
+
+        Returns:
+            SfmCache: An instance of `SfmCache` representing the newly created (or existing) folder.
+        """
         self._validate_name(name, "Folder")
 
         with self._file_lock_exclusive:
