@@ -29,28 +29,31 @@ The key differences are:
 
 ### 1. Build the Docker Image
 
+Note: the following `docker` commands use `docker-compose` v2 "plugin" syntax. For older
+`docker-compose` standalone syntax, change `docker compose` to `docker-compose`.
+
 For pre-Blackwell GPUs:
 ```bash
-docker-compose -f docker/docker-compose.yml --env-file docker/env.standard build
+docker compose -f docker/docker-compose.yml --env-file docker/env.standard build
 ```
 
 For Blackwell GPUs (RTX 50xx series):
 ```bash
-docker-compose -f docker/docker-compose.yml --env-file docker/env.blackwell build
+docker compose -f docker/docker-compose.yml --env-file docker/env.blackwell build
 ```
 
 ### 2. Run the Container
 
 For pre-Blackwell GPUs:
 ```bash
-docker-compose -f docker/docker-compose.yml --env-file docker/env.standard up -d
-docker-compose -f docker/docker-compose.yml --env-file docker/env.standard exec benchmark bash
+docker compose -f docker/docker-compose.yml --env-file docker/env.standard up -d
+docker compose -f docker/docker-compose.yml --env-file docker/env.standard exec benchmark bash
 ```
 
 For Blackwell GPUs:
 ```bash
-docker-compose -f docker/docker-compose.yml --env-file docker/env.blackwell up -d
-docker-compose -f docker/docker-compose.yml --env-file docker/env.blackwell exec benchmark bash
+docker compose -f docker/docker-compose.yml --env-file docker/env.blackwell up -d
+docker compose -f docker/docker-compose.yml --env-file docker/env.blackwell exec benchmark bash
 ```
 
 ### 3. Run Benchmarks
