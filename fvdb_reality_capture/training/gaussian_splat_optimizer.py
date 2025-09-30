@@ -311,7 +311,7 @@ class GaussianSplatOptimizer:
             self._logger.debug("Using 2d gradient threshold value: %f", gradient_threshold_value)
             if not self._adaptive_grad2d_threshold and not self._did_first_refinement:
                 self._logger.debug(
-                    "Adaptive grad2d threshold disabled. Setting fixed threshold to %f", gradient_threshold_value
+                    f"Adaptive grad2d threshold disabled. Setting fixed threshold to {gradient_threshold_value:.6f}"
                 )
                 self._grow_grad2d_threshold = gradient_threshold_value
                 self._grow_grad_2d_percentile_threshold = None
