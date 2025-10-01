@@ -74,7 +74,11 @@ def get_run_name(results_path: pathlib.Path) -> str:
     return run_name
 
 
-def main(run_name: str | None = None, config_path: str = "benchmark_config.yaml"):
+def main(
+    run_name: str | None = None,
+    results_base_path: pathlib.Path = pathlib.Path("results"),
+    config_path: str = "benchmark_config.yaml",
+):
 
     logging.basicConfig(level=logging.INFO, format="%(levelname)s : %(message)s")
 
@@ -86,16 +90,15 @@ def main(run_name: str | None = None, config_path: str = "benchmark_config.yaml"
     logger.info(f"Current git commit hash: {commit_hash}")
 
     # Extract configuration
-    save_at_percent = config["training"]["save_at_percent"]
+    # save_at_percent = config["training"]["save_at_percent"]
     datasets = config["datasets"]
-    results_base_path = pathlib.Path(config["results"]["base_path"])
-    training_params = config["training_params"]
+    training_params = config["optimization_config"]["training_arguments"]
 
     # Create base Config object
     base_config = Config()
 
     # Override config with values from YAML
-    for key, value in config["training"]["config"].items():
+    for key, value in config["optimization_config"]["optimization_config"].items():
         if hasattr(base_config, key):
             # Handle boolean conversion explicitly
             if isinstance(value, str) and value.lower() in ["true", "false"]:
@@ -103,7 +106,7 @@ def main(run_name: str | None = None, config_path: str = "benchmark_config.yaml"
             setattr(base_config, key, value)
 
     # Set save percentages
-    base_config.save_at_percent = save_at_percent
+    # base_config.save_at_percent = save_at_percent
 
     # Create the results directory if it doesn't exist
     results_base_path.mkdir(parents=True, exist_ok=True)
@@ -137,6 +140,8 @@ def main(run_name: str | None = None, config_path: str = "benchmark_config.yaml"
                 points_percentile_filter=training_params["points_percentile_filter"],
                 normalization_type=training_params["normalization_type"],
                 crop_bbox=training_params["crop_bbox"],
+                crop_to_points=training_params["crop_to_points"],
+                min_points_per_image=training_params["min_points_per_image"],
                 results_path=dataset_results_path,
                 device=training_params["device"],
                 use_every_n_as_val=training_params["use_every_n_as_val"],

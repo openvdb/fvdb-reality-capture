@@ -45,11 +45,11 @@ def load_config(config_path: str) -> Dict:
         return yaml.safe_load(f)
 
 
-def get_scene_info(scene: str, config: Dict) -> Dict:
+def get_scene_info(scene: str, benchmark_config: Dict) -> Dict:
     """Extract scene-specific information from config."""
     # Find the scene in datasets
     scene_config = None
-    for dataset in config.get("datasets", []):
+    for dataset in benchmark_config.get("datasets", []):
         if dataset.get("name") == scene:
             scene_config = dataset
             break
@@ -60,7 +60,7 @@ def get_scene_info(scene: str, config: Dict) -> Dict:
     return {
         "name": scene,
         "path": scene_config["path"],
-        "data_factor": config.get("training_params", {}).get("image_downsample_factor", 4),
+        # "data_factor": benchmark_config.get("training_params", {}).get("image_downsample_factor", 4),
     }
 
 
@@ -214,12 +214,14 @@ def run_command(
         return -1, "", str(e)
 
 
-def run_fvdb_training(scene_info: Dict, result_dir: str, config: Dict) -> Dict:
+def run_fvdb_training(
+    scene_info: Dict, result_dir: str, benchmark_config_path: Path, opt_config_path: Path, name: str
+) -> Dict:
     """Run FVDB training using the simplified approach."""
     logging.info(f"Starting FVDB training for scene: {scene_info['name']}")
 
     # Create results directory
-    fvdb_result_dir = Path(result_dir) / f"{scene_info['name']}_fvdb"
+    fvdb_result_dir = Path(result_dir) / f"{scene_info['name']}_{name}"
     fvdb_result_dir.mkdir(parents=True, exist_ok=True)
 
     # Create log file for capturing output
@@ -232,15 +234,21 @@ def run_fvdb_training(scene_info: Dict, result_dir: str, config: Dict) -> Dict:
     temp_config_path = fvdb_result_dir / "temp_config.yaml"
 
     # Load the original config
-    with open("benchmark_config.yaml", "r") as f:
-        config = yaml.safe_load(f)
+    with open(benchmark_config_path, "r") as f:
+        run_config = yaml.safe_load(f)
 
     # Filter to only include the current scene
-    config["datasets"] = [dataset for dataset in config["datasets"] if dataset["name"] == scene_info["name"]]
+    run_config["datasets"] = [dataset for dataset in run_config["datasets"] if dataset["name"] == scene_info["name"]]
+
+    # Load the optimization config
+    with open(opt_config_path, "r") as f:
+        opt_config = yaml.safe_load(f)
+
+    run_config["optimization_config"] = opt_config
 
     # Save the filtered config
     with open(temp_config_path, "w") as f:
-        yaml.dump(config, f, default_flow_style=False, sort_keys=False)
+        yaml.dump(run_config, f, default_flow_style=False, sort_keys=False)
 
     # Run FVDB training using the temporary config
     # Use absolute path for the config file since we're changing working directory
@@ -657,73 +665,49 @@ def run_evaluation(scene_info: Dict, result_dir: str, config: Dict) -> Dict:
     return results
 
 
-def generate_comparison_report(
-    scene: str, fvdb_results: Dict, gsplat_results: Dict, eval_results: Dict, result_dir: str
-) -> None:
+def generate_comparison_report(scene: str, training_results: Dict, eval_results: Dict, result_dir: str) -> None:
     """Generate a comparison report."""
     report_file = Path(result_dir) / f"{scene}_comparison_report.json"
 
-    report = {
-        "scene": scene,
-        "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
-        "fvdb_training": fvdb_results,
-        "gsplat_training": gsplat_results,
-        "evaluation": eval_results,
-        "comparison": {
-            "fvdb_success": fvdb_results["success"],
-            "gsplat_success": gsplat_results["success"],
-            "fvdb_total_time": fvdb_results["total_time"],
-            "fvdb_training_time": fvdb_results.get("training_time", fvdb_results["total_time"]),
-            "gsplat_total_time": gsplat_results["total_time"],
-            "gsplat_training_time": gsplat_results.get("training_time", gsplat_results["total_time"]),
-            "total_time_ratio": (
-                gsplat_results["total_time"] / fvdb_results["total_time"]
-                if fvdb_results["total_time"] > 0
-                else float("inf")
-            ),
-            "training_time_ratio": (
-                gsplat_results.get("training_time", gsplat_results["total_time"])
-                / fvdb_results.get("training_time", fvdb_results["total_time"])
-                if fvdb_results.get("training_time", fvdb_results["total_time"]) > 0
-                else float("inf")
-            ),
-            "fvdb_final_loss": fvdb_results["metrics"].get("final_loss", None),
-            "gsplat_final_loss": gsplat_results["metrics"].get("final_loss", None),
-        },
-    }
+    reports = {}
+    for config_name, result in training_results.items():
+        report = {
+            "config_name": config_name,
+            "scene": scene,
+            "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
+            "training": result,
+            "evaluation": eval_results,
+            "success": result["success"],
+            "total_time": result["total_time"],
+            "training_time": result.get("training_time", result["total_time"]),
+            "final_loss": result["metrics"].get("final_loss", None),
+        }
+        reports[config_name] = report
 
     with open(report_file, "w") as f:
-        json.dump(report, f, indent=2)
+        json.dump(reports, f, indent=2)
 
     # Print summary
     logging.info("=== COMPARISON SUMMARY ===")
-    logging.info(f"Scene: {scene}")
+    for i, (config_name, report) in enumerate(reports.items()):
+        logging.info(f"Config: {config_name}:")
+        logging.info("----------------------------")
+        logging.info(f" Scene: {scene}")
 
-    fvdb_total = fvdb_results["total_time"]
-    fvdb_training = fvdb_results.get("training_time", fvdb_total)
-    gsplat_total = gsplat_results["total_time"]
-    gsplat_training = gsplat_results.get("training_time", gsplat_total)
+        total_time = report["total_time"]
+        training_time = report.get("training_time", total_time)
 
-    logging.info(
-        f"FVDB Training: {'SUCCESS' if fvdb_results['success'] else 'FAILED'} "
-        f"(Total: {fvdb_total:.2f}s, Training: {fvdb_training:.2f}s)"
-    )
-    logging.info(
-        f"GSplat Training: {'SUCCESS' if gsplat_results['success'] else 'FAILED'} "
-        f"(Total: {gsplat_total:.2f}s, Training: {gsplat_training:.2f}s)"
-    )
+        logging.info(
+            f"  Training: {'SUCCESS' if report['success'] else 'FAILED'} "
+            f"(Total: {total_time:.2f}s, Training: {training_time:.2f}s)"
+        )
 
-    if fvdb_results["success"] and gsplat_results["success"]:
-        total_ratio = gsplat_total / fvdb_total
-        training_ratio = gsplat_training / fvdb_training
-        logging.info(f"Total Time Ratio (GSplat/FVDB): {total_ratio:.2f}x")
-        logging.info(f"Training Time Ratio (GSplat/FVDB): {training_ratio:.2f}x")
-
-        if "final_loss" in fvdb_results["metrics"] and "final_loss" in gsplat_results["metrics"]:
-            fvdb_loss = fvdb_results["metrics"]["final_loss"]
-            gsplat_loss = gsplat_results["metrics"]["final_loss"]
-            logging.info(f"FVDB Final Loss: {fvdb_loss:.6f}")
-            logging.info(f"GSplat Final Loss: {gsplat_loss:.6f}")
+        if report["success"]:
+            if "final_loss" in report:
+                final_loss = report["final_loss"]
+                logging.info(f"  Final Loss: {final_loss:.6f}")
+        if i < len(reports) - 1:
+            logging.info("----------------------------\n")
 
     logging.info(f"Detailed report saved to: {report_file}")
 
@@ -1250,10 +1234,17 @@ def generate_summary_charts(scenes: List[str], result_dir: str) -> None:
     # Create summary directory
     summary_dir = Path(result_dir) / "summary"
     summary_dir.mkdir(parents=True, exist_ok=True)
+    print(f"HERE!!!! {summary_dir}")
 
-    # Collect data from all scenes
-    summary_data = []
+    plot_dict = {
+        "total_time": {},
+        "training_time": {},
+        "psnr": {},
+        "ssim": {},
+        "num_gaussians": {},
+    }
 
+    # Grouped bar chart where each group is a scene, and each bar within a scene is a config
     for scene in scenes:
         # Load comparison report for this scene
         report_file = Path(result_dir) / f"{scene}_comparison_report.json"
@@ -1263,172 +1254,83 @@ def generate_summary_charts(scenes: List[str], result_dir: str) -> None:
 
         try:
             with open(report_file, "r") as f:
-                report = json.load(f)
-
-            # Extract data
-            cmp = report.get("comparison", {})
-            fvdb_time = cmp.get("fvdb_training_time", cmp.get("fvdb_total_time", 0))
-            gsplat_time = cmp.get("gsplat_training_time", cmp.get("gsplat_total_time", 0))
-            fvdb_psnr = report.get("fvdb_training", {}).get("metrics", {}).get("psnr", 0)
-            gsplat_psnr = report.get("gsplat_training", {}).get("metrics", {}).get("psnr", 0)
-            fvdb_gaussians = report.get("fvdb_training", {}).get("metrics", {}).get("final_gaussian_count", 0)
-            gsplat_gaussians = report.get("gsplat_training", {}).get("metrics", {}).get("final_gaussian_count", 0)
-
-            # If Gaussian counts are missing from JSON, extract from logs
-            if fvdb_gaussians == 0 or gsplat_gaussians == 0:
-                fvdb_count, gsplat_count = extract_gaussian_count_from_logs(result_dir, scene)
-                if fvdb_count is not None:
-                    fvdb_gaussians = fvdb_count
-                if gsplat_count is not None:
-                    gsplat_gaussians = gsplat_count
-
-            summary_data.append(
-                {
-                    "scene": scene,
-                    "fvdb_time": fvdb_time,
-                    "gsplat_time": gsplat_time,
-                    "fvdb_psnr": fvdb_psnr,
-                    "gsplat_psnr": gsplat_psnr,
-                    "fvdb_gaussians": fvdb_gaussians,
-                    "gsplat_gaussians": gsplat_gaussians,
-                    "speedup": gsplat_time / fvdb_time if fvdb_time > 0 else float("inf"),
-                    "psnr_diff": fvdb_psnr - gsplat_psnr if fvdb_psnr and gsplat_psnr else 0,
-                    "gaussian_ratio": gsplat_gaussians / fvdb_gaussians if fvdb_gaussians > 0 else float("inf"),
-                }
-            )
-
+                report = json.load(f)  # dict[str, Any] : config path -> report data
         except Exception as e:
             logging.warning(f"Could not load report for {scene}: {e}")
             continue
 
-    if not summary_data:
-        logging.warning("No valid data found for summary charts")
-        return
+        for config_path, report in report.items():
+            for metric in plot_dict.keys():
+                if config_path not in plot_dict[metric]:
+                    plot_dict[metric][config_path] = []
 
-    # Create DataFrame for easy manipulation
-    df = pd.DataFrame(summary_data)
-
-    # Save data to CSV and JSON
-    df.to_csv(summary_dir / "summary_data.csv", index=False)
-    with open(summary_dir / "summary_data.json", "w") as f:
-        json.dump(summary_data, f, indent=2)
-
-    # Create side-by-side bar plots with more height for labels
-    fig, (ax1, ax2, ax3) = plt.subplots(3, 1, figsize=(12, 18))
-
-    # Plot 1: Runtime Comparison
-    x = np.arange(len(df))
-    width = 0.35
-
-    bars1 = ax1.bar(x - width / 2, df["fvdb_time"], width, label="FVDB", color=fvdb_color)
-    bars2 = ax1.bar(x + width / 2, df["gsplat_time"], width, label="GSplat", color=gsplat_color)
-
-    # Add speedup labels
-    max_time = 0
-    for i, (fvdb_time, gsplat_time, speedup) in enumerate(zip(df["fvdb_time"], df["gsplat_time"], df["speedup"])):
-        if speedup != float("inf"):
-            label_y = max(fvdb_time, gsplat_time) + 50
-            ax1.text(i, label_y, f"{speedup:.1f}x", ha="center", va="bottom", fontweight="bold")
-            max_time = max(max_time, label_y)
-
-    ax1.set_xlabel("Scene")
-    ax1.set_ylabel("Training Time (seconds)")
-    ax1.set_title("3D Gaussian Splatting Training Time")
-    ax1.set_xticks(x)
-    ax1.set_xticklabels(df["scene"], rotation=45, ha="right")
-    ax1.legend()
-    ax1.grid(True, alpha=0.3, axis="y")
-
-    # Adjust y-axis limits to accommodate labels
-    if max_time > 0:
-        ax1.set_ylim(0, max_time + 100)
-
-    # Plot 2: PSNR Comparison
-    bars3 = ax2.bar(x - width / 2, df["fvdb_psnr"], width, label="FVDB", color=fvdb_color)
-    bars4 = ax2.bar(x + width / 2, df["gsplat_psnr"], width, label="GSplat", color=gsplat_color)
-
-    # Add PSNR difference labels
-    max_psnr = 0
-    for i, (fvdb_psnr, gsplat_psnr, psnr_diff) in enumerate(zip(df["fvdb_psnr"], df["gsplat_psnr"], df["psnr_diff"])):
-        if fvdb_psnr and gsplat_psnr:
-            label_y = max(fvdb_psnr, gsplat_psnr) + 0.5
-            ax2.text(i, label_y, f"{psnr_diff:+.1f}dB", ha="center", va="bottom", fontweight="bold")
-            max_psnr = max(max_psnr, label_y)
-
-    ax2.set_xlabel("Scene")
-    ax2.set_ylabel("PSNR (dB)")
-    ax2.set_title("Peak Signal-to-Noise Ratio (PSNR)")
-    ax2.set_xticks(x)
-    ax2.set_xticklabels(df["scene"], rotation=45, ha="right")
-    ax2.legend()
-    ax2.grid(True, alpha=0.3, axis="y")
-
-    # Adjust y-axis limits to accommodate labels
-    if max_psnr > 0:
-        ax2.set_ylim(0, max_psnr + 2.0)
-
-    # Plot 3: Gaussian Count Comparison
-    bars5 = ax3.bar(x - width / 2, df["fvdb_gaussians"], width, label="FVDB", color=fvdb_color)
-    bars6 = ax3.bar(x + width / 2, df["gsplat_gaussians"], width, label="GSplat", color=gsplat_color)
-
-    # Add Gaussian ratio labels
-    max_gaussians = 0
-    for i, (fvdb_gaussians, gsplat_gaussians, gaussian_ratio) in enumerate(
-        zip(df["fvdb_gaussians"], df["gsplat_gaussians"], df["gaussian_ratio"])
-    ):
-        if gaussian_ratio != float("inf"):
-            label_y = max(fvdb_gaussians, gsplat_gaussians) + max(fvdb_gaussians, gsplat_gaussians) * 0.01
-            ax3.text(
-                i,
-                label_y,
-                f"{gaussian_ratio:.1f}x",
-                ha="center",
-                va="bottom",
-                fontweight="bold",
+            plot_dict["total_time"][config_path].append(report.get("total_time", 0))
+            plot_dict["training_time"][config_path].append(report.get("training_time", report.get("total_time", 0)))
+            plot_dict["psnr"][config_path].append(report.get("training", {}).get("metrics", {}).get("psnr", 0))
+            plot_dict["ssim"][config_path].append(report.get("training", {}).get("metrics", {}).get("ssim", 0))
+            plot_dict["num_gaussians"][config_path].append(
+                report.get("training", {}).get("metrics", {}).get("final_gaussian_count", 0)
             )
-            max_gaussians = max(max_gaussians, label_y)
 
-    ax3.set_xlabel("Scene")
-    ax3.set_ylabel("Final Gaussian Count")
-    ax3.set_title("Final Gaussian Splat Count")
-    ax3.set_xticks(x)
-    ax3.set_xticklabels(df["scene"], rotation=45, ha="right")
-    ax3.legend()
-    ax3.grid(True, alpha=0.3, axis="y")
+    #####
+    # List of plots:
+    #  1. Training time comparison (grouped bar chart)
+    #  2. PSNR comparison (grouped bar chart)
+    #  3. Gaussian count comparison (grouped bar chart)
+    #####
 
-    # Adjust y-axis limits to accommodate labels
-    if max_gaussians > 0:
-        ax3.set_ylim(0, max_gaussians + max_gaussians * 0.15)
+    for metric, metric_data in plot_dict.items():
+        if metric == "config_names":
+            continue
+        fig, ax = plt.subplots(layout="constrained")
+        x = np.arange(len(scenes))  # the label locations
+        width = 0.25  # the width of the bars
+        multiplier = 0
+        # For each group, we plot N bars where N is the number of configs
+        for i, (scene, measurement) in enumerate(metric_data.items()):
+            print(metric, scene, measurement)
+            offset = width * multiplier
+            assert isinstance(measurement, list)
+            rects = ax.bar(x + offset, measurement, width, label=scene)
+            ax.bar_label(rects, padding=3)
+            multiplier += 1
 
-    plt.tight_layout(pad=3.0)
-    plt.savefig(summary_dir / "summary_comparison.png", dpi=300, bbox_inches="tight", pad_inches=0.5)
-    plt.close()
+        # Add some text for labels, title and custom x-axis tick labels, etc.
+        ax.set_ylabel(f"{metric}")
+        ax.set_title(f"{metric.replace('_', ' ').title()} Comparison Across Scenes")
+        ax.set_xticks(x + width, scenes)
+        ax.legend(loc="upper left")
+        # ax.set_ylim(0, 250)
+
+        plt.tight_layout(pad=3.0)
+        plt.savefig(summary_dir / f"summary_comparison_{metric}.png", dpi=300, bbox_inches="tight", pad_inches=0.5)
+        plt.close()
 
     # Print summary statistics
-    print("\n" + "=" * 80)
-    print("SUMMARY STATISTICS ACROSS ALL SCENES")
-    print("=" * 80)
+    # print("\n" + "=" * 80)
+    # print("SUMMARY STATISTICS ACROSS ALL SCENES")
+    # print("=" * 80)
 
-    print(f"Average Training Time:")
-    print(f"  FVDB:   {df['fvdb_time'].mean():.1f}s ± {df['fvdb_time'].std():.1f}s")
-    print(f"  GSplat: {df['gsplat_time'].mean():.1f}s ± {df['gsplat_time'].std():.1f}s")
-    print(f"  Average Speedup: {df['speedup'].mean():.2f}x")
+    # print(f"Average Training Time:")
+    # print(f"  FVDB:   {df['fvdb_time'].mean():.1f}s ± {df['fvdb_time'].std():.1f}s")
+    # print(f"  GSplat: {df['gsplat_time'].mean():.1f}s ± {df['gsplat_time'].std():.1f}s")
+    # print(f"  Average Speedup: {df['speedup'].mean():.2f}x")
 
-    print(f"\nAverage PSNR:")
-    print(f"  FVDB:   {df['fvdb_psnr'].mean():.2f}dB ± {df['fvdb_psnr'].std():.2f}dB")
-    print(f"  GSplat: {df['gsplat_psnr'].mean():.2f}dB ± {df['gsplat_psnr'].std():.2f}dB")
-    print(f"  Average PSNR Difference: {df['psnr_diff'].mean():+.2f}dB")
+    # print(f"\nAverage PSNR:")
+    # print(f"  FVDB:   {df['fvdb_psnr'].mean():.2f}dB ± {df['fvdb_psnr'].std():.2f}dB")
+    # print(f"  GSplat: {df['gsplat_psnr'].mean():.2f}dB ± {df['gsplat_psnr'].std():.2f}dB")
+    # print(f"  Average PSNR Difference: {df['psnr_diff'].mean():+.2f}dB")
 
-    print(f"\nAverage Final Gaussian Count:")
-    print(f"  FVDB:   {df['fvdb_gaussians'].mean():,.0f} ± {df['fvdb_gaussians'].std():,.0f}")
-    print(f"  GSplat: {df['gsplat_gaussians'].mean():,.0f} ± {df['gsplat_gaussians'].std():,.0f}")
-    print(f"  Average Gaussian Ratio: {df['gaussian_ratio'].mean():.2f}x")
+    # print(f"\nAverage Final Gaussian Count:")
+    # print(f"  FVDB:   {df['fvdb_gaussians'].mean():,.0f} ± {df['fvdb_gaussians'].std():,.0f}")
+    # print(f"  GSplat: {df['gsplat_gaussians'].mean():,.0f} ± {df['gsplat_gaussians'].std():,.0f}")
+    # print(f"  Average Gaussian Ratio: {df['gaussian_ratio'].mean():.2f}x")
 
-    print(f"\nData exported to:")
-    print(f"  CSV: {summary_dir / 'summary_data.csv'}")
-    print(f"  JSON: {summary_dir / 'summary_data.json'}")
-    print(f"  Plot: {summary_dir / 'summary_comparison.png'}")
-    print("=" * 80)
+    # print(f"\nData exported to:")
+    # print(f"  CSV: {summary_dir / 'summary_data.csv'}")
+    # print(f"  JSON: {summary_dir / 'summary_data.json'}")
+    # print(f"  Plot: {summary_dir / 'summary_comparison.png'}")
+    # print("=" * 80)
 
 
 def main():
@@ -1444,28 +1346,29 @@ def main():
         - Use --list-scenes to see available scenes in the config
 
     Command-line Arguments:
-        --config        Path to the benchmark configuration YAML file (required unless --plot-only).
-        --scenes        Comma-separated list of scene names to benchmark (optional, defaults to all scenes in config).
-        --result-dir    Directory to store results (default: results/benchmark).
-        --train-only    Only run training (skip evaluation and plotting).
-        --eval-only     Only run evaluation (skip training and plotting).
-        --plot-only     Only generate plots from existing results (skip training and evaluation).
-        --frameworks    Comma-separated list of frameworks to run (default: fvdb,gsplat).
-        --log-level     Logging level (default: INFO).
-        --list-scenes   List available scenes from config and exit.
+        --benchmark-config Path to the benchmark configuration YAML file (required unless --plot-only).
+        --opt-configs      Space separated list of optimization config YAML files to use.
+        --scenes           Comma-separated list of scene names to benchmark (optional, defaults to all scenes in config).
+        --result-dir       Directory to store results (default: results/benchmark).
+        --train-only       Only run training (skip evaluation and plotting).
+        --eval-only        Only run evaluation (skip training and plotting).
+        --plot-only        Only generate plots from existing results (skip training and evaluation).
+        --frameworks       Comma-separated list of frameworks to run (default: fvdb,gsplat).
+        --log-level        Logging level (default: INFO).
+        --list-scenes      List available scenes from config and exit.
 
     The script sets up signal handling for graceful interruption, parses arguments,
     loads configuration, and processes each scene as specified.
 
     Example usage:
         # Run all scenes from config
-        python comparison_benchmark.py --config config.yaml
+        python comparison_benchmark.py --benchmark-config config.yaml --opt-configs opt1.yaml opt2.yaml
 
         # Run specific scenes
-        python comparison_benchmark.py --config config.yaml --scenes garden,bicycle
+        python comparison_benchmark.py --benchmark-config config.yaml --scenes garden,bicycle --opt-configs opt1.yaml opt2.yaml
 
         # List available scenes
-        python comparison_benchmark.py --config config.yaml --list-scenes
+        python comparison_benchmark.py --benchmark-config config.yaml --list-scenes
 
         # Generate plots from existing results
         python comparison_benchmark.py --scenes garden,bicycle --plot-only
@@ -1497,16 +1400,22 @@ def main():
 
     parser = argparse.ArgumentParser(description="Simplified Comparative Benchmark")
     parser.add_argument(
-        "--config", default="benchmark_config.yaml", help="Path to benchmark config YAML (required unless --plot-only)"
+        "--benchmark-config",
+        default="benchmark_config.yaml",
+        help="Path to benchmark config YAML (required unless --plot-only)",
     )
     parser.add_argument(
-        "--scenes", help="Comma-separated list of scene names to benchmark (default: all scenes from config)"
+        "--opt-configs",
+        nargs="+",
+        help="Space separated list of optimization config YAML files to use (required unless --plot-only)",
+    )
+    parser.add_argument(
+        "--scenes", nargs="*", help="Space separated list of scene names to benchmark (default: all scenes from config)"
     )
     parser.add_argument("--result-dir", default="results/benchmark", help="Results directory")
     parser.add_argument("--train-only", action="store_true", help="Only run training")
     parser.add_argument("--eval-only", action="store_true", help="Only run evaluation")
     parser.add_argument("--plot-only", action="store_true", help="Only generate plots from existing results")
-    parser.add_argument("--frameworks", default="fvdb,gsplat", help="Comma-separated list of frameworks to run")
     parser.add_argument("--log-level", default="INFO", help="Logging level")
     parser.add_argument("--list-scenes", action="store_true", help="List available scenes from config and exit")
 
@@ -1517,36 +1426,33 @@ def main():
 
     # Load config (only needed if not plot-only)
     if not args.plot_only:
-        if not args.config:
-            parser.error("--config is required unless --plot-only is specified")
-        config = load_config(args.config)
+        if not args.benchmark_config:
+            parser.error("--benchmark-config is required unless --plot-only is specified")
+        benchmark_config = load_config(args.benchmark_config)
 
         # Handle --list-scenes option
         if args.list_scenes:
-            available_scenes = get_available_scenes(config)
+            available_scenes = get_available_scenes(benchmark_config)
             print("Available scenes in config:")
             for scene in available_scenes:
                 print(f"  - {scene}")
             sys.exit(0)
     else:
-        config = None
+        benchmark_config = None
 
     # Parse scenes
     if args.scenes:
         # Use scenes from command line
-        scenes = [s.strip() for s in args.scenes.split(",")]
-    elif not args.plot_only and config:
+        scenes = args.scenes
+    elif not args.plot_only and benchmark_config:
         # Use all scenes from config
-        scenes = get_available_scenes(config)
+        scenes = get_available_scenes(benchmark_config)
         if not scenes:
             parser.error("No scenes found in config file")
         logging.info(f"Using all scenes from config: {', '.join(scenes)}")
     else:
         # For plot-only mode without config, scenes must be specified
         parser.error("--scenes is required for --plot-only mode when no config is provided")
-
-    # Parse frameworks
-    frameworks = [f.strip() for f in args.frameworks.split(",")]
 
     # Create results directory
     result_dir = Path(args.result_dir)
@@ -1557,9 +1463,9 @@ def main():
         logging.info(f"Processing scene: {scene_name}")
 
         if not args.plot_only:
-            if config is None:
+            if benchmark_config is None:
                 parser.error("Config is required for training/evaluation")
-            scene_info = get_scene_info(scene_name, config)
+            scene_info = get_scene_info(scene_name, benchmark_config)
         else:
             scene_info = {"name": scene_name}
 
@@ -1586,22 +1492,37 @@ def main():
 
         # Run training
         if not args.eval_only:
-            if "fvdb" in frameworks and config is not None:
-                fvdb_results = run_fvdb_training(scene_info, str(result_dir), config)
+            training_results = {}
+            if not args.opt_configs:
+                parser.error("--opt-configs is required unless --plot-only or --eval-only is specified")
 
-            if "gsplat" in frameworks and config is not None:
-                gsplat_results = run_gsplat_training(scene_info, str(result_dir), config)
+            for opt_config_path in args.opt_configs:
+                opt_config = load_config(opt_config_path)
+                framework = opt_config["framework"]
+                name = opt_config.get("name", framework)
+                if framework == "fvdb":
+                    fvdb_results = run_fvdb_training(
+                        scene_info,
+                        str(result_dir),
+                        Path(args.benchmark_config),
+                        Path(opt_config_path),
+                        name,
+                    )
+                    training_results[opt_config_path] = fvdb_results
+
+                elif framework == "gsplat":
+                    raise NotImplementedError("GSplat training not implemented in this script")
+                    # gsplat_results = run_gsplat_training(scene_info, str(result_dir), opt_config)
 
         # Run evaluation
-        if not args.train_only and config is not None:
-            eval_results = run_evaluation(scene_info, str(result_dir), config)
+        if not args.train_only and benchmark_config is not None:
+            eval_results = run_evaluation(scene_info, str(result_dir), benchmark_config)
 
         # Generate comparison report
         if fvdb_results or gsplat_results:
             generate_comparison_report(
                 scene_name,
-                fvdb_results or {"success": False, "total_time": 0, "metrics": {}},
-                gsplat_results or {"success": False, "total_time": 0, "metrics": {}},
+                training_results,
                 eval_results,
                 str(result_dir),
             )

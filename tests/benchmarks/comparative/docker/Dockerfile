@@ -10,6 +10,7 @@ ENV PATH="/opt/conda/bin:$PATH"
 # Install system dependencies for building
 RUN apt-get update && apt-get install -y \
     build-essential \
+    pkg-config \
     wget \
     gnupg2 \
     # cmake \
