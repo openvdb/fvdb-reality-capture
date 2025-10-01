@@ -859,6 +859,7 @@ class SceneOptimizationRunner:
         log_images_to_tensorboard: bool = False,
         save_eval_images: bool = False,
         save_results: bool = True,
+        dataset_type: Literal["colmap", "simple_directory"] = "colmap",
     ) -> "SceneOptimizationRunner":
         """
         Create a `Runner` instance for a new training run.
@@ -915,7 +916,12 @@ class SceneOptimizationRunner:
             transforms.append(CropScene(crop_bbox))
         transform = Compose(*transforms)
 
-        sfm_scene: SfmScene = SfmScene.from_colmap(dataset_path)
+        if dataset_type == "colmap":
+            sfm_scene: SfmScene = SfmScene.from_colmap(dataset_path)
+        elif dataset_type == "simple_directory":
+            sfm_scene: SfmScene = SfmScene.from_simple_directory(dataset_path)
+        else:
+            raise ValueError(f"Unsupported dataset_type {dataset_type}")
         sfm_scene = transform(sfm_scene)
 
         indices = np.arange(sfm_scene.num_images)
