@@ -16,7 +16,7 @@ import viser
 import viser.transforms as vt
 
 from .client_thread_view import ClientThreadRenderingView
-
+from fvdb import GaussianSplat3d
 
 class ClientRenderThreadInterrupted(Exception):
     pass
@@ -72,10 +72,10 @@ class ThreadLocalCamera(object):
         position (np.ndarray): Position of the camera in world coordinates.
         near (float): Near clipping plane distance.
         far (float): Far clipping plane distance.
-        camera_model (Literal["perspective", "orthographic"]): The camera model used for rendering.
-            Defaults to "perspective". This is used to determine how the camera projects points in
+        camera_model (GaussianSplat3d.ProjectionType): The camera model used for rendering.
+            Defaults to "PERSPECTIVE. This is used to determine how the camera projects points in
             3D space onto the 2D image plane.
-            Currently, we only support "perspective" cameras because viser does not support orthographic cameras.
+            Currently, we only support perspective cameras because viser does not support orthographic cameras.
     """
 
     fov: float
@@ -84,7 +84,7 @@ class ThreadLocalCamera(object):
     position: np.ndarray
     near: float
     far: float
-    camera_model: Literal["perspective", "orthographic"] = "perspective"
+    camera_model: GaussianSplat3d.ProjectionType = GaussianSplat3d.ProjectionType.PERSPECTIVE
 
     @staticmethod
     def from_viser_camera(camera: viser.CameraHandle) -> "ThreadLocalCamera":

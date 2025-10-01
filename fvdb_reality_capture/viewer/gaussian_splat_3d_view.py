@@ -149,7 +149,7 @@ class GaussianSplat3dView(ClientThreadRenderingView):
         img_height: int,
         near: float,
         far: float,
-        camera_model: str,
+        camera_model: GaussianSplat3d.ProjectionType,
     ) -> tuple[torch.Tensor | None, torch.Tensor | None]:
         """
         Render the Gaussian scene associated with this view.
@@ -186,7 +186,7 @@ class GaussianSplat3dView(ClientThreadRenderingView):
                 img_height,
                 near,
                 far,
-                camera_model,  # Always "perspective" for now.
+                camera_model,  # Always PERSPECTIVE for now.
                 self.sh_degree,
                 self.tile_size,
                 self.min_radius_2d,
@@ -208,7 +208,7 @@ class GaussianSplat3dView(ClientThreadRenderingView):
                 img_height,
                 near,
                 far,
-                camera_model,  # Always "perspective" for now.
+                camera_model,  # Always PERSPECTIVE for now.
                 self.sh_degree,
                 self.tile_size,
                 self.min_radius_2d,
@@ -227,7 +227,7 @@ class GaussianSplat3dView(ClientThreadRenderingView):
                 img_height,
                 near,
                 far,
-                camera_model,  # Always "perspective" for now.
+                camera_model,  # Always PERSPECTIVE for now.
                 self.sh_degree,
                 self.tile_size,
                 self.min_radius_2d,
