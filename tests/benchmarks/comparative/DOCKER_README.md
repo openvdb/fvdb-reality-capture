@@ -75,7 +75,7 @@ docker logs fvdb-benchmark-blackwell
 ```
 
 Open an interactive bash shell in the container:
-```
+```bash
 docker compose -f docker/docker-compose.yml --env-file docker/env.blackwell exec benchmark bash
 ```
 
