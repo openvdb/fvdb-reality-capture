@@ -32,6 +32,9 @@ def save_report_for_run(scene_name: str, training_results: dict[str, Any], outpu
         training_results (Dict): A dictionary containing training results for each configuration.
         eval_results (Dict): A dictionary containing evaluation results.
         result_dir (str): The directory to save the report.
+
+    Returns:
+        None
     """
     report_file_path = output_directory / f"{scene_name}_comparison_report.json"
 
@@ -88,6 +91,8 @@ def save_summary_report(scenes: list[str], result_path: pathlib.Path) -> None:
         scenes (list[str]): List of scene names to include in the summary.
         result_dir (str): Directory containing the individual scene reports.
 
+    Returns:
+        None
     """
 
     # Create summary directory
@@ -95,17 +100,9 @@ def save_summary_report(scenes: list[str], result_path: pathlib.Path) -> None:
     summary_dir.mkdir(parents=True, exist_ok=True)
 
     # A dictionary to hold data for plotting
-    # This function generates a grouped bar chart for each metric
-    # Metrics: total_time, training_time, psnr, ssim, num_gaussians
-    # Each group is a scene, each bar within a group is a config corresponding to a particular run
-    # The dictionary has the format:
-    # plot_dict = {
-    #     "total_time": {config1: [scene1_time, scene2_time, ...], config2: [...], ...},
-    #     "training_time": {...},
-    #     "psnr": {...},
-    #     "ssim": {...},
-    #     "num_gaussians": {...},
-    # }
+    # This function is used to generate grouped bar charts for each metric
+    # The dictionary has string keys for each metric with values
+    # plot_dict[metric] = {config1: [scene1_value, scene2_value, ...], config2: [...], ...}
     plot_dict = {
         "total_time": {},
         "training_time": {},
