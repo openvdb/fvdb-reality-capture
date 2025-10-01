@@ -108,8 +108,11 @@ jobs:
 
       - name: Clone fvdb
         run: |
+          echo "Cloning fvdb"
+          pwd
           git clone https://github.com/openvdb/fvdb.git
           cd fvdb
+          pwd
 
       - name: Set up fvdb Conda env
         uses: mamba-org/setup-micromamba@v2
@@ -120,11 +123,15 @@ jobs:
 
       - name: Build fvdb
         run: |
+          echo "Building fvdb"
+          pwd
           micromamba activate fvdb
           ./build.sh install verbose --cuda-arch-list '8.9+PTX'
 
       - name: Build fvdb-reality-capture
         run: |
+          echo "Building fvdb-reality-capture"
+          pwd
           cd ..
           micromamba activate fvdb
           pip install -e .
