@@ -214,15 +214,15 @@ docker-compose -f docker/docker-compose.yml --env-file docker/env.standard exec 
 To rebuild the Docker image after changes:
 
 ```bash
-# For standard GPUs
-docker-compose -f docker/docker-compose.yml --env-file docker/env.standard down
-docker-compose -f docker/docker-compose.yml --env-file docker/env.standard build --no-cache
-docker-compose -f docker/docker-compose.yml --env-file docker/env.standard up -d
+# For pre-Blackwell GPUs
+docker compose -f docker/docker-compose.yml --env-file docker/env.standard down
+docker compose -f docker/docker-compose.yml --env-file docker/env.standard build --no-cache
+docker compose -f docker/docker-compose.yml --env-file docker/env.standard up -d
 
 # For Blackwell GPUs
-docker-compose -f docker/docker-compose.yml --env-file docker/env.blackwell down
-docker-compose -f docker/docker-compose.yml --env-file docker/env.blackwell build --no-cache
-docker-compose -f docker/docker-compose.yml --env-file docker/env.blackwell up -d
+docker compose -f docker/docker-compose.yml --env-file docker/env.blackwell down
+docker compose -f docker/docker-compose.yml --env-file docker/env.blackwell build --no-cache
+docker compose -f docker/docker-compose.yml --env-file docker/env.blackwell up -d
 ```
 
 ### Adding Dependencies
