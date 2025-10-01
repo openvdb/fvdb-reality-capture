@@ -44,15 +44,38 @@ docker compose -f docker/docker-compose.yml --env-file docker/env.blackwell buil
 
 ### 2. Run the Container
 
-For pre-Blackwell GPUs:
+#### Pre-Blackwell GPUs:
+
 ```bash
 docker compose -f docker/docker-compose.yml --env-file docker/env.standard up -d
+```
+
+After starting, the fvdb build will continue in the background. Check its status with:
+
+```bash
+docker logs fvdb-benchmark
+```
+
+Open an interactive bash shell in the container:
+
+```bash
 docker compose -f docker/docker-compose.yml --env-file docker/env.standard exec benchmark bash
 ```
 
-For Blackwell GPUs:
+#### Blackwell GPUs:
+
 ```bash
 docker compose -f docker/docker-compose.yml --env-file docker/env.blackwell up -d
+```
+
+After starting, the fvdb build will continue in the background. Check its status with:
+
+```bash
+docker logs fvdb-benchmark-blackwell
+```
+
+Open an interactive bash shell in the container:
+```
 docker compose -f docker/docker-compose.yml --env-file docker/env.blackwell exec benchmark bash
 ```
 
