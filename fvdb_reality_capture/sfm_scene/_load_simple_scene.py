@@ -46,7 +46,7 @@ def load_simple_scene(data_path: pathlib.Path):
         raise NotADirectoryError(f"images/ is not a directory in {data_path}")
     points_path = data_path / "points.ply"
     if not points_path.exists():
-        raise FileNotFoundError(f"points.ply not found in {data_path}")
+        raise FileNotFoundError(f"pointcloud.ply not found in {data_path}")
 
     with open(data_path / "cameras.json", "r") as f:
         cameras = json.load(f)
