@@ -29,7 +29,7 @@ def run_fvdb_training(
         opt_config_path (Path): Path to the optimization configuration file.
         name (str): Name of the training run.
     """
-    logging.info(f"Starting FVDB training for scene: {scene_name}")
+    logging.info(f"Starting FVDB training for scene: {scene_name} with config: {opt_config_path.name}")
 
     # Create results directory
     fvdb_result_dir = results_path / f"{scene_name}_{name}"
@@ -70,11 +70,11 @@ def run_fvdb_training(
         str(temp_config_path.absolute()),
     ]
 
-    # Run from fvdb-realitycapture repo root (contains tests/benchmarks/generate_benchmark_checkpoints.py)
+    # Run from fvdb-realit-ycapture repo root (contains tests/benchmarks/generate_benchmark_checkpoints.py)
     repo_root = None
     for candidate in [
         (pathlib.Path(__file__).resolve().parents[3] if len(pathlib.Path(__file__).resolve().parents) >= 4 else None),
-        pathlib.Path("/workspace/fvdb-realitycapture"),
+        pathlib.Path("/workspace/openvdb/fvdb-reality-capture"),
         pathlib.Path("/workspace/benchmark").parent,  # if running from /workspace/benchmark
     ]:
         if (
@@ -86,7 +86,7 @@ def run_fvdb_training(
             break
     if repo_root is None:
         raise FileNotFoundError(
-            "Could not locate fvdb-realitycapture repo root containing tests/benchmarks/generate_benchmark_checkpoints.py"
+            "Could not locate fvdb-reality-capture repo root containing tests/benchmarks/generate_benchmark_checkpoints.py"
         )
     exit_code, stdout, stderr = run_command(cmd, cwd=str(repo_root), log_file=str(log_file))
 
