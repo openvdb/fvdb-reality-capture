@@ -105,6 +105,12 @@ jobs:
           git checkout $TARGET_BRANCH
           git merge --no-ff $CURRENT_COMMIT --message "CI: Simulating merge of $CURRENT_COMMIT into $TARGET_BRANCH"
 
+
+      - name: Clone fvdb
+        run: |
+          git clone https://github.com/openvdb/fvdb.git
+          cd fvdb
+
       - name: Set up fvdb Conda env
         uses: mamba-org/setup-micromamba@v2
         with:
@@ -112,8 +118,14 @@ jobs:
           environment-name: fvdb
           environment-file: env/dev_environment.yml
 
+      - name: Build fvdb
+        run: |
+          micromamba activate fvdb
+          ./build.sh install verbose --cuda-arch-list '8.9+PTX'
+
       - name: Build fvdb-reality-capture
         run: |
+          cd ..
           micromamba activate fvdb
           pip install -e .
 
@@ -123,18 +135,6 @@ jobs:
             name: fvdb-reality-capture-test-package
             path: dist/*.whl
             retention-days: 2
-
-      #NOTE: This tar step is here because directly uploading the build directory
-      #      wasn't working due to losing executable permissions on the files.
-      # - name: Tar build directory
-      #   run: tar -cvf fvdb-gtest.tar build/
-
-      # - name: Upload gtests
-      #   uses: actions/upload-artifact@v4
-      #   with:
-      #       name: fvdb-gtest
-      #       path: fvdb-gtest.tar
-      #       retention-days: 2
 
   fvdb-build-stop-runner:
     name: Stop CPU-only EC2 runner for build
