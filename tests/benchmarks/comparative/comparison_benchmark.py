@@ -159,7 +159,7 @@ def save_summary_report(scenes: list[str], result_path: pathlib.Path) -> None:
             }
 
     num_metrics = len(plot_dict)
-    fig, axs = plt.subplots(num_metrics, figsize=(7, 6 * num_metrics), layout="constrained")
+    fig, axs = plt.subplots(num_metrics, figsize=(7, 6 * num_metrics))
     # For each metric, create a grouped bar chart
     for i, (metric, metric_data) in enumerate(plot_dict.items()):
         ax = axs[i]
