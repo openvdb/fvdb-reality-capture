@@ -44,7 +44,7 @@ def load_simple_scene(data_path: pathlib.Path):
         raise FileNotFoundError(f"images/ directory not found in {data_path}")
     if not images_path.is_dir():
         raise NotADirectoryError(f"images/ is not a directory in {data_path}")
-    points_path = data_path / "points.ply"
+    points_path = data_path / "pointcloud.ply"
     if not points_path.exists():
         raise FileNotFoundError(f"pointcloud.ply not found in {data_path}")
 
