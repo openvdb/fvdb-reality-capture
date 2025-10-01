@@ -305,13 +305,6 @@ def main():
 
     setup_signal_handlers()
 
-    # Setup logging
-    logging.basicConfig(
-        level=getattr(logging, args.log_level.upper()),
-        format="%(asctime)s - %(levelname)s - %(message)s",
-        handlers=[logging.StreamHandler(sys.stdout), logging.FileHandler("benchmark.log")],
-    )
-
     # Load config (only needed if not plot-only)
     if not args.benchmark_config:
         parser.error("--benchmark-config is required unless --plot-only is specified")
@@ -328,6 +321,19 @@ def main():
             print(f"  - {scene}")
         sys.exit(0)
 
+    # Create results directory
+    results_path = pathlib.Path(args.result_dir)
+    results_path.mkdir(parents=True, exist_ok=True)
+    print(f"Results will be saved to: {results_path.resolve()}")
+
+    # Setup logging
+    benchmark_log_path = results_path / "benchmark.log"
+    logging.basicConfig(
+        level=getattr(logging, args.log_level.upper()),
+        format="%(asctime)s - %(levelname)s - %(message)s",
+        handlers=[logging.StreamHandler(sys.stdout), logging.FileHandler(benchmark_log_path)],
+    )
+
     # Parse scenes from command line if specified otherwise use all from config
     if args.scenes:
         # Use scenes from command line
@@ -336,10 +342,6 @@ def main():
         # Use all scenes from config
         scenes = available_scenes
         logging.info(f"Using all scenes from config: {', '.join(scenes)}")
-
-    # Create results directory
-    results_path = pathlib.Path(args.result_dir)
-    results_path.mkdir(parents=True, exist_ok=True)
 
     # Process each scene
     for scene_name in scenes:
