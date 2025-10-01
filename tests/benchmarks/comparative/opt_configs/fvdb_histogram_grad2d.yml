@@ -1,0 +1,76 @@
+# An fVDB run which uses a percentile of the 2D gradients to determine a fixed threshold
+# to refine the scene at every refinement step. The histogram is computed only once at the
+# first refinement step.
+framework: fvdb
+name: fvdb_histogram_grad2d
+
+optimization_config:
+  max_epochs: 200
+  max_steps: null
+  eval_at_percent:
+    - 100
+  save_at_percent:
+    - 2
+    - 20
+    - 100
+  update_viewer_every_epochs: -1
+
+  # Optimization parameters
+  batch_size: 1
+  crops_per_image: 1
+  sh_degree: 3
+  increase_sh_degree_every_epoch: 5
+  inintial_opacity: 0.1
+  initial_covariance_scale: 1.0
+  ssim_lambda: 0.2
+  lpips_net: alex
+  opacity_reg: 0.0
+  scale_reg: 0.0
+  random_bkgd: false
+  refine_start_epoch: 3
+  refine_stop_epoch: 100
+  refine_every_epoch: 0.75
+  reset_opacities_every_epoch: 16
+  refine_using_scale2d_stop_epoch: 0
+  ignore_masks: false
+  remove_gaussians_outside_scene_bbox: false
+  clip_max_gaussians_to_memory: true
+  histogram_grad_2d_threshold: true
+  adaptive_grad_2d_threshold: false
+  grad_2d_percentile: 0.9
+  absolute_grad_2d_threshold: -1
+  use_scene_scale_for_refinement: true
+
+  # Pose optimization
+  optimize_camera_poses: true
+  pose_opt_lr: 1.0e-05
+  pose_opt_reg: 1.0e-06
+  pose_opt_lr_decay: 1.0
+  pose_opt_start_epoch: 0
+  pose_opt_stop_epoch: 200
+  pose_opt_init_std: 1.0e-04
+
+  # Gaussian rendering parameters
+  near_plane: 0.01
+  far_plane: 10000000000.0
+  min_radius_2d: 0.0
+  eps_2d: 0.3
+  antialias: false
+  tile_size: 16
+
+training_arguments:
+  image_downsample_factor: 4
+  points_percentile_filter: 0.0
+  normalization_type: pca
+  crop_bbox: null
+  crop_to_points: false
+  min_points_per_image: 5
+
+  device: cuda
+  use_every_n_as_val: 100
+
+  disable_viewer: true
+  log_tensorboard_every: -1
+  log_images_to_tensorboard: false
+  save_results: true
+  save_eval_images: false

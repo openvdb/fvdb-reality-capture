@@ -1033,7 +1033,7 @@ class SceneOptimizationRunner:
 
         # Tensorboard
         self._tensorboard_logger = None
-        if tensorboard_path is not None and optimizer is not None:
+        if tensorboard_path is not None and optimizer is not None and log_tensorboard_every > 0:
             self._tensorboard_logger = TensorboardLogger(
                 log_dir=tensorboard_path,
                 log_every_step=log_tensorboard_every,
@@ -1186,7 +1186,7 @@ class SceneOptimizationRunner:
                     image_height,
                     self.config.near_plane,
                     self.config.far_plane,
-                    "perspective",
+                    GaussianSplat3d.ProjectionType.PERSPECTIVE,
                     sh_degree_to_use,
                     self.config.min_radius_2d,
                     self.config.eps_2d,
@@ -1439,7 +1439,7 @@ class SceneOptimizationRunner:
                 height,
                 self.config.near_plane,
                 self.config.far_plane,
-                "perspective",
+                GaussianSplat3d.ProjectionType.PERSPECTIVE,
                 self.config.sh_degree,
                 self.config.tile_size,
                 self.config.min_radius_2d,

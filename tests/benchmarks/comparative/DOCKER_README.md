@@ -29,28 +29,54 @@ The key differences are:
 
 ### 1. Build the Docker Image
 
+Note: the following `docker` commands use `docker-compose` v2 "plugin" syntax. For older
+`docker-compose` standalone syntax, change `docker compose` to `docker-compose`.
+
 For pre-Blackwell GPUs:
 ```bash
-docker-compose -f docker/docker-compose.yml --env-file docker/env.standard build
+docker compose -f docker/docker-compose.yml --env-file docker/env.standard build
 ```
 
 For Blackwell GPUs (RTX 50xx series):
 ```bash
-docker-compose -f docker/docker-compose.yml --env-file docker/env.blackwell build
+docker compose -f docker/docker-compose.yml --env-file docker/env.blackwell build
 ```
 
 ### 2. Run the Container
 
-For pre-Blackwell GPUs:
+#### Pre-Blackwell GPUs:
+
 ```bash
-docker-compose -f docker/docker-compose.yml --env-file docker/env.standard up -d
-docker-compose -f docker/docker-compose.yml --env-file docker/env.standard exec benchmark bash
+docker compose -f docker/docker-compose.yml --env-file docker/env.standard up -d
 ```
 
-For Blackwell GPUs:
+After starting, the fvdb build will continue in the background. Check its status with:
+
 ```bash
-docker-compose -f docker/docker-compose.yml --env-file docker/env.blackwell up -d
-docker-compose -f docker/docker-compose.yml --env-file docker/env.blackwell exec benchmark bash
+docker logs fvdb-benchmark
+```
+
+Open an interactive bash shell in the container:
+
+```bash
+docker compose -f docker/docker-compose.yml --env-file docker/env.standard exec benchmark bash
+```
+
+#### Blackwell GPUs:
+
+```bash
+docker compose -f docker/docker-compose.yml --env-file docker/env.blackwell up -d
+```
+
+After starting, the fvdb build will continue in the background. Check its status with:
+
+```bash
+docker logs fvdb-benchmark-blackwell
+```
+
+Open an interactive bash shell in the container:
+```bash
+docker compose -f docker/docker-compose.yml --env-file docker/env.blackwell exec benchmark bash
 ```
 
 ### 3. Run Benchmarks
@@ -188,15 +214,15 @@ docker-compose -f docker/docker-compose.yml --env-file docker/env.standard exec 
 To rebuild the Docker image after changes:
 
 ```bash
-# For standard GPUs
-docker-compose -f docker/docker-compose.yml --env-file docker/env.standard down
-docker-compose -f docker/docker-compose.yml --env-file docker/env.standard build --no-cache
-docker-compose -f docker/docker-compose.yml --env-file docker/env.standard up -d
+# For pre-Blackwell GPUs
+docker compose -f docker/docker-compose.yml --env-file docker/env.standard down
+docker compose -f docker/docker-compose.yml --env-file docker/env.standard build --no-cache
+docker compose -f docker/docker-compose.yml --env-file docker/env.standard up -d
 
 # For Blackwell GPUs
-docker-compose -f docker/docker-compose.yml --env-file docker/env.blackwell down
-docker-compose -f docker/docker-compose.yml --env-file docker/env.blackwell build --no-cache
-docker-compose -f docker/docker-compose.yml --env-file docker/env.blackwell up -d
+docker compose -f docker/docker-compose.yml --env-file docker/env.blackwell down
+docker compose -f docker/docker-compose.yml --env-file docker/env.blackwell build --no-cache
+docker compose -f docker/docker-compose.yml --env-file docker/env.blackwell up -d
 ```
 
 ### Adding Dependencies
