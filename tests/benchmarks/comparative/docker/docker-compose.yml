@@ -21,8 +21,7 @@ services:
       - ${CPM_SOURCE_CACHE:?set CPM_SOURCE_CACHE on host}:/workspace/.cache/CPM
       - ../../../../data:/workspace/data
       - ../results:/workspace/results
-      - ../../../../../fvdb:/workspace/fvdb
-      - ../../../../:/workspace/fvdb-realitycapture
+      - ../../../../../:/workspace/openvdb
       - ..:/workspace/benchmark
     ports:
       - "8080:8080" # FVDB viewer
@@ -37,8 +36,7 @@ services:
         git config --global --add safe.directory /workspace/fvdb &&
         git config --global --add safe.directory /workspace/fvdb-realitycapture &&
         echo 'Building FVDB...' &&
-        cd /workspace/fvdb &&
-        echo $PWD &&
+        cd /workspace/openvdb/fvdb-core &&
         source /opt/conda/etc/profile.d/conda.sh &&
         conda activate benchmark &&
         echo 'Conda environment activated, starting build...' &&
