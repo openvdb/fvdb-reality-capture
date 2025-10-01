@@ -119,7 +119,7 @@ jobs:
         with:
           post-cleanup: 'all'
           environment-name: fvdb
-          environment-file: env/dev_environment.yml
+          environment-file: fvdb/env/dev_environment.yml
 
       - name: Build fvdb
         run: |
