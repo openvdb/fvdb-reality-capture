@@ -11,11 +11,9 @@ ENV PATH="/opt/conda/bin:$PATH"
 RUN apt-get update && apt-get install -y \
     build-essential \
     pkg-config \
+    unzip \
     wget \
     gnupg2 \
-    # cmake \
-    # ninja-build \
-    # git \
     && rm -rf /var/lib/apt/lists/*
 
 # Add NVIDIA repository for latest Nsight Systems
