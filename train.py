@@ -29,6 +29,7 @@ def main(
     log_images_to_tensorboard: bool = False,
     save_results: bool = True,
     save_eval_images: bool = False,
+    dataset_type: Literal["colmap", "simple_directory"] = "colmap",
 ):
     logging.basicConfig(level=logging.INFO, format="%(levelname)s : %(message)s")
 
@@ -49,6 +50,7 @@ def main(
         log_images_to_tensorboard=log_images_to_tensorboard,
         save_results=save_results,
         save_eval_images=save_eval_images,
+        dataset_type=dataset_type,
     )
 
     runner.train()
