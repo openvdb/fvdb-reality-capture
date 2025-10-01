@@ -18,6 +18,7 @@ import viser.transforms as vt
 from .client_thread_view import ClientThreadRenderingView
 from fvdb import GaussianSplat3d
 
+
 class ClientRenderThreadInterrupted(Exception):
     pass
 
