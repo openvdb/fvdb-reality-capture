@@ -10,12 +10,12 @@ from typing import Any
 from common import extract_training_metrics, run_command
 
 
-def run_gsplat_training(scene_name: str, result_dir: str, config: dict[str, Any]) -> dict[str, Any]:
+def run_gsplat_training(scene_name: str, result_dir: pathlib.Path, config: dict[str, Any]) -> dict[str, Any]:
     """Run GSplat training using the simplified basic benchmark approach."""
     logging.info(f"Starting GSplat training for scene: {scene_name}")
 
     # Create results directory
-    gsplat_result_dir = pathlib.Path(result_dir) / f"{scene_name}_gsplat"
+    gsplat_result_dir = result_dir / f"{scene_name}_gsplat"
     gsplat_result_dir.mkdir(parents=True, exist_ok=True)
 
     # Create log file for capturing output
