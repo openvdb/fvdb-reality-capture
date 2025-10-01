@@ -70,7 +70,7 @@ def run_fvdb_training(
         str(temp_config_path.absolute()),
     ]
 
-    # Run from fvdb-realit-ycapture repo root (contains tests/benchmarks/generate_benchmark_checkpoints.py)
+    # Run from fvdb-reality-capture repo root (contains tests/benchmarks/generate_benchmark_checkpoints.py)
     repo_root = None
     for candidate in [
         (pathlib.Path(__file__).resolve().parents[3] if len(pathlib.Path(__file__).resolve().parents) >= 4 else None),
