@@ -7,7 +7,7 @@ import sys
 import time
 from typing import Any
 
-from common import extract_training_metrics, run_command
+from ._common import extract_training_metrics, run_command
 
 
 def run_gsplat_training(scene_name: str, result_dir: pathlib.Path, config: dict[str, Any]) -> dict[str, Any]:

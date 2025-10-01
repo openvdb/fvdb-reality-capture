@@ -1,4 +1,8 @@
+# An fVDB run which uses a fixed threshold on the 2D gradients to refine the scene
+# at every refinement step.
+# This matches the default behavior of gsplat.
 framework: fvdb
+name: fvdb_fixed_grad2d
 
 optimization_config:
   max_epochs: 200

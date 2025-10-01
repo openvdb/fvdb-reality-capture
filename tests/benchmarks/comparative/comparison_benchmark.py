@@ -19,9 +19,7 @@ from typing import Any
 
 import matplotlib.pyplot as plt
 import numpy as np
-from common import load_config, setup_signal_handlers
-from run_fvdb_training import run_fvdb_training
-from run_gsplat_training import run_gsplat_training
+from benchmark_utils import load_config, run_fvdb_training, run_gsplat_training
 
 
 def save_report_for_run(scene_name: str, training_results: dict[str, Any], output_directory: pathlib.Path) -> None:
@@ -302,8 +300,6 @@ def main():
     parser.add_argument("--list-scenes", action="store_true", help="List available scenes from config and exit")
 
     args = parser.parse_args()
-
-    setup_signal_handlers()
 
     # Load config (only needed if not plot-only)
     if not args.benchmark_config:

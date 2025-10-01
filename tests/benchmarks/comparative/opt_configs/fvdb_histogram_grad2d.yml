@@ -1,3 +1,6 @@
+# An fVDB run which uses a percentile of the 2D gradients to determine a fixed threshold
+# to refine the scene at every refinement step. The histogram is computed only once at the
+# first refinement step.
 framework: fvdb
 
 optimization_config:

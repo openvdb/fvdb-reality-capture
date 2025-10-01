@@ -1,3 +1,7 @@
+# The default GSplat configuration parameters.
+framework: gsplat
+name: gsplat_default
+
 training:
   config:
     antialias: false

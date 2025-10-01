@@ -8,7 +8,8 @@ import time
 from typing import Any
 
 import yaml
-from common import extract_training_metrics, run_command
+
+from ._common import extract_training_metrics, run_command
 
 
 def run_fvdb_training(

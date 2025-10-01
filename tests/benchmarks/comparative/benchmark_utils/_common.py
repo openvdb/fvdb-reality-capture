@@ -14,6 +14,37 @@ import yaml
 active_processes = []
 
 
+def setup_signal_handlers():
+    """
+    Set up signal handlers to ensure all subprocesses are killed on interrupt.
+    This ensures that if the main script is interrupted (e.g., via Ctrl+C),
+    all child processes are also terminated to prevent orphaned processes.
+    """
+
+    def signal_handler(signum, frame):
+        global active_processes
+        logging.info("Received interrupt signal, shutting down immediately...")
+
+        # Force kill all tracked processes immediately
+        for process_info in active_processes:
+            try:
+                if process_info["process"].poll() is None:  # Process is still running
+                    logging.info(f"Force killing benchmark process: {process_info['name']}")
+                    process_info["process"].kill()
+            except Exception as e:
+                logging.warning(f"Error killing process {process_info['name']}: {e}")
+
+        # Exit immediately without waiting
+        logging.info("Exiting immediately...")
+        os._exit(1)  # Use os._exit to bypass cleanup handlers
+
+    signal.signal(signal.SIGINT, signal_handler)
+    signal.signal(signal.SIGTERM, signal_handler)
+
+
+setup_signal_handlers()
+
+
 def load_config(config_path: str | pathlib.Path) -> dict[str, Any]:
     """
     Load a YAML configuration file.
@@ -128,34 +159,6 @@ def extract_training_metrics(output: str, total_time: float) -> dict[str, Any]:
         metrics["min_loss"] = min(metrics["loss_values"])
 
     return metrics
-
-
-def setup_signal_handlers():
-    """
-    Set up signal handlers to ensure all subprocesses are killed on interrupt.
-    This ensures that if the main script is interrupted (e.g., via Ctrl+C),
-    all child processes are also terminated to prevent orphaned processes.
-    """
-
-    def signal_handler(signum, frame):
-        global active_processes
-        logging.info("Received interrupt signal, shutting down immediately...")
-
-        # Force kill all tracked processes immediately
-        for process_info in active_processes:
-            try:
-                if process_info["process"].poll() is None:  # Process is still running
-                    logging.info(f"Force killing benchmark process: {process_info['name']}")
-                    process_info["process"].kill()
-            except Exception as e:
-                logging.warning(f"Error killing process {process_info['name']}: {e}")
-
-        # Exit immediately without waiting
-        logging.info("Exiting immediately...")
-        os._exit(1)  # Use os._exit to bypass cleanup handlers
-
-    signal.signal(signal.SIGINT, signal_handler)
-    signal.signal(signal.SIGTERM, signal_handler)
 
 
 def run_command(

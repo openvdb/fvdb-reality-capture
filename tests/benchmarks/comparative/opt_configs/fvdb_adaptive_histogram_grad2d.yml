@@ -1,4 +1,7 @@
+# An fVDB run which uses a percentile of the 2D gradients to adaptively refine the scene
+# at every refinement step.
 framework: fvdb
+name: fvdb_adaptive_histogram_grad2d
 
 optimization_config:
   max_epochs: 200
