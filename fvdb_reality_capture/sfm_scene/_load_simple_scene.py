@@ -94,7 +94,7 @@ def load_simple_scene(data_path: pathlib.Path):
                 camera_metadata=camera_metadata[camera_id],
                 image_path=image_path,
                 mask_path="",
-                point_indices=np.array([], dtype=np.int32),
+                point_indices=None,
                 image_id=i,
             )
         )
@@ -109,6 +109,7 @@ def load_simple_scene(data_path: pathlib.Path):
     if colors.shape[0] != points.shape[0]:
         raise ValueError(f"Number of colors does not match number of points in {points_path}")
     errors = np.zeros((points.shape[0],), dtype=np.float32)
+    colors = colors[:, :3]  # Drop alpha channel if present
 
     cache = SfmCache.get_cache(data_path / "_cache", "sfm_dataset_cache", "Cache for SFM dataset")
 
