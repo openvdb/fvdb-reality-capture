@@ -2,6 +2,7 @@
 # to refine the scene at every refinement step. The histogram is computed only once at the
 # first refinement step.
 framework: fvdb
+name: fvdb_histogram_grad2d
 
 optimization_config:
   max_epochs: 200
