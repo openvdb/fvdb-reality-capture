@@ -1210,7 +1210,7 @@ class SceneOptimizationRunner:
             shuffle=True,
             num_workers=0,
             persistent_workers=False,
-            pin_memory=False,
+            pin_memory=True,
         )
 
         # Calculate total steps, allowing max_steps to override the computed value
