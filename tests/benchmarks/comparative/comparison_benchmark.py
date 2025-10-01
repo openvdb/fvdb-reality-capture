@@ -345,8 +345,8 @@ def main():
         logging.info(f"Using all scenes from config: {', '.join(scenes)}")
 
     # Create results directory
-    result_dir = pathlib.Path(args.result_dir)
-    result_dir.mkdir(parents=True, exist_ok=True)
+    results_path = pathlib.Path(args.result_dir)
+    results_path.mkdir(parents=True, exist_ok=True)
 
     # Process each scene
     for scene_name in scenes:
@@ -381,7 +381,7 @@ def main():
             if framework == "fvdb":
                 fvdb_results = run_fvdb_training(
                     scene_name,
-                    result_dir,
+                    results_path,
                     pathlib.Path(args.benchmark_config),
                     pathlib.Path(opt_config_path),
                     config_name,
@@ -390,20 +390,20 @@ def main():
 
             elif framework == "gsplat":
                 raise NotImplementedError("GSplat training not implemented in this script")
-                # gsplat_results = run_gsplat_training(scene_info, str(result_dir), opt_config)
+                # gsplat_results = run_gsplat_training(scene_name, result_dir, opt_config)
 
         # Generate summary report for each optimization config that was run
         if training_results:
             save_report_for_run(
                 scene_name=scene_name,
                 training_results=training_results,
-                output_directory=result_dir,
+                output_directory=results_path,
             )
 
         logging.info(f"Completed benchmark for {scene_name}")
 
     # Generate summary charts if multiple scenes were processed
-    save_summary_report(scenes, result_dir)
+    save_summary_report(scenes, results_path)
 
     logging.info("All benchmarks completed!")
 
