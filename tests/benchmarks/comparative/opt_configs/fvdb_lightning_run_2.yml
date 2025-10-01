@@ -1,8 +1,8 @@
 framework: fvdb
-name: fvdb_lightning_run
+name: fvdb_lightning_run_2
 
 optimization_config:
-  max_epochs: 1
+  max_epochs: 5
   max_steps: null
   eval_at_percent:
     - 100

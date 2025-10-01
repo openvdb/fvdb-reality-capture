@@ -12,6 +12,7 @@ import argparse
 import json
 import logging
 import os
+import pathlib
 import signal
 import subprocess
 import sys
@@ -665,15 +666,25 @@ def run_evaluation(scene_info: Dict, result_dir: str, config: Dict) -> Dict:
     return results
 
 
-def generate_comparison_report(scene: str, training_results: Dict, eval_results: Dict, result_dir: str) -> None:
-    """Generate a comparison report."""
-    report_file = Path(result_dir) / f"{scene}_comparison_report.json"
+def save_report_for_run(
+    scene_name: str, training_results: Dict, eval_results: Dict, output_directory: pathlib.Path
+) -> None:
+    """
+    Generate a JSON report summarizing the training and evaluation results for a given scene.
+
+    Args:
+        scene_name (str): The name of the scene.
+        training_results (Dict): A dictionary containing training results for each configuration.
+        eval_results (Dict): A dictionary containing evaluation results.
+        result_dir (str): The directory to save the report.
+    """
+    report_file_path = output_directory / f"{scene_name}_comparison_report.json"
 
     reports = {}
     for config_name, result in training_results.items():
         report = {
             "config_name": config_name,
-            "scene": scene,
+            "scene": scene_name,
             "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
             "training": result,
             "evaluation": eval_results,
@@ -684,15 +695,15 @@ def generate_comparison_report(scene: str, training_results: Dict, eval_results:
         }
         reports[config_name] = report
 
-    with open(report_file, "w") as f:
+    with open(report_file_path, "w") as f:
         json.dump(reports, f, indent=2)
 
-    # Print summary
+    # Log summary to console
     logging.info("=== COMPARISON SUMMARY ===")
     for i, (config_name, report) in enumerate(reports.items()):
         logging.info(f"Config: {config_name}:")
         logging.info("----------------------------")
-        logging.info(f" Scene: {scene}")
+        logging.info(f" Scene: {scene_name}")
 
         total_time = report["total_time"]
         training_time = report.get("training_time", total_time)
@@ -709,7 +720,7 @@ def generate_comparison_report(scene: str, training_results: Dict, eval_results:
         if i < len(reports) - 1:
             logging.info("----------------------------\n")
 
-    logging.info(f"Detailed report saved to: {report_file}")
+    logging.info(f"Detailed report saved to: {report_file_path}")
 
 
 def load_existing_results(result_dir: str, scene: str) -> Tuple[Optional[Dict], Optional[Dict]]:
@@ -1234,8 +1245,19 @@ def generate_summary_charts(scenes: List[str], result_dir: str) -> None:
     # Create summary directory
     summary_dir = Path(result_dir) / "summary"
     summary_dir.mkdir(parents=True, exist_ok=True)
-    print(f"HERE!!!! {summary_dir}")
 
+    # A dictionary to hold data for plotting
+    # This function generates a grouped bar chart for each metric
+    # Metrics: total_time, training_time, psnr, ssim, num_gaussians
+    # Each group is a scene, each bar within a group is a config corresponding to a particular run
+    # The dictionary has the format:
+    # plot_dict = {
+    #     "total_time": {config1: [scene1_time, scene2_time, ...], config2: [...], ...},
+    #     "training_time": {...},
+    #     "psnr": {...},
+    #     "ssim": {...},
+    #     "num_gaussians": {...},
+    # }
     plot_dict = {
         "total_time": {},
         "training_time": {},
@@ -1259,78 +1281,83 @@ def generate_summary_charts(scenes: List[str], result_dir: str) -> None:
             logging.warning(f"Could not load report for {scene}: {e}")
             continue
 
-        for config_path, report in report.items():
+        for opt_config_name, report in report.items():
             for metric in plot_dict.keys():
-                if config_path not in plot_dict[metric]:
-                    plot_dict[metric][config_path] = []
+                if opt_config_name not in plot_dict[metric]:
+                    plot_dict[metric][opt_config_name] = []
 
-            plot_dict["total_time"][config_path].append(report.get("total_time", 0))
-            plot_dict["training_time"][config_path].append(report.get("training_time", report.get("total_time", 0)))
-            plot_dict["psnr"][config_path].append(report.get("training", {}).get("metrics", {}).get("psnr", 0))
-            plot_dict["ssim"][config_path].append(report.get("training", {}).get("metrics", {}).get("ssim", 0))
-            plot_dict["num_gaussians"][config_path].append(
+            plot_dict["total_time"][opt_config_name].append(report.get("total_time", 0))
+            plot_dict["training_time"][opt_config_name].append(report.get("training_time", report.get("total_time", 0)))
+            plot_dict["psnr"][opt_config_name].append(report.get("training", {}).get("metrics", {}).get("psnr", 0))
+            plot_dict["ssim"][opt_config_name].append(report.get("training", {}).get("metrics", {}).get("ssim", 0))
+            plot_dict["num_gaussians"][opt_config_name].append(
                 report.get("training", {}).get("metrics", {}).get("final_gaussian_count", 0)
             )
 
-    #####
-    # List of plots:
-    #  1. Training time comparison (grouped bar chart)
-    #  2. PSNR comparison (grouped bar chart)
-    #  3. Gaussian count comparison (grouped bar chart)
-    #####
-
-    for metric, metric_data in plot_dict.items():
-        if metric == "config_names":
-            continue
-        fig, ax = plt.subplots(layout="constrained")
+    num_metrics = len(plot_dict)
+    fig, axs = plt.subplots(1, num_metrics, figsize=(6 * num_metrics, 6), layout="constrained")
+    # For each metric, create a grouped bar chart
+    for i, (metric, metric_data) in enumerate(plot_dict.items()):
+        ax = axs[i]
+        ax.grid(True)
         x = np.arange(len(scenes))  # the label locations
         width = 0.25  # the width of the bars
-        multiplier = 0
-        # For each group, we plot N bars where N is the number of configs
-        for i, (scene, measurement) in enumerate(metric_data.items()):
-            print(metric, scene, measurement)
+        multiplier = 0  # Used to offset bars within a group
+        # For each optimizer config, we plot a bar for each scene (one bar per group)
+        for i, (opt_config_name, measurement) in enumerate(metric_data.items()):
             offset = width * multiplier
             assert isinstance(measurement, list)
-            rects = ax.bar(x + offset, measurement, width, label=scene)
+            rects = ax.bar(x + offset, measurement, width, label=opt_config_name)
             ax.bar_label(rects, padding=3)
             multiplier += 1
-
         # Add some text for labels, title and custom x-axis tick labels, etc.
         ax.set_ylabel(f"{metric}")
-        ax.set_title(f"{metric.replace('_', ' ').title()} Comparison Across Scenes")
+        ax.set_title(f"{metric.replace('_', ' ').title()}")
         ax.set_xticks(x + width, scenes)
-        ax.legend(loc="upper left")
-        # ax.set_ylim(0, 250)
 
-        plt.tight_layout(pad=3.0)
-        plt.savefig(summary_dir / f"summary_comparison_{metric}.png", dpi=300, bbox_inches="tight", pad_inches=0.5)
-        plt.close()
+    handles, labels = ax.get_legend_handles_labels()
+    fig.legend(handles, labels, loc="upper center")
+    plt.tight_layout(pad=3.0)
+    plt.savefig(summary_dir / f"summary_comparison.png", dpi=300, bbox_inches="tight", pad_inches=0.5)
+    plt.close()
 
     # Print summary statistics
-    # print("\n" + "=" * 80)
-    # print("SUMMARY STATISTICS ACROSS ALL SCENES")
-    # print("=" * 80)
+    def _log_statistics(metric_name: str, unit: str):
+        for config in plot_dict[metric_name].keys():
+            _values = plot_dict[metric_name][config]
+            _values_mean = np.mean(_values)
+            _values_std = np.std(_values)
+            _values_median = np.median(_values)
+            _values_min = np.min(_values)
+            _values_max = np.max(_values)
+            logging.info(
+                f"  {config}: Mean {_values_mean:.1f}{unit} ± {_values_std:.1f}{unit}, Median {_values_median:.1f}{unit}, Min {_values_min:.1f}{unit}, Max {_values_max:.1f}{unit}"
+            )
 
-    # print(f"Average Training Time:")
-    # print(f"  FVDB:   {df['fvdb_time'].mean():.1f}s ± {df['fvdb_time'].std():.1f}s")
-    # print(f"  GSplat: {df['gsplat_time'].mean():.1f}s ± {df['gsplat_time'].std():.1f}s")
-    # print(f"  Average Speedup: {df['speedup'].mean():.2f}x")
+    logging.info("=" * 80)
+    logging.info("SUMMARY STATISTICS ACROSS ALL SCENES")
+    logging.info("=" * 80)
 
-    # print(f"\nAverage PSNR:")
-    # print(f"  FVDB:   {df['fvdb_psnr'].mean():.2f}dB ± {df['fvdb_psnr'].std():.2f}dB")
-    # print(f"  GSplat: {df['gsplat_psnr'].mean():.2f}dB ± {df['gsplat_psnr'].std():.2f}dB")
-    # print(f"  Average PSNR Difference: {df['psnr_diff'].mean():+.2f}dB")
+    logging.info(f"Total Time:")
+    _log_statistics("total_time", "s")
 
-    # print(f"\nAverage Final Gaussian Count:")
-    # print(f"  FVDB:   {df['fvdb_gaussians'].mean():,.0f} ± {df['fvdb_gaussians'].std():,.0f}")
-    # print(f"  GSplat: {df['gsplat_gaussians'].mean():,.0f} ± {df['gsplat_gaussians'].std():,.0f}")
-    # print(f"  Average Gaussian Ratio: {df['gaussian_ratio'].mean():.2f}x")
+    logging.info(f"Training Time:")
+    _log_statistics("training_time", "s")
 
-    # print(f"\nData exported to:")
-    # print(f"  CSV: {summary_dir / 'summary_data.csv'}")
-    # print(f"  JSON: {summary_dir / 'summary_data.json'}")
-    # print(f"  Plot: {summary_dir / 'summary_comparison.png'}")
-    # print("=" * 80)
+    logging.info(f"PSNR:")
+    _log_statistics("psnr", "dB")
+
+    logging.info(f"SSIM:")
+    _log_statistics("ssim", "")
+
+    logging.info(f"Final Gaussian Count:")
+    _log_statistics("num_gaussians", "")
+
+    logging.info(f"Data exported to:")
+    logging.info(f"  CSV: {summary_dir / 'summary_data.csv'}")
+    logging.info(f"  JSON: {summary_dir / 'summary_data.json'}")
+    logging.info(f"  Plot: {summary_dir / 'summary_comparison.png'}")
+    logging.info("=" * 80)
 
 
 def main():
@@ -1496,19 +1523,35 @@ def main():
             if not args.opt_configs:
                 parser.error("--opt-configs is required unless --plot-only or --eval-only is specified")
 
+            # Validate that all optimization configs have unique names
+            all_config_names = dict()
+            for opt_config_path in args.opt_configs:
+                opt_config = load_config(opt_config_path)
+                if "framework" not in opt_config:
+                    raise RuntimeError(f"Framework not specified in opt config: {opt_config_path}")
+                if "name" not in opt_config:
+                    raise RuntimeError(f"Name not specified in opt config: {opt_config_path}")
+                config_name = opt_config["name"]
+                if config_name in all_config_names:
+                    raise ValueError(
+                        f"Duplicate config name detected: {config_name} in files {all_config_names[config_name]} and {opt_config_path}"
+                    )
+                all_config_names[config_name] = opt_config_path
+
+            # Run training for each optimization configuration
             for opt_config_path in args.opt_configs:
                 opt_config = load_config(opt_config_path)
                 framework = opt_config["framework"]
-                name = opt_config.get("name", framework)
+                config_name = opt_config["name"]
                 if framework == "fvdb":
                     fvdb_results = run_fvdb_training(
                         scene_info,
                         str(result_dir),
                         Path(args.benchmark_config),
                         Path(opt_config_path),
-                        name,
+                        config_name,
                     )
-                    training_results[opt_config_path] = fvdb_results
+                    training_results[config_name] = fvdb_results
 
                 elif framework == "gsplat":
                     raise NotImplementedError("GSplat training not implemented in this script")
@@ -1518,17 +1561,17 @@ def main():
         if not args.train_only and benchmark_config is not None:
             eval_results = run_evaluation(scene_info, str(result_dir), benchmark_config)
 
-        # Generate comparison report
-        if fvdb_results or gsplat_results:
-            generate_comparison_report(
-                scene_name,
-                training_results,
-                eval_results,
-                str(result_dir),
+        # Generate summary report for each optimization config that was run
+        if training_results or eval_results:
+            save_report_for_run(
+                scene_name=scene_name,
+                training_results=training_results,
+                eval_results=eval_results,
+                output_directory=result_dir,
             )
 
         # Generate comparative plots
-        if fvdb_results and gsplat_results:
+        if False:
             generate_comparative_plots(fvdb_results, gsplat_results, str(result_dir), scene_name)
 
         logging.info(f"Completed benchmark for {scene_name}")

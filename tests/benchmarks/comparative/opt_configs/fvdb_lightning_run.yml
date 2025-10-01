@@ -1,5 +1,5 @@
 framework: fvdb
-name: fvdb_lightning_run_2
+name: fvdb_lightning_run
 
 optimization_config:
   max_epochs: 1

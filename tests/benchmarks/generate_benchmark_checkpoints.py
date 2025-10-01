@@ -140,7 +140,7 @@ def main(
                 points_percentile_filter=training_params["points_percentile_filter"],
                 normalization_type=training_params["normalization_type"],
                 crop_bbox=training_params["crop_bbox"],
-                crop_to_points=training_params["crop_to_points"],
+                # crop_to_points=training_params["crop_to_points"],
                 min_points_per_image=training_params["min_points_per_image"],
                 results_path=dataset_results_path,
                 device=training_params["device"],
