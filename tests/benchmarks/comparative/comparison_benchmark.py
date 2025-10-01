@@ -5,7 +5,8 @@
 """
 Comparative Benchmark Script
 
-This script runs training for both FVDB and GSplat, and compares the results.
+This script runs training for both FVDB and GSplat with various optimization configurations
+on one or more scenes, generates reports for each scene, and creates summary plots comparing results.
 """
 
 import argparse
