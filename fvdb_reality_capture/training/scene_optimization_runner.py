@@ -785,16 +785,14 @@ class SceneOptimizationRunner:
         logger.info(f"Model initialized with {model.num_gaussians:,} Gaussians")
 
         # Initialize optimizer
-        grad_2d_percentile = config.grad_2d_percentile
-        if not (0.0 <= grad_2d_percentile <= 100.0):
-            raise ValueError(f"grad_2d_percentile must be in [0, 100], got {grad_2d_percentile}")
-        grad_2d_percentile = float(grad_2d_percentile) / 100.0
+        if not (0.0 <= config.grad_2d_percentile <= 1.0):
+            raise ValueError(f"grad_2d_percentile must be in [0, 100], got {config.grad_2d_percentile}")
         max_steps = config.max_epochs * len(train_dataset)
         optimizer = GaussianSplatOptimizer(
             model,
             scene_scale=SceneOptimizationRunner._compute_scene_scale(train_dataset.sfm_scene) * 1.1,
             mean_lr_decay_exponent=0.01 ** (1.0 / max_steps),
-            grow_grad_2d_percentile_threshold=grad_2d_percentile if config.histogram_grad_2d_threshold else None,
+            grow_grad_2d_percentile_threshold=config.grad_2d_percentile if config.histogram_grad_2d_threshold else None,
             grow_grad2d_threshold=config.absolute_grad_2d_threshold if not config.histogram_grad_2d_threshold else None,
             adaptive_grad2d_threshold=config.adaptive_grad_2d_threshold,
             scale_3d_threshold_relative_units=config.use_scene_scale_for_refinement,
