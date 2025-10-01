@@ -14,18 +14,13 @@ import logging
 import pathlib
 import sys
 import time
-from typing import Any, Dict, List
+from typing import Any
 
 import matplotlib.pyplot as plt
 import numpy as np
 from common import load_config, setup_signal_handlers
 from run_fvdb_training import run_fvdb_training
 from run_gsplat_training import run_gsplat_training
-
-
-def get_available_scenes(config: Dict) -> List[str]:
-    """Get list of available scenes from config."""
-    return [dataset.get("name") for dataset in config.get("datasets", [])]
 
 
 def save_report_for_run(scene_name: str, training_results: dict[str, Any], output_directory: pathlib.Path) -> None:
@@ -324,7 +319,7 @@ def main():
         parser.error("--benchmark-config is required unless --plot-only is specified")
     benchmark_config = load_config(args.benchmark_config)
 
-    available_scenes = get_available_scenes(benchmark_config)
+    available_scenes = [dataset.get("name") for dataset in benchmark_config.get("datasets", [])]
     if not available_scenes:
         parser.error("No scenes found in config file")
 
