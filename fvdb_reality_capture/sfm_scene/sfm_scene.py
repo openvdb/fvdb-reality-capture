@@ -1,12 +1,14 @@
 # Copyright Contributors to the OpenVDB Project
 # SPDX-License-Identifier: Apache-2.0
 #
+import logging
 import pathlib
 from typing import Sequence
 
 import numpy as np
 
 from ._load_colmap_scene import load_colmap_scene
+from ._load_simple_scene import load_simple_scene
 from .sfm_cache import SfmCache
 from .sfm_metadata import SfmCameraMetadata, SfmImageMetadata
 
@@ -75,6 +77,27 @@ class SfmScene:
         self._transformation_matrix = transformation_matrix if transformation_matrix is not None else np.eye(4)
         self._scene_bbox = scene_bbox
         self._cache = cache
+        self._logger = logging.getLogger(f"{self.__class__.__module__}.{self.__class__.__name__}")
+
+        # Validate the scene_bbox
+        if self._scene_bbox is not None and np.any(np.isinf(self._scene_bbox)):
+            if not np.all(np.isinf(self._scene_bbox)):
+                self._logger.warning(
+                    "scene_bbox contains a mix of finite and infinite values. Setting scene_bbox to None."
+                )
+            self._scene_bbox = None
+
+        # If there are images, check if they have point indices
+        # Images can either all have point indices or none of them should
+        if len(images) > 0:
+            all_images_have_same_visibility = len(set([img.point_indices is None for img in images])) == 1
+            if not all_images_have_same_visibility or ():
+                raise ValueError("All images must either have point indices or none of them should.")
+            self._has_point_indices = images[0].point_indices is not None if images else False
+        else:
+            # In the case, where there are no images, we default to saying there are no point indices
+            # which makes some semantic sense because images are required to have point indices
+            self._has_point_indices = False
 
     @classmethod
     def from_colmap(cls, colmap_path: str | pathlib.Path) -> "SfmScene":
@@ -132,6 +155,48 @@ class SfmScene:
             cache=cache,
         )
 
+    @classmethod
+    def from_simple_directory(cls, data_path: str | pathlib.Path) -> "SfmScene":
+        """
+        Load an `SfmScene` (with a cache to store derived quantities) from a simple directory structure
+        containing images, camera parameters (stored as JSON), and 3D points (stored as a PLY).
+
+        The directory should contain:
+            - images/: A directory of images.
+            - cameras.json: A JSON file containing camera parameters.
+                The cameras.json file is a list of dictionaries, each containing:
+                    - camera_name: The name of the image file.
+                    - width: The width of the image.
+                    - height: The height of the image.
+                    - camera_intrinsics: The perspective projection matrix
+                    - world_to_camera: The world-to-camera transformation matrix.
+                    - image_path: The path to the image file relative to the images directory.
+            - points.ply: A PLY file containing 3D points.
+
+        Args:
+            data_path (str | pathlib.Path): The path to the data directory.
+
+        Returns:
+            SfmScene: An in-memory representation of the of the loaded scene
+        """
+
+        if isinstance(data_path, str):
+            data_path = pathlib.Path(data_path)
+
+        from ._load_simple_scene import load_simple_scene
+
+        cameras, images, points, points_rgb, points_err, cache = load_simple_scene(data_path)
+        return cls(
+            cameras=cameras,
+            images=images,
+            points=points,
+            points_err=points_err,
+            points_rgb=points_rgb,
+            scene_bbox=None,
+            transformation_matrix=None,
+            cache=cache,
+        )
+
     def filter_points(self, mask: np.ndarray | Sequence[bool]) -> "SfmScene":
         """
         Filter the points in the scene based on a boolean mask.
@@ -148,9 +213,11 @@ class SfmScene:
         filtered_images = []
         image_meta: SfmImageMetadata
         for image_meta in self._images:
-            old_visible_points = set(image_meta.point_indices.tolist())
-            old_visible_points_filtered = old_visible_points.intersection(visible_point_indices)
-            remapped_points = remap_indices[np.array(list(old_visible_points_filtered), dtype=np.int64)] - 1
+            new_point_indices = None
+            if image_meta.point_indices is not None:
+                old_visible_points = set(image_meta.point_indices.tolist())
+                old_visible_points_filtered = old_visible_points.intersection(visible_point_indices)
+                new_point_indices = remap_indices[np.array(list(old_visible_points_filtered), dtype=np.int64)] - 1
             filtered_images.append(
                 SfmImageMetadata(
                     world_to_camera_matrix=image_meta.world_to_camera_matrix,
@@ -159,7 +226,7 @@ class SfmScene:
                     camera_id=image_meta.camera_id,
                     image_path=image_meta.image_path,
                     mask_path=image_meta.mask_path,
-                    point_indices=remapped_points,
+                    point_indices=new_point_indices,
                     image_id=image_meta.image_id,
                 )
             )
@@ -270,7 +337,23 @@ class SfmScene:
 
     @property
     def cache(self) -> SfmCache:
+        """
+        Return the cache folder for storing derived quantities related to the scene.
+
+        Return:
+            SfmCache: The cache object associated with the scene.
+        """
         return self._cache
+
+    @property
+    def has_visible_point_indices(self) -> bool:
+        """
+        Return whether the images in the scene have point indices indicating which 3D points are visible in each image.
+
+        Returns:
+            bool: True if the images have point indices, False otherwise.
+        """
+        return self._has_point_indices
 
     @property
     def image_centers(self):
@@ -435,6 +518,6 @@ class SfmScene:
         """
         if self._scene_bbox is None:
             # Calculate the bounding box of the scene if not already computed
-            return np.array([-np.inf, np.inf, -np.inf, np.inf, -np.inf, np.inf])
+            return np.array([-np.inf, -np.inf, -np.inf, np.inf, np.inf, np.inf])
         else:
             return self._scene_bbox

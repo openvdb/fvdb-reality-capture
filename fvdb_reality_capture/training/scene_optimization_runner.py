@@ -19,7 +19,7 @@ import torch.utils.data
 import tqdm
 from fvdb import GaussianSplat3d
 from fvdb.utils.metrics import psnr, ssim
-from scipy.spatial import cKDTree
+from scipy.spatial import cKDTree  # type: ignore
 from torch.utils.tensorboard import SummaryWriter
 
 from ..sfm_scene import SfmScene
@@ -813,13 +813,16 @@ class SceneOptimizationRunner:
         Returns:
             scene_scale (float): An estimate of how far objects in the scene are from the cameras that captured them
         """
-        if use_sfm_depths:
+        if use_sfm_depths and sfm_scene.has_visible_point_indices:
             # Estimate the scene scale as the median across the median distances from cameras to the
             # sfm points they see. If there is not too much variance in how far the cameras are from the scene
             # this gives a rough estimate of the scene scale.
             median_depth_per_camera = []
             for image_meta in sfm_scene.images:
                 # Don't use cameras that don't see any points in the estimate
+                assert (
+                    image_meta.point_indices is not None
+                ), "SfmScene.has_visible_point_indices is True but image has no point indices"
                 if len(image_meta.point_indices) == 0:
                     continue
                 points = sfm_scene.points[image_meta.point_indices]

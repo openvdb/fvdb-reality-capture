@@ -12,6 +12,8 @@ dataset_names = Literal[
     "all",
     "mipnerf360",
     "gettysburg",
+    "safety_park",
+    "miris_factory",
 ]
 
 

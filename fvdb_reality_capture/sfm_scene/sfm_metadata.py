@@ -307,7 +307,7 @@ class SfmImageMetadata:
         camera_id: int,
         image_path: str,
         mask_path: str,
-        point_indices: np.ndarray,
+        point_indices: np.ndarray | None,
         image_id: int,
     ):
         self._world_to_camera_matrix = world_to_camera_matrix
@@ -415,14 +415,14 @@ class SfmImageMetadata:
         return self._mask_path
 
     @property
-    def point_indices(self) -> np.ndarray:
+    def point_indices(self) -> np.ndarray | None:
         """
-        Return the indices of the 3D points that are visible in this image.
+        Return the indices of the 3D points that are visible in this image or None if the indices are not available.
 
         These indices correspond to the points in the point cloud that are visible in this image.
 
         Returns:
-            np.ndarray: An array of indices of the visible 3D points.
+            np.ndarray | None: An array of indices of the visible 3D points or None if not available.
         """
         return self._point_indices
 
