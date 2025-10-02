@@ -5,7 +5,7 @@ import logging
 import math
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any, Callable, Dict, List, Tuple, Union
+from typing import Any, Callable
 
 import numpy as np
 import torch
@@ -22,6 +22,10 @@ class InsertionGrad2dThresholdMode(str, Enum):
 
 @dataclass
 class GaussianSplatOptimizerConfig:
+    """
+    Parameters for configuring the `GaussianSplatOptimizer`.
+    """
+
     # The maximum number of Gaussians to allow in the model. If -1, no limit.
     max_gaussians: int = -1
 
@@ -89,12 +93,25 @@ class GaussianSplatOptimizer:
     def __init__(
         self,
         model: GaussianSplat3d,
-        optimizers: Dict[str, torch.optim.Adam],
+        optimizers: dict[str, torch.optim.Adam],
         means_lr_scheduler: torch.optim.lr_scheduler.LRScheduler,
         means_lr_decay_exponent: float,
         config: GaussianSplatOptimizerConfig,
         _private: Any = None,
     ):
+        """
+        Create a new `GaussianSplatOptimizer` instance froom a model, optimizers and a config.
+
+        Note: You should not call this constructor directly. Instead use `from_model_and_config()` or `from_state_dict()`.
+
+        Args:
+            model (GaussianSplat3d): The `GaussianSplat3d` model to optimize.
+            optimizers (dict[str, torch.optim.Adam]): A dictionary of optimizers for each parameter group in the model.
+            means_lr_scheduler (torch.optim.lr_scheduler.LRScheduler): A learning rate scheduler for the means optimizer.
+            means_lr_decay_exponent (float): The exponent used for decaying the means learning rate.
+            config (GaussianSplatOptimizerConfig): Configuration options for the optimizer.
+            _private (Any): A private object to prevent direct instantiation. Must be `GaussianSplatOptimizer.__PRIVATE__`.
+        """
         if _private is not self.__PRIVATE__:
             raise RuntimeError(
                 "GaussianSplatOptimizer must be created using from_model_and_config() or from_state_dict()"
@@ -140,6 +157,18 @@ class GaussianSplatOptimizer:
         means_lr_decay_exponent: float = 1.0,
         batch_size: int = 1,
     ) -> "GaussianSplatOptimizer":
+        """
+        Create a new `GaussianSplatOptimizer` instance from a model and config.
+
+        Args:
+            model (GaussianSplat3d): The `GaussianSplat3d` model to optimize.
+            config (GaussianSplatOptimizerConfig): Configuration options for the optimizer.
+            means_lr_decay_exponent (float): The exponent used for decaying the means learning rate.
+            batch_size (int): The batch size used for training. This is used to scale the learning rates.
+
+        Returns:
+            GaussianSplatOptimizer: A new `GaussianSplatOptimizer` instance.
+        """
 
         optimizers = GaussianSplatOptimizer._make_optimizers(model, batch_size, config)
 
@@ -156,7 +185,17 @@ class GaussianSplatOptimizer:
         )
 
     @classmethod
-    def from_state_dict(cls, model: GaussianSplat3d, state_dict: Dict[str, Any]) -> "GaussianSplatOptimizer":
+    def from_state_dict(cls, model: GaussianSplat3d, state_dict: dict[str, Any]) -> "GaussianSplatOptimizer":
+        """
+        Create a new `GaussianSplatOptimizer` instance from a model and a state dict.
+
+        Args:
+            model (GaussianSplat3d): The `GaussianSplat3d` model to optimize.
+            state_dict (dict[str, Any]): A state dict previously obtained from `state_dict()`.
+
+        Returns:
+            GaussianSplatOptimizer: A new `GaussianSplatOptimizer` instance.
+        """
         if "version" not in state_dict:
             raise ValueError("State dict is missing version information")
         if state_dict["version"] not in (3,):
@@ -181,16 +220,28 @@ class GaussianSplatOptimizer:
         return optimizer
 
     def step(self):
+        """
+        Step the optimizers and update the learning rate schedulers, updating parameters of the model.
+        """
         for optimizer in self._optimizers.values():
             optimizer.step()
         self._means_lr_scheduler.step()
 
     def zero_grad(self, set_to_none: bool = False):
+        """
+        Zero the gradients of all tensors being optimized.
+        """
         self._num_grad_accumulation_steps = 0
         for optimizer in self._optimizers.values():
             optimizer.zero_grad(set_to_none=set_to_none)
 
-    def state_dict(self) -> Dict[str, Any]:
+    def state_dict(self) -> dict[str, Any]:
+        """
+        Return a serializable state dict for the optimizer.
+
+        Returns:
+            dict[str, Any]: A state dict containing the state of the optimizer.
+        """
         return {
             "optimizers": {name: optimizer.state_dict() for name, optimizer in self._optimizers.items()},
             "means_lr_scheduler": self._means_lr_scheduler.state_dict(),
@@ -338,7 +389,7 @@ class GaussianSplatOptimizer:
             raise RuntimeError("Invalid mode for insertion_grad_2d_threshold.")
 
     @torch.no_grad()
-    def _grow_gs(self, use_screen_space_scales) -> Tuple[int, int]:
+    def _grow_gs(self, use_screen_space_scales) -> tuple[int, int]:
         """
         Grow the number of Gaussians via:
           1. Duplicating those whose loss gradients are high and spatial size are small (i.e. have small eigenvals)
@@ -567,7 +618,7 @@ class GaussianSplatOptimizer:
         self,
         param_fn: Callable[[str, torch.Tensor], torch.Tensor],
         optimizer_fn: Callable[[str, str, torch.Tensor], torch.Tensor],
-        names: Union[List[str], None] = None,
+        names: list[str] | None = None,
     ):
         """Update the parameters and the state in the optimizers with defined functions.
 
