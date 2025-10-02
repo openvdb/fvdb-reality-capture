@@ -10,7 +10,7 @@ import threading
 
 import tyro
 
-from fvdb_3dgs.utils import s3
+from fvdb_reality_capture.utils import s3
 
 
 def main(source_file_path: pathlib.Path, destination_file_path: pathlib.Path):

@@ -658,13 +658,16 @@ class SceneOptimizationRunner:
         Returns:
             scene_scale (float): An estimate of how far objects in the scene are from the cameras that captured them
         """
-        if use_sfm_depths:
+        if use_sfm_depths and sfm_scene.has_visible_point_indices:
             # Estimate the scene scale as the median across the median distances from cameras to the
             # sfm points they see. If there is not too much variance in how far the cameras are from the scene
             # this gives a rough estimate of the scene scale.
             median_depth_per_camera = []
             for image_meta in sfm_scene.images:
                 # Don't use cameras that don't see any points in the estimate
+                assert (
+                    image_meta.point_indices is not None
+                ), "SfmScene.has_visible_point_indices is True but image has no point indices"
                 if len(image_meta.point_indices) == 0:
                     continue
                 points = sfm_scene.points[image_meta.point_indices]
@@ -702,6 +705,7 @@ class SceneOptimizationRunner:
         log_images_to_tensorboard: bool = False,
         save_eval_images: bool = False,
         save_results: bool = True,
+        dataset_type: Literal["colmap", "simple_directory"] = "colmap",
     ) -> "SceneOptimizationRunner":
         """
         Create a `Runner` instance for a new training run.
@@ -762,7 +766,12 @@ class SceneOptimizationRunner:
             transforms.append(CropSceneToPoints(margin=0.0))
         transform = Compose(*transforms)
 
-        sfm_scene: SfmScene = SfmScene.from_colmap(dataset_path)
+        if dataset_type == "colmap":
+            sfm_scene: SfmScene = SfmScene.from_colmap(dataset_path)
+        elif dataset_type == "simple_directory":
+            sfm_scene: SfmScene = SfmScene.from_simple_directory(dataset_path)
+        else:
+            raise ValueError(f"Unsupported dataset_type {dataset_type}")
         sfm_scene = transform(sfm_scene)
 
         indices = np.arange(sfm_scene.num_images)

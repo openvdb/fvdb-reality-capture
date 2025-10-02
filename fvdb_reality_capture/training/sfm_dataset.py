@@ -161,9 +161,14 @@ class SfmDataset(torch.utils.data.Dataset, Iterable):
         Returns:
             np.ndarray: An array of point indices that are visible in at least one image.
         """
+        if not self._sfm_scene.has_visible_point_indices:
+            return self._sfm_scene.points
         visible_points = set()
         for idx in self._indices:
             image_meta: SfmImageMetadata = self._sfm_scene.images[idx]
+            assert (
+                image_meta.point_indices is not None
+            ), "SfmScene.has_visible_point_indices is True but image has no point indices"
             visible_points.update(image_meta.point_indices.tolist())
         return np.array(list(visible_points))
 

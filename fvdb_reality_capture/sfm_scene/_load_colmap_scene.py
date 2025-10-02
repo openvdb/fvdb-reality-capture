@@ -122,7 +122,7 @@ def load_colmap_scene(colmap_path: pathlib.Path):
 
     cache = SfmCache.get_cache(colmap_path / "_cache", "sfm_dataset_cache", "Cache for SFM dataset")
 
-    logger = logging.getLogger(f"load colmap")  # FIXME: Proper logger name
+    logger = logging.getLogger(f"{__name__}.load_colmap_scene")
 
     image_world_to_cam_mats = []
     image_camera_ids = []

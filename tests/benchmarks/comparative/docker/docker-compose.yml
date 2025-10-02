@@ -33,14 +33,14 @@ services:
     command: >
       bash -c "
         set -e
-        git config --global --add safe.directory /workspace/fvdb &&
-        git config --global --add safe.directory /workspace/fvdb-realitycapture &&
+        git config --global --add safe.directory /workspace/openvdb/fvdb-core &&
+        git config --global --add safe.directory /workspace/openvdb/fvdb-reality-capture &&
         echo 'Building FVDB...' &&
         cd /workspace/openvdb/fvdb-core &&
         source /opt/conda/etc/profile.d/conda.sh &&
         conda activate benchmark &&
         echo 'Conda environment activated, starting build...' &&
-        echo "CPM_SOURCE_CACHE: $CPM_SOURCE_CACHE" &&
+        echo CPM_SOURCE_CACHE: $CPM_SOURCE_CACHE &&
         ./build.sh install verbose &&
         echo 'FVDB build complete!' &&
         tail -f /dev/null
