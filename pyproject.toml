@@ -32,7 +32,7 @@ dependencies = [
     "scikit-image",
     "scipy",
     "tensorboard",
-    "torch>=2.8.0",
+    "torch>=2.7.0",
     "torchvision",
     "tqdm",
     "tyro",
