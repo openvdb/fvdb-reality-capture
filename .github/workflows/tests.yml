@@ -109,7 +109,6 @@ jobs:
       - name: Clone fvdb
         run: |
           echo "Cloning fvdb"
-          cd ..
           pwd
           git clone https://github.com/openvdb/fvdb-core.git
 
@@ -118,12 +117,12 @@ jobs:
         with:
           post-cleanup: 'all'
           environment-name: fvdb_build
-          environment-file: ../fvdb-core/env/build_environment.yml
+          environment-file: fvdb-core/env/build_environment.yml
 
       - name: Build fvdb
         run: |
           echo "Building fvdb"
-          cd ../fvdb-core
+          cd fvdb-core
           micromamba activate fvdb_build
           ./build.sh wheel verbose --cuda-arch-list '8.9+PTX'
 
@@ -131,7 +130,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: fvdb-wheel
-          path: ../fvdb-core/dist/*.whl
+          path: fvdb-core/dist/*.whl
           retention-days: 2
 
   fvdb-build-stop-runner:
@@ -214,7 +213,7 @@ jobs:
           cache-environment: false
           post-cleanup: 'all'
           environment-name: fvdb
-          environment-file: ../fvdb-core/env/dev_environment.yml
+          environment-file: fvdb-core/env/dev_environment.yml
 
       - name: Download fvdb wheel
         uses: actions/download-artifact@v4
