@@ -132,13 +132,6 @@ jobs:
           micromamba activate fvdb
           pip install -e .
 
-      - name: Upload wheel
-        uses: actions/upload-artifact@v4
-        with:
-            name: fvdb-reality-capture-test-package
-            path: dist/*.whl
-            retention-days: 2
-
   fvdb-build-stop-runner:
     name: Stop CPU-only EC2 runner for build
     needs:
@@ -188,7 +181,7 @@ jobs:
           subnet-id: subnet-03f2320d6e6e0005b
           security-group-id: sg-0cd08bd89d6212223
 
-   ##############################################################################
+  ##############################################################################
   # RUN FVDB REALITY CAPTURE UNIT TESTS
   ##############################################################################
   fvdb-reality-capture-unit-tests:
@@ -212,7 +205,7 @@ jobs:
           cache-environment: false
           post-cleanup: 'all'
           environment-name: fvdb
-          environment-file: env/dev_environment.yml
+          environment-file: fvdb/env/dev_environment.yml
 
       - name: Download package
         uses: actions/download-artifact@v4
