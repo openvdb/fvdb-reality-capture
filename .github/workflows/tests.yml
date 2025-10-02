@@ -124,13 +124,14 @@ jobs:
           echo "Building fvdb"
           cd fvdb
           micromamba activate fvdb
-          ./build.sh install verbose --cuda-arch-list '8.9+PTX'
+          ./build.sh wheel verbose --cuda-arch-list '8.9+PTX'
 
-      - name: Build fvdb-reality-capture
-        run: |
-          echo "Building fvdb-reality-capture"
-          micromamba activate fvdb
-          pip install -e .
+      - name: Upload fvdb wheel
+        uses: actions/upload-artifact@v4
+        with:
+          name: fvdb-wheel
+          path: fvdb/dist/*.whl
+          retention-days: 2
 
   fvdb-build-stop-runner:
     name: Stop CPU-only EC2 runner for build
@@ -207,22 +208,28 @@ jobs:
           environment-name: fvdb
           environment-file: fvdb/env/dev_environment.yml
 
-      - name: Download package
+      - name: Download fvdb wheel
         uses: actions/download-artifact@v4
         with:
-            name: fvdb-reality-capture-test-package
-            path: ./dist
+          name: fvdb-wheel
+          path: ./dist
 
-      - name: Install package
+      - name: Install wheels
         run: |
-            micromamba activate fvdb
-            pip install ./dist/*.whl
+          micromamba activate fvdb
+          pip install ./dist/*.whl
+
+      - name: Build fvdb-reality-capture
+        run: |
+          echo "Building fvdb-reality-capture"
+          micromamba activate fvdb
+          pip install -e .
 
       - name: Run tests
         run: |
-            micromamba activate fvdb
-            cd tests;
-            pytest -v unit
+          micromamba activate fvdb
+          cd tests;
+          pytest -v unit
 
   ##############################################################################
   # RUN FVDB DOCUMENTATION TESTS
