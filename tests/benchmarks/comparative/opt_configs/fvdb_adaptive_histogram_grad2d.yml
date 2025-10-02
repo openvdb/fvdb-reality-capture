@@ -9,7 +9,6 @@ optimization_config:
   eval_at_percent:
     - 100
   save_at_percent:
-  - 2
   - 20
   - 100
   update_viewer_every_epochs: -1
@@ -28,8 +27,8 @@ optimization_config:
   random_bkgd: false
   refine_start_epoch: 3
   refine_stop_epoch: 100
-  refine_every_epoch: 0.75
-  reset_opacities_every_epoch: 16
+  refine_every_epoch: 1.0
+  reset_opacities_every_epoch: 25
   refine_using_scale2d_stop_epoch: 0
   ignore_masks: false
   remove_gaussians_outside_scene_bbox: false

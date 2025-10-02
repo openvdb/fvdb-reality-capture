@@ -31,7 +31,7 @@ def count_dataset_images(data_dir: str) -> int:
         ]
         if env
     ] + [
-        Path("/workspace/fvdb-realitycapture"),
+        Path("/workspace/fvdb-reality-capture"),
         Path("/workspace/openvdb/fvdb"),
         Path("/workspace/fvdb"),
         (Path(__file__).resolve().parents[3] if len(Path(__file__).resolve().parents) >= 4 else None),

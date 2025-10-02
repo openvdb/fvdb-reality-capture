@@ -10,7 +10,6 @@ optimization_config:
   eval_at_percent:
     - 100
   save_at_percent:
-  - 2
   - 20
   - 100
   update_viewer_every_epochs: -1

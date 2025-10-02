@@ -10,7 +10,7 @@ import tempfile
 import boto3
 import pytest
 
-from fvdb_3dgs.utils import s3
+from fvdb_reality_capture.utils import s3
 
 
 @pytest.fixture(scope="module")
