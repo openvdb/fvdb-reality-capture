@@ -97,62 +97,76 @@ class BasicCacheTest(unittest.TestCase):
         self.model = self._init_model(self.device, self.training_dataset)
         self.scene_scale = self._compute_scene_scale(scene)
 
-    def test_create_optimizer(self):
-        max_steps = 200 * len(self.training_dataset)
-        optimizer = frc.training.GaussianSplatOptimizer(
-            self.model,
-            scene_scale=self.scene_scale * 1.1,
-            mean_lr_decay_exponent=0.01 ** (1.0 / max_steps),
-        )
-        state_dict = optimizer.state_dict()
-        self.assertEqual(state_dict["mean_lr_decay_exponent"], 0.01 ** (1.0 / max_steps))
-        self.assertEqual(state_dict["prune_opacity_threshold"], 0.005)
-        self.assertEqual(state_dict["prune_scale3d_threshold"], 0.1)
-        self.assertEqual(state_dict["prune_scale2d_threshold"], 0.15)
-        self.assertEqual(state_dict["grow_grad2d_threshold"], None)
-        self.assertEqual(state_dict["grow_grad_2d_percentile_threshold"], 0.9)
-        self.assertEqual(state_dict["scale_3d_threshold_relative_units"], True)
-        self.assertEqual(state_dict["grow_scale3d_threshold"], 0.01)
-        self.assertEqual(state_dict["grow_scale2d_threshold"], 0.05)
-        self.assertEqual(state_dict["absgrad"], False)
-        self.assertEqual(state_dict["adaptive_grad2d_threshold"], False)
-        self.assertEqual(state_dict["did_first_refinement"], False)
-        self.assertEqual(state_dict["revised_opacity"], False)
-        self.assertEqual(state_dict["version"], 3)
+    def render_one_image(self, model):
+        data_item = self.training_dataset[0]
+        projection_matrix = data_item["projection"].to(device=self.device).unsqueeze(0)
+        world_to_camera_matrix = data_item["world_to_camera"].to(device=self.device).unsqueeze(0)
+        gt_image = torch.from_numpy(data_item["image"]).to(device=self.device).unsqueeze(0).float() / 255.0
 
-    def test_can_only_use_percentiles_or_absolute_grow_grad_2d(self):
-        max_steps = 200 * len(self.training_dataset)
-        with self.assertRaises(ValueError):
-            optimizer = frc.training.GaussianSplatOptimizer(
-                self.model,
-                scene_scale=self.scene_scale * 1.1,
-                mean_lr_decay_exponent=0.01 ** (1.0 / max_steps),
-                grow_grad_2d_percentile_threshold=0.9,
-                grow_grad2d_threshold=0.001,
-            )
-        with self.assertRaises(ValueError):
-            optimizer = frc.training.GaussianSplatOptimizer(
-                self.model,
-                scene_scale=self.scene_scale * 1.1,
-                mean_lr_decay_exponent=0.01 ** (1.0 / max_steps),
-                grow_grad_2d_percentile_threshold=None,
-                grow_grad2d_threshold=None,
-            )
+        pred_image, alphas = model.render_images(
+            world_to_camera_matrices=world_to_camera_matrix,
+            projection_matrices=projection_matrix,
+            image_width=gt_image.shape[2],
+            image_height=gt_image.shape[1],
+            near=0.1,
+            far=1e10,
+        )
+        return gt_image, pred_image, alphas
 
-        optimizer = frc.training.GaussianSplatOptimizer(
-            self.model,
-            scene_scale=self.scene_scale * 1.1,
-            mean_lr_decay_exponent=0.01 ** (1.0 / max_steps),
-            grow_grad_2d_percentile_threshold=0.9,
-            grow_grad2d_threshold=None,
+    def test_serialize_optimizer(self):
+        model_1 = self.model
+        max_steps = 200 * len(self.training_dataset)
+        config = frc.training.GaussianSplatOptimizerConfig()
+        optimizer_1 = frc.training.GaussianSplatOptimizer.from_model_and_config(
+            model=self.model,
+            config=config,
+            batch_size=1,
+            means_lr_decay_exponent=0.01 ** (1.0 / max_steps),
         )
-        optimizer = frc.training.GaussianSplatOptimizer(
-            self.model,
-            scene_scale=self.scene_scale * 1.1,
-            mean_lr_decay_exponent=0.01 ** (1.0 / max_steps),
-            grow_grad_2d_percentile_threshold=None,
-            grow_grad2d_threshold=0.0002,
-        )
+
+        with tempfile.NamedTemporaryFile(mode="wb", suffix=".pt", delete=True) as temp_file:
+            # Save the state dict of the optimizer and model
+            torch.save(self.model.state_dict(), temp_file.name + ".model")
+            torch.save(optimizer_1.state_dict(), temp_file.name)
+
+            # Run one step of the optimization and refinement
+            optimizer_1.zero_grad()
+            gt_img_1, pred_img_1, _ = self.render_one_image(model_1)
+            loss_1 = torch.nn.functional.l1_loss(pred_img_1, gt_img_1)
+            loss_1.backward()
+            optimizer_1.refine_gaussians(True)
+            optimizer_1.step()
+            optimizer_1.zero_grad()
+            num_gaussians_after_refine = model_1.num_gaussians
+
+            # Compute the rendered image and loss after one step
+            gt_img_2, pred_img_2, _ = self.render_one_image(model_1)
+            loss_2 = torch.nn.functional.l1_loss(pred_img_2, gt_img_2)
+            # print(f"loss_2 = {loss_2.item()}")
+
+            # Load the original model and optimizer from the saved state dict
+            model_2 = GaussianSplat3d.from_state_dict(torch.load(temp_file.name + ".model", map_location=self.device))
+            loaded_state_dict = torch.load(temp_file.name, map_location=self.device, weights_only=False)
+            optimizer_2 = frc.training.GaussianSplatOptimizer.from_state_dict(model_2, loaded_state_dict)
+
+            # Run one step of of optimization and refinement with the loaded optimizer and model
+            # and check that the results match the previous results
+            optimizer_2.zero_grad()
+            gt_img_3, pred_img_3, _ = self.render_one_image(model_2)
+            self.assertTrue(torch.allclose(pred_img_1, pred_img_3))
+            loss_3 = torch.nn.functional.l1_loss(pred_img_3, gt_img_3)
+            self.assertAlmostEqual(loss_1.item(), loss_3.item(), places=3)
+            loss_3.backward()
+            optimizer_2.refine_gaussians(True)
+            optimizer_2.step()
+            optimizer_2.zero_grad()
+            self.assertEqual(model_2.num_gaussians, num_gaussians_after_refine)
+
+            # Compute the rendered image and loss after one step and check that it matches the previous result
+            gt_img_4, pred_img_4, _ = self.render_one_image(model_2)
+            self.assertTrue(torch.allclose(pred_img_2, pred_img_4, atol=1e-3))
+            loss_4 = torch.nn.functional.l1_loss(pred_img_4, gt_img_4)
+            self.assertAlmostEqual(loss_2.item(), loss_4.item(), places=3)
 
 
 if __name__ == "__main__":

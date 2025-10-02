@@ -3,6 +3,8 @@
 #
 import logging
 import math
+from dataclasses import dataclass
+from enum import Enum
 from typing import Any, Callable, Dict, List, Tuple, Union
 
 import numpy as np
@@ -10,6 +12,66 @@ import torch
 import torch.nn.functional as F
 import torch.optim
 from fvdb import GaussianSplat3d
+
+
+class InsertionGrad2dThresholdMode(str, Enum):
+    CONSTANT = "constant"
+    PERCENTILE_FIRST_ITERATION = "percentile_first_iteration"
+    PERCENTILE_EVERY_ITERATION = "percentile_every_iteration"
+
+
+@dataclass
+class GaussianSplatOptimizerConfig:
+    # The maximum number of Gaussians to allow in the model. If -1, no limit.
+    max_gaussians: int = -1
+
+    # Whether to use a fixed threshold for insertion_grad_2d_threshold (constant),
+    # a value computed as a percentile of the grad_2d distribution on the first iteration
+    # or a percentile value computed at each refinement step
+    insertion_grad_2d_threshold_mode: InsertionGrad2dThresholdMode = InsertionGrad2dThresholdMode.CONSTANT
+
+    # If a Gaussian's opacity drops below this value, delete it
+    deletion_opacity_threshold: float = 0.005
+
+    # If a Gaussian's 3d scale drops below this value (units specfied by scale_3d_threshold_units) then delete it
+    deletion_scale_3d_threshold: float = 0.1
+
+    # If a projected Gaussian's 2d scale drops below this value (units specfied by scale_3d_threshold_units) then delete it
+    deletion_scale_2d_threshold: float = 0.15
+
+    # Duplicate or split Gaussians where the accumulated gradients of its 2d mean is above this value
+    # and whose 3d and 2d scales exceed insertion_scale_3d_threshold and insertion_scale_2d_threshold
+    insertion_grad_2d_threshold: float = 0.0002 if insertion_grad_2d_threshold_mode == "constant" else 0.9
+
+    # Duplicate or split Gaussians whose 3d scale exceeds this value and whose
+    # accumulated 2d gradient exceeds insertion_grad_2d_threshold
+    insertion_scale_3d_threshold: float = 0.01
+
+    # Duplicate or split Gaussians whose 2d scale exceeds this value and whose accumulated 2d gradient
+    # exceeds insertion_grad_2d_threshold
+    insertion_scale_2d_threshold: float = 0.05
+
+    # When splitting Gaussinas, update the opacities of the new Gaussians using the revised formulation from
+    # "Revising Densification in Gaussian Splatting" (https://arxiv.org/abs/2404.06109).
+    # This removes a bias which weighs newly split Gaussians contribution to the image more heavily than
+    # older Gaussians.
+    opacity_updates_use_revised_formulation: bool = False
+
+    # TODO: Document
+    use_absolute_gradients: bool = False
+
+    # Learning rate for the means
+    means_lr: float = 1.6e-4
+    # Learning rate for the log scales
+    log_scales_lr: float = 5e-3
+    # Learning rate for the quaternions
+    quats_lr: float = 1e-3
+    # Learning rate for the logit opacities
+    logit_opacities_lr: float = 5e-2
+    # Learning rate for the spherical harmonics of order 0
+    sh0_lr: float = 2.5e-3
+    # Learning rate for the spherical harmonics of order N (N > 0)
+    shN_lr: float = 2.5e-3 / 20
 
 
 class GaussianSplatOptimizer:
@@ -22,147 +84,101 @@ class GaussianSplatOptimizer:
     algorithm in the original Gaussian Splatting paper (https://arxiv.org/abs/2308.04079).
     """
 
+    __PRIVATE__ = object()
+
     def __init__(
         self,
         model: GaussianSplat3d,
-        mean_lr_decay_exponent: float = 1.0,
-        scene_scale: float = 1.0,
-        prune_opacity_threshold: float = 0.005,
-        prune_scale3d_threshold: float = 0.1,
-        prune_scale2d_threshold: float = 0.15,
-        grow_grad_2d_percentile_threshold: float | None = 0.9,
-        grow_grad2d_threshold: float | None = None,
-        grow_scale3d_threshold: float = 0.01,
-        grow_scale2d_threshold: float = 0.05,
-        scale_3d_threshold_relative_units: bool = True,
-        adaptive_grad2d_threshold: bool = False,
-        absgrad: bool = False,
-        revised_opacity: bool = False,
+        optimizers: Dict[str, torch.optim.Adam],
+        means_lr_scheduler: torch.optim.lr_scheduler.LRScheduler,
+        means_lr_decay_exponent: float,
+        config: GaussianSplatOptimizerConfig,
+        _private: Any = None,
     ):
-        """
-        Create a new GaussianSplatOptimizer for the given GaussianSplat3d model.
-
-        Args:
-            module (GaussianSplat3d): The module representing the Gaussian Splatting scene (e.g. fvdb.nn.GaussianSplat3D).
-            mean_lr_decay_exponent (float): The exponent to decay the learning rate for the means. Default: 1.0.
-            scene_scale (float): The scale of the scene, used to scale the learning rates. Default: 1.0.
-
-            prune_opacity_threshold (float): The opacity threshold below which to prune a Gaussian. Default: 0.005.
-            prune_scale3d_threshold (float): The 3D scale threshold above which to prune a Gaussian. Default: 0.1.
-            prune_scale2d_threshold (float): The 2D scale threshold above which to prune a Gaussian. Default: 0.15.
-            grow_grad_2d_percentile_threshold (float | None): The percentile threshold for the 2D gradient above which to grow a Gaussian. Default: 0.9.
-                If this value is set, then grow_grad2d_threshold must be None. grow_grad_2d_percentile_threshold must be in the range [0.0, 1.0].
-            grow_grad2d_threshold (float | None): The 2D gradient threshold above which to grow a Gaussian. Default: None.
-                If this value is set, then grow_grad_2d_percentile_threshold must be None. In other implementations, this value is usually hardcoded to 0.0002.
-            grow_scale3d_threshold (float): The 3D scale threshold below which to grow a Gaussian. Default: 0.01.
-            grow_scale2d_threshold (float): The 2D scale threshold below which to grow a Gaussian. Default: 0.05.
-            scale_3d_threshold_relative_units (bool): Whether the 3D scale thresholds are in relative units (i.e. relative to the scene scale).
-                Used for `grow_scale3d_threshold` and `prune_scale3d_threshold`. If set to true, uses these values multiplied by `scene_scale`, otherwise
-                uses the values as-is. Default: True.
-            adaptive_grad2d_threshold (bool): Whether to adaptively set the threshold for refinement. Setting this to True will generally produce many more Gaussians. Default: False.
-            absgrad (bool): Whether to use the absolute value of the gradients for refinement. Default: False.
-            revised_opacity (bool): Whether to use the revised opacity formulation from https://arxiv.org/abs/2404.06109. Default: False.
-        """
-        self._model = model
-        self._mean_lr_decay_exponent = mean_lr_decay_exponent
-        self._scene_scale = scene_scale
-        self._prune_opacity_threshold = prune_opacity_threshold
-        self._prune_scale3d_threshold = prune_scale3d_threshold
-        self._prune_scale2d_threshold = prune_scale2d_threshold
-        self._grow_grad2d_threshold = grow_grad2d_threshold
-        self._grow_grad_2d_percentile_threshold = grow_grad_2d_percentile_threshold
-        self._scale_3d_threshold_relative_units = scale_3d_threshold_relative_units
-        self._adaptive_grad2d_threshold = adaptive_grad2d_threshold
-        self._did_first_refinement = False  # First call to self.refine_gaussians sets this to True
+        if _private is not self.__PRIVATE__:
+            raise RuntimeError(
+                "GaussianSplatOptimizer must be created using from_model_and_config() or from_state_dict()"
+            )
         self._logger = logging.getLogger(f"{self.__class__.__module__}.{self.__class__.__name__}")
 
-        if (self._grow_grad_2d_percentile_threshold is not None) and (self._grow_grad2d_threshold is not None):
-            raise ValueError(
-                "Either grow_grad_2d_percentile_threshold or grow_grad2d_threshold must be set, but not both."
-            )
-        if self._grow_grad_2d_percentile_threshold is None and self._grow_grad2d_threshold is None:
-            raise ValueError(
-                "Either grow_grad_2d_percentile_threshold or grow_grad2d_threshold must be set, but not both."
-            )
-        self._grow_scale3d_threshold = grow_scale3d_threshold
-        self._grow_scale2d_threshold = grow_scale2d_threshold
-        self._absgrad = absgrad
-        self._revised_opacity = revised_opacity
+        self._model = model
+        self._model.accumulate_mean_2d_gradients = True  # Make sure we track the 2D gradients for refinement
+        self._config = config
 
-        default_lrs = {
-            "means": 1.6e-4 * self._scene_scale,
-            "scales": 5e-3,
-            "quats": 1e-3,
-            "opacities": 5e-2,
-            "sh0": 2.5e-3,
-            "shN": 2.5e-3 / 20,
-        }
+        # This hook counts the number of times we call backward between zeroing the gradients.
+        # To determine whether a Gaussian should be split or duplicated, we threshold the *average*
+        # gradient of its 2D mean with respect to the loss.
+        # If we call backward multiple times per iteration (e.g. for different losses) or if we're accumulating gradients,
+        # then the denominator of the average is the total number of backward calls since the last zero_grad().
+        # This hook corrects the count even if backward() is called multiple times per iteration.
+        self._num_grad_accumulation_steps = 1  # Number of times we've called backward since zeroing the gradients
 
-        self._model.accumulate_mean_2d_gradients = True
-
-        if self._absgrad:
-            raise NotImplementedError("absgrad is not yet implemented")
-
-        batch_size = 1
-
-        # Scale learning rate based on batch size, reference:
-        # https://www.cs.princeton.edu/~smalladi/blog/2024/01/22/SDEs-ScalingRules/
-        # Note that this would not make the training exactly equivalent, see
-        # https://arxiv.org/pdf/2402.18824v1 for more details.
-        lr_batch_rescale = math.sqrt(float(batch_size))
-        self._optimizers = {
-            "means": torch.optim.Adam(
-                [{"params": self._model.means, "lr": default_lrs["means"] * lr_batch_rescale, "name": "means"}],
-                eps=1e-15 / lr_batch_rescale,
-                betas=(1.0 - batch_size * (1.0 - 0.9), 1.0 - batch_size * (1.0 - 0.999)),
-            ),
-            "scales": torch.optim.Adam(
-                [{"params": self._model.log_scales, "lr": default_lrs["scales"] * lr_batch_rescale, "name": "scales"}],
-                eps=1e-15 / lr_batch_rescale,
-                betas=(1.0 - batch_size * (1.0 - 0.9), 1.0 - batch_size * (1.0 - 0.999)),
-            ),
-            "quats": torch.optim.Adam(
-                [{"params": self._model.quats, "lr": default_lrs["quats"] * lr_batch_rescale, "name": "quats"}],
-                eps=1e-15 / lr_batch_rescale,
-                betas=(1.0 - batch_size * (1.0 - 0.9), 1.0 - batch_size * (1.0 - 0.999)),
-            ),
-            "opacities": torch.optim.Adam(
-                [
-                    {
-                        "params": self._model.logit_opacities,
-                        "lr": default_lrs["opacities"] * lr_batch_rescale,
-                        "name": "opacities",
-                    }
-                ],
-                eps=1e-15 / lr_batch_rescale,
-                betas=(1.0 - batch_size * (1.0 - 0.9), 1.0 - batch_size * (1.0 - 0.999)),
-            ),
-            "sh0": torch.optim.Adam(
-                [{"params": self._model.sh0, "lr": default_lrs["sh0"] * lr_batch_rescale, "name": "sh0"}],
-                eps=1e-15 / lr_batch_rescale,
-                betas=(1.0 - batch_size * (1.0 - 0.9), 1.0 - batch_size * (1.0 - 0.999)),
-            ),
-            "shN": torch.optim.Adam(
-                [{"params": self._model.shN, "lr": default_lrs["shN"] * lr_batch_rescale, "name": "shN"}],
-                eps=1e-15 / lr_batch_rescale,
-                betas=(1.0 - batch_size * (1.0 - 0.9), 1.0 - batch_size * (1.0 - 0.999)),
-            ),
-        }
-
-        # means has a learning rate schedule, that end at 0.01 of the initial value
-        self._means_lr_scheduler = torch.optim.lr_scheduler.ExponentialLR(
-            self._optimizers["means"], gamma=self._mean_lr_decay_exponent
-        )
-
-        # Number of times we've called backward since zeroing the gradients
-        self._num_grad_accumulation_steps = 1
-
-        # Count the number of times we call backward between zeroing the gradients
-        # If we're accumulating gradients, we need to know this to properly grow/split/prune
         def _count_accumulation_steps_backward_hook(_):
             self._num_grad_accumulation_steps += 1
 
         self._model.means.register_hook(_count_accumulation_steps_backward_hook)
+
+        # The actual numeric value to use when thresholding the 2D gradient to decide whether to grow a Gaussian.
+        # This depends on the mode specified in the config.
+        self._insertion_grad_2d_abs_threshold: float | None = (
+            self._config.insertion_grad_2d_threshold
+            if self._config.insertion_grad_2d_threshold_mode == InsertionGrad2dThresholdMode.CONSTANT
+            else None
+        )
+
+        self._optimizers = optimizers
+        self._means_lr_scheduler = means_lr_scheduler
+
+        # Store the decay exponent for the means learning rate schedule so we can serialize it
+        self._means_lr_decay_exponent = means_lr_decay_exponent
+
+    @classmethod
+    def from_model_and_config(
+        cls,
+        model: GaussianSplat3d,
+        config: GaussianSplatOptimizerConfig = GaussianSplatOptimizerConfig(),
+        means_lr_decay_exponent: float = 1.0,
+        batch_size: int = 1,
+    ) -> "GaussianSplatOptimizer":
+
+        optimizers = GaussianSplatOptimizer._make_optimizers(model, batch_size, config)
+
+        # Schedule the learning rate of the so Gaussians positions move less later in training
+        means_lr_scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizers["means"], gamma=means_lr_decay_exponent)
+
+        return cls(
+            model=model,
+            optimizers=optimizers,
+            means_lr_scheduler=means_lr_scheduler,
+            means_lr_decay_exponent=means_lr_decay_exponent,
+            config=config,
+            _private=cls.__PRIVATE__,
+        )
+
+    @classmethod
+    def from_state_dict(cls, model: GaussianSplat3d, state_dict: Dict[str, Any]) -> "GaussianSplatOptimizer":
+        if "version" not in state_dict:
+            raise ValueError("State dict is missing version information")
+        if state_dict["version"] not in (3,):
+            raise ValueError(f"Unsupported version: {state_dict['version']}")
+
+        config = GaussianSplatOptimizerConfig(**state_dict["config"])
+        optimizers = GaussianSplatOptimizer._make_optimizers(model, batch_size=1, config=config)
+        for name, optimizer in optimizers.items():
+            optimizer.load_state_dict(state_dict["optimizers"][name])
+        means_lr_scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizers["means"], gamma=1.0)
+
+        optimizer = cls(
+            model=model,
+            optimizers=optimizers,
+            means_lr_scheduler=means_lr_scheduler,
+            means_lr_decay_exponent=state_dict["means_lr_decay_exponent"],
+            config=config,
+            _private=cls.__PRIVATE__,
+        )
+        optimizer._insertion_grad_2d_abs_threshold = state_dict["insertion_grad_2d_abs_threshold"]
+
+        return optimizer
 
     def step(self):
         for optimizer in self._optimizers.values():
@@ -178,49 +194,12 @@ class GaussianSplatOptimizer:
         return {
             "optimizers": {name: optimizer.state_dict() for name, optimizer in self._optimizers.items()},
             "means_lr_scheduler": self._means_lr_scheduler.state_dict(),
-            "mean_lr_decay_exponent": self._mean_lr_decay_exponent,
-            "prune_opacity_threshold": self._prune_opacity_threshold,
-            "prune_scale3d_threshold": self._prune_scale3d_threshold,
-            "prune_scale2d_threshold": self._prune_scale2d_threshold,
-            "grow_grad2d_threshold": self._grow_grad2d_threshold,
-            "grow_grad_2d_percentile_threshold": self._grow_grad_2d_percentile_threshold,
-            "scale_3d_threshold_relative_units": self._scale_3d_threshold_relative_units,
-            "grow_scale3d_threshold": self._grow_scale3d_threshold,
-            "grow_scale2d_threshold": self._grow_scale2d_threshold,
-            "adaptive_grad2d_threshold": self._adaptive_grad2d_threshold,
-            "did_first_refinement": self._did_first_refinement,
-            "absgrad": self._absgrad,
-            "revised_opacity": self._revised_opacity,
+            "means_lr_decay_exponent": self._means_lr_decay_exponent,
+            "insertion_grad_2d_abs_threshold": self._insertion_grad_2d_abs_threshold,
+            "num_grad_accumulation_steps": self._num_grad_accumulation_steps,
+            "config": vars(self._config),
             "version": 3,
         }
-
-    def load_state_dict(self, state_dict: Dict[str, Any]):
-        if state_dict["version"] not in (2, 3):
-            raise ValueError(f"Unsupported version: {state_dict['version']}")
-
-        for name, optimizer in self._optimizers.items():
-            optimizer.load_state_dict(state_dict["optimizers"][name])
-        self._means_lr_scheduler.load_state_dict(state_dict["means_lr_scheduler"])
-        self._mean_lr_decay_exponent = state_dict["mean_lr_decay_exponent"]
-        self._prune_opacity_threshold = state_dict["prune_opacity_threshold"]
-        self._prune_scale3d_threshold = state_dict["prune_scale3d_threshold"]
-        self._prune_scale2d_threshold = state_dict["prune_scale2d_threshold"]
-        self._grow_grad2d_threshold = state_dict["grow_grad2d_threshold"]
-        self._grow_scale3d_threshold = state_dict["grow_scale3d_threshold"]
-        self._grow_scale2d_threshold = state_dict["grow_scale2d_threshold"]
-
-        if state_dict["version"] == 3:
-            self._adaptive_grad2d_threshold = state_dict["adaptive_grad2d_threshold"]
-            self._grow_grad_2d_percentile_threshold = state_dict["grow_grad_2d_percentile_threshold"]
-            self._scale_3d_threshold_relative_units = state_dict["scale_3d_threshold_relative_units"]
-            self._did_first_refinement = state_dict["did_first_refinement"]
-        else:
-            self._grow_grad_2d_percentile_threshold = None
-            self._scale_3d_threshold_relative_units = True
-            self._adaptive_grad2d_threshold = False
-            self._did_first_refinement = True
-        self._absgrad = state_dict["absgrad"]
-        self._revised_opacity = state_dict["revised_opacity"]
 
     @torch.no_grad()
     def refine_gaussians(self, use_scales: bool = False, use_screen_space_scales: bool = False):
@@ -248,9 +227,12 @@ class GaussianSplatOptimizer:
 
     @torch.no_grad()
     def reset_opacities(self):
-        """Reset the opacities to the given (post-sigmoid) value."""
+        """
+        Reset the opacities to the given (post-sigmoid) value.
+        """
 
-        value = self._prune_opacity_threshold * 2.0
+        # Reset all opacities to twice the deletion threshold
+        value = self._config.deletion_opacity_threshold * 2.0
 
         def param_fn(name: str, p: torch.Tensor) -> torch.Tensor:
             if name == "opacities":
@@ -264,6 +246,96 @@ class GaussianSplatOptimizer:
         # update the parameters and the state in the optimizers
         new_opac = self._update_optimizer("opacities", param_fn, optimizer_fn)
         self._model.logit_opacities = new_opac
+
+    @staticmethod
+    def _make_optimizers(model, batch_size, config):
+        # Scale learning rate based on batch size, reference:
+        # https://www.cs.princeton.edu/~smalladi/blog/2024/01/22/SDEs-ScalingRules/
+        # Note that this would not make the training exactly equivalent to the original INRIA
+        # Gaussian splat implementation.
+        # See https://arxiv.org/pdf/2402.18824v1 for more details.
+        lr_batch_rescale = math.sqrt(float(batch_size))
+        return {
+            "means": torch.optim.Adam(
+                [{"params": model.means, "lr": config.means_lr * lr_batch_rescale, "name": "means"}],
+                eps=1e-15 / lr_batch_rescale,
+                betas=(1.0 - batch_size * (1.0 - 0.9), 1.0 - batch_size * (1.0 - 0.999)),
+            ),
+            "scales": torch.optim.Adam(
+                [
+                    {
+                        "params": model.log_scales,
+                        "lr": config.log_scales_lr * lr_batch_rescale,
+                        "name": "scales",
+                    }
+                ],
+                eps=1e-15 / lr_batch_rescale,
+                betas=(1.0 - batch_size * (1.0 - 0.9), 1.0 - batch_size * (1.0 - 0.999)),
+            ),
+            "quats": torch.optim.Adam(
+                [{"params": model.quats, "lr": config.quats_lr * lr_batch_rescale, "name": "quats"}],
+                eps=1e-15 / lr_batch_rescale,
+                betas=(1.0 - batch_size * (1.0 - 0.9), 1.0 - batch_size * (1.0 - 0.999)),
+            ),
+            "opacities": torch.optim.Adam(
+                [
+                    {
+                        "params": model.logit_opacities,
+                        "lr": config.logit_opacities_lr * lr_batch_rescale,
+                        "name": "opacities",
+                    }
+                ],
+                eps=1e-15 / lr_batch_rescale,
+                betas=(1.0 - batch_size * (1.0 - 0.9), 1.0 - batch_size * (1.0 - 0.999)),
+            ),
+            "sh0": torch.optim.Adam(
+                [{"params": model.sh0, "lr": config.sh0_lr * lr_batch_rescale, "name": "sh0"}],
+                eps=1e-15 / lr_batch_rescale,
+                betas=(1.0 - batch_size * (1.0 - 0.9), 1.0 - batch_size * (1.0 - 0.999)),
+            ),
+            "shN": torch.optim.Adam(
+                [{"params": model.shN, "lr": config.shN_lr * lr_batch_rescale, "name": "shN"}],
+                eps=1e-15 / lr_batch_rescale,
+                betas=(1.0 - batch_size * (1.0 - 0.9), 1.0 - batch_size * (1.0 - 0.999)),
+            ),
+        }
+
+    def _compute_insertion_grad_2d_threshold(self, accumulated_mean_2d_gradients: torch.Tensor) -> float:
+        # Helper to compute the quantile of the gradients, using NumPy if we have too many Gaussians for torch.quantile
+        # which has a cap at 2**24 elements
+        def _grad_2d_quantile(quantile: float) -> float:
+            if self._model.num_gaussians > 2**24:
+                # torch.quantile has a cap at 2**24 elements so fall back to NumPy for large numbers of Gaussians
+                self._logger.debug("Using numpy to compute gradient percentile threshold")
+                return float(np.quantile(accumulated_mean_2d_gradients.cpu().numpy(), quantile))
+            else:
+                return torch.quantile(accumulated_mean_2d_gradients, quantile).item()
+
+        # Determine the threshold for the 2D projected gradient based on the selected mode
+        if self._config.insertion_grad_2d_threshold_mode == InsertionGrad2dThresholdMode.CONSTANT:
+            # In CONSTANT mode, we always use the fixed threshold specified by self._grow_grad2d_threshold
+            assert self._insertion_grad_2d_abs_threshold is not None
+            return self._insertion_grad_2d_abs_threshold
+
+        elif self._config.insertion_grad_2d_threshold_mode == InsertionGrad2dThresholdMode.PERCENTILE_FIRST_ITERATION:
+            # In PERCENTILE_FIRST_ITERATION mode, we set the threshold to the given percentile of the gradients
+            # during the first refinement step, and then use that fixed threshold for all subsequent steps
+            if self._insertion_grad_2d_abs_threshold is None:
+                self._insertion_grad_2d_abs_threshold = _grad_2d_quantile(self._config.insertion_grad_2d_threshold)
+                self._logger.debug(
+                    f"Setting fixed grad2d threshold to {self._insertion_grad_2d_abs_threshold:.6f} corresponding to the "
+                    f"({self._config.insertion_grad_2d_threshold * 100:.1f} percentile)"
+                )
+            assert self._insertion_grad_2d_abs_threshold is not None
+            return self._insertion_grad_2d_abs_threshold
+
+        elif self._config.insertion_grad_2d_threshold_mode == InsertionGrad2dThresholdMode.PERCENTILE_EVERY_ITERATION:
+            # In PERCENTILE_EVERY_ITERATION mode, we set the threshold to the given percentile of the gradients
+            # during every refinement step
+            return _grad_2d_quantile(self._config.insertion_grad_2d_threshold)
+
+        else:
+            raise RuntimeError("Invalid mode for insertion_grad_2d_threshold.")
 
     @torch.no_grad()
     def _grow_gs(self, use_screen_space_scales) -> Tuple[int, int]:
@@ -293,43 +365,9 @@ class GaussianSplatOptimizer:
         grads = self._model.accumulated_mean_2d_gradient_norms / count
         device = grads.device
 
-        if self._grow_grad_2d_percentile_threshold is not None and self._grow_grad2d_threshold is None:
-            # Rather than using a fixed threshold for splitting Gaussians, we split if the accumulated gradients
-            # for that Gaussian is above a certain percentile
-            # This ensures that we only split a certain fraction of the Gaussians at each refinement step
-            # and avoids the need to tune the threshold for different scenes
-            # Note that we can't use both a fixed threshold and a percentile threshold
-            if self._model.num_gaussians > 2**24:
-                # torch.quantile has a cap at 2**24 elements
-                # FIXME: Subsample the gradients instead of moving to numpy
-                gradient_threshold_value = float(
-                    np.quantile(grads.cpu().numpy(), self._grow_grad_2d_percentile_threshold)
-                )
-            else:
-                gradient_threshold_value = torch.quantile(grads, self._grow_grad_2d_percentile_threshold).item()
-
-            self._logger.debug("Using 2d gradient threshold value: %f", gradient_threshold_value)
-            if not self._adaptive_grad2d_threshold and not self._did_first_refinement:
-                self._logger.debug(
-                    f"Adaptive grad2d threshold disabled. Setting fixed threshold to {gradient_threshold_value:.6f}"
-                )
-                self._grow_grad2d_threshold = gradient_threshold_value
-                self._grow_grad_2d_percentile_threshold = None
-        elif self._grow_grad_2d_percentile_threshold is None and self._grow_grad2d_threshold is not None:
-            gradient_threshold_value = self._grow_grad2d_threshold
-        else:
-            raise RuntimeError(
-                "Either grow_grad_2d_percentile_threshold or grow_grad2d_threshold must be set, but not both."
-            )
-
         # If the 2D projected gradient is high and the spatial size is small, duplicate the Gaussian
-        is_grad_high = grads > gradient_threshold_value
-        grow_threshold = (
-            self._grow_scale3d_threshold * self._scene_scale
-            if self._scale_3d_threshold_relative_units
-            else self._grow_scale3d_threshold
-        )
-        is_small = self._model.scales.max(dim=-1).values <= grow_threshold
+        is_grad_high = grads > self._compute_insertion_grad_2d_threshold(grads)
+        is_small = self._model.scales.max(dim=-1).values <= self._config.insertion_scale_3d_threshold
         is_dupli = is_grad_high & is_small
         n_dupli: int = int(is_dupli.sum().item())
 
@@ -339,7 +377,7 @@ class GaussianSplatOptimizer:
 
         # If the 2D projected spatial extent exceeds the threshold, split the Gaussian
         if use_screen_space_scales:
-            is_split |= self._model.accumulated_max_2d_radii > self._grow_scale2d_threshold
+            is_split |= self._model.accumulated_max_2d_radii > self._config.insertion_scale_2d_threshold
         n_split: int = int(is_split.sum().item())
 
         # Hardcode these for now but could be made configurable
@@ -361,20 +399,15 @@ class GaussianSplatOptimizer:
     @torch.no_grad()
     def _prune_gs(self, use_scales: bool = False, use_screen_space_scales: bool = False) -> int:
         # Prune any Gaussians whose opacity is below the threshold or whose (2D projected) spatial extent is too large
-        is_prune = self._model.opacities.flatten() < self._prune_opacity_threshold
+        is_prune = self._model.opacities.flatten() < self._config.deletion_opacity_threshold
         if use_scales:
-            prune_threshold = (
-                self._prune_scale3d_threshold * self._scene_scale
-                if self._scale_3d_threshold_relative_units
-                else self._prune_scale3d_threshold
-            )
-            is_too_big = self._model.scales.max(dim=-1).values > prune_threshold
+            is_too_big = self._model.scales.max(dim=-1).values > self._config.deletion_scale_3d_threshold
             # The INRIA code also implements sreen-size pruning but
             # it's actually not being used due to a bug:
             # https://github.com/graphdeco-inria/gaussian-splatting/issues/123
             # We implement it here for completeness but it doesn't really get used
             if use_screen_space_scales:
-                is_too_big |= self._model.accumulated_max_2d_radii > self._prune_scale2d_threshold
+                is_too_big |= self._model.accumulated_max_2d_radii > self._config.deletion_scale_2d_threshold
 
             is_prune = is_prune | is_too_big
 
@@ -386,7 +419,8 @@ class GaussianSplatOptimizer:
 
     @torch.no_grad()
     def subdivide_gaussians(self, mask: torch.Tensor, split_factor: int = 2):
-        """Split the Gaussian with the given mask.
+        """
+        Split the Gaussian with the given mask.
 
         Args:
             mask: A boolean mask with shape [num_means,] indicating which Gaussians to split.
@@ -444,7 +478,7 @@ class GaussianSplatOptimizer:
                 # TODO: Adjust scale factor for splitting
                 p_split = torch.log(scales / 1.6).repeat(split_factor, 1)  # [2N, 3]
                 p_rest = p[rest]
-            elif name == "opacities" and self._revised_opacity:
+            elif name == "opacities" and self._config.opacity_updates_use_revised_formulation:
                 new_opacities = 1.0 - torch.sqrt(1.0 - torch.sigmoid(p[sel]))
                 p_split = torch.logit(new_opacities).repeat(repeats)  # [2N]
                 p_rest = p[rest]

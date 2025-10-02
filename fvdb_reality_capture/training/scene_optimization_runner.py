@@ -36,7 +36,10 @@ from ..transforms import (
 )
 from .camera_pose_adjust import CameraPoseAdjustment
 from .checkpoint import Checkpoint
-from .gaussian_splat_optimizer import GaussianSplatOptimizer
+from .gaussian_splat_optimizer import (
+    GaussianSplatOptimizer,
+    GaussianSplatOptimizerConfig,
+)
 from .lpips import LPIPSLoss
 from .sfm_dataset import SfmDataset
 from .utils import make_unique_name_directory_based_on_time
@@ -44,6 +47,11 @@ from .utils import make_unique_name_directory_based_on_time
 
 @dataclass
 class Config:
+    """
+    Parameters for the radiance field optimization process.
+    See the comments for each parameter for details.
+    """
+
     # Random seed
     seed: int = 42
 
@@ -88,11 +96,11 @@ class Config:
     scale_reg: float = 0.0
     # Use random background for training to discourage transparency
     random_bkgd: bool = False
-    # When to start refining (split/duplicate/merge) Gaussians during optimization
+    # When to start refining Gaussians during optimization
     refine_start_epoch: int = 3
-    # When to stop refining (split/duplicate/merge) Gaussians during optimization
+    # When to stop refining Gaussians during optimization
     refine_stop_epoch: int = 100
-    # How often to refine (split/duplicate/merge) Gaussians during optimization
+    # How often to refine Gaussians during optimization
     refine_every_epoch: float = 0.75
     # How often to reset the opacities of the Gaussians during optimization
     reset_opacities_every_epoch: int = 16
@@ -102,18 +110,12 @@ class Config:
     ignore_masks: bool = False
     # Whether to remove Gaussians that fall outside the scene bounding box
     remove_gaussians_outside_scene_bbox: bool = False
-    # Set a maximum number of Gaussians based on total GPU memory. This is a soft limit and may be exceeded slightly.
-    clip_max_gaussians_to_memory: bool = True
-    # Whether to set the grad_2d refinement threshold based on the histogram of grad_2d values. This is generally a good idea.
-    histogram_grad_2d_threshold: bool = True
-    # Whether to adaptively set the threshold for refinement. Setting this to True will generally produce many more Gaussians.
-    adaptive_grad_2d_threshold: bool = False
-    # What percentile of the grad_2d values to use as the threshold for refinement if histogram_grad_2d_threshold is True
-    grad_2d_percentile: float = 90.0
-    # If adaptive_grad_2d_threshold is False, then use this as the absolute threshold for refinement
-    absolute_grad_2d_threshold: float = 0.0002
-    # Whether to use scene scale or absolute units for scale3d thresholding during refinement
-    use_scene_scale_for_refinement: bool = True
+    # What units to use for the 3D scale thresholds in the optimizer (i.e. insertion_scale_3d_threshold, deletion_scale_3d_threshold)
+    # If set to "scene_scale", the thresholds are multiplied by the scene scale
+    optimizer_scale_3d_threshold_units: Literal["absolute", "scene_scale"] = "scene_scale"
+
+    # Configuration for the Gaussian Splat optimizer
+    opt: GaussianSplatOptimizerConfig = field(default_factory=GaussianSplatOptimizerConfig)
 
     #
     # Pose optimization parameters
@@ -785,17 +787,19 @@ class SceneOptimizationRunner:
         logger.info(f"Model initialized with {model.num_gaussians:,} Gaussians")
 
         # Initialize optimizer
-        if not (0.0 <= config.grad_2d_percentile <= 1.0):
-            raise ValueError(f"grad_2d_percentile must be in [0, 100], got {config.grad_2d_percentile}")
+        scene_scale = SceneOptimizationRunner._compute_scene_scale(train_dataset.sfm_scene)
         max_steps = config.max_epochs * len(train_dataset)
-        optimizer = GaussianSplatOptimizer(
-            model,
-            scene_scale=SceneOptimizationRunner._compute_scene_scale(train_dataset.sfm_scene) * 1.1,
-            mean_lr_decay_exponent=0.01 ** (1.0 / max_steps),
-            grow_grad_2d_percentile_threshold=config.grad_2d_percentile if config.histogram_grad_2d_threshold else None,
-            grow_grad2d_threshold=config.absolute_grad_2d_threshold if not config.histogram_grad_2d_threshold else None,
-            adaptive_grad2d_threshold=config.adaptive_grad_2d_threshold,
-            scale_3d_threshold_relative_units=config.use_scene_scale_for_refinement,
+        mean_lr_decay_exponent = 0.01 ** (1.0 / max_steps)
+        if config.optimizer_scale_3d_threshold_units == "scene_scale":
+            config.opt.deletion_scale_3d_threshold *= scene_scale * 1.1
+            config.opt.insertion_scale_3d_threshold *= scene_scale * 1.1
+        config.opt.means_lr *= scene_scale * 1.1  # Scale the means learning rate by the scene scale
+
+        optimizer = GaussianSplatOptimizer.from_model_and_config(
+            model=model,
+            config=config.opt,
+            means_lr_decay_exponent=mean_lr_decay_exponent,
+            batch_size=config.batch_size,
         )
 
         # Optional camera position optimizer
@@ -1023,11 +1027,11 @@ class SceneOptimizationRunner:
 
         self._global_step: int = 0
 
-        if self.config.clip_max_gaussians_to_memory:
-            self._max_num_gaussians = int(0.9 * torch.cuda.get_device_properties(self.device).total_memory / 2048)
-            self._logger.info(
-                f"Setting max_num_gaussians to {self._max_num_gaussians:,} targetting 90% of total GPU memory"
-            )
+        # if self.config.clip_max_gaussians_to_memory:
+        #     self._max_num_gaussians = int(0.9 * torch.cuda.get_device_properties(self.device).total_memory / 2048)
+        #     self._logger.info(
+        #         f"Setting max_num_gaussians to {self._max_num_gaussians:,} targetting 90% of total GPU memory"
+        #     )
 
         # Tensorboard
         self._tensorboard_logger = None
@@ -1257,7 +1261,7 @@ class SceneOptimizationRunner:
                     self._global_step > refine_start_step
                     and self._global_step % refine_every_step == 0
                     and self._global_step < refine_stop_step
-                    and self.model.num_gaussians < self._max_num_gaussians
+                    # and self.model.num_gaussians < self._max_num_gaussians
                 ):
                     num_gaussians_before: int = self.model.num_gaussians
                     use_scales_for_refinement: bool = self._global_step > reset_opacities_every_step
