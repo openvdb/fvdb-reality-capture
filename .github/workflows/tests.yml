@@ -110,7 +110,7 @@ jobs:
         run: |
           echo "Cloning fvdb"
           pwd
-          git clone https://github.com/openvdb/fvdb.git
+          git clone https://github.com/openvdb/fvdb-core.git
 
       - name: Set up fvdb Conda env
         uses: mamba-org/setup-micromamba@v2
@@ -205,7 +205,7 @@ jobs:
         run: |
           echo "Cloning fvdb"
           pwd
-          git clone https://github.com/openvdb/fvdb.git
+          git clone https://github.com/openvdb/fvdb-core.git
 
       - name: Set up fvdb Conda env
         uses: mamba-org/setup-micromamba@v2
