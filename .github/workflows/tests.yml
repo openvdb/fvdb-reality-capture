@@ -105,7 +105,7 @@ jobs:
           git checkout $TARGET_BRANCH
           git merge --no-ff $CURRENT_COMMIT --message "CI: Simulating merge of $CURRENT_COMMIT into $TARGET_BRANCH"
 
-
+      # TODO: DRY this up with an anchor
       - name: Clone fvdb
         run: |
           echo "Cloning fvdb"
@@ -116,14 +116,14 @@ jobs:
         uses: mamba-org/setup-micromamba@v2
         with:
           post-cleanup: 'all'
-          environment-name: fvdb
-          environment-file: fvdb/env/dev_environment.yml
+          environment-name: fvdb_build
+          environment-file: fvdb/env/build_environment.yml
 
       - name: Build fvdb
         run: |
           echo "Building fvdb"
           cd fvdb
-          micromamba activate fvdb
+          micromamba activate fvdb_build
           ./build.sh wheel verbose --cuda-arch-list '8.9+PTX'
 
       - name: Upload fvdb wheel
@@ -200,6 +200,13 @@ jobs:
         shell: bash -el {0}
     steps:
       - uses: actions/checkout@v4
+
+      - name: Clone fvdb
+        run: |
+          echo "Cloning fvdb"
+          pwd
+          git clone https://github.com/openvdb/fvdb.git
+
       - name: Set up fvdb Conda env
         uses: mamba-org/setup-micromamba@v2
         with:
