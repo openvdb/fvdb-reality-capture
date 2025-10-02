@@ -57,8 +57,6 @@ jobs:
         with:
           role-to-assume: arn:aws:iam::420032683002:role/openvdb-fvdb-github-actions-role
           aws-region: us-east-2
-      - name: Who am I?
-        run: aws sts get-caller-identity
       - name: Start EC2 runner
         id: start-build-runner
         uses: machulav/ec2-github-runner@v2.4.1
@@ -208,8 +206,6 @@ jobs:
         with:
           role-to-assume: arn:aws:iam::420032683002:role/openvdb-fvdb-github-actions-role
           aws-region: us-east-2
-      - name: Who am I?
-        run: aws sts get-caller-identity
 
       - name: Clone fvdb
         run: |
