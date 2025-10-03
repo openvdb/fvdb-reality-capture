@@ -54,10 +54,10 @@ class GaussianSplatOptimizerConfig:
     # If a Gaussian's opacity drops below this value, delete it
     deletion_opacity_threshold: float = 0.005
 
-    # If a Gaussian's 3d scale drops below this value (units are specified by scale_3d_threshold_units) then delete it.
+    # If a Gaussian's 3d scale is above this value (units are specified by scale_3d_threshold_units) then delete it.
     deletion_scale_3d_threshold: float = 0.1
 
-    # If a projected Gaussian's 2d scale drops below this value (units are specified by scale_2d_threshold_units) then delete it.
+    # If a the maximum prejected size of a Gaussian betweem refinement steps exceeds this value then delete it.
     # Note this parameter is only used if you call refine with use_screen_space_scales=True
     deletion_scale_2d_threshold: float = 0.15
 
@@ -394,7 +394,7 @@ class GaussianSplatOptimizer:
         )
 
         def update_state_function(x: torch.Tensor):
-            total_gaussians = kept_indices.shape[0] + num_duplicated + num_split * 2
+            total_gaussians = kept_indices.shape[0] + num_duplicated + num_split * self._config.insertion_split_factor
             ret = torch.zeros([total_gaussians] + list(x.shape[1:]), dtype=x.dtype, device=x.device)
             ret[: kept_indices.shape[0]] = x[kept_indices]
             return ret
@@ -552,7 +552,7 @@ class GaussianSplatOptimizer:
         # If the Gaussian is high error and its 3d spatial size is large, split the Gaussian
         is_large = ~is_small
         is_split = is_grad_high & is_large
-        # If a Gaussian is high error, and it projects to a large size in screen space, split it
+        # Additionally, if a Gaussian's maximum projected size between refinement steps is too large, split it'
         # This is only done if use_screen_space_scales_for_splitting is True
         if use_screen_space_scales_for_splitting:
             if not self._model.accumulate_max_2d_radii:
@@ -590,14 +590,14 @@ class GaussianSplatOptimizer:
             is_too_big = self._model.scales.max(dim=-1).values > self._config.deletion_scale_3d_threshold
             is_deleted.logical_or_(is_too_big)
 
-        # We can also use the tracked screen space scales to delete Gaussians that
-        # project to a very large size in screen space between refinement steps.
-        # This is only done if use_screen_space_scales_for_deletion is True
-        if use_screen_space_scales_for_deletion:
-            # Here we track the maximum size a Gaussian has projected to in screen space between refinement steps
-            # if it's too big, we delete it
-            has_projected_too_big = self._model.accumulated_max_2d_radii > self._config.deletion_scale_2d_threshold
-            is_deleted.logical_or_(has_projected_too_big)
+            # We can also use the tracked screen space scales to delete Gaussians that
+            # project to a very large size in screen space between refinement steps.
+            # This is only done if use_screen_space_scales_for_deletion is True
+            if use_screen_space_scales_for_deletion:
+                # Here we track the maximum size a Gaussian has projected to in screen space between refinement steps
+                # if it's too big, we delete it
+                has_projected_too_big = self._model.accumulated_max_2d_radii > self._config.deletion_scale_2d_threshold
+                is_deleted.logical_or_(has_projected_too_big)
         return is_deleted
 
     @torch.no_grad()

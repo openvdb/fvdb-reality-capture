@@ -68,7 +68,7 @@ def main(
             "training cameras", metadata["camera_to_world_matrices"].cpu(), metadata["projection_matrices"].cpu()
         )
     else:
-        logger.info("No camera information  found in PLY metadata, not adding camera views to viewer")
+        logger.info("No camera information found in PLY metadata, not adding camera views to viewer")
     logger.info("Viewer running... Ctrl+C to exit.")
     time.sleep(1000000)
 
