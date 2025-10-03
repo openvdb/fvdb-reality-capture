@@ -93,8 +93,7 @@ class GaussianSplatOptimizer:
     def __init__(
         self,
         model: GaussianSplat3d,
-        optimizers: dict[str, torch.optim.Adam],
-        means_lr_scheduler: torch.optim.lr_scheduler.LRScheduler,
+        optimizer: torch.optim.Adam,
         means_lr_decay_exponent: float,
         config: GaussianSplatOptimizerConfig,
         _private: Any = None,
@@ -107,7 +106,6 @@ class GaussianSplatOptimizer:
         Args:
             model (GaussianSplat3d): The `GaussianSplat3d` model to optimize.
             optimizers (dict[str, torch.optim.Adam]): A dictionary of optimizers for each parameter group in the model.
-            means_lr_scheduler (torch.optim.lr_scheduler.LRScheduler): A learning rate scheduler for the means optimizer.
             means_lr_decay_exponent (float): The exponent used for decaying the means learning rate.
             config (GaussianSplatOptimizerConfig): Configuration options for the optimizer.
             _private (Any): A private object to prevent direct instantiation. Must be `GaussianSplatOptimizer.__PRIVATE__`.
@@ -143,8 +141,7 @@ class GaussianSplatOptimizer:
             else None
         )
 
-        self._optimizers = optimizers
-        self._means_lr_scheduler = means_lr_scheduler
+        self._optimizer = optimizer
 
         # Store the decay exponent for the means learning rate schedule so we can serialize it
         self._means_lr_decay_exponent = means_lr_decay_exponent
@@ -170,15 +167,11 @@ class GaussianSplatOptimizer:
             GaussianSplatOptimizer: A new `GaussianSplatOptimizer` instance.
         """
 
-        optimizers = GaussianSplatOptimizer._make_optimizers(model, batch_size, config)
-
-        # Schedule the learning rate of the so Gaussians positions move less later in training
-        means_lr_scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizers["means"], gamma=means_lr_decay_exponent)
+        optimizer = GaussianSplatOptimizer._make_optimizer(model, batch_size, config)
 
         return cls(
             model=model,
-            optimizers=optimizers,
-            means_lr_scheduler=means_lr_scheduler,
+            optimizer=optimizer,
             means_lr_decay_exponent=means_lr_decay_exponent,
             config=config,
             _private=cls.__PRIVATE__,
@@ -202,15 +195,12 @@ class GaussianSplatOptimizer:
             raise ValueError(f"Unsupported version: {state_dict['version']}")
 
         config = GaussianSplatOptimizerConfig(**state_dict["config"])
-        optimizers = GaussianSplatOptimizer._make_optimizers(model, batch_size=1, config=config)
-        for name, optimizer in optimizers.items():
-            optimizer.load_state_dict(state_dict["optimizers"][name])
-        means_lr_scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizers["means"], gamma=1.0)
+        optimizer = GaussianSplatOptimizer._make_optimizer(model, batch_size=1, config=config)
+        optimizer.load_state_dict(state_dict["optimizer"])
 
         optimizer = cls(
             model=model,
-            optimizers=optimizers,
-            means_lr_scheduler=means_lr_scheduler,
+            optimizer=optimizer,
             means_lr_decay_exponent=state_dict["means_lr_decay_exponent"],
             config=config,
             _private=cls.__PRIVATE__,
@@ -223,17 +213,19 @@ class GaussianSplatOptimizer:
         """
         Step the optimizers and update the learning rate schedulers, updating parameters of the model.
         """
-        for optimizer in self._optimizers.values():
-            optimizer.step()
-        self._means_lr_scheduler.step()
+        self._optimizer.step()
+        # Decay the means learning rate
+        for param_group in self._optimizer.param_groups:
+            if param_group["name"] == "means":
+                param_group["lr"] *= self._means_lr_decay_exponent
+                return
 
     def zero_grad(self, set_to_none: bool = False):
         """
         Zero the gradients of all tensors being optimized.
         """
         self._num_grad_accumulation_steps = 0
-        for optimizer in self._optimizers.values():
-            optimizer.zero_grad(set_to_none=set_to_none)
+        self._optimizer.zero_grad(set_to_none=set_to_none)
 
     def state_dict(self) -> dict[str, Any]:
         """
@@ -243,8 +235,7 @@ class GaussianSplatOptimizer:
             dict[str, Any]: A state dict containing the state of the optimizer.
         """
         return {
-            "optimizers": {name: optimizer.state_dict() for name, optimizer in self._optimizers.items()},
-            "means_lr_scheduler": self._means_lr_scheduler.state_dict(),
+            "optimizer": self._optimizer.state_dict(),
             "means_lr_decay_exponent": self._means_lr_decay_exponent,
             "insertion_grad_2d_abs_threshold": self._insertion_grad_2d_abs_threshold,
             "num_grad_accumulation_steps": self._num_grad_accumulation_steps,
@@ -286,7 +277,7 @@ class GaussianSplatOptimizer:
         value = self._config.deletion_opacity_threshold * 2.0
 
         def param_fn(name: str, p: torch.Tensor) -> torch.Tensor:
-            if name == "opacities":
+            if name == "logit_opacities":
                 return torch.clamp(p, max=torch.logit(torch.tensor(value)).item())
             else:
                 raise ValueError(f"Unexpected parameter name: {name}")
@@ -295,61 +286,37 @@ class GaussianSplatOptimizer:
             return torch.zeros_like(v)
 
         # update the parameters and the state in the optimizers
-        new_opac = self._update_optimizer("opacities", param_fn, optimizer_fn)
-        self._model.logit_opacities = new_opac
+        params = self._update_optimizer(param_fn, optimizer_fn, "logit_opacities")
+        self._model.logit_opacities = params["logit_opacities"]
 
     @staticmethod
-    def _make_optimizers(model, batch_size, config):
+    def _make_optimizer(model, batch_size, config):
         # Scale learning rate based on batch size, reference:
         # https://www.cs.princeton.edu/~smalladi/blog/2024/01/22/SDEs-ScalingRules/
         # Note that this would not make the training exactly equivalent to the original INRIA
         # Gaussian splat implementation.
         # See https://arxiv.org/pdf/2402.18824v1 for more details.
         lr_batch_rescale = math.sqrt(float(batch_size))
-        return {
-            "means": torch.optim.Adam(
-                [{"params": model.means, "lr": config.means_lr * lr_batch_rescale, "name": "means"}],
-                eps=1e-15 / lr_batch_rescale,
-                betas=(1.0 - batch_size * (1.0 - 0.9), 1.0 - batch_size * (1.0 - 0.999)),
-            ),
-            "scales": torch.optim.Adam(
-                [
-                    {
-                        "params": model.log_scales,
-                        "lr": config.log_scales_lr * lr_batch_rescale,
-                        "name": "scales",
-                    }
-                ],
-                eps=1e-15 / lr_batch_rescale,
-                betas=(1.0 - batch_size * (1.0 - 0.9), 1.0 - batch_size * (1.0 - 0.999)),
-            ),
-            "quats": torch.optim.Adam(
-                [{"params": model.quats, "lr": config.quats_lr * lr_batch_rescale, "name": "quats"}],
-                eps=1e-15 / lr_batch_rescale,
-                betas=(1.0 - batch_size * (1.0 - 0.9), 1.0 - batch_size * (1.0 - 0.999)),
-            ),
-            "opacities": torch.optim.Adam(
-                [
-                    {
-                        "params": model.logit_opacities,
-                        "lr": config.logit_opacities_lr * lr_batch_rescale,
-                        "name": "opacities",
-                    }
-                ],
-                eps=1e-15 / lr_batch_rescale,
-                betas=(1.0 - batch_size * (1.0 - 0.9), 1.0 - batch_size * (1.0 - 0.999)),
-            ),
-            "sh0": torch.optim.Adam(
-                [{"params": model.sh0, "lr": config.sh0_lr * lr_batch_rescale, "name": "sh0"}],
-                eps=1e-15 / lr_batch_rescale,
-                betas=(1.0 - batch_size * (1.0 - 0.9), 1.0 - batch_size * (1.0 - 0.999)),
-            ),
-            "shN": torch.optim.Adam(
-                [{"params": model.shN, "lr": config.shN_lr * lr_batch_rescale, "name": "shN"}],
-                eps=1e-15 / lr_batch_rescale,
-                betas=(1.0 - batch_size * (1.0 - 0.9), 1.0 - batch_size * (1.0 - 0.999)),
-            ),
-        }
+        return torch.optim.Adam(
+            [
+                {"params": model.means, "lr": config.means_lr * lr_batch_rescale, "name": "means"},
+                {
+                    "params": model.log_scales,
+                    "lr": config.log_scales_lr * lr_batch_rescale,
+                    "name": "log_scales",
+                },
+                {"params": model.quats, "lr": config.quats_lr * lr_batch_rescale, "name": "quats"},
+                {
+                    "params": model.logit_opacities,
+                    "lr": config.logit_opacities_lr * lr_batch_rescale,
+                    "name": "logit_opacities",
+                },
+                {"params": model.sh0, "lr": config.sh0_lr * lr_batch_rescale, "name": "sh0"},
+                {"params": model.shN, "lr": config.shN_lr * lr_batch_rescale, "name": "shN"},
+            ],
+            eps=1e-15 / lr_batch_rescale,
+            betas=(1.0 - batch_size * (1.0 - 0.9), 1.0 - batch_size * (1.0 - 0.999)),
+        )
 
     def _compute_insertion_grad_2d_threshold(self, accumulated_mean_2d_gradients: torch.Tensor) -> float:
         # Helper to compute the quantile of the gradients, using NumPy if we have too many Gaussians for torch.quantile
@@ -525,11 +492,11 @@ class GaussianSplatOptimizer:
             if name == "means":
                 p_split = (p[sel] + samples).reshape(-1, 3)  # [S*N, 3]
                 p_rest = p[rest]
-            elif name == "scales":
+            elif name == "log_scales":
                 # TODO: Adjust scale factor for splitting
                 p_split = torch.log(scales / 1.6).repeat(split_factor, 1)  # [2N, 3]
                 p_rest = p[rest]
-            elif name == "opacities" and self._config.opacity_updates_use_revised_formulation:
+            elif name == "logit_opacities" and self._config.opacity_updates_use_revised_formulation:
                 new_opacities = 1.0 - torch.sqrt(1.0 - torch.sigmoid(p[sel]))
                 p_split = torch.logit(new_opacities).repeat(repeats)  # [2N]
                 p_rest = p[rest]
@@ -591,27 +558,51 @@ class GaussianSplatOptimizer:
     @torch.no_grad()
     def _update_optimizer(
         self,
-        name: str,
         param_fn: Callable[[str, torch.Tensor], torch.Tensor],
         optimizer_fn: Callable[[str, str, torch.Tensor], torch.Tensor],
-    ) -> torch.Tensor:
-        optimizer = self._optimizers[name]
-        ret = None
-        for i, param_group in enumerate(optimizer.param_groups):
+        parameter_name: str | None = None,
+    ) -> dict[str, torch.Tensor]:
+        # Each optimizer only manages one tensor, so it should have exactly one param_group with a single parameter
+        #
+        # An adam param_group has the form (in PyTorch 2.8.0):
+        # {
+        #     'lr': lr,
+        #     'name': name,
+        #     'betas': (beta1, beta2),
+        #     'eps': eps,
+        #     'weight_decay': weight_decay,
+        #     'amsgrad': amsgrad,
+        #     'maximize': False,
+        #     'foreach': None,
+        #     'capturable': False,
+        #     'differentiable': False,
+        #     'fused': None,
+        #     'decoupled_weight_decay': False,
+        #     'initial_lr': lr_at_creation,
+        #     'params': [parameter_tensor],
+        # }
+        # where the parameter_tensor is a reference to the tensor being optimized (e.g. model.means)
+        #
+        # The adam optimizer also keeps a running average of the gradients, their squares, and the step count
+
+        params = dict()
+        for i, param_group in enumerate(self._optimizer.param_groups):
+            if parameter_name is not None and param_group["name"] != parameter_name:
+                continue
+            assert len(param_group["params"]) == 1, "Expected one parameter tensor per param group"
             p = param_group["params"][0]
-            p_state = optimizer.state[p]
-            del optimizer.state[p]
-            for key in p_state.keys():
+            name = param_group["name"]
+            new_state = self._optimizer.state[p]
+            del self._optimizer.state[p]
+            for key, value in new_state.items():
                 if key != "step":
-                    v = p_state[key]
-                    p_state[key] = optimizer_fn(name, key, v)
-            p_new = param_fn(name, p)
-            p_new.requires_grad = True
-            optimizer.param_groups[i]["params"] = [p_new]
-            optimizer.state[p_new] = p_state
-            ret = p_new
-        assert ret is not None
-        return ret
+                    new_state[key] = optimizer_fn(name, key, value)
+            new_parameter = param_fn(name, p)
+            new_parameter.requires_grad = True
+            self._optimizer.param_groups[i]["params"] = [new_parameter]
+            self._optimizer.state[new_parameter] = new_state
+            params[name] = new_parameter
+        return params
 
     @torch.no_grad()
     def _update_param_with_optimizer(
@@ -633,9 +624,9 @@ class GaussianSplatOptimizer:
         """
         params = {
             "means": self._model.means,
-            "scales": self._model.log_scales,
+            "log_scales": self._model.log_scales,
             "quats": self._model.quats,
-            "opacities": self._model.logit_opacities,
+            "logit_opacities": self._model.logit_opacities,
             "sh0": self._model.sh0,
             "shN": self._model.shN,
         }
@@ -643,13 +634,12 @@ class GaussianSplatOptimizer:
             # If names is not provided, update all parameters
             names = list(params.keys())
 
-        for name in names:
-            params[name] = self._update_optimizer(name, param_fn, optimizer_fn)
+        params = self._update_optimizer(param_fn, optimizer_fn)
         self._model.set_state(
-            params["means"],
-            params["quats"],
-            params["scales"],
-            params["opacities"],
-            params["sh0"],
-            params["shN"],
+            means=params["means"],
+            quats=params["quats"],
+            log_scales=params["log_scales"],
+            logit_opacities=params["logit_opacities"],
+            sh0=params["sh0"],
+            shN=params["shN"],
         )
