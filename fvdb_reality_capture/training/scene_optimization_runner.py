@@ -1321,7 +1321,7 @@ class SceneOptimizationRunner:
                         colors.permute(0, 3, 1, 2).contiguous(),
                         pixels.permute(0, 3, 1, 2).contiguous(),
                     )
-                    loss = l1loss * (1.0 - self.config.ssim_lambda) + ssimloss * self.config.ssim_lambda
+                    loss = torch.lerp(l1loss, ssimloss, self.config.ssim_lambda)
 
                     # Rgularize opacity to ensure Gaussian's don't become too opaque
                     if self.config.opacity_reg > 0.0:
