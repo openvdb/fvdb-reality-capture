@@ -13,7 +13,7 @@ from fvdb.viz import Viewer
 
 def main(
     ply_path: pathlib.Path,
-    viewer_port: int = 8080,
+    viewer_port: int = 8888,
     verbose: bool = False,
     device: str | torch.device = "cuda",
 ):
@@ -38,11 +38,10 @@ def main(
         camera_origin=first_cam_pos, lookat_point=model.means.mean(dim=0).cpu().numpy(), up_direction=[0, 0, 1]
     )
 
-    # TODO: Bring back after viewer fix
-    # assert isinstance(metadata["projection_matrices"], torch.Tensor)
-    # viewer.add_camera_view(
-    #     "training cameras", metadata["camera_to_world_matrices"].cpu(), metadata["projection_matrices"].cpu()
-    # )
+    assert isinstance(metadata["projection_matrices"], torch.Tensor)
+    viewer.add_camera_view(
+        "training cameras", metadata["camera_to_world_matrices"].cpu(), metadata["projection_matrices"].cpu()
+    )
     logger = logging.getLogger("visualize")
     logger.info("Viewer running... Ctrl+C to exit.")
     time.sleep(1000000)

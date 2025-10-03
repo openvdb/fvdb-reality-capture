@@ -1053,7 +1053,7 @@ class SceneOptimizationRunner:
 
         # Viewer
         # self._viewer = ViewerLogger(self.model, self._training_dataset) if not disable_viewer else None
-        self._viewer = Viewer(ip_address="127.0.0.1", port=8080, verbose=False) if not disable_viewer else None
+        self._viewer = Viewer(ip_address="127.0.0.1", port=8888, verbose=False) if not disable_viewer else None
         if self._viewer is not None:
             with torch.no_grad():
                 self._viewer.add_gaussian_splat_3d("Gaussian Scene", self.model)
@@ -1277,8 +1277,8 @@ class SceneOptimizationRunner:
                     use_screen_space_scales_for_refinement: bool = self._global_step < refine_using_scale2d_stop_step
                     if not use_screen_space_scales_for_refinement:
                         self.model.accumulate_max_2d_radii = False
-                    num_dup, num_split, num_prune = self.optimizer.refine_gaussians(
-                        use_scales=use_scales_for_refinement,
+                    num_dup, num_split, num_prune = self.optimizer.refine(
+                        use_scales_for_pruning=use_scales_for_refinement,
                         use_screen_space_scales=use_screen_space_scales_for_refinement,
                     )
                     self._logger.debug(
@@ -1299,7 +1299,7 @@ class SceneOptimizationRunner:
                         outside_mask = torch.logical_or(outside_mask, points[:, 2] < bbox_min[2])
                         outside_mask = torch.logical_or(outside_mask, points[:, 2] > bbox_max[2])
 
-                        self.optimizer.remove_gaussians(outside_mask)
+                        self.optimizer.filter_gaussians(outside_mask)
                         ng_post = self.model.num_gaussians
                         nclip = ng_prior - ng_post
                         self._logger.debug(
