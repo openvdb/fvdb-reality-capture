@@ -112,9 +112,9 @@ class GaussianSplatOptimizer:
     """
     Optimizer for reconstructing a scene using Gaussian Splat radiance fields over a collection of posed images.
 
-    The optimizer uses an Adam optimizer to optimize the parameters of a `fvdb.GaussianSplat3d` model.
-    It also provides functionality to refine the model by duplicating, splitting, and deleting Gaussians,
-    following the algorithm in the original Gaussian Splatting paper (https://arxiv.org/abs/2308.04079).
+    The optimizer uses an Adam optimizer to optimize the parameters of a `fvdb.GaussianSplat3d` model, and
+    provides utilities to refine the model by inserting and deleting Gaussians based on their contribution to the optimization.
+    The tools here mostly follow the algorithm in the original Gaussian Splatting paper (https://arxiv.org/abs/2308.04079).
     """
 
     __PRIVATE__ = object()
