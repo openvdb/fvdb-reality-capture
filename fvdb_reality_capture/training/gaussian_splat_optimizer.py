@@ -28,7 +28,7 @@ class InsertionGrad2dThresholdMode(str, Enum):
     Generally CONSTANT with a default value (0.0002) will produce okay results, but may not be optimal for all types
     of captures. Using PERCENTILE_FIRST_ITERATION will have similar behavior to CONSTANT but will adapt to the scale of the gradients
     which can be more robust across different capture types.
-    For highly detailed, scenes, PERCENTILE_EVERY_ITERATION may be useful to adaptively insert more Gaussians as the model learns more detail.
+    For highly detailed scenes, PERCENTILE_EVERY_ITERATION may be useful to adaptively insert more Gaussians as the model learns more detail.
     This generally produces many more Gaussians and more detailed results at the cost of more memory and compute.
     """
 
@@ -57,7 +57,7 @@ class GaussianSplatOptimizerConfig:
     # If a Gaussian's 3d scale is above this value (units are specified by scale_3d_threshold_units) then delete it.
     deletion_scale_3d_threshold: float = 0.1
 
-    # If a the maximum prejected size of a Gaussian betweem refinement steps exceeds this value then delete it.
+    # If a the maximum projected size of a Gaussian between refinement steps exceeds this value then delete it.
     # Note this parameter is only used if you call refine with use_screen_space_scales=True
     deletion_scale_2d_threshold: float = 0.15
 
@@ -78,7 +78,7 @@ class GaussianSplatOptimizerConfig:
     # Note this parameter is only used if you call refine with use_screen_space_scales=True
     insertion_scale_2d_threshold: float = 0.05
 
-    # When splitting Gaussinas, update the opacities of the new Gaussians using the revised formulation from
+    # When splitting Gaussians, update the opacities of the new Gaussians using the revised formulation from
     # "Revising Densification in Gaussian Splatting" (https://arxiv.org/abs/2404.06109).
     # This removes a bias which weighs newly split Gaussians contribution to the image more heavily than
     # older Gaussians.
@@ -128,13 +128,13 @@ class GaussianSplatOptimizer:
         _private: Any = None,
     ):
         """
-        Create a new `GaussianSplatOptimizer` instance froom a model, optimizers and a config.
+        Create a new `GaussianSplatOptimizer` instance froom a model, optimizer and a config.
 
         Note: You should not call this constructor directly. Instead use `from_model_and_config()` or `from_state_dict()`.
 
         Args:
             model (GaussianSplat3d): The `GaussianSplat3d` model to optimize.
-            optimizers (dict[str, torch.optim.Adam]): A dictionary of optimizers for each parameter group in the model.
+            optimizer (torch.optim.Adam): The optimizer for the model.
             means_lr_decay_exponent (float): The exponent used for decaying the means learning rate.
             config (GaussianSplatOptimizerConfig): Configuration options for the optimizer.
             _private (Any): A private object to prevent direct instantiation. Must be `GaussianSplatOptimizer.__PRIVATE__`.
@@ -458,7 +458,7 @@ class GaussianSplatOptimizer:
         Generally CONSTANT with a default value (0.0002) will produce okay results, but may not be optimal for all types
         of captures. Using PERCENTILE_FIRST_ITERATION will have similar behavior to CONSTANT but will adapt to the scale of the gradients
         which can be more robust across different capture types.
-        For highly detailed, scenes, PERCENTILE_EVERY_ITERATION may be useful to adaptively insert more Gaussians as the model learns more detail.
+        For highly detailed scenes, PERCENTILE_EVERY_ITERATION may be useful to adaptively insert more Gaussians as the model learns more detail.
         This generally produces many more Gaussians and more detailed results at the cost of more memory and compute.
 
         Args:
@@ -552,7 +552,7 @@ class GaussianSplatOptimizer:
         # If the Gaussian is high error and its 3d spatial size is large, split the Gaussian
         is_large = ~is_small
         is_split = is_grad_high & is_large
-        # Additionally, if a Gaussian's maximum projected size between refinement steps is too large, split it'
+        # Additionally, if a Gaussian's maximum projected size between refinement steps is too large, split it
         # This is only done if use_screen_space_scales_for_splitting is True
         if use_screen_space_scales_for_splitting:
             if not self._model.accumulate_max_2d_radii:
@@ -572,8 +572,8 @@ class GaussianSplatOptimizer:
         Compute a boolean mask indicating which Gaussians should be deleted.
 
         Args:
-            use_scales_for_deletion: If set to true, use a threshold on the the 3D scales to delete Gaussians that are too large.
-            use_screen_space_scales_for_deletion: If set to true, use a threshold on the the maximum 2D projected scale
+            use_scales_for_deletion: If set to true, use a threshold on the 3D scales to delete Gaussians that are too large.
+            use_screen_space_scales_for_deletion: If set to true, use a threshold on the maximum 2D projected scale
                 between refinements to delete Gaussians that are too large.
                 Note: the model must have been configured to track these scales by setting
                 `model.accumulate_max_2d_radii = True`.
@@ -611,7 +611,7 @@ class GaussianSplatOptimizer:
         we need to update the optimizer state to point to the new tensors.
 
         This method copies the model's tensors into the optimizer's param groups so they continue to be optimized.
-        It also applies the the Adam moments for each parameter being updated 'exp_avg' and 'exp_avg_sq'.
+        It also applies the Adam moments for each parameter being updated 'exp_avg' and 'exp_avg_sq'.
 
         Args:
             optimizer_fn (Callable[[torch.Tensor], torch.Tensor]): A function to apply to each Adam moment Tensor for each parameter.
