@@ -110,12 +110,11 @@ class GaussianSplatOptimizerConfig:
 
 class GaussianSplatOptimizer:
     """
-    Optimzier for training Gaussian Splat radiance fields over a collection of posed images.
+    Optimzier for reconstructing a scene using Gaussian Splat radiance fields over a collection of posed images.
 
-    This optimizer uses Adam with a fixed learning rate for each parameter in a Gaussian Radiance field
-    (i.e. means, covariances, opacities, spherical harmonics).
-    It also handles splitting/duplicating/deleting Gaussians based on their opacity and gradients following the
-    algorithm in the original Gaussian Splatting paper (https://arxiv.org/abs/2308.04079).
+    The optimizer uses an Adam optimizer to optimize the parameters of a `fvdb.GaussianSplat3d` model.
+    It also provides functionality to refine the model by duplicating, splitting, and deleting Gaussians,
+    following the algorithm in the original Gaussian Splatting paper (https://arxiv.org/abs/2308.04079).
     """
 
     __PRIVATE__ = object()
@@ -638,6 +637,21 @@ class GaussianSplatOptimizer:
 
     @torch.no_grad()
     def _compute_duplicated_gaussians(self, duplication_indices: torch.Tensor) -> dict[str, torch.Tensor]:
+        """
+        Compute the new Gaussians to add by duplicating the Gaussians at the given indices.
+
+        Args:
+            duplication_indices (torch.Tensor): A 1D tensor of indices indicating which Gaussians to duplicate.
+
+        Returns:
+            dict[str, torch.Tensor]: A dictionary containing the new Gaussians to add with keys (where D is the duplication factor and M is the number of duplicated Gaussians):
+                - "means": The means of the new Gaussians of shape [(D-1)*M, 3] where D is the duplication factor and M is the number of duplicated Gaussians.
+                - "quats": The quaternions of the new Gaussians of shape [(D-1)*M, 4].
+                - "log_scales": The log scales of the new Gaussians of shape [(D-1)*M, 3].
+                - "logit_opacities": The logit opacities of the new Gaussians of shape [(D-1)*M].
+                - "sh0": The SH0 coefficients of the new Gaussians of shape [(D-1)*M, 1, 3].
+                - "shN": The SHN coefficients of the new Gaussians of shape [(D-1)*M, K-1, 3].
+        """
         duplication_factor = self._config.insertion_duplication_factor
         if duplication_factor < 2:
             raise ValueError("duplication_factor must be >= 2")
@@ -683,6 +697,21 @@ class GaussianSplatOptimizer:
 
     @torch.no_grad()
     def _compute_split_gaussians(self, split_indices: torch.Tensor) -> dict[str, torch.Tensor]:
+        """
+        Compute the new Gaussians to add by splitting the Gaussians at the given indices.
+
+        Args:
+            split_indices (torch.Tensor): A 1D tensor of indices indicating which Gaussians to split.
+
+        Returns:
+            dict[str, torch.Tensor]: A dictionary containing the new Gaussians to add with keys:
+                - "means": The means of the new Gaussians of shape [S*M, 3] where S is the split factor and M is the number of split Gaussians.
+                - "quats": The quaternions of the new Gaussians of shape [S*M, 4].
+                - "log_scales": The log scales of the new Gaussians of shape [S*M, 3].
+                - "logit_opacities": The logit opacities of the new Gaussians of shape [S*M].
+                - "sh0": The SH0 coefficients of the new Gaussians of shape [S*M, 1, 3].
+                - "shN": The SHN coefficients of the new Gaussians of shape [S*M, K-1, 3].
+        """
         split_factor = self._config.insertion_split_factor
         if split_indices.numel() == 0:
             return {
