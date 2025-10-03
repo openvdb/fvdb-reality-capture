@@ -5,6 +5,7 @@ import logging
 import pathlib
 import time
 
+import numpy as np
 import torch
 import tyro
 from fvdb import GaussianSplat3d
@@ -27,22 +28,47 @@ def main(
         device (str | torch.device): Device to use for computation (default is "cuda").
     """
     logging.basicConfig(level=logging.INFO, format="%(levelname)s : %(message)s")
+    logger = logging.getLogger(__name__)
 
+    logger.info(f"Starting viewer server on port {viewer_port}")
     viewer = Viewer(port=viewer_port, verbose=verbose)
 
+    logger.info(f"Loading Gaussian Splats from {ply_path}")
     model, metadata = GaussianSplat3d.from_ply(ply_path, device)
+
+    logger.info(f"Adding Gaussian Splat model with {len(model.means)} Gaussians to viewer")
     viewer.add_gaussian_splat_3d(name="model", gaussian_splat_3d=model)
-    assert isinstance(metadata["camera_to_world_matrices"], torch.Tensor)
-    first_cam_pos = metadata["camera_to_world_matrices"][0, :3, 3]
-    viewer.set_camera_lookat(
-        camera_origin=first_cam_pos, lookat_point=model.means.mean(dim=0).cpu().numpy(), up_direction=[0, 0, 1]
+
+    has_camera_to_world_matrices = "camera_to_world_matrices" in metadata and isinstance(
+        metadata["camera_to_world_matrices"], torch.Tensor
+    )
+    has_projection_matrices = "projection_matrices" in metadata and isinstance(
+        metadata["projection_matrices"], torch.Tensor
     )
 
-    assert isinstance(metadata["projection_matrices"], torch.Tensor)
-    viewer.add_camera_view(
-        "training cameras", metadata["camera_to_world_matrices"].cpu(), metadata["projection_matrices"].cpu()
+    scene_centroid = model.means.mean(dim=0).cpu().numpy()
+    if not has_camera_to_world_matrices:
+        scene_radius = (model.means.max(dim=0).values - model.means.min(dim=0).values).max().item() / 2.0
+        initial_camera_position = scene_centroid + np.ones(3) * scene_radius * 0.5
+    else:
+        assert isinstance(metadata["camera_to_world_matrices"], torch.Tensor)
+        initial_camera_position = metadata["camera_to_world_matrices"][0, :3, 3]
+
+    logger.info(f"Setting viewer camera to {initial_camera_position} looking at {scene_centroid}")
+    viewer.set_camera_lookat(
+        camera_origin=initial_camera_position,
+        lookat_point=scene_centroid,
+        up_direction=[0, 0, 1],
     )
-    logger = logging.getLogger("visualize")
+
+    if has_camera_to_world_matrices and has_projection_matrices:
+        assert isinstance(metadata["camera_to_world_matrices"], torch.Tensor)
+        assert isinstance(metadata["projection_matrices"], torch.Tensor)
+        viewer.add_camera_view(
+            "training cameras", metadata["camera_to_world_matrices"].cpu(), metadata["projection_matrices"].cpu()
+        )
+    else:
+        logger.info("No camera information  found in PLY metadata, not adding camera views to viewer")
     logger.info("Viewer running... Ctrl+C to exit.")
     time.sleep(1000000)
 

@@ -1278,7 +1278,7 @@ class SceneOptimizationRunner:
                     if not use_screen_space_scales_for_refinement:
                         self.model.accumulate_max_2d_radii = False
                     num_dup, num_split, num_prune = self.optimizer.refine(
-                        use_scales_for_pruning=use_scales_for_refinement,
+                        use_scales_for_deletion=use_scales_for_refinement,
                         use_screen_space_scales=use_screen_space_scales_for_refinement,
                     )
                     self._logger.debug(
@@ -1299,7 +1299,7 @@ class SceneOptimizationRunner:
                         outside_mask = torch.logical_or(outside_mask, points[:, 2] < bbox_min[2])
                         outside_mask = torch.logical_or(outside_mask, points[:, 2] > bbox_max[2])
 
-                        self.optimizer.filter_gaussians(outside_mask)
+                        self.optimizer.filter_gaussians(~outside_mask)
                         ng_post = self.model.num_gaussians
                         nclip = ng_prior - ng_post
                         self._logger.debug(

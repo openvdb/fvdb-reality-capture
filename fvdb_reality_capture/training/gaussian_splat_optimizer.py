@@ -110,7 +110,7 @@ class GaussianSplatOptimizerConfig:
 
 class GaussianSplatOptimizer:
     """
-    Optimzier for reconstructing a scene using Gaussian Splat radiance fields over a collection of posed images.
+    Optimizer for reconstructing a scene using Gaussian Splat radiance fields over a collection of posed images.
 
     The optimizer uses an Adam optimizer to optimize the parameters of a `fvdb.GaussianSplat3d` model.
     It also provides functionality to refine the model by duplicating, splitting, and deleting Gaussians,
@@ -308,13 +308,13 @@ class GaussianSplatOptimizer:
         This is useful to call periodically during optimization to prevent Gaussians from becoming
         completely occluded by denser Gaussians, and thus unable to be optimized.
         """
-        # Reset all opacities to twice the deletion threshold
+        # Clamp all opacities to be less than or equal to twice the deletion threshold
         value = self._config.deletion_opacity_threshold * 2.0
         self._model.logit_opacities.clamp_(max=torch.logit(torch.tensor(value)).item())
         self._update_optimizer_for_model(lambda x: x.zero_(), parameter_names={"logit_opacities"})
 
     @torch.no_grad()
-    def refine(self, use_scales_for_pruning, use_screen_space_scales) -> tuple[int, int, int]:
+    def refine(self, use_scales_for_deletion, use_screen_space_scales) -> tuple[int, int, int]:
         """
         Perform a step of refinement by inserting Gaussians where more detail is needed and deleting Gaussians that are not contributing to the optimization.
         Refinement happens via three mechanisms:
@@ -338,7 +338,7 @@ class GaussianSplatOptimizer:
             use_screen_space_scales: If set to true, threshold the maximum projected size of Gaussians between refinement steps
                                      to decide whether to split or delete Gaussians that are too large.
                                      Note that the model must have been configured to track these scales by setting
-                                     GaussianSplat3d.track_max_2d_radii = True.
+                                     `GaussianSplat3d.accumulate_max_2d_radii = True`.
 
         Returns:
             num_duplicated (int): The number of Gaussians that were duplicated.
@@ -353,10 +353,11 @@ class GaussianSplatOptimizer:
         split_indices = torch.where(is_split)[0]
         num_split = len(split_indices)
 
-        is_deleted = self._compute_deletion_mask(use_scales_for_pruning, use_screen_space_scales)
+        is_deleted = self._compute_deletion_mask(use_scales_for_deletion, use_screen_space_scales)
         num_deleted = int(is_deleted.sum().item())
 
-        kept_indices = torch.where(~(is_deleted & ~is_split))[0]
+        # Gaussians which are not split and not deleted are kept as-is
+        kept_indices = torch.where(~(is_split | is_deleted))[0]
 
         # Get the new Gaussians to add from splitting and duplication
         duplicated_gaussians = self._compute_duplicated_gaussians(duplication_indices)
@@ -514,7 +515,7 @@ class GaussianSplatOptimizer:
         Args:
             use_screen_space_scales_for_splitting: If set to true, use the tracked screen space scales to decide whether to split.
                                               Note that the model must have been configured to track these scales by setting
-                                              GaussianSplat3d.track_max_2d_radii = True.
+                                              `GaussianSplat3d.accumulate_max_2d_radii = True`.
 
         Returns:
             duplication_mask (torch.Tensor): A boolean mask indicating which Gaussians should be duplicated.
@@ -574,6 +575,8 @@ class GaussianSplatOptimizer:
             use_scales_for_deletion: If set to true, use a threshold on the the 3D scales to delete Gaussians that are too large.
             use_screen_space_scales_for_deletion: If set to true, use a threshold on the the maximum 2D projected scale
                 between refinements to delete Gaussians that are too large.
+                Note: the model must have been configured to track these scales by setting
+                `model.accumulate_max_2d_radii = True`.
 
         Returns:
             deletion_mask (torch.Tensor): A boolean mask indicating which Gaussians should be deleted.
@@ -595,7 +598,6 @@ class GaussianSplatOptimizer:
             # if it's too big, we delete it
             has_projected_too_big = self._model.accumulated_max_2d_radii > self._config.deletion_scale_2d_threshold
             is_deleted.logical_or_(has_projected_too_big)
-
         return is_deleted
 
     @torch.no_grad()
