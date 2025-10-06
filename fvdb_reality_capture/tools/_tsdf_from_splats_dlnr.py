@@ -434,6 +434,7 @@ def tsdf_from_splats_dlnr(
     projection_matrices: torch.Tensor,
     image_sizes: torch.Tensor,
     truncation_margin: float,
+    grid_shell_thickness: float = 3.0,
     baseline: float = 0.07,
     near: float = 4.0,
     far: float = 20.0,
@@ -456,6 +457,9 @@ def tsdf_from_splats_dlnr(
         image_sizes (torch.Tensor): A (C, 2)-shaped Tensor containing the width and height of each image to extract
             from the Gaussian splat where C is the number of camera views.
         truncation_margin (float): Margin for truncating the TSDF, in world units.
+        grid_shell_thickness (float): Thickness of the TSDF grid shell in multiples of the truncation margin (default is 3.0).
+            _i.e_. if truncation_margin is 0.1 and grid_shell_thickness is 3.0, the TSDF grid will extend 0.3 world units
+            from the surface of the model.
         baseline (float): Baseline distance for stereo depth estimation.
             If use_absolute_baseline is False, this is interpreted as a fraction of the mean depth of each image (default is 0.07).
             Otherwise, it is interpreted as an absolute distance in world units.
@@ -495,7 +499,7 @@ def tsdf_from_splats_dlnr(
         dataloader = torch.utils.data.DataLoader(dataset, batch_size=1, shuffle=False, num_workers=8)
 
         device = model.device
-        voxel_size = truncation_margin / 2.0
+        voxel_size = truncation_margin / grid_shell_thickness
         accum_grid = Grid.from_dense(dense_dims=1, ijk_min=0, voxel_size=voxel_size, origin=0.0, device=device)
         tsdf = torch.zeros(accum_grid.num_voxels, device=device, dtype=dtype)
         weights = torch.zeros(accum_grid.num_voxels, device=device, dtype=dtype)
