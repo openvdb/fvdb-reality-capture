@@ -4,6 +4,7 @@
 import logging
 from typing import Literal
 
+import numpy as np
 import torch
 from sam2.automatic_mask_generator import SAM2AutomaticMaskGenerator
 from sam2.build_sam import build_sam2
@@ -34,6 +35,9 @@ class SAM2Model:
 
         Args:
             checkpoint (Literal["large", "small", "tiny", "base_plus"]): Checkpoint to use for the SAM2 model.
+            points_per_side (int): Defines a grid of evenly spaced points for point prompts of the SAM2 model. For example, if points_per_side=32, the model places a grid of 32x32 points over the image. Defaults to 40.
+            pred_iou_thresh (float): The minimum predicted IoU score for a mask to be included in the output. Defaults to 0.80.
+            stability_score_thresh (float): The minimum stability score for a mask to be included in the output. Defaults to 0.80.
             device (torch.device | str): Device to load the model on (default is "cuda").
         """
 
@@ -70,7 +74,7 @@ class SAM2Model:
 
     def predict_masks(
         self,
-        image: torch.Tensor,
+        image: np.ndarray,
     ):
         """
         Predict masks for an image using the SAM2 model.
@@ -94,4 +98,4 @@ class SAM2Model:
                     XYWH format.
         """
 
-        return self._sam2_mask_generator.generate(image.cpu().numpy())
+        return self._sam2_mask_generator.generate(image)
