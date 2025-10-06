@@ -15,6 +15,7 @@ from fvdb_reality_capture.tools import mesh_from_splats
 def main(
     ply_path: pathlib.Path,
     truncation_margin: float,
+    grid_shell_thickness: float = 3.0,
     near: float = 0.1,
     far: float = 4.0,
     use_scene_scale_units: bool = True,
@@ -27,6 +28,9 @@ def main(
     Args:
         ply_path (pathlib.Path): Path to the PLY containing the Gaussian splat model and training camera metadata.
         truncation_margin (float): Margin for truncating the mesh, in world units.
+        grid_shell_thickness (float): Thickness of the TSDF grid shell in multiples of the truncation margin (default is 3.0).
+            _i.e_. if truncation_margin is 0.1 and grid_shell_thickness is 3.0, the TSDF grid will extend 0.3 world units
+            from the surface of the model.
         near (float): Near plane distance (as a multiple of the scene scale) below which we'll ignore depth samples (default is 0.1).
         far (float): Far plane distance (as a multiple of the scene scale) above which we'll ignore depth samples.
         use_scene_scale_units (bool): Whether to use scene scale units for the near, plane, far plane and truncation margin.
@@ -76,6 +80,7 @@ def main(
         projection_matrices=projection_matrices,
         image_sizes=image_sizes,
         truncation_margin=truncation_margin,
+        grid_shell_thickness=grid_shell_thickness,
         near=near,
         far=far,
         show_progress=True,
