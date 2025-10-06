@@ -2,7 +2,6 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 import torch
-
 from fvdb import GaussianSplat3d
 
 from ._tsdf_from_splats_dlnr import tsdf_from_splats_dlnr
@@ -18,9 +17,11 @@ def mesh_from_splats_dlnr(
     baseline: float = 0.07,
     near: float = 4.0,
     far: float = 20.0,
+    disparity_reprojection_threshold: float = 3.0,
     dtype: torch.dtype = torch.float16,
     feature_dtype: torch.dtype = torch.uint8,
     dlnr_backbone: str = "middleburry",
+    use_absolute_baseline: bool = False,
     show_progress: bool = True,
 ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     """
@@ -48,23 +49,22 @@ def mesh_from_splats_dlnr(
         image_sizes (torch.Tensor): A (C, 2)-shaped Tensor containing the width and height of each image to extract
             from the Gaussian splat where C is the number of camera views.
         truncation_margin (float): Margin for truncating the TSDF, in world units.
-        baseline (float): Baseline for the DLNR model as a percentage of the scene scale (default is 0.07).
-            The scene scale is defined as the median distance from the camera origins to their mean.
-        near (float): Near plane distance as a multiple of the baseline below which to ignore depth samples (default is 4.0).
-        far (float): Far plane distance as a multiple of the baseline above which to ignore depth samples (default is 20.0).
-        dtype: Data type for the TSDF and weights. Default is torch.float16.
-        feature_dtype: Data type for the features (default is torch.uint8 which is good for RGB colors).
+        baseline (float): Baseline distance for stereo depth estimation.
+            If use_absolute_baseline is False, this is interpreted as a fraction of the mean depth of each image (default is 0.07).
+            Otherwise, it is interpreted as an absolute distance in world units.
+        near (float): Near plane distance below which to ignore depth samples, as a multiple of the baseline.
+        far (float): Far plane distance above which to ignore depth samples, as a multiple of the baseline.
+        disparity_reprojection_threshold (float): Reprojection error threshold for occlusion masking in pixels (default is 3.0).
+        dtype (torch.dtype): Data type for the TSDF grid (default is torch.float16).
+        feature_dtype (torch.dtype): Data type for the color features (default is torch.uint8).
         dlnr_backbone (str): Backbone to use for the DLNR model, either "middleburry" or "sceneflow".
-            Default is "middleburry".
+        use_absolute_baseline (bool): If True, use the provided baseline as an absolute distance in world units (default is False).
         show_progress (bool): Whether to show a progress bar (default is True).
     Returns:
         mesh_vertices (torch.Tensor): Vertices of the extracted mesh.
         mesh_faces (torch.Tensor): Faces of the extracted mesh.
         mesh_colors (torch.Tensor): Colors of the extracted mesh vertices.
     """
-
-    near_rescaled = near * baseline
-    far_rescaled = far * baseline
 
     accum_grid, tsdf, colors = tsdf_from_splats_dlnr(
         model=model,
@@ -73,11 +73,13 @@ def mesh_from_splats_dlnr(
         image_sizes=image_sizes,
         truncation_margin=truncation_margin,
         baseline=baseline,
-        near=near_rescaled,
-        far=far_rescaled,
+        near=near,
+        far=far,
+        disparity_reprojection_threshold=disparity_reprojection_threshold,
         dtype=dtype,
         feature_dtype=feature_dtype,
         dlnr_backbone=dlnr_backbone,
+        use_absolute_baseline=use_absolute_baseline,
         show_progress=show_progress,
     )
 
