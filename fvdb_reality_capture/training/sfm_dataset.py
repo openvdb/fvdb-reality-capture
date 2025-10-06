@@ -161,9 +161,14 @@ class SfmDataset(torch.utils.data.Dataset, Iterable):
         Returns:
             np.ndarray: An array of point indices that are visible in at least one image.
         """
+        if not self._sfm_scene.has_visible_point_indices:
+            return self._sfm_scene.points
         visible_points = set()
         for idx in self._indices:
             image_meta: SfmImageMetadata = self._sfm_scene.images[idx]
+            assert (
+                image_meta.point_indices is not None
+            ), "SfmScene.has_visible_point_indices is True but image has no point indices"
             visible_points.update(image_meta.point_indices.tolist())
         return np.array(list(visible_points))
 
@@ -224,10 +229,12 @@ class SfmDataset(torch.utils.data.Dataset, Iterable):
 
         if image_meta.image_path.endswith(".jpg") or image_meta.image_path.endswith(".jpeg"):
             data = torchvision.io.read_file(image_meta.image_path)
-            image = torchvision.io.decode_jpeg(data, device="cpu").permute(1, 2, 0).numpy()
+            image = torchvision.io.decode_jpeg(data, device="cpu")
+            assert isinstance(image, torch.Tensor)
+            image = image.permute(1, 2, 0).numpy()
         elif image_meta.image_path.endswith(".png"):
             data = torchvision.io.read_file(image_meta.image_path)
-            image = torchvision.io.decode_png(data, device="cpu").permute(1, 2, 0).numpy()
+            image = torchvision.io.decode_png(data).permute(1, 2, 0).numpy()
         else:
             image = cv2.imread(image_meta.image_path, cv2.IMREAD_UNCHANGED)
             assert image is not None, f"Failed to load image: {image_meta.image_path}"
@@ -261,8 +268,15 @@ class SfmDataset(torch.utils.data.Dataset, Iterable):
 
         # If you passed in masks, we'll set set these in the data dictionary
         if image_meta.mask_path != "":
-            mask = cv2.imread(image_meta.mask_path, cv2.IMREAD_GRAYSCALE)
-            assert mask is not None, f"Failed to load mask: {image_meta.mask_path}"
+            if image_meta.mask_path.endswith(".jpg") or image_meta.mask_path.endswith(".jpeg"):
+                img_data = torchvision.io.read_file(image_meta.mask_path)
+                mask = torchvision.io.decode_jpeg(img_data, device="cpu")[0].numpy()
+            elif image_meta.mask_path.endswith(".png"):
+                img_data = torchvision.io.read_file(image_meta.mask_path)
+                mask = torchvision.io.decode_png(img_data)[0].numpy()
+            else:
+                mask = cv2.imread(image_meta.mask_path, cv2.IMREAD_GRAYSCALE)
+                assert mask is not None, f"Failed to load mask: {image_meta.mask_path}"
             mask = mask > 127
 
             data["mask_path"] = image_meta.mask_path

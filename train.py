@@ -20,6 +20,7 @@ def main(
     points_percentile_filter: float = 0.0,
     normalization_type: Literal["none", "pca", "ecef2enu", "similarity"] = "pca",
     crop_bbox: tuple[float, float, float, float, float, float] | None = None,
+    crop_to_points: bool = False,
     min_points_per_image: int = 5,
     results_path: pathlib.Path = pathlib.Path("results"),
     device: str | torch.device = "cuda",
@@ -29,8 +30,11 @@ def main(
     log_images_to_tensorboard: bool = False,
     save_results: bool = True,
     save_eval_images: bool = False,
+    verbose: bool = False,
+    dataset_type: Literal["colmap", "simple_directory"] = "colmap",
 ):
-    logging.basicConfig(level=logging.INFO, format="%(levelname)s : %(message)s")
+    log_level = logging.DEBUG if verbose else logging.INFO
+    logging.basicConfig(level=log_level, format="%(levelname)s : %(message)s")
 
     runner = SceneOptimizationRunner.new_run(
         config=cfg,
@@ -40,6 +44,7 @@ def main(
         points_percentile_filter=points_percentile_filter,
         normalization_type=normalization_type,
         crop_bbox=crop_bbox,
+        crop_to_points=crop_to_points,
         min_points_per_image=min_points_per_image,
         results_path=results_path,
         device=device,
@@ -49,6 +54,7 @@ def main(
         log_images_to_tensorboard=log_images_to_tensorboard,
         save_results=save_results,
         save_eval_images=save_eval_images,
+        dataset_type=dataset_type,
     )
 
     runner.train()

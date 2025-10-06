@@ -7,7 +7,6 @@ from typing import Sequence
 
 import numpy as np
 import torch
-
 from fvdb import GaussianSplat3d
 
 from ..transforms import BaseTransform
@@ -140,8 +139,7 @@ class Checkpoint:
 
         assert "optimizer" in checkpoint_data, "Optimizer state is missing in the checkpoint."
         optimizer_state = checkpoint_data["optimizer"]
-        optimizer = GaussianSplatOptimizer(model)
-        optimizer.load_state_dict(optimizer_state)
+        optimizer = GaussianSplatOptimizer.from_state_dict(model, optimizer_state)
 
         assert "num_training_poses" in checkpoint_data, "Number of training poses is missing in the checkpoint."
         num_training_poses = checkpoint_data["num_training_poses"]

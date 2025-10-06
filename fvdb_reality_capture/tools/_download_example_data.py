@@ -52,6 +52,7 @@ def download_example_data(dataset="all", download_path: str | pathlib.Path = pat
         "mipnerf360": "https://fvdb-data.s3.us-east-2.amazonaws.com/fvdb-reality-capture/360_v2.zip",
         "gettysburg": "https://fvdb-data.s3.us-east-2.amazonaws.com/fvdb-reality-capture/gettysburg.zip",
         "safety_park": "https://fvdb-data.s3.us-east-2.amazonaws.com/fvdb-reality-capture/safety_park.zip",
+        "miris_factory": "https://fvdb-data.s3.us-east-2.amazonaws.com/fvdb-reality-capture/miris_factory.zip",
     }
 
     # where each dataset goes
@@ -59,6 +60,7 @@ def download_example_data(dataset="all", download_path: str | pathlib.Path = pat
         "mipnerf360": "360_v2",
         "gettysburg": "gettysburg",
         "safety_park": "safety_park",
+        "miris_factory": "miris_factory",
     }
 
     if isinstance(download_path, str):

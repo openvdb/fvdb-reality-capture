@@ -3,8 +3,20 @@
 #
 
 from .checkpoint import Checkpoint
-from .gaussian_splat_optimizer import GaussianSplatOptimizer
+from .gaussian_splat_optimizer import (
+    GaussianSplatOptimizer,
+    GaussianSplatOptimizerConfig,
+    InsertionGrad2dThresholdMode,
+)
 from .scene_optimization_runner import Config, SceneOptimizationRunner
 from .sfm_dataset import SfmDataset
 
-__all__ = ["SceneOptimizationRunner", "Config", "Checkpoint", "SfmDataset", "GaussianSplatOptimizer"]
+__all__ = [
+    "SceneOptimizationRunner",
+    "Config",
+    "Checkpoint",
+    "SfmDataset",
+    "GaussianSplatOptimizer",
+    "GaussianSplatOptimizerConfig",
+    "InsertionGrad2dThresholdMode",
+]

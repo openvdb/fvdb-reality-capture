@@ -19,7 +19,8 @@ import torch.utils.data
 import tqdm
 from fvdb import GaussianSplat3d
 from fvdb.utils.metrics import psnr, ssim
-from scipy.spatial import cKDTree
+from fvdb.viz import Viewer
+from scipy.spatial import cKDTree  # type: ignore
 from torch.utils.tensorboard import SummaryWriter
 
 from ..sfm_scene import SfmScene
@@ -27,15 +28,18 @@ from ..transforms import (
     BaseTransform,
     Compose,
     CropScene,
+    CropSceneToPoints,
     DownsampleImages,
     FilterImagesWithLowPoints,
     NormalizeScene,
     PercentileFilterPoints,
 )
-from ..viewer import Viewer
 from .camera_pose_adjust import CameraPoseAdjustment
 from .checkpoint import Checkpoint
-from .gaussian_splat_optimizer import GaussianSplatOptimizer
+from .gaussian_splat_optimizer import (
+    GaussianSplatOptimizer,
+    GaussianSplatOptimizerConfig,
+)
 from .lpips import LPIPSLoss
 from .sfm_dataset import SfmDataset
 from .utils import make_unique_name_directory_based_on_time
@@ -43,6 +47,11 @@ from .utils import make_unique_name_directory_based_on_time
 
 @dataclass
 class Config:
+    """
+    Parameters for the radiance field optimization process.
+    See the comments for each parameter for details.
+    """
+
     # Random seed
     seed: int = 42
 
@@ -57,7 +66,9 @@ class Config:
     # Percentage of total epochs at which we perform evaluation on the validation set. i.e. 10 means perform evaluation after 10% of the epochs.
     eval_at_percent: List[int] = field(default_factory=lambda: [10, 20, 30, 40, 50, 75, 100])
     # Percentage of total epochs at which we save the model checkpoint. i.e. 10 means save a checkpoint after 10% of the epochs.
-    save_at_percent: List[int] = field(default_factory=lambda: [10, 20, 30, 40, 50, 75, 100])
+    save_at_percent: List[int] = field(default_factory=lambda: [20, 100])
+    # How often to update the viewer with training statistics and the current splat model (in epochs)
+    update_viewer_every_epochs: float = 2.0
 
     #
     # Gaussian Optimization Parameters
@@ -85,11 +96,11 @@ class Config:
     scale_reg: float = 0.0
     # Use random background for training to discourage transparency
     random_bkgd: bool = False
-    # When to start refining (split/duplicate/merge) Gaussians during optimization
+    # When to start refining Gaussians during optimization
     refine_start_epoch: int = 3
-    # When to stop refining (split/duplicate/merge) Gaussians during optimization
+    # When to stop refining Gaussians during optimization
     refine_stop_epoch: int = 100
-    # How often to refine (split/duplicate/merge) Gaussians during optimization
+    # How often to refine Gaussians during optimization
     refine_every_epoch: float = 0.75
     # How often to reset the opacities of the Gaussians during optimization
     reset_opacities_every_epoch: int = 16
@@ -99,6 +110,12 @@ class Config:
     ignore_masks: bool = False
     # Whether to remove Gaussians that fall outside the scene bounding box
     remove_gaussians_outside_scene_bbox: bool = False
+    # What units to use for the 3D scale thresholds in the optimizer (i.e. insertion_scale_3d_threshold, deletion_scale_3d_threshold)
+    # If set to "scene_scale", the thresholds are multiplied by the scene scale
+    optimizer_scale_3d_threshold_units: Literal["absolute", "scene_scale"] = "scene_scale"
+
+    # Configuration for the Gaussian Splat optimizer
+    opt: GaussianSplatOptimizerConfig = field(default_factory=GaussianSplatOptimizerConfig)
 
     #
     # Pose optimization parameters
@@ -112,6 +129,8 @@ class Config:
     pose_opt_reg: float = 1e-6
     # Learning rate decay factor for camera pose optimization (will decay to this fraction of initial lr)
     pose_opt_lr_decay: float = 1.0
+    # At which epoch to start optimizing camera postions. Default matches when we stop refining Gaussians.
+    pose_opt_start_epoch: int = 0
     # Which epoch to stop optimizing camera postions. Default matches max training epochs.
     pose_opt_stop_epoch: int = max_epochs
     # Standard devation for the normal distribution used for camera pose optimization's random iniitilaization
@@ -261,180 +280,6 @@ class TensorboardLogger:
         self._tb_writer.add_scalar("eval/lpips", lpips, step)
         self._tb_writer.add_scalar("eval/avg_time_per_image", avg_time_per_image, step)
         self._tb_writer.add_scalar("eval/num_gaussians", num_gaussians, step)
-
-
-class ViewerLogger:
-    """
-    A utility class to visualize the scene being trained and log training statistics and model state to the viewer.
-    """
-
-    def __init__(
-        self,
-        splat_scene: GaussianSplat3d,
-        train_dataset: SfmDataset,
-        viewer_port: int = 8080,
-        verbose: bool = False,
-    ):
-        """
-        Create a new `ViewerLogger` instance which is used to track training and evaluation progress through the viewer.
-
-        Args:
-            splat_scene: The GaussianSplat3d scene to visualize.
-            train_dataset: The dataset containing camera frames and images.
-            viewer_port: The port on which the viewer will run.
-            verbose: If True, print additional information about the viewer.
-        """
-
-        self._logger = logging.getLogger(f"{self.__class__.__module__}.{self.__class__.__name__}")
-
-        self.viewer = Viewer(port=viewer_port, verbose=verbose)
-        bbmin, bbmax = train_dataset.points.min(axis=0), train_dataset.points.max(axis=0)
-        bbox_diagonal_length = float(np.linalg.norm(bbmax - bbmin))
-        self.viewer.camera_far = 3.0 * bbox_diagonal_length
-        self._splat_model_view = self.viewer.register_gaussian_splat_3d(name="Model", gaussian_scene=splat_scene)
-
-        sfm_scene = train_dataset.sfm_scene
-        scene_extent = sfm_scene.points.max(0) - sfm_scene.points.min(0)
-        axis_scale = 0.01 * float(np.linalg.norm(scene_extent))
-        self._logger.info(f"Using scene extent = {scene_extent} for viewer. Scaling camera view axis by {axis_scale}.")
-
-        self._train_camera_view = self.viewer.register_camera_view(
-            name="Training Cameras",
-            cam_to_world_matrices=train_dataset.camera_to_world_matrices,
-            projection_matrices=train_dataset.projection_matrices,
-            image_sizes=train_dataset.image_sizes,
-            images=None,
-            frustum_line_width=2.0,
-            frustum_scale=1.0 * axis_scale,
-            axis_length=2.0 * axis_scale,
-            axis_thickness=0.1 * axis_scale,
-            show_images=False,
-            enabled=False,
-        )
-
-        self._training_metrics_view = self.viewer.register_dictionary_label(
-            "Training Metrics",
-            {
-                "Current Iteration": 0,
-                "Current SH Degree": 0,
-                "Num Gaussians": 0,
-                "Loss": 0.0,
-                "SSIM Loss": 0.0,
-                "L1 Loss": 0.0,
-                "GPU Memory Usage": 0,
-                "Pose Regularization": 0.0,
-            },
-        )
-
-        self._evaluation_metrics_view = self.viewer.register_dictionary_label(
-            "Evaluation Metrics",
-            {
-                "Last Evaluation Step": 0,
-                "PSNR": 0.0,
-                "SSIM": 0.0,
-                "LPIPS": 0.0,
-                "Evaluation Time": 0.0,
-                "Num Gaussians": 0,
-            },
-        )
-
-    @torch.no_grad
-    def pause_for_eval(self):
-        self._splat_model_view.allow_enable_in_viewer = False
-        self._splat_model_view.enabled = False
-        self._training_metrics_view["Status"] = "**Paused for Evaluation**"
-
-    @torch.no_grad
-    def resume_after_eval(self):
-        self._splat_model_view.allow_enable_in_viewer = True
-        self._splat_model_view.enabled = True
-        del self._training_metrics_view["Status"]
-
-    @torch.no_grad
-    def set_sh_basis_to_view(self, sh_degree: int):
-        """
-        Set the degree of the spherical harmonics to use in the viewer.
-
-        Args:
-            sh_degree: The spherical harmonics degree to view.
-        """
-        self._splat_model_view.sh_degree = sh_degree
-
-    @torch.no_grad
-    def update_camera_poses(self, cam_to_world_matrices: torch.Tensor, image_ids: torch.Tensor):
-        """
-        Update camera poses in the viewer corresponding to the given image IDs
-
-        Args:
-            cam_to_world_matrices: A tensor of shape (B, 4, 4) containing camera-to-world matrices.
-            image_ids: A tensor of shape (B,) containing image IDs of the cameras in the training set to update.
-        """
-        for i in range(len(cam_to_world_matrices)):
-            cam_to_world_matrix = cam_to_world_matrices[i].cpu().numpy()
-            image_id = int(image_ids[i].item())
-            self._train_camera_view[image_id].cam_to_world_matrix = cam_to_world_matrix
-
-    @torch.no_grad
-    def log_evaluation_iteration(
-        self, step: int, psnr: float, ssim: float, lpips: float, average_time_per_img: float, num_gaussians: int
-    ):
-        """
-        Log data for a single evaluation step to the viewer.
-
-        Args:
-            step: The training step after which the evaluation was performed.
-            psnr: Peak Signal-to-Noise Ratio for the evaluation (averaged over all images in the validation set).
-            ssim: Structural Similarity Index Measure for the evaluation (averaged over all images in the validation set).
-            lpips: Learned Perceptual Image Patch Similarity for the evaluation (averaged over all images in the validation set).
-            average_time_per_img: Average time taken to evaluate each image.
-            num_gaussians: Number of Gaussians in the model at this evaluation step.
-        """
-        self._evaluation_metrics_view["Last Evaluation Step"] = step
-        self._evaluation_metrics_view["PSNR"] = psnr
-        self._evaluation_metrics_view["SSIM"] = ssim
-        self._evaluation_metrics_view["LPIPS"] = lpips
-        self._evaluation_metrics_view["Average Time Per Image (s)"] = average_time_per_img
-        self._evaluation_metrics_view["Num Gaussians"] = num_gaussians
-
-    @torch.no_grad
-    def log_training_iteration(
-        self,
-        step: int,
-        loss: float,
-        l1loss: float,
-        ssimloss: float,
-        mem: float,
-        num_gaussians: int,
-        current_sh_degree: int,
-        pose_regulation: float | None,
-    ):
-        """
-        Log data for a single training step to the viewer.
-
-        Args:
-            step: The current training step.
-            loss: Total loss value for the training step.
-            l1loss: L1 loss value for the training step.
-            ssimloss: SSIM loss value for the training step.
-            mem: Maximum GPU memory allocated in GB during this step.
-            num_gaussians: Number of Gaussians in the model at this training step.
-            current_sh_degree: Current degree of spherical harmonics used in the
-            pose_regulation: Pose optimization regularization loss, if applicable.
-        """
-
-        self._training_metrics_view["Current Iteration"] = step
-        self._training_metrics_view["Current SH Degree"] = current_sh_degree
-        self._training_metrics_view["Num Gaussians"] = num_gaussians
-        self._training_metrics_view["Loss"] = loss
-        self._training_metrics_view["SSIM Loss"] = ssimloss
-        self._training_metrics_view["L1 Loss"] = l1loss
-        self._training_metrics_view["GPU Memory Usage"] = f"{mem:3.2f} GiB"
-        if pose_regulation is not None:
-            self._training_metrics_view["Pose Regularization"] = f"{pose_regulation:.3e}"
-        else:
-            if "Pose Regularization" in self._training_metrics_view:
-                # Remove the pose regularization key if it was previously set
-                del self._training_metrics_view["Pose Regularization"]
 
 
 class SceneOptimizationRunner:
@@ -769,7 +614,7 @@ class SceneOptimizationRunner:
         """
 
         def _knn(x_np: np.ndarray, k: int = 4) -> torch.Tensor:
-            kd_tree = cKDTree(x_np)
+            kd_tree = cKDTree(x_np)  # type: ignore
             distances, _ = kd_tree.query(x_np, k=k)
             return torch.from_numpy(distances).to(device=device, dtype=torch.float32)
 
@@ -813,13 +658,16 @@ class SceneOptimizationRunner:
         Returns:
             scene_scale (float): An estimate of how far objects in the scene are from the cameras that captured them
         """
-        if use_sfm_depths:
+        if use_sfm_depths and sfm_scene.has_visible_point_indices:
             # Estimate the scene scale as the median across the median distances from cameras to the
             # sfm points they see. If there is not too much variance in how far the cameras are from the scene
             # this gives a rough estimate of the scene scale.
             median_depth_per_camera = []
             for image_meta in sfm_scene.images:
                 # Don't use cameras that don't see any points in the estimate
+                assert (
+                    image_meta.point_indices is not None
+                ), "SfmScene.has_visible_point_indices is True but image has no point indices"
                 if len(image_meta.point_indices) == 0:
                     continue
                 points = sfm_scene.points[image_meta.point_indices]
@@ -847,6 +695,7 @@ class SceneOptimizationRunner:
         points_percentile_filter: float = 0.0,
         normalization_type: Literal["none", "pca", "ecef2enu", "similarity"] = "pca",
         crop_bbox: tuple[float, float, float, float, float, float] | None = None,
+        crop_to_points: bool = False,
         min_points_per_image: int = 5,
         results_path: str | pathlib.Path = pathlib.Path("results"),
         device: str | torch.device = "cuda",
@@ -856,6 +705,7 @@ class SceneOptimizationRunner:
         log_images_to_tensorboard: bool = False,
         save_eval_images: bool = False,
         save_results: bool = True,
+        dataset_type: Literal["colmap", "simple_directory"] = "colmap",
     ) -> "SceneOptimizationRunner":
         """
         Create a `Runner` instance for a new training run.
@@ -871,6 +721,7 @@ class SceneOptimizationRunner:
             crop_bbox (tuple[float, float, float, float, float, float] | None): Optional bounding box to crop the scene data.
                 In the form [x_min, y_min, z_min, x_max, y_max, z_max].
                 If None, no cropping will be applied.
+            crop_to_points (bool): Whether to crop the scene to the bounding box of the points after applying any crop_bbox.
             min_points_per_image (int): Minimum number of points that must be visible in an image for it to be included in the dataset.
             results_path (str | pathlib.Path): Base path where results will be saved.
             device (str | torch.device): The device to run the model on (e.g., "cuda" or "cpu").
@@ -905,14 +756,22 @@ class SceneOptimizationRunner:
             ),
             DownsampleImages(
                 image_downsample_factor=image_downsample_factor,
+                rescaled_jpeg_quality=95,
             ),
             FilterImagesWithLowPoints(min_num_points=min_points_per_image),
         ]
         if crop_bbox is not None:
             transforms.append(CropScene(crop_bbox))
+        if crop_to_points:
+            transforms.append(CropSceneToPoints(margin=0.0))
         transform = Compose(*transforms)
 
-        sfm_scene: SfmScene = SfmScene.from_colmap(dataset_path)
+        if dataset_type == "colmap":
+            sfm_scene: SfmScene = SfmScene.from_colmap(dataset_path)
+        elif dataset_type == "simple_directory":
+            sfm_scene: SfmScene = SfmScene.from_simple_directory(dataset_path)
+        else:
+            raise ValueError(f"Unsupported dataset_type {dataset_type}")
         sfm_scene = transform(sfm_scene)
 
         indices = np.arange(sfm_scene.num_images)
@@ -937,11 +796,19 @@ class SceneOptimizationRunner:
         logger.info(f"Model initialized with {model.num_gaussians:,} Gaussians")
 
         # Initialize optimizer
+        scene_scale = SceneOptimizationRunner._compute_scene_scale(train_dataset.sfm_scene)
         max_steps = config.max_epochs * len(train_dataset)
-        optimizer = GaussianSplatOptimizer(
-            model,
-            scene_scale=SceneOptimizationRunner._compute_scene_scale(train_dataset.sfm_scene) * 1.1,
-            mean_lr_decay_exponent=0.01 ** (1.0 / max_steps),
+        mean_lr_decay_exponent = 0.01 ** (1.0 / max_steps)
+        if config.optimizer_scale_3d_threshold_units == "scene_scale":
+            config.opt.deletion_scale_3d_threshold *= scene_scale * 1.1
+            config.opt.insertion_scale_3d_threshold *= scene_scale * 1.1
+        config.opt.means_lr *= scene_scale * 1.1  # Scale the means learning rate by the scene scale
+
+        optimizer = GaussianSplatOptimizer.from_model_and_config(
+            model=model,
+            config=config.opt,
+            means_lr_decay_exponent=mean_lr_decay_exponent,
+            batch_size=config.batch_size,
         )
 
         # Optional camera position optimizer
@@ -963,8 +830,11 @@ class SceneOptimizationRunner:
             torch.nn.utils.clip_grad_norm_(pose_adjust_model.parameters(), max_norm=1.0)
 
             # Add learning rate scheduler for pose optimization
+            pose_opt_start_step = int(config.pose_opt_start_epoch * len(train_dataset))
+            pose_opt_stop_step = int(config.pose_opt_stop_epoch * len(train_dataset))
+            num_pose_opt_steps = max(1, pose_opt_stop_step - pose_opt_start_step)
             pose_adjust_scheduler = torch.optim.lr_scheduler.ExponentialLR(
-                pose_adjust_optimizer, gamma=config.pose_opt_lr_decay ** (1.0 / max_steps)
+                pose_adjust_optimizer, gamma=config.pose_opt_lr_decay ** (1.0 / num_pose_opt_steps)
             )
 
         # Setup output directories.
@@ -1166,6 +1036,12 @@ class SceneOptimizationRunner:
 
         self._global_step: int = 0
 
+        # if self.config.clip_max_gaussians_to_memory:
+        #     self._max_num_gaussians = int(0.9 * torch.cuda.get_device_properties(self.device).total_memory / 2048)
+        #     self._logger.info(
+        #         f"Setting max_num_gaussians to {self._max_num_gaussians:,} targetting 90% of total GPU memory"
+        #     )
+
         # Tensorboard
         self._tensorboard_logger = None
         if tensorboard_path is not None and optimizer is not None and log_tensorboard_every > 0:
@@ -1176,8 +1052,28 @@ class SceneOptimizationRunner:
             )
 
         # Viewer
-        self._viewer = ViewerLogger(self.model, self._training_dataset) if not disable_viewer else None
-
+        # self._viewer = ViewerLogger(self.model, self._training_dataset) if not disable_viewer else None
+        self._viewer = Viewer(ip_address="127.0.0.1", port=8080, verbose=False) if not disable_viewer else None
+        if self._viewer is not None:
+            with torch.no_grad():
+                self._viewer.add_gaussian_splat_3d("Gaussian Scene", self.model)
+                train_cam_poses = torch.from_numpy(self._training_dataset.camera_to_world_matrices).to(
+                    dtype=torch.float32
+                )
+                train_projection_matrices = torch.from_numpy(
+                    self._training_dataset.projection_matrices.astype(np.float32)
+                )
+                first_cam_pos = self._training_dataset.camera_to_world_matrices[0, :3, 3]
+                self._viewer.set_camera_lookat(
+                    camera_origin=first_cam_pos,
+                    lookat_point=self.model.means.mean(dim=0).cpu().numpy(),
+                    up_direction=[0, 0, -1],
+                )
+                # self._viewer.add_camera_view(
+                #     name="Training Cameras",
+                #     camera_to_world_matrices=train_cam_poses,
+                #     projection_matrices=train_projection_matrices,
+                # )
         # Losses & Metrics.
         if self.config.lpips_net == "alex":
             self._lpips = LPIPSLoss(backbone="alex").to(model.device)
@@ -1237,7 +1133,10 @@ class SceneOptimizationRunner:
         increase_sh_degree_every_step: int = int(
             self.config.increase_sh_degree_every_epoch * len(self.training_dataset)
         )
+        pose_opt_start_step: int = int(self.config.pose_opt_start_epoch * len(self.training_dataset))
         pose_opt_stop_step: int = int(self.config.pose_opt_stop_epoch * len(self.training_dataset))
+
+        update_viewer_every_step = int(self.config.update_viewer_every_epochs * len(self.training_dataset))
 
         # Progress bar to track training progress
         if self.config.max_steps is not None:
@@ -1266,8 +1165,6 @@ class SceneOptimizationRunner:
                     pbar.update(batch_size)
                     self._global_step = pbar.n
                     continue
-                if self._viewer is not None:
-                    self._viewer.viewer.acquire_lock()
 
                 cam_to_world_mats: torch.Tensor = minibatch["camera_to_world"].to(self.device)  # [B, 4, 4]
                 world_to_cam_mats: torch.Tensor = minibatch["world_to_camera"].to(self.device)  # [B, 4, 4]
@@ -1275,9 +1172,13 @@ class SceneOptimizationRunner:
                 # Camera pose optimization
                 image_ids = minibatch["image_id"].to(self.device)  # [B]
                 if self.pose_adjust_model is not None:
-                    if self._global_step < pose_opt_stop_step:
+                    if self._global_step == pose_opt_start_step:
+                        self._logger.info(
+                            f"Starting to optimize camera poses at step {self._global_step:,} (epoch {epoch})"
+                        )
+                    if pose_opt_start_step <= self._global_step < pose_opt_stop_step:
                         cam_to_world_mats = self.pose_adjust_model(cam_to_world_mats, image_ids)
-                    else:
+                    elif self._global_step >= pose_opt_stop_step:
                         # After pose_opt_stop_iter, don't track gradients through pose adjustment
                         with torch.no_grad():
                             cam_to_world_mats = self.pose_adjust_model(cam_to_world_mats, image_ids)
@@ -1331,7 +1232,7 @@ class SceneOptimizationRunner:
                         colors.permute(0, 3, 1, 2).contiguous(),
                         pixels.permute(0, 3, 1, 2).contiguous(),
                     )
-                    loss = l1loss * (1.0 - self.config.ssim_lambda) + ssimloss * self.config.ssim_lambda
+                    loss = torch.lerp(l1loss, ssimloss, self.config.ssim_lambda)
 
                     # Rgularize opacity to ensure Gaussian's don't become too opaque
                     if self.config.opacity_reg > 0.0:
@@ -1343,10 +1244,15 @@ class SceneOptimizationRunner:
 
                     # If you're optimizing poses, regularize the pose parameters so the poses
                     # don't drift too far from the initial values
-                    if self.pose_adjust_model is not None and self._global_step < pose_opt_stop_step:
+                    if (
+                        self.pose_adjust_model is not None
+                        and pose_opt_start_step <= self._global_step < pose_opt_stop_step
+                    ):
                         pose_params = self.pose_adjust_model.pose_embeddings(image_ids)
                         pose_reg = torch.mean(torch.abs(pose_params))
                         loss = loss + self.config.pose_opt_reg * pose_reg
+                    else:
+                        pose_reg = torch.tensor(0.0, device=self.device)
 
                     # If we're splitting into crops, accumulate gradients, so pass retain_graph=True
                     # for every crop but the last one
@@ -1364,6 +1270,7 @@ class SceneOptimizationRunner:
                     self._global_step > refine_start_step
                     and self._global_step % refine_every_step == 0
                     and self._global_step < refine_stop_step
+                    # and self.model.num_gaussians < self._max_num_gaussians
                 ):
                     num_gaussians_before: int = self.model.num_gaussians
                     use_scales_for_refinement: bool = self._global_step > reset_opacities_every_step
@@ -1400,7 +1307,11 @@ class SceneOptimizationRunner:
                         )
 
                 # Reset the opacity parameters every so often
-                if self._global_step % reset_opacities_every_step == 0 and self._global_step > 0:
+                if (
+                    self.config.reset_opacities_every_epoch > 0
+                    and self._global_step % reset_opacities_every_step == 0
+                    and self._global_step > 0
+                ):
                     self.optimizer.reset_opacities()
 
                 # Step the Gaussian optimizer
@@ -1409,7 +1320,7 @@ class SceneOptimizationRunner:
 
                 # If you enabled pose optimization, step the pose optimizer if we performed a
                 # pose update this iteration
-                if self.config.optimize_camera_poses and self._global_step < pose_opt_stop_step:
+                if self.config.optimize_camera_poses and pose_opt_start_step <= self._global_step < pose_opt_stop_step:
                     assert (
                         self.pose_adjust_optimizer is not None
                     ), "Pose optimizer should be initialized if pose optimization is enabled."
@@ -1435,25 +1346,10 @@ class SceneOptimizationRunner:
                     )
 
                 # Update the viewer
-                if self._viewer is not None:
-                    self._viewer.viewer.release_lock()
-                    self._viewer.log_training_iteration(
-                        self._global_step,
-                        loss=loss.item(),
-                        l1loss=l1loss.item(),
-                        ssimloss=ssimloss.item(),
-                        mem=torch.cuda.max_memory_allocated() / 1024**3,
-                        num_gaussians=self.model.num_gaussians,
-                        current_sh_degree=sh_degree_to_use,
-                        pose_regulation=pose_reg.item() if self.config.optimize_camera_poses else None,
-                    )
-                    if self.config.optimize_camera_poses:
-                        self._viewer.update_camera_poses(cam_to_world_mats, image_ids)
-                    if (
-                        self._global_step % increase_sh_degree_every_step == 0
-                        and sh_degree_to_use < self.config.sh_degree
-                    ):
-                        self._viewer.set_sh_basis_to_view(sh_degree_to_use)
+                if self._viewer is not None and self._global_step % update_viewer_every_step == 0:
+                    with torch.no_grad():
+                        self._logger.debug(f"Updating viewer at step {self._global_step:,}")
+                        self._viewer.add_gaussian_splat_3d("Gaussian Scene", self.model)
 
                 pbar.update(batch_size)
                 self._global_step = pbar.n
@@ -1490,11 +1386,7 @@ class SceneOptimizationRunner:
                         f"Skipping evaluation at epoch {epoch + 1} (before start step {self._start_step})."
                     )
                     continue
-                if self._viewer is not None:
-                    self._viewer.pause_for_eval()
                 self.eval()
-                if self._viewer is not None:
-                    self._viewer.resume_after_eval()
 
         if self._checkpoints_path is not None and 100 in self.config.save_at_percent:
             # If we already saved the final checkpoint at 100%, create a symlink to it so there is always a ckpt_final.pt
@@ -1505,8 +1397,13 @@ class SceneOptimizationRunner:
             self._logger.info(
                 f"Training completed. Creating symlink {final_ckpt_symlink_path} pointing to final checkpoint at {final_ckpt_path}."
             )
-            final_ckpt_symlink_path.symlink_to(final_ckpt_path.absolute())
-            final_ply_symlink_path.symlink_to(final_ply_path.absolute())
+            # Use relative paths for symlink so it works if you move the results directory
+            final_ckpt_symlink_path.absolute().symlink_to(
+                final_ckpt_path.absolute().relative_to(final_ckpt_symlink_path.absolute().parent)
+            )
+            final_ply_symlink_path.absolute().symlink_to(
+                final_ply_path.absolute().relative_to(final_ply_symlink_path.absolute().parent)
+            )
         elif self._checkpoints_path is not None and 100 not in self.config.save_at_percent:
             ckpt_path = self._checkpoints_path / pathlib.Path(f"ckpt_final.pt")
             self._logger.info(f"Saving checkpoint at epoch {epoch + 1} to {ckpt_path}.")
@@ -1614,13 +1511,7 @@ class SceneOptimizationRunner:
                 self.model.num_gaussians,
             )
 
-        # Upate the viewer with evaluation results
+        # Update the viewer with evaluation results
         if self._viewer is not None:
-            self._viewer.log_evaluation_iteration(
-                self._global_step,
-                psnr_mean.item(),
-                ssim_mean.item(),
-                lpips_mean.item(),
-                evaluation_time,
-                self.model.num_gaussians,
-            )
+            self._logger.debug(f"Updating viewer after evaluation at step {self._global_step:,}")
+            self._viewer.add_gaussian_splat_3d("Gaussian Scene", self.model)

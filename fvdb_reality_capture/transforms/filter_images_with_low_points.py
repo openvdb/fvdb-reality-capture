@@ -37,16 +37,27 @@ class FilterImagesWithLowPoints(BaseTransform):
 
     def __call__(self, input_scene: SfmScene) -> SfmScene:
         """
-        Perform the filtering on the input scene.
+        Perform the filtering on the input scene. If the scene does not have point indices for its images, the scene is returned unmodified.
 
         Args:
             input_scene (SfmScene): The input scene.
 
         Returns:
             output_scene (SfmScene): A new SfmScene containing only images which have more than `min_num_points` visible points.
+                If the input scene does not have point indices for its images, the input scene is returned unmodified.
         """
+        if not input_scene.has_visible_point_indices:
+            self._logger.info(
+                "Input scene does not have point indices for its images. Returning the input scene unmodified."
+            )
+            return input_scene
         image_mask = np.array(
-            [img_meta.point_indices.shape[0] > self._min_num_points for img_meta in input_scene.images], dtype=bool
+            [
+                img_meta.point_indices.shape[0] > self._min_num_points
+                for img_meta in input_scene.images
+                if img_meta.point_indices is not None
+            ],
+            dtype=bool,
         )
 
         return input_scene.filter_images(image_mask)
