@@ -40,8 +40,8 @@ def main(
         baseline (float): Baseline distance (as a fraction of the mean depth of each image) used
             for generating stereo pairs as input to (default is 0.07).
         near (float): Near plane distance (as a multiple of the baseline) below which we'll ignore depth samples (default is 4.0).
-        disparity_reprojection_threshold (float): Reprojection error threshold for occlusion masking in pixels (default is 3.0).
         far (float): Far plane distance (as a multiple of the baseline) above which we'll ignore depth samples (default is 20.0).
+        disparity_reprojection_threshold (float): Reprojection error threshold for occlusion masking in pixels (default is 3.0).
         dlnr_backbone (str): Backbone to use for the DLNR model, either "middleburry" or "sceneflow" (default is "middleburry").
         output_path (pathlib.Path): Path to save the extracted mesh (default is "mesh.ply").
         use_absolute_baseline (bool): If True, use the provided baseline as an absolute distance in world units (default is False).

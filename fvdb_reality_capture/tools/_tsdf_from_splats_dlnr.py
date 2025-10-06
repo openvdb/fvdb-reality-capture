@@ -496,16 +496,16 @@ def tsdf_from_splats_dlnr(
 
         device = model.device
         voxel_size = truncation_margin / 2.0
-        accum_grid = Grid.from_dense(dense_dims=1, ijk_min=0, voxel_size=voxel_size, origin=0.0, device=model.device)
-        tsdf = torch.zeros(accum_grid.num_voxels, device=model.device, dtype=dtype)
-        weights = torch.zeros(accum_grid.num_voxels, device=model.device, dtype=dtype)
-        colors = torch.zeros((accum_grid.num_voxels, model.num_channels), device=model.device, dtype=feature_dtype)
+        accum_grid = Grid.from_dense(dense_dims=1, ijk_min=0, voxel_size=voxel_size, origin=0.0, device=device)
+        tsdf = torch.zeros(accum_grid.num_voxels, device=device, dtype=dtype)
+        weights = torch.zeros(accum_grid.num_voxels, device=device, dtype=dtype)
+        colors = torch.zeros((accum_grid.num_voxels, model.num_channels), device=device, dtype=feature_dtype)
 
         enumerator = tqdm.tqdm(dataloader, unit="imgs", desc="Extracting TSDF") if show_progress else dataloader
 
         for i, tsdf_input in enumerate(enumerator):
-            cam_to_world_matrix = camera_to_world_matrices[i].to(model.device).to(dtype=torch.float32, device=device)
-            projection_matrix = projection_matrices[i].to(model.device).to(dtype=torch.float32, device=device)
+            cam_to_world_matrix = camera_to_world_matrices[i].to(device).to(dtype=torch.float32, device=device)
+            projection_matrix = projection_matrices[i].to(device).to(dtype=torch.float32, device=device)
 
             rgb_image, depth_image, weight_image = tsdf_input
             if feature_dtype == torch.uint8:
