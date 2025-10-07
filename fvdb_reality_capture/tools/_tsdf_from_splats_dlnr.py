@@ -265,7 +265,6 @@ class TSDFInputDataset(torch.utils.data.Dataset):
         A common heuristic is to set the baseline to be a small percentage of the mean depth of the scene.
 
         Args:
-            model (GaussianSplat3d): The Gaussian Splat model to render from.
             world_to_camera_matrix (torch.Tensor): The camera_to_world transformation matrix for the image.
             projection_matrix (torch.Tensor): The projection matrix for the camera.
             image_width (int): The width of the rendered image.
@@ -347,8 +346,8 @@ class TSDFInputDataset(torch.utils.data.Dataset):
         If the reprojection error exceeds the reprojection threshold, the pixel is considered occluded.
 
         Args:
-            l2r_disparity (np.ndarray): Left-to-right disparity map.
-            r2l_disparity (np.ndarray): Right-to-left disparity map.
+            l2r_disparity (torch.Tensor): Left-to-right disparity map.
+            r2l_disparity (torch.Tensor): Right-to-left disparity map.
 
         Returns:
             torch.Tensor: Binary occlusion mask where 0 indicates occluded pixels and 1 indicates visible pixels.
