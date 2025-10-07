@@ -178,7 +178,7 @@ class TSDFInputDataset(torch.utils.data.Dataset):
         This function uses the Gaussian splat model for images and the DLNR model for depth, and occlusion masking.
         This algorithm is roughly based on the GS2Mesh algorithm described in https://arxiv.org/abs/2404.01810.
 
-        The alorithm renders a stereo pair of images from the Gaussian splat model for each camera position, computes disparities
+        The algorithm renders a stereo pair of images from the Gaussian splat model for each camera position, computes disparities
         using DLNR, computes an occlusion mask based on the disparities, and then computes a
         near/far mask based on the depth. The final weights are a combination of the near/far mask and the occlusion mask.
 
