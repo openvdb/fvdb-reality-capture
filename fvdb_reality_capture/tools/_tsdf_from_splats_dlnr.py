@@ -508,8 +508,8 @@ def tsdf_from_splats_dlnr(
         enumerator = tqdm.tqdm(dataloader, unit="imgs", desc="Extracting TSDF") if show_progress else dataloader
 
         for i, tsdf_input in enumerate(enumerator):
-            cam_to_world_matrix = camera_to_world_matrices[i].to(device).to(dtype=torch.float32, device=device)
-            projection_matrix = projection_matrices[i].to(device).to(dtype=torch.float32, device=device)
+            cam_to_world_matrix = camera_to_world_matrices[i].to(dtype=torch.float32, device=device)
+            projection_matrix = projection_matrices[i].to(dtype=torch.float32, device=device)
 
             rgb_image, depth_image, weight_image = tsdf_input
             if feature_dtype == torch.uint8:
