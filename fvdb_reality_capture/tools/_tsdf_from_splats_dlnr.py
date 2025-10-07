@@ -272,7 +272,7 @@ class TSDFInputDataset(torch.utils.data.Dataset):
             image_height (int): The height of the rendered image.
 
         Returns:
-            float: The estimated baseline distance.
+            float: The estimated baseline distance in world units.
         """
 
         depth_0, alpha_0 = self.model.render_depths(
