@@ -298,7 +298,20 @@ class GaussianSplatOptimizer:
             indices_or_mask (torch.Tensor): A 1D tensor of indices or a boolean mask indicating which Gaussians to keep.
                 It must have shape (num_gaussians,).
         """
-        self._model = self._model[indices_or_mask]
+
+        def _copy_param_and_grad(param: torch.Tensor) -> torch.Tensor:
+            new_param = param[indices_or_mask]
+            new_param.grad = param.grad[indices_or_mask] if param.grad is not None else None
+            return new_param
+
+        self._model.set_state(
+            means=_copy_param_and_grad(self._model.means),
+            quats=_copy_param_and_grad(self._model.quats),
+            log_scales=_copy_param_and_grad(self._model.log_scales),
+            logit_opacities=_copy_param_and_grad(self._model.logit_opacities),
+            sh0=_copy_param_and_grad(self._model.sh0),
+            shN=_copy_param_and_grad(self._model.shN),
+        )
         self._update_optimizer_for_model(lambda x: x[indices_or_mask])
 
     @torch.no_grad()
@@ -310,11 +323,18 @@ class GaussianSplatOptimizer:
         """
         # Clamp all opacities to be less than or equal to twice the deletion threshold
         value = self._config.deletion_opacity_threshold * 2.0
-        self._model.logit_opacities.clamp_(max=torch.logit(torch.tensor(value)).item())
+        clip_value = torch.logit(torch.tensor(value)).item()
+        self._model.logit_opacities.clamp_max_(clip_value)
+        # This operation invalidates any existing gradients since the tracked
+        # adam states no longer make sense after clamping, and we want any gradient
+        # steps after this to not be influenced by previous gradients.
+        self._model.logit_opacities.grad = None
         self._update_optimizer_for_model(lambda x: x.zero_(), parameter_names={"logit_opacities"})
 
     @torch.no_grad()
-    def refine(self, use_scales_for_deletion, use_screen_space_scales) -> tuple[int, int, int]:
+    def refine(
+        self, use_scales_for_deletion: bool, use_screen_space_scales: bool, zero_gradients: bool = True
+    ) -> tuple[int, int, int]:
         """
         Perform a step of refinement by inserting Gaussians where more detail is needed and deleting Gaussians that are not contributing to the optimization.
         Refinement happens via three mechanisms:
@@ -334,11 +354,11 @@ class GaussianSplatOptimizer:
 
 
         Args:
-            use_scales_for_deletion: If set to True, use the 3D scales to decide whether to delete Gaussians that are too large.
-            use_screen_space_scales: If set to true, threshold the maximum projected size of Gaussians between refinement steps
-                                     to decide whether to split or delete Gaussians that are too large.
-                                     Note that the model must have been configured to track these scales by setting
-                                     `GaussianSplat3d.accumulate_max_2d_radii = True`.
+            use_scales_for_deletion (bool): If set to True, use the 3D scales to decide whether to delete Gaussians that are too large.
+            use_screen_space_scales (bool): If set to true, threshold the maximum projected size of Gaussians between refinement steps
+                to decide whether to split or delete Gaussians that are too large.
+                Note that the model must have been configured to track these scales by setting `GaussianSplat3d.accumulate_max_2d_radii = True`.
+            zero_gradients (bool): If True, zero the gradients after refinement.
 
         Returns:
             num_duplicated (int): The number of Gaussians that were duplicated.
@@ -347,56 +367,64 @@ class GaussianSplatOptimizer:
         """
 
         is_duplicated, is_split = self._compute_insertion_masks(use_screen_space_scales)
-        duplication_indices = torch.where(is_duplicated)[0]
-        num_duplicated = len(duplication_indices)
-
-        split_indices = torch.where(is_split)[0]
-        num_split = len(split_indices)
-
         is_deleted = self._compute_deletion_mask(use_scales_for_deletion, use_screen_space_scales)
-        num_deleted = int(is_deleted.sum().item())
 
-        # Gaussians which are not split and not deleted are kept as-is
-        kept_indices = torch.where(~(is_split | is_deleted))[0]
+        # We won't insert Gaussians which are up for deletion since they will be deleted anyway
+        is_duplicated.logical_and_(~is_deleted)
+        is_split.logical_and_(~is_deleted)
 
         # Get the new Gaussians to add from splitting and duplication
+        duplication_indices = torch.where(is_duplicated)[0]
+        split_indices = torch.where(is_split)[0]
+
+        # Get indices of Gaussians which are preserved during refinement
+        kept_indices = torch.where(~(is_split | is_deleted))[0]
+
         duplicated_gaussians = self._compute_duplicated_gaussians(duplication_indices)
         split_gaussians = self._compute_split_gaussians(split_indices)
+
+        num_split = len(split_indices)
+        num_duplicated = len(duplication_indices)
+        num_deleted = int(is_deleted.sum().item())
+
+        def _cat_parameter(param: torch.Tensor, name: str) -> torch.Tensor:
+            ret = torch.cat([param[kept_indices], duplicated_gaussians[name], split_gaussians[name]], dim=0)
+            num_added_gaussians = duplicated_gaussians[name].shape[0] + split_gaussians[name].shape[0]
+            # If you want to preserve gradients, we'll do so by creating a new tensor and copying
+            # over the gradients of the kept parameters, and setting the gradients of the new parameters to zero.
+            if param.grad is not None and not zero_gradients:
+                ret.grad = torch.cat(
+                    [
+                        param.grad[kept_indices],
+                        torch.zeros(num_added_gaussians, *param.shape[1:], dtype=param.dtype, device=param.device),
+                    ],
+                    dim=0,
+                )
+            else:
+                ret.grad = None
+            return ret
 
         # We no longer need the accumulated gradient state since we've used it to compute masks for refinement
         # Reset it so we can start accumulating for the next refinement step
         self._model.reset_accumulated_gradient_state()
         self._model.set_state(
-            means=torch.cat(
-                [self._model.means[kept_indices], duplicated_gaussians["means"], split_gaussians["means"]], dim=0
-            ),
-            quats=torch.cat(
-                [self._model.quats[kept_indices], duplicated_gaussians["quats"], split_gaussians["quats"]], dim=0
-            ),
-            log_scales=torch.cat(
-                [
-                    self._model.log_scales[kept_indices],
-                    duplicated_gaussians["log_scales"],
-                    split_gaussians["log_scales"],
-                ],
-                dim=0,
-            ),
-            logit_opacities=torch.cat(
-                [
-                    self._model.logit_opacities[kept_indices],
-                    duplicated_gaussians["logit_opacities"],
-                    split_gaussians["logit_opacities"],
-                ],
-                dim=0,
-            ),
-            sh0=torch.cat([self._model.sh0[kept_indices], duplicated_gaussians["sh0"], split_gaussians["sh0"]], dim=0),
-            shN=torch.cat([self._model.shN[kept_indices], duplicated_gaussians["shN"], split_gaussians["shN"]], dim=0),
+            means=_cat_parameter(self._model.means, "means"),
+            quats=_cat_parameter(self._model.quats, "quats"),
+            log_scales=_cat_parameter(self._model.log_scales, "log_scales"),
+            logit_opacities=_cat_parameter(self._model.logit_opacities, "logit_opacities"),
+            sh0=_cat_parameter(self._model.sh0, "sh0"),
+            shN=_cat_parameter(self._model.shN, "shN"),
         )
 
         def update_state_function(x: torch.Tensor):
-            total_gaussians = kept_indices.shape[0] + num_duplicated + num_split * self._config.insertion_split_factor
-            ret = torch.zeros([total_gaussians] + list(x.shape[1:]), dtype=x.dtype, device=x.device)
-            ret[: kept_indices.shape[0]] = x[kept_indices]
+            num_kept = kept_indices.shape[0]
+            total_gaussians = (
+                num_kept
+                + num_duplicated * (self._config.insertion_duplication_factor - 1)
+                + num_split * self._config.insertion_split_factor
+            )
+            ret = torch.zeros(total_gaussians, *x.shape[1:], dtype=x.dtype, device=x.device)
+            ret[0:num_kept] = x[kept_indices]
             return ret
 
         self._update_optimizer_for_model(update_state_function)
@@ -546,7 +574,7 @@ class GaussianSplatOptimizer:
         is_grad_high = avg_norm_of_projected_mean_gradients > self._compute_insertion_grad_2d_threshold(
             avg_norm_of_projected_mean_gradients
         )
-        is_small = self._model.scales.max(dim=-1).values <= self._config.insertion_scale_3d_threshold
+        is_small = self._model.log_scales.max(dim=-1).values <= np.log(self._config.insertion_scale_3d_threshold)
         is_duplicated = is_grad_high & is_small
 
         # If the Gaussian is high error and its 3d spatial size is large, split the Gaussian
@@ -560,7 +588,7 @@ class GaussianSplatOptimizer:
                     "use_screen_space_scales_for_splitting is set to True but the model is not configured to "
                     + "track screen space scales. Set model.accumulate_max_2d_radii = True."
                 )
-            is_split |= self._model.accumulated_max_2d_radii > self._config.insertion_scale_2d_threshold
+            is_split.logical_or_(self._model.accumulated_max_2d_radii > self._config.insertion_scale_2d_threshold)
 
         return is_duplicated, is_split
 
@@ -582,12 +610,14 @@ class GaussianSplatOptimizer:
             deletion_mask (torch.Tensor): A boolean mask indicating which Gaussians should be deleted.
         """
         # Delete a Gaussians if its opacity is below the threshold (meaning it doesn't contribute much to rendered images)
-        is_deleted = self._model.opacities.flatten() < self._config.deletion_opacity_threshold
+        is_deleted = (
+            self._model.logit_opacities < torch.logit(torch.tensor([self._config.deletion_opacity_threshold])).item()
+        )
 
         # If you specify it, we will also delete Gaussians that are too large since they are likely not contributing
         # meaningfully to the reconstruction.
         if use_scales_for_deletion:
-            is_too_big = self._model.scales.max(dim=-1).values > self._config.deletion_scale_3d_threshold
+            is_too_big = self._model.log_scales.max(dim=-1).values > np.log(self._config.deletion_scale_3d_threshold)
             is_deleted.logical_or_(is_too_big)
 
             # We can also use the tracked screen space scales to delete Gaussians that
@@ -620,7 +650,7 @@ class GaussianSplatOptimizer:
         """
         for i, param_group in enumerate(self._optimizer.param_groups):
             parameter_name = param_group["name"]
-            if parameter_names is not None and param_group["name"] not in parameter_names:
+            if parameter_names is not None and parameter_name not in parameter_names:
                 continue
             assert len(param_group["params"]) == 1, "Expected one parameter tensor per param group"
             old_parameter = param_group["params"][0]
