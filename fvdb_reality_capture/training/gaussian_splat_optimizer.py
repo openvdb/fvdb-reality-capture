@@ -319,9 +319,9 @@ class GaussianSplatOptimizer:
     @torch.no_grad()
     def reset_opacities(self):
         """
-        Clamp the logit_opacities of all Gaussians to a small value above the deletion threshold.
-        This is useful to call periodically during optimization to prevent Gaussians from becoming
-        completely occluded by denser Gaussians, and thus unable to be optimized.
+        Clamp the logit_opacities of all Gaussians to be less than or equal to a small value above
+        the deletion threshold. This is useful to call periodically during optimization to prevent
+        Gaussians from becoming completely occluded by denser Gaussians, and thus unable to be optimized.
         """
         # Clamp all opacities to be less than or equal to twice the deletion threshold
         value = self._config.deletion_opacity_threshold * 2.0
