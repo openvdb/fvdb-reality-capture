@@ -563,7 +563,7 @@ class GaussianSplatOptimizer:
             count *= self._num_grad_accumulation_steps
         avg_norm_of_projected_mean_gradients = self._model.accumulated_mean_2d_gradient_norms / count
 
-        # If the average norm of 2D projected gradients is high, that Gaussians is likely introducing
+        # If the average norm of 2D projected gradients is high, that Gaussian is likely introducing
         # a lot of error into the reconstruction, and is a candidate for duplication or splitting.
         # We use the configured threshold to determine what "high" means.
         # If the 3D scale is small, we duplicate the Gaussian to allow it to specialize.
