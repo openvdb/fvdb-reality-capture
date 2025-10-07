@@ -314,7 +314,7 @@ class GaussianSplatOptimizer:
             sh0=_copy_param_and_grad(self._model.sh0),
             shN=_copy_param_and_grad(self._model.shN),
         )
-        self._update_optimizer_for_model(lambda x: x[indices_or_mask])
+        self._update_optimizer_params_and_state(lambda x: x[indices_or_mask])
 
     @torch.no_grad()
     def reset_opacities(self):
@@ -331,7 +331,7 @@ class GaussianSplatOptimizer:
         # adam states no longer make sense after clamping, and we want any gradient
         # steps after this to not be influenced by previous gradients.
         self._model.logit_opacities.grad = None
-        self._update_optimizer_for_model(
+        self._update_optimizer_params_and_state(
             lambda x: x.zero_(), parameter_names={"logit_opacities"}, reset_adam_step_counts=True
         )
 
@@ -444,7 +444,7 @@ class GaussianSplatOptimizer:
             ret[0:num_kept] = x[kept_indices]
             return ret
 
-        self._update_optimizer_for_model(update_state_function)
+        self._update_optimizer_params_and_state(update_state_function)
 
         return num_duplicated, num_split, num_deleted
 
@@ -647,7 +647,7 @@ class GaussianSplatOptimizer:
         return is_deleted
 
     @torch.no_grad()
-    def _update_optimizer_for_model(
+    def _update_optimizer_params_and_state(
         self,
         optimizer_fn: Callable[[torch.Tensor], torch.Tensor],
         parameter_names: set[str] | None = None,
@@ -655,7 +655,8 @@ class GaussianSplatOptimizer:
     ):
         """
         After changing the tensors in the model (e.g. after refinement or resetting opacities),
-        we need to update the optimizer state to point to the new tensors.
+        we need to update the optimizer params to point to the new tensors, and fix the adam moments
+        accordingly.
 
         If reset_adam_step_counts is True, we will also reset the Adam step counts to zero.
         This method copies the model's tensors into the optimizer's param groups so they continue to be optimized.
