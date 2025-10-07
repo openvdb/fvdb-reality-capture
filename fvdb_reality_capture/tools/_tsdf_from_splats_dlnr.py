@@ -146,11 +146,11 @@ class TSDFInputDataset(torch.utils.data.Dataset):
         )
 
         for i in enumerator:
-            cam_to_world_matrix = camera_to_world_matrices[i].to(model.device).to(dtype=torch.float32, device=device)
+            cam_to_world_matrix = camera_to_world_matrices[i].to(dtype=torch.float32, device=device)
             world_to_cam_matrix = (
                 torch.linalg.inv(cam_to_world_matrix).contiguous().to(dtype=torch.float32, device=device)
             )
-            projection_matrix = projection_matrices[i].to(model.device).to(dtype=torch.float32, device=device)
+            projection_matrix = projection_matrices[i].to(dtype=torch.float32, device=device)
             image_height, image_width = int(image_sizes[i][0].item()), int(image_sizes[i][1].item())
 
             rgb_image, depth_image, weight_image = self.extract_single_tsdf_input(
