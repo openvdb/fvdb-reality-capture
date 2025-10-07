@@ -78,10 +78,10 @@ def main(
     model = model.to(device)
 
     if use_absolute_baseline:
-        logger.info(f"Extracing mesh using DLNR stereo matching with a baseline of {baseline} world units")
+        logger.info(f"Extracting mesh using DLNR stereo matching with a baseline of {baseline} world units")
     else:
         logger.info(
-            f"Extracing mesh using DLNR stereo matching with a baseline of {baseline * 100:.1f}% of the mean depth of each image"
+            f"Extracting mesh using DLNR stereo matching with a baseline of {baseline * 100:.1f}% of the mean depth of each image"
         )
     v, f, c = mesh_from_splats_dlnr(
         model=model,
