@@ -57,7 +57,7 @@ class GaussianSplatOptimizerConfig:
     # If a Gaussian's 3d scale is above this value (units are specified by scale_3d_threshold_units) then delete it.
     deletion_scale_3d_threshold: float = 0.1
 
-    # If a the maximum projected size of a Gaussian between refinement steps exceeds this value then delete it.
+    # If the maximum projected size of a Gaussian between refinement steps exceeds this value then delete it.
     # Note this parameter is only used if you call refine with use_screen_space_scales=True
     deletion_scale_2d_threshold: float = 0.15
 
