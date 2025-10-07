@@ -340,7 +340,7 @@ class GaussianSplatOptimizer:
         Refinement happens via three mechanisms:
 
         **Duplication**: Make two exact copies of a Gaussian.
-          - We duplicate a Gaussian if it's 3D size is below some threshold and the gradient of its projected means over time is high on
+          - We duplicate a Gaussian if its 3D size is below some threshold and the gradient of its projected means over time is high on
             average. Intuitively, this means the Gaussian is not taking up a lot of space in the scene, but consistently wants to change positions
             when viewed from different images. Likely this Gaussian is stuck trying to represent too much of the scene and should
             be split into multiple copies.
