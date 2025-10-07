@@ -455,15 +455,16 @@ class GaussianSplatOptimizer:
 
         Args:
             model (GaussianSplat3d): The model to optimize.
-            batch_size (int): The batch size used for training. This is used to scale the learning rates.
+            batch_size (int): The batch size used for training. This is used to scale the learning rates
+                and momentum parameters.
             config (GaussianSplatOptimizerConfig): The configuration for the optimizer.
 
         Returns:
             torch.optim.Adam: An Adam optimizer for the model.
         """
-        # Scale learning rate based on batch size, reference:
-        # https://www.cs.princeton.edu/~smalladi/blog/2024/01/22/SDEs-ScalingRules/
-        # Note that this would not make the training exactly equivalent to the original INRIA
+        # Scale the learning rate and momentum parameters (epsilon, betas) based on batch size,
+        # reference: https://www.cs.princeton.edu/~smalladi/blog/2024/01/22/SDEs-ScalingRules/
+        # Note that this will not make the training exactly equivalent to the original INRIA
         # Gaussian splat implementation.
         # See https://arxiv.org/pdf/2402.18824v1 for more details.
         lr_batch_rescale = math.sqrt(float(batch_size))
@@ -789,10 +790,15 @@ class GaussianSplatOptimizer:
         )  # [S, N, 3]
 
         means_to_add = (self._model.means[split_indices] + split_mean_offsets).reshape(-1, 3)  # [S*M, 3]
-        log_scales_to_add = torch.log(split_scales / (0.8 * split_factor)).repeat(split_factor, 1)  # [S*M, 3]
         quats_to_add = self._model.quats[split_indices].repeat(split_factor, 1)  # [S*M, 4]
         sh0_to_add = self._model.sh0[split_indices].repeat(split_factor, 1, 1)  # [S*M, 1, 3]
         shN_to_add = self._model.shN[split_indices].repeat(split_factor, 1, 1)  # [S*M, K-1, 3]
+
+        # Scale down each split Gaussian's scale by a factor of 0.8 * split_factor to keep the
+        # overall volume of the split Gaussians roughly the same as the original Gaussian.
+        # The 0.8 factor comes from the original INRIA implementation, and was determinted empirically.
+        scales_deoniminator_facctor = 0.8 * split_factor
+        log_scales_to_add = torch.log(split_scales / scales_deoniminator_facctor).repeat(split_factor, 1)  # [S*M, 3]
 
         if self._config.opacity_updates_use_revised_formulation:
             # Update opacity values for the new Gaussians using the revised formulation from
