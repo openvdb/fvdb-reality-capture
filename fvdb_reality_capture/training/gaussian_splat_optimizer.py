@@ -128,7 +128,7 @@ class GaussianSplatOptimizer:
         _private: Any = None,
     ):
         """
-        Create a new `GaussianSplatOptimizer` instance froom a model, optimizer and a config.
+        Create a new `GaussianSplatOptimizer` instance from a model, optimizer and a config.
 
         Note: You should not call this constructor directly. Instead use `from_model_and_config()` or `from_state_dict()`.
 
