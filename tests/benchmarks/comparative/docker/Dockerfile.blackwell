@@ -55,6 +55,7 @@ ENV TORCH_CUDA_ARCH_LIST=12.0
 
 # Install PyTorch 2.8 with CUDA 12.8 from PyTorch's official index
 RUN conda run -n benchmark pip install torch torchvision --index-url https://download.pytorch.org/whl/cu128
+RUN conda run -n benchmark pip install sam2
 
 # Create symlinks for PyTorch libraries so CMake can find them
 RUN ln -sf /opt/conda/envs/benchmark/lib/python3.11/site-packages/torch/lib/libc10.so /opt/conda/envs/benchmark/lib/libc10.so && \
