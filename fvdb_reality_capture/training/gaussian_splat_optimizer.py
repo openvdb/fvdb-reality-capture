@@ -61,7 +61,7 @@ class GaussianSplatOptimizerConfig:
     # Note this parameter is only used if you call refine with use_screen_space_scales=True
     deletion_scale_2d_threshold: float = 0.15
 
-    # Threshold value on the accumulated norm of projected mean gradients between refinement scale to
+    # Threshold value on the accumulated norm of projected mean gradients between refinement steps to
     # determine whether a Gaussian has high error and is a candidate for duplication or splitting.
     # This value must be positive if using CONSTANT mode, or in the range (0.0, 1.0) if using
     # PERCENTILE_FIRST_ITERATION or PERCENTILE_EVERY_ITERATION modes.
