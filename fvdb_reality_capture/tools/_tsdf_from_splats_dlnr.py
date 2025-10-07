@@ -503,6 +503,10 @@ def tsdf_from_splats_dlnr(
         dataloader = torch.utils.data.DataLoader(dataset, batch_size=1, shuffle=False, num_workers=num_workers)
 
         device = model.device
+        # The voxel size is set by dividing the truncation margin by the grid shell thickness.
+        # This ensures that the truncation margin spans 'grid_shell_thickness' number of voxels,
+        # controlling the grid resolution and mesh quality. Adjusting grid_shell_thickness changes
+        # how many voxels fit within the truncation margin, affecting surface detail.
         voxel_size = truncation_margin / grid_shell_thickness
         accum_grid = Grid.from_dense(dense_dims=1, ijk_min=0, voxel_size=voxel_size, origin=0.0, device=device)
         tsdf = torch.zeros(accum_grid.num_voxels, device=device, dtype=dtype)
