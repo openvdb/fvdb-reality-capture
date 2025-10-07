@@ -568,9 +568,8 @@ class GaussianSplatOptimizer:
         # We use the configured threshold to determine what "high" means.
         # If the 3D scale is small, we duplicate the Gaussian to allow it to specialize.
         # If the 3D scale is large, we split the Gaussian to allow it to specialize.
-        # Note that a Gaussian can be both duplicated and split if it meets both criteria.
-        # In that case, we will create 3 new Gaussians (2 from duplication and 2 from splitting, with
-        # one of the split Gaussians replacing the original).
+        # Duplication and splitting are mutually exclusive in the current logic:
+        # a Gaussian is either duplicated (if small) or split (if large), but not both.
         is_grad_high = avg_norm_of_projected_mean_gradients > self._compute_insertion_grad_2d_threshold(
             avg_norm_of_projected_mean_gradients
         )
