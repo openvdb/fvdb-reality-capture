@@ -815,8 +815,8 @@ class GaussianSplatOptimizer:
         # Scale down each split Gaussian's scale by a factor of 0.8 * split_factor to keep the
         # overall volume of the split Gaussians roughly the same as the original Gaussian.
         # The 0.8 factor comes from the original INRIA implementation, and was determinted empirically.
-        scales_deoniminator_facctor = 0.8 * split_factor
-        log_scales_to_add = torch.log(split_scales / scales_deoniminator_facctor).repeat(split_factor, 1)  # [S*M, 3]
+        scales_denominator_factor = 0.8 * split_factor
+        log_scales_to_add = torch.log(split_scales / scales_denominator_factor).repeat(split_factor, 1)  # [S*M, 3]
 
         if self._config.opacity_updates_use_revised_formulation:
             logit_opacities_to_add = self._compute_revised_opacities(split_indices)  # [M,]
