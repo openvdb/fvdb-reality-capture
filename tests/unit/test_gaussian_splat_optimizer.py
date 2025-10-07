@@ -357,7 +357,7 @@ class GaussianSplatOptimizerRefinementTests(unittest.TestCase):
         self._setup_no_refinement()
 
         # Gaussians are deleted if their opacity is below the deletion threshold,
-        # and their maximum scale along any axis exceeds a threhsold.
+        # and their maximum scale along any axis exceeds a threshold.
         permutation_indices = torch.randperm(model.num_gaussians)
 
         # Setup ranges of indices for insertion and deletion such that there is overlap
