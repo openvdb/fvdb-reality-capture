@@ -20,5 +20,9 @@ datasets:
   path: data/360_v2/room
 - name: stump
   path: data/360_v2/stump
+- name: safety_park
+  path: data/safety_park
+- name: gettysburg
+  path: data/gettysburg
 results:
   base_path: results/benchmark
