@@ -2,7 +2,6 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 import torch
-
 from fvdb import GaussianSplat3d
 
 from ._tsdf_from_splats import tsdf_from_splats
@@ -15,6 +14,7 @@ def mesh_from_splats(
     projection_matrices: torch.Tensor,
     image_sizes: torch.Tensor,
     truncation_margin: float,
+    grid_shell_thickness: float = 3.0,
     near: float = 0.1,
     far: float = 1e10,
     dtype: torch.dtype = torch.float16,
@@ -37,7 +37,10 @@ def mesh_from_splats(
         image_sizes (torch.Tensor): A (C, 2)-shaped Tensor containing the width and height of each image to extract
             from the Gaussian splat where C is the number of camera views.
         truncation_margin (float): Margin for truncating the TSDF, in world units.
-        near (float): Near plane distance below which to ignore depth samples (default is 0.0).
+        grid_shell_thickness (float): Thickness of the TSDF grid shell in multiples of the truncation margin (default is 3.0).
+            _i.e_. if truncation_margin is 0.1 and grid_shell_thickness is 3.0, the TSDF grid will extend 0.3 world units
+            from the surface of the model.
+        near (float): Near plane distance below which to ignore depth samples (default is 0.1).
         far (float): Far plane distance above which to ignore depth samples (default is 1e10).
         dtype: Data type for the TSDF and weights. Default is torch.float16.
         feature_dtype: Data type for the features (default is torch.uint8 which is good for RGB colors).
@@ -55,6 +58,7 @@ def mesh_from_splats(
         projection_matrices,
         image_sizes,
         truncation_margin,
+        grid_shell_thickness=grid_shell_thickness,
         near=near,
         far=far,
         dtype=dtype,

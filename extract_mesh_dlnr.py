@@ -15,12 +15,14 @@ from fvdb_reality_capture.tools import mesh_from_splats_dlnr
 def main(
     ply_path: pathlib.Path,
     truncation_margin: float,
+    grid_shell_thickness: float = 3.0,
     baseline: float = 0.07,
     near: float = 4.0,
     far: float = 20.0,
-    use_scene_scale_units: bool = True,
+    disparity_reprojection_threshold: float = 3.0,
     dlnr_backbone: str = "middleburry",
     output_path: pathlib.Path = pathlib.Path("mesh.ply"),
+    use_absolute_baseline: bool = False,
     device: str = "cuda",
 ):
     """
@@ -36,13 +38,17 @@ def main(
     Args:
         ply_path (pathlib.Path): Path to the PLY containing the Gaussian splat model and training camera metadata.
         truncation_margin (float): Margin for truncating the mesh, in world units.
-        baseline (float): Baseline distance (in fraction of the scene scale) for generating stereo pairs as input to (default is 0.07).
-            The scene scale is defined as the variance in distance from camera positions around their mean.
+        grid_shell_thickness (float): Thickness of the TSDF grid shell in multiples of the truncation margin (default is 3.0).
+            _i.e_. if truncation_margin is 0.1 and grid_shell_thickness is 3.0, the TSDF grid will extend 0.3 world units
+            from the surface of the model.
+        baseline (float): Baseline distance (as a fraction of the mean depth of each image) used
+            for generating stereo pairs as input to the DLNR model (default is 0.07).
         near (float): Near plane distance (as a multiple of the baseline) below which we'll ignore depth samples (default is 4.0).
         far (float): Far plane distance (as a multiple of the baseline) above which we'll ignore depth samples (default is 20.0).
-        use_scene_scale_units (bool): Whether to use scene scale units for the near, plane, far plane and truncation margin.
+        disparity_reprojection_threshold (float): Reprojection error threshold for occlusion masking in pixels (default is 3.0).
         dlnr_backbone (str): Backbone to use for the DLNR model, either "middleburry" or "sceneflow" (default is "middleburry").
         output_path (pathlib.Path): Path to save the extracted mesh (default is "mesh.ply").
+        use_absolute_baseline (bool): If True, use the provided baseline as an absolute distance in world units (default is False).
         device (str): Device to use for computation (default is "cuda").
     """
 
@@ -71,22 +77,25 @@ def main(
 
     model = model.to(device)
 
-    if use_scene_scale_units:
-        if "scene_scale" not in metadata:
-            raise ValueError("PLY file must contain 'scene_scale'")
-        assert isinstance(metadata["scene_scale"], float)
-        baseline *= metadata["scene_scale"]
-
+    if use_absolute_baseline:
+        logger.info(f"Extracting mesh using DLNR stereo matching with a baseline of {baseline} world units")
+    else:
+        logger.info(
+            f"Extracting mesh using DLNR stereo matching with a baseline of {baseline * 100:.1f}% of the mean depth of each image"
+        )
     v, f, c = mesh_from_splats_dlnr(
         model=model,
         camera_to_world_matrices=camera_to_world_matrices,
         projection_matrices=projection_matrices,
         image_sizes=image_sizes,
         truncation_margin=truncation_margin,
+        grid_shell_thickness=grid_shell_thickness,
         baseline=baseline,
         near=near,
         far=far,
+        disparity_reprojection_threshold=disparity_reprojection_threshold,
         dlnr_backbone=dlnr_backbone,
+        use_absolute_baseline=use_absolute_baseline,
         show_progress=True,
     )
 

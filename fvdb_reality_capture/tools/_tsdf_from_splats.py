@@ -3,7 +3,6 @@
 #
 import torch
 import tqdm
-
 from fvdb import GaussianSplat3d, Grid
 
 
@@ -14,6 +13,7 @@ def tsdf_from_splats(
     projection_matrices: torch.Tensor,
     image_sizes: torch.Tensor,
     truncation_margin: float,
+    grid_shell_thickness: float = 3.0,
     near: float = 0.1,
     far: float = 1e10,
     dtype: torch.dtype = torch.float16,
@@ -35,6 +35,9 @@ def tsdf_from_splats(
         image_sizes (torch.Tensor): A (C, 2)-shaped Tensor containing the height and width of each image to extract
             from the Gaussian splat where C is the number of camera views.
         truncation_margin (float): Margin for truncating the TSDF, in world units.
+        grid_shell_thickness (float): Thickness of the TSDF grid shell in multiples of the truncation margin (default is 3.0).
+            _i.e_. if truncation_margin is 0.1 and grid_shell_thickness is 3.0, the TSDF grid will extend 0.3 world units
+            from the surface of the model. This value must be greater than 1.0.
         near (float): Near plane distance below which to ignore depth samples (default is 0.0).
         far (float): Far plane distance above which to ignore depth samples (default is 1e10).
         dtype: Data type for the TSDF and weights. Default is torch.float16.
@@ -46,6 +49,9 @@ def tsdf_from_splats(
         tsdf (torch.Tensor): A tensor of TSDF values indexed by the grid.
         features (torch.Tensor): A tensor of features (e.g., colors) indexed by the grid.
     """
+
+    if grid_shell_thickness <= 1.0:
+        raise ValueError("grid_shell_thickness must be greater than 1.0")
 
     device = model.device
 
@@ -65,7 +71,7 @@ def tsdf_from_splats(
             f"Expected image_sizes to have shape (C, 2) where C is the number of cameras, but got {image_sizes.shape}"
         )
 
-    voxel_size = truncation_margin / 2.0
+    voxel_size = truncation_margin / grid_shell_thickness
     accum_grid = Grid.from_zero_voxels(voxel_size=voxel_size, origin=0.0, device=model.device)
     tsdf = torch.zeros(accum_grid.num_voxels, device=model.device, dtype=dtype)
     weights = torch.zeros(accum_grid.num_voxels, device=model.device, dtype=dtype)

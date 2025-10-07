@@ -29,6 +29,7 @@ dependencies = [
     "point-cloud-utils",
     "pye57",
     "pyproj",
+    "sam2",
     "scikit-image",
     "scipy",
     "tensorboard",
