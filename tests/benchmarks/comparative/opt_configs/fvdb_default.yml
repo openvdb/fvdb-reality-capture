@@ -33,12 +33,6 @@ optimization_config:
   refine_using_scale2d_stop_epoch: 0
   ignore_masks: false
   remove_gaussians_outside_scene_bbox: false
-  clip_max_gaussians_to_memory: true
-  histogram_grad_2d_threshold: false
-  adaptive_grad_2d_threshold: false
-  grad_2d_percentile: 0.9
-  absolute_grad_2d_threshold: 0.0002
-  use_scene_scale_for_refinement: true
 
   # Pose optimization
   optimize_camera_poses: true
