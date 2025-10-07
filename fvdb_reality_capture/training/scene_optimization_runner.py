@@ -1036,12 +1036,6 @@ class SceneOptimizationRunner:
 
         self._global_step: int = 0
 
-        # if self.config.clip_max_gaussians_to_memory:
-        #     self._max_num_gaussians = int(0.9 * torch.cuda.get_device_properties(self.device).total_memory / 2048)
-        #     self._logger.info(
-        #         f"Setting max_num_gaussians to {self._max_num_gaussians:,} targetting 90% of total GPU memory"
-        #     )
-
         # Tensorboard
         self._tensorboard_logger = None
         if tensorboard_path is not None and optimizer is not None and log_tensorboard_every > 0:

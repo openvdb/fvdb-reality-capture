@@ -65,7 +65,9 @@ class GaussianSplatOptimizerConfig:
     # determine whether a Gaussian has high error and is a candidate for duplication or splitting.
     # This value must be positive if using CONSTANT mode, or in the range (0.0, 1.0) if using
     # PERCENTILE_FIRST_ITERATION or PERCENTILE_EVERY_ITERATION modes.
-    insertion_grad_2d_threshold: float = 0.0002 if insertion_grad_2d_threshold_mode == InsertionGrad2dThresholdMode.CONSTANT else 0.9
+    insertion_grad_2d_threshold: float = (
+        0.0002 if insertion_grad_2d_threshold_mode == InsertionGrad2dThresholdMode.CONSTANT else 0.9
+    )
 
     # Duplicate high-error (determined by insertion_grad_2d_threshold) Gaussians whose 3d scale is below this value.
     # These Gaussians are too small to capture the detail in the region they cover, so we duplicate them to
@@ -377,15 +379,28 @@ class GaussianSplatOptimizer:
         duplication_indices = torch.where(is_duplicated)[0]
         split_indices = torch.where(is_split)[0]
 
+        num_split = len(split_indices)
+        num_duplicated = len(duplication_indices)
+        num_deleted = int(is_deleted.sum().item())
+
+        # The net number of Gaussians added to the total number of Gaussians after refinement
+        num_added_gaussians = (
+            num_duplicated * (self._config.insertion_duplication_factor - 1)
+            + num_split * (self._config.insertion_split_factor - 1)
+            - num_deleted
+        )
+        num_gaussians_after_refinement = self._model.num_gaussians + num_added_gaussians
+        if self._config.max_gaussians > 0 and num_gaussians_after_refinement > self._config.max_gaussians:
+            self._logger.warning(
+                f"Refinement would insert a net of {num_added_gaussians} leading to {num_gaussians_after_refinement} which exceeds max_gaussians ({self._config.max_gaussians}), skipping refinement step"
+            )
+            return 0, 0, 0
+
         # Get indices of Gaussians which are preserved during refinement
         kept_indices = torch.where(~(is_split | is_deleted))[0]
 
         duplicated_gaussians = self._compute_duplicated_gaussians(duplication_indices)
         split_gaussians = self._compute_split_gaussians(split_indices)
-
-        num_split = len(split_indices)
-        num_duplicated = len(duplication_indices)
-        num_deleted = int(is_deleted.sum().item())
 
         def _cat_parameter(param: torch.Tensor, name: str) -> torch.Tensor:
             ret = torch.cat([param[kept_indices], duplicated_gaussians[name], split_gaussians[name]], dim=0)

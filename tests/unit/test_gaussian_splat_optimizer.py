@@ -528,7 +528,7 @@ class GaussianSplatOptimizerRefinementTests(unittest.TestCase):
             model.accumulated_mean_2d_gradient_norms.fill_(optimizer_config.insertion_grad_2d_threshold * 0.9)
 
             # We'll set all opacities to be above the threshold so none get deleted
-            del_thresh = torch.sigmoid(torch.tensor([optimizer_config.deletion_opacity_threshold])).item()
+            del_thresh = torch.logit(torch.tensor([optimizer_config.deletion_opacity_threshold])).item()
             model.logit_opacities.fill_(del_thresh + 1.0)
 
             del_scale_thresh = torch.log(torch.tensor(optimizer_config.deletion_scale_3d_threshold / 2.0)).item()
