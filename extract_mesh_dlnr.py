@@ -42,7 +42,7 @@ def main(
             _i.e_. if truncation_margin is 0.1 and grid_shell_thickness is 3.0, the TSDF grid will extend 0.3 world units
             from the surface of the model.
         baseline (float): Baseline distance (as a fraction of the mean depth of each image) used
-            for generating stereo pairs as input to (default is 0.07).
+            for generating stereo pairs as input to the DLNR model (default is 0.07).
         near (float): Near plane distance (as a multiple of the baseline) below which we'll ignore depth samples (default is 4.0).
         far (float): Far plane distance (as a multiple of the baseline) above which we'll ignore depth samples (default is 20.0).
         disparity_reprojection_threshold (float): Reprojection error threshold for occlusion masking in pixels (default is 3.0).
