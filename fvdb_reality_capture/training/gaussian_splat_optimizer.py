@@ -331,7 +331,9 @@ class GaussianSplatOptimizer:
         # adam states no longer make sense after clamping, and we want any gradient
         # steps after this to not be influenced by previous gradients.
         self._model.logit_opacities.grad = None
-        self._update_optimizer_for_model(lambda x: x.zero_(), parameter_names={"logit_opacities"})
+        self._update_optimizer_for_model(
+            lambda x: x.zero_(), parameter_names={"logit_opacities"}, reset_adam_step_counts=True
+        )
 
     @torch.no_grad()
     def refine(
@@ -649,11 +651,13 @@ class GaussianSplatOptimizer:
         self,
         optimizer_fn: Callable[[torch.Tensor], torch.Tensor],
         parameter_names: set[str] | None = None,
+        reset_adam_step_counts: bool = False,
     ):
         """
         After changing the tensors in the model (e.g. after refinement or resetting opacities),
         we need to update the optimizer state to point to the new tensors.
 
+        If reset_adam_step_counts is True, we will also reset the Adam step counts to zero.
         This method copies the model's tensors into the optimizer's param groups so they continue to be optimized.
         It also applies the Adam moments for each parameter being updated 'exp_avg' and 'exp_avg_sq'.
 
@@ -661,6 +665,7 @@ class GaussianSplatOptimizer:
             optimizer_fn (Callable[[torch.Tensor], torch.Tensor]): A function to apply to each Adam moment Tensor for each parameter.
                 Accepts the old moment Tensor and returns the new moment Tensor.
             parameter_names (set[str] | None): If provided, only update the parameter groups with these names. If None, update all parameter groups.
+            reset_adam_step_counts (bool): If True, reset the Adam step counts to zero for all parameters being updated.
         """
         for i, param_group in enumerate(self._optimizer.param_groups):
             parameter_name = param_group["name"]
@@ -673,6 +678,8 @@ class GaussianSplatOptimizer:
             for key, value in optimizer_state.items():
                 if key != "step":
                     optimizer_state[key] = optimizer_fn(value)
+                elif reset_adam_step_counts:
+                    optimizer_state[key].zero_()
             new_parameter = getattr(self._model, parameter_name)
             new_parameter.requires_grad = True
             self._optimizer.state[new_parameter] = optimizer_state
