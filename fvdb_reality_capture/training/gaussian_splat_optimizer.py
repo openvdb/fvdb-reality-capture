@@ -293,12 +293,11 @@ class GaussianSplatOptimizer:
     def filter_gaussians(self, indices_or_mask: torch.Tensor):
         """
         Filter the Gaussians in the model to only those specified by the given indices or mask
-        and update the optimizer state accordingly. This can be used to delete, shuffle, or expand
+        and update the optimizer state accordingly. This can be used to delete, shuffle, or duplicate
         the Gaussians during optimization.
 
         Args:
             indices_or_mask (torch.Tensor): A 1D tensor of indices or a boolean mask indicating which Gaussians to keep.
-                It must have shape (num_gaussians,).
         """
 
         def _copy_param_and_grad(param: torch.Tensor) -> torch.Tensor:
