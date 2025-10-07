@@ -489,6 +489,7 @@ class GaussianSplatOptimizer:
             betas=(1.0 - batch_size * (1.0 - 0.9), 1.0 - batch_size * (1.0 - 0.999)),
         )
 
+    @torch.no_grad()
     def _compute_insertion_grad_2d_threshold(self, accumulated_mean_2d_gradients: torch.Tensor) -> float:
         """
         Compute the threshold on the accumulated norm of 2D mean gradients to use during refinement.
@@ -551,6 +552,7 @@ class GaussianSplatOptimizer:
         else:
             raise RuntimeError("Invalid mode for insertion_grad_2d_threshold.")
 
+    @torch.no_grad()
     def _compute_insertion_masks(
         self, use_screen_space_scales_for_splitting: bool
     ) -> tuple[torch.Tensor, torch.Tensor]:
