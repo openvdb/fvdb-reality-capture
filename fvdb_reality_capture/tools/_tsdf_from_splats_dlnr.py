@@ -434,7 +434,7 @@ def tsdf_from_splats_dlnr(
     projection_matrices: torch.Tensor,
     image_sizes: torch.Tensor,
     truncation_margin: float,
-    grid_shell_thickness: float = 3.0,
+    grid_shell_thickness: float | int = 3.0,
     baseline: float = 0.07,
     near: float = 4.0,
     far: float = 20.0,
@@ -460,7 +460,7 @@ def tsdf_from_splats_dlnr(
         truncation_margin (float): Margin for truncating the TSDF, in world units.
         grid_shell_thickness (float): Thickness of the TSDF grid shell in multiples of the truncation margin (default is 3.0).
             _i.e_. if truncation_margin is 0.1 and grid_shell_thickness is 3.0, the TSDF grid will extend 0.3 world units
-            from the surface of the model.
+            from the surface of the model. This value must be greater than 1.0.
         baseline (float): Baseline distance for stereo depth estimation.
             If use_absolute_baseline is False, this is interpreted as a fraction of the mean depth of each image (default is 0.07).
             Otherwise, it is interpreted as an absolute distance in world units.
@@ -482,6 +482,9 @@ def tsdf_from_splats_dlnr(
 
     if model.num_channels != 3:
         raise ValueError(f"Expected model with 3 channels, got {model.num_channels} channels.")
+
+    if grid_shell_thickness <= 1.0:
+        raise ValueError("grid_shell_thickness must be greater than 1.0")
 
     with tempfile.TemporaryDirectory() as cache_path:
         dataset = TSDFInputDataset(

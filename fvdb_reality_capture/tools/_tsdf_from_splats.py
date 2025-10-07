@@ -37,7 +37,7 @@ def tsdf_from_splats(
         truncation_margin (float): Margin for truncating the TSDF, in world units.
         grid_shell_thickness (float): Thickness of the TSDF grid shell in multiples of the truncation margin (default is 3.0).
             _i.e_. if truncation_margin is 0.1 and grid_shell_thickness is 3.0, the TSDF grid will extend 0.3 world units
-            from the surface of the model.
+            from the surface of the model. This value must be greater than 1.0.
         near (float): Near plane distance below which to ignore depth samples (default is 0.0).
         far (float): Far plane distance above which to ignore depth samples (default is 1e10).
         dtype: Data type for the TSDF and weights. Default is torch.float16.
@@ -49,6 +49,9 @@ def tsdf_from_splats(
         tsdf (torch.Tensor): A tensor of TSDF values indexed by the grid.
         features (torch.Tensor): A tensor of features (e.g., colors) indexed by the grid.
     """
+
+    if grid_shell_thickness <= 1.0:
+        raise ValueError("grid_shell_thickness must be greater than 1.0")
 
     device = model.device
 
