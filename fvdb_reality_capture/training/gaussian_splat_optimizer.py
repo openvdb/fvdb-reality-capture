@@ -65,7 +65,7 @@ class GaussianSplatOptimizerConfig:
     # determine whether a Gaussian has high error and is a candidate for duplication or splitting.
     # This value must be positive if using CONSTANT mode, or in the range (0.0, 1.0) if using
     # PERCENTILE_FIRST_ITERATION or PERCENTILE_EVERY_ITERATION modes.
-    insertion_grad_2d_threshold: float = 0.0002 if insertion_grad_2d_threshold_mode == "constant" else 0.9
+    insertion_grad_2d_threshold: float = 0.0002 if insertion_grad_2d_threshold_mode == InsertionGrad2dThresholdMode.CONSTANT else 0.9
 
     # Duplicate high-error (determined by insertion_grad_2d_threshold) Gaussians whose 3d scale is below this value.
     # These Gaussians are too small to capture the detail in the region they cover, so we duplicate them to
