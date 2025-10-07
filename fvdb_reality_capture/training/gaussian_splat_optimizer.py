@@ -690,6 +690,28 @@ class GaussianSplatOptimizer:
             torch.cuda.empty_cache()
 
     @torch.no_grad()
+    def _compute_revised_opacities(self, indices: torch.Tensor, eps: float = 1e-6) -> torch.Tensor:
+        """
+        Compute opacity values for new Gaussians being inserted using the revised formulation from
+        the paper "Revising Densification in Gaussian Splatting" (https://arxiv.org/abs/2404.06109).
+        This removes a bias which weighs newly split Gaussians contribution to the image more heavily than
+        older Gaussians.
+
+        Args:
+            indices (torch.Tensor): A 1D tensor of indices indicating which Gaussians to compute revised opacities for.
+            eps (float): A small value to clamp the opacities to avoid numerical issues when computing the logit.
+
+        Returns:
+            torch.Tensor: A tensor of revised logit opacities of shape (len(indices),).
+        """
+        # Update opacity values for the new Gaussians using the revised formulation from
+        # the paper "Revising Densification in Gaussian Splatting" (https://arxiv.org/abs/2404.06109).
+        # This removes a bias which weighs newly split Gaussians contribution to the image more heavily than
+        # older Gaussians.
+        safe_opacities = self._model.opacities[indices].clamp(min=eps, max=1.0 - eps)
+        return torch.logit(1.0 - torch.sqrt(1.0 - safe_opacities))
+
+    @torch.no_grad()
     def _compute_duplicated_gaussians(self, duplication_indices: torch.Tensor) -> dict[str, torch.Tensor]:
         """
         Compute the new Gaussians to add by duplicating the Gaussians at the given indices.
@@ -729,11 +751,7 @@ class GaussianSplatOptimizer:
         shN_to_add = self._model.shN[duplication_indices].repeat(num_new_gaussians, 1, 1)  # [(D-1)*M, K-1, 3]
 
         if self._config.opacity_updates_use_revised_formulation:
-            # Update opacity values for the new Gaussians using the revised formulation from
-            # the paper "Revising Densification in Gaussian Splatting" (https://arxiv.org/abs/2404.06109).
-            # This removes a bias which weighs newly split Gaussians contribution to the image more heavily than
-            # older Gaussians.
-            logit_opacities_to_add = torch.logit(1.0 - torch.sqrt(1.0 - self._model.opacities[duplication_indices]))
+            logit_opacities_to_add = self._compute_revised_opacities(duplication_indices)  # [M,]
             logit_opacities_to_add = logit_opacities_to_add.repeat(num_new_gaussians)  # [(D-1)*M,]
         else:
             logit_opacities_to_add = self._model.logit_opacities[duplication_indices].repeat(
@@ -801,11 +819,7 @@ class GaussianSplatOptimizer:
         log_scales_to_add = torch.log(split_scales / scales_deoniminator_facctor).repeat(split_factor, 1)  # [S*M, 3]
 
         if self._config.opacity_updates_use_revised_formulation:
-            # Update opacity values for the new Gaussians using the revised formulation from
-            # the paper "Revising Densification in Gaussian Splatting" (https://arxiv.org/abs/2404.06109).
-            # This removes a bias which weighs newly split Gaussians contribution to the image more heavily than
-            # older Gaussians.
-            logit_opacities_to_add = torch.logit(1.0 - torch.sqrt(1.0 - self._model.opacities[split_indices]))
+            logit_opacities_to_add = self._compute_revised_opacities(split_indices)  # [M,]
             logit_opacities_to_add = logit_opacities_to_add.repeat(split_factor)  # [S*M]
         else:
             logit_opacities_to_add = self._model.logit_opacities[split_indices].repeat(split_factor)  # [S*M]
