@@ -27,20 +27,33 @@ def mesh_from_splats_dlnr(
     num_workers: int = 8,
 ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     """
-    Extract a mesh from a Gaussian splat using Truncated Signed Distance Field (TSDF) fusion and
-    marching cubes where depth maps for TSDF fusion are estimated using the DNLR model.
+    Extract a triangle mesh from a `fvdb.GaussianSplat3d` using TSDF fusion
+    from depth maps predicted from the Gaussian splat model and the DLNR foundation model. DLNR is a
+    high-frequency stereo matching network that computes optical flow and disparity maps between two images.
 
-    The mesh extraction algorithm is based on the paper:
+    In short, this algoirthm works by rendering stereo pairs of images from multiple views of the Gaussian splat model, and
+    using DLNR to compute depth maps from these stereo pairs.
+    The depth maps and images are then integrated into a sparse `fvdb.Grid` in a narrow band around the surface using a weighted averaging scheme.
+    The algorithm returns this grid along with signed distance values and colors (or other features) at each voxel.
+
+    The algorithm then extracts a mesh using the marching cubes algorithm implemented in `fvdb.marching_cubes.marching_cubes`
+    over the Grid and TSDF values.
+
+    The TSDF extraction algorithm is based on the paper
     "GS2Mesh: Surface Reconstruction from Gaussian Splatting via Novel Stereo Views"
-    (https://arxiv.org/abs/2404.01810)
+    (https://arxiv.org/abs/2404.01810). We make key improvements to the method by using a more robust
+    stereo baseline estimation method and by using a more efficient TSDF fusion implementation.
+
+    The TSDF fusion algorithm is a method for integrating multiple depth maps into a single volumetric representation of a scene encoding a
+    truncated signed distance field (_i.e._ a signed distance field in a narrow band around the surface). TSDF fusion was first described in the paper
+    "KinectFusion: Real-Time Dense Surface Mapping and Tracking"
+    (https://www.microsoft.com/en-us/research/publication/kinectfusion-real-time-3d-reconstruction-and-interaction-using-a-moving-depth-camera/).
+    We use a modified version of this algorithm which only allocates voxels in a narrow band around the surface of the model
+    to reduce memory usage and speed up computation.
 
     The DLNR model is a high-frequency stereo matching network that computes optical flow and disparity maps
     between two images. The DLNR model is described in the paper "High-Frequency Stereo Matching Network"
     (https://openaccess.thecvf.com/content/CVPR2023/papers/Zhao_High-Frequency_Stereo_Matching_Network_CVPR_2023_paper.pdf).
-
-    The TSDF fusion algorithm is based on the paper:
-    "KinectFusion: Real-Time Dense Surface Mapping and Tracking"
-    (https://www.microsoft.com/en-us/research/publication/kinectfusion-real-time-3d-reconstruction-and-interaction-using-a-moving-depth-camera/)
 
     Args:
         model (GaussianSplat3d): The Gaussian splat model to extract a mesh from

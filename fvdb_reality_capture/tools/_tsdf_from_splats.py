@@ -21,16 +21,21 @@ def tsdf_from_splats(
     show_progress: bool = True,
 ) -> tuple[Grid, torch.Tensor, torch.Tensor]:
     """
-    Extract a Truncated Signed Distance Field (TSDF) using TSDF fusion from depth maps rendered from a Gaussian splat.
-    The TSDF fusion algorithm is based on the paper:
-    "KinectFusion: Real-Time Dense Surface Mapping and Tracking"
-    (https://www.microsoft.com/en-us/research/publication/kinectfusion-real-time-3d-reconstruction-and-interaction-using-a-moving-depth-camera/)
+    Extract a Truncated Signed Distance Field (TSDF) from a `fvdb.GaussianSplat3d` using TSDF fusion
+    from depth maps rendered from the Gaussian splat model.
 
     In short, this algoirthm works by rendering images and depth maps from multiple views of the Gaussian splat model,
     and then integrating these depth maps and images into a sparse `fvdb.Grid` in a narrow band around the surface using a weighted averaging scheme.
     The algorithm returns this grid along with signed distance values and colors (or other features) at each voxel.
 
     A mesh can be extracted from the TSDF using the marching cubes algorithm implemented in `fvdb.marching_cubes.marching_cubes`.
+
+    The TSDF fusion algorithm is a method for integrating multiple depth maps into a single volumetric representation of a scene encoding a
+    truncated signed distance field (_i.e._ a signed distance field in a narrow band around the surface). TSDF fusion was first described in the paper
+    "KinectFusion: Real-Time Dense Surface Mapping and Tracking"
+    (https://www.microsoft.com/en-us/research/publication/kinectfusion-real-time-3d-reconstruction-and-interaction-using-a-moving-depth-camera/).
+    We use a modified version of this algorithm which only allocates voxels in a narrow band around the surface of the model
+    to reduce memory usage and speed up computation.
 
     Args:
         model (GaussianSplat3d): The Gaussian splat model to extract a mesh from
