@@ -31,7 +31,7 @@ def mesh_from_splats_dlnr(
     from depth maps predicted from the Gaussian splat model and the DLNR foundation model. DLNR is a
     high-frequency stereo matching network that computes optical flow and disparity maps between two images.
 
-    In short, this algoirthm works by rendering stereo pairs of images from multiple views of the Gaussian splat model, and
+    In short, this algorithm works by rendering stereo pairs of images from multiple views of the Gaussian splat model, and
     using DLNR to compute depth maps from these stereo pairs.
     The depth maps and images are then integrated into a sparse `fvdb.Grid` in a narrow band around the surface using a weighted averaging scheme.
     The algorithm returns this grid along with signed distance values and colors (or other features) at each voxel.
