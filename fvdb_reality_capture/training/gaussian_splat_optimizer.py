@@ -86,13 +86,15 @@ class GaussianSplatOptimizerConfig:
     # older Gaussians.
     opacity_updates_use_revised_formulation: bool = False
 
-    # When splitting Gaussians, during insertion, how many new Gaussians to create per split Gaussian.
-    # _e.g._ if this value is 2, each split Gaussian becomes 2 smaller Gaussians.
+    # When splitting Gaussians during insertion, this value specifies the total number of new Gaussians that will
+    # replace each selected source Gaussian. The original is removed and replaced by `insertion_split_factor` new Gaussians.
+    # _e.g._ if this value is 2, each split Gaussian is replaced by 2 new smaller Gaussians (the original is removed).
     # This value must be >= 2.
     insertion_split_factor: int = 2
 
-    # When duplicating Gaussians, during insertion, how many new Gaussians to create per duplicated Gaussian.
-    # _e.g._ if this value is 3, each duplicated Gaussian becomes 3 copies of itself
+    # When duplicating Gaussians during insertion, this value specifies the total number of copies (including the original)
+    # that will result for each selected source Gaussian. The original is kept, and (`insertion_duplication_factor` - 1) new
+    # identical copies are added. _e.g._ if this value is 3, each duplicated Gaussian becomes 3 copies of itself (the original plus 2 new).
     # This value must be >= 2.
     insertion_duplication_factor: int = 2
 
