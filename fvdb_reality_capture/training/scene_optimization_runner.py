@@ -1264,7 +1264,6 @@ class SceneOptimizationRunner:
                     self._global_step > refine_start_step
                     and self._global_step % refine_every_step == 0
                     and self._global_step < refine_stop_step
-                    # and self.model.num_gaussians < self._max_num_gaussians
                 ):
                     num_gaussians_before: int = self.model.num_gaussians
                     use_scales_for_refinement: bool = self._global_step > reset_opacities_every_step
