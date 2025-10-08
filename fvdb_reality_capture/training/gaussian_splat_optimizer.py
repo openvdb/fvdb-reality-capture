@@ -12,6 +12,7 @@ import torch
 import torch.nn.functional as nnf
 import torch.optim
 from fvdb import GaussianSplat3d
+from scipy.special import logit
 
 
 class InsertionGrad2dThresholdMode(str, Enum):
@@ -325,8 +326,7 @@ class GaussianSplatOptimizer:
         Gaussians from becoming completely occluded by denser Gaussians, and thus unable to be optimized.
         """
         # Clamp all opacities to be less than or equal to twice the deletion threshold
-        value = self._config.deletion_opacity_threshold * 2.0
-        clip_value = torch.logit(torch.tensor(value)).item()
+        clip_value = logit(self._config.deletion_opacity_threshold * 2.0)
         self._model.logit_opacities.clamp_max_(clip_value)
         # This operation invalidates any existing gradients since the tracked
         # adam states no longer make sense after clamping, and we want any gradient
@@ -630,9 +630,7 @@ class GaussianSplatOptimizer:
             deletion_mask (torch.Tensor): A boolean mask indicating which Gaussians should be deleted.
         """
         # Delete a Gaussians if its opacity is below the threshold (meaning it doesn't contribute much to rendered images)
-        is_deleted = (
-            self._model.logit_opacities < torch.logit(torch.tensor([self._config.deletion_opacity_threshold])).item()
-        )
+        is_deleted = self._model.logit_opacities < logit(self._config.deletion_opacity_threshold)
 
         # If you specify it, we will also delete Gaussians that are too large since they are likely not contributing
         # meaningfully to the reconstruction.
