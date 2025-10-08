@@ -489,6 +489,7 @@ class GaussianSplatOptimizer:
             ],
             eps=1e-15 / lr_batch_rescale,
             betas=(1.0 - batch_size * (1.0 - 0.9), 1.0 - batch_size * (1.0 - 0.999)),
+            fused=True,
         )
 
     @torch.no_grad()
