@@ -257,7 +257,7 @@ class GaussianSplatOptimizer:
 
     def step(self):
         """
-        Step the optimizers (updating the model's parameters) and decay the learning rate of the means.
+        Step the optimizer (updating the model's parameters) and decay the learning rate of the means.
         """
         self._optimizer.step()
         # Decay the means learning rate
