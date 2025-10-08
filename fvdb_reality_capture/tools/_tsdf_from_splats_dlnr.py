@@ -446,7 +446,23 @@ def tsdf_from_splats_dlnr(
     num_workers: int = 8,
 ) -> tuple[Grid, torch.Tensor, torch.Tensor]:
     """
-    Extract a TSDF grid from a checkpoint using DLNR for depth estimation.
+    Extract a Truncated Signed Distance Field (TSDF) using TSDF fusion from depth maps predicted from the Gaussian splat model and the
+    DLNR foundation model for predicting stereo depth.
+
+    The TSDF fusion algorithm is based on the paper:
+    "KinectFusion: Real-Time Dense Surface Mapping and Tracking"
+    (https://www.microsoft.com/en-us/research/publication/kinectfusion-real-time-3d-reconstruction-and-interaction-using-a-moving-depth-camera/).
+
+    The DLNR foundation model is described in the paper:
+    "High-frequency Stereo Matching Network"
+    (https://openaccess.thecvf.com/content/CVPR2023/papers/Zhao_High-Frequency_Stereo_Matching_Network_CVPR_2023_paper.pdf).
+
+    In short, this algoirthm works by rendering stereo pairs of images from multiple views of the Gaussian splat model, and
+    using DLNR to compute depth maps from these stereo pairs.
+    The depth maps and images are then integrated into a sparse `fvdb.Grid` in a narrow band around the surface using a weighted averaging scheme.
+    The algorithm returns this grid along with signed distance values and colors (or other features) at each voxel.
+
+    A mesh can be extracted from the TSDF using the marching cubes algorithm implemented in `fvdb.marching_cubes.marching_cubes`.
 
     Args:
         model (GaussianSplat3d): The Gaussian splat model to extract a mesh from

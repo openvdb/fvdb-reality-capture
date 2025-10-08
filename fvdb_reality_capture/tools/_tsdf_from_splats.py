@@ -26,6 +26,12 @@ def tsdf_from_splats(
     "KinectFusion: Real-Time Dense Surface Mapping and Tracking"
     (https://www.microsoft.com/en-us/research/publication/kinectfusion-real-time-3d-reconstruction-and-interaction-using-a-moving-depth-camera/)
 
+    In short, this algoirthm works by rendering images and depth maps from multiple views of the Gaussian splat model,
+    and then integrating these depth maps and images into a sparse `fvdb.Grid` in a narrow band around the surface using a weighted averaging scheme.
+    The algorithm returns this grid along with signed distance values and colors (or other features) at each voxel.
+
+    A mesh can be extracted from the TSDF using the marching cubes algorithm implemented in `fvdb.marching_cubes.marching_cubes`.
+
     Args:
         model (GaussianSplat3d): The Gaussian splat model to extract a mesh from
         camera_to_world_matrices (torch.Tensor): A (C, 4, 4)-shaped Tensor containing the camera to world
