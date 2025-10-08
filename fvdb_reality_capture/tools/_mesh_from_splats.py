@@ -25,7 +25,7 @@ def mesh_from_splats(
     Extract a triangle mesh from a `fvdb.GaussianSplat3d` using TSDF fusion
     from depth maps rendered from the Gaussian splat model.
 
-    In short, this algoirthm works by rendering images and depth maps from multiple views of the Gaussian splat model,
+    In short, this algorithm works by rendering images and depth maps from multiple views of the Gaussian splat model,
     and then integrating these depth maps and images into a sparse `fvdb.Grid` in a narrow band around the surface using a weighted averaging scheme.
     The algorithm returns this grid along with signed distance values and colors (or other features) at each voxel.
 
