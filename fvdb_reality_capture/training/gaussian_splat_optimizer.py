@@ -55,7 +55,7 @@ class GaussianSplatOptimizerConfig:
     # If a Gaussian's opacity drops below this value, delete it
     deletion_opacity_threshold: float = 0.005
 
-    # If a Gaussian's 3d scale is above this value (units are specified by scale_3d_threshold_units) then delete it.
+    # If a Gaussian's 3d scale is above this value, then delete it.
     deletion_scale_3d_threshold: float = 0.1
 
     # If the maximum projected size of a Gaussian between refinement steps exceeds this value then delete it.
