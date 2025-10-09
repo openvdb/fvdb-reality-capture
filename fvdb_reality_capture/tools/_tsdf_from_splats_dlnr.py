@@ -8,9 +8,11 @@ import numpy as np
 import torch
 import tqdm
 from fvdb import GaussianSplat3d, Grid
+from fvdb.types import NumericMaxRank2, NumericMaxRank3
 
 from ..foundation_models.dlnr import DLNRModel
 from ..sfm_scene import SfmCache
+from ._common import validate_camera_matrices_and_image_sizes
 
 
 def debug_plot(
@@ -72,11 +74,11 @@ def debug_plot(
 
     plt.subplot(4, 2, 5)
     plt.title("Left Image")
-    plt.imshow(image_l.squeeze().cpu().numpy() / 255.0)
+    plt.imshow(image_l.squeeze().cpu().numpy())
 
     plt.subplot(4, 2, 6)
     plt.title("Right Image")
-    plt.imshow(image_r.squeeze().cpu().numpy() / 255.0)
+    plt.imshow(image_r.squeeze().cpu().numpy())
 
     plt.savefig(out_filename, bbox_inches="tight")
     plt.close()
@@ -100,6 +102,7 @@ class TSDFInputDataset(torch.utils.data.Dataset):
         near: float,
         far: float,
         reprojection_threshold: float,
+        alpha_threshold: float,
         dlnr_model: DLNRModel,
         use_absolute_baseline: bool,
         show_progress: bool,
@@ -120,6 +123,9 @@ class TSDFInputDataset(torch.utils.data.Dataset):
                 If use_absolute_baseline is False, this is interpreted as a fraction of the mean depth of each image.
             near (float): Near plane distance below which to ignore depth samples, as a multiple of the baseline.
             far (float): Far plane distance above which to ignore depth samples, as a multiple of the baseline.
+            reprojection_threshold (float): Reprojection error threshold for occlusion masking in pixels.
+            alpha_threshold (float): Alpha threshold to mask pixels where the Gaussian splat model is transparent
+                (usually indicating the background).
             dlnr_model (DLNRModel): The DLNR model to compute optical flow and disparity.
             use_absolute_baseline (bool): If True, use the provided baseline as an absolute distance in world units.
             show_progress (bool): Whether to show a progress bar (default is True).
@@ -135,6 +141,7 @@ class TSDFInputDataset(torch.utils.data.Dataset):
         self.near = near
         self.far = far
         self.reprojection_threshold = reprojection_threshold
+        self.alpha_threshold = alpha_threshold
         self.dlnr_model = dlnr_model
 
         device = model.device
@@ -153,6 +160,7 @@ class TSDFInputDataset(torch.utils.data.Dataset):
             projection_matrix = projection_matrices[i].to(dtype=torch.float32, device=device)
             image_height, image_width = int(image_sizes[i][0].item()), int(image_sizes[i][1].item())
 
+            # debug_img_name = f"debug_image_{i:04d}.png"
             rgb_image, depth_image, weight_image = self.extract_single_tsdf_input(
                 world_to_cam_matrix=world_to_cam_matrix,
                 projection_matrix=projection_matrix,
@@ -189,6 +197,7 @@ class TSDFInputDataset(torch.utils.data.Dataset):
             projection_matrix (torch.Tensor): The projection matrix for the camera.
             image_width (int): The width of the rendered images in pixels.
             image_height (int): The height of the rendered images in pixels.
+            alpha_threshold (float): Alpha threshold to mask pixels where the Gaussian splat model is not confident.
             save_debug_images_to (str | None): If provided, saves debug images to this path.
 
         Returns:
@@ -211,7 +220,7 @@ class TSDFInputDataset(torch.utils.data.Dataset):
         far = self.far * baseline
 
         # Render the stereo pair of images and clip to [0, 1]
-        image_l, image_r = self.render_stereo_pair(
+        image_l, image_r, alpha_mask = self.render_stereo_pair(
             baseline, world_to_cam_matrix, projection_matrix, image_width, image_height
         )
         image_l.clip_(min=0.0, max=1.0)
@@ -235,7 +244,10 @@ class TSDFInputDataset(torch.utils.data.Dataset):
         near_far_mask = (depth > near) & (depth < far)
 
         # The final weights are a combination of the near/far mask and the occlusion mask
-        weights = near_far_mask & occlusion_mask
+        if alpha_mask is not None:
+            weights = near_far_mask & occlusion_mask & alpha_mask
+        else:
+            weights = near_far_mask & occlusion_mask
 
         if save_debug_images_to is not None:
             debug_plot(
@@ -293,7 +305,7 @@ class TSDFInputDataset(torch.utils.data.Dataset):
         projection_matrix: torch.Tensor,
         image_width: int,
         image_height: int,
-    ) -> tuple[torch.Tensor, torch.Tensor]:
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor | None]:
         """
         Render a pair of stereo images from a Gaussian Splat model.
 
@@ -313,6 +325,8 @@ class TSDFInputDataset(torch.utils.data.Dataset):
             image_1 (torch.Tensor): The first rendered image whose camera to world matrix is the same as the input.
             image_2 (torch.Tensor): The second rendered image whose camera to world matrix is the same as the input but
                 with the x position shifted by the negative baseline.
+            alpha_mask (torch.Tensor): A binary mask indicating pixels where the alpha value exceeds the alpha
+                threshold if self._alpha_threshold > 0.0, else None.
         """
         # Compute the left and right camera poses
         world_to_camera_matrix_left = world_to_camera_matrix.clone()
@@ -322,7 +336,7 @@ class TSDFInputDataset(torch.utils.data.Dataset):
         world_to_camera_matrix = torch.stack([world_to_camera_matrix_left, world_to_camera_matrix_right], dim=0)
         projection_matrix = torch.stack([projection_matrix, projection_matrix], dim=0)
 
-        images, _ = self.model.render_images(
+        images, alphas = self.model.render_images(
             world_to_camera_matrices=world_to_camera_matrix,
             projection_matrices=projection_matrix,
             image_width=image_width,
@@ -331,7 +345,9 @@ class TSDFInputDataset(torch.utils.data.Dataset):
             far=1e10,
         )
 
-        return images[0], images[1]
+        alpha_mask = alphas[0].squeeze(-1) > self.alpha_threshold if self.alpha_threshold > 0.0 else None
+
+        return images[0], images[1], alpha_mask
 
     def compute_occlusion_mask(self, l2r_disparity: torch.Tensor, r2l_disparity: torch.Tensor) -> torch.Tensor:
         """
@@ -429,15 +445,17 @@ class TSDFInputDataset(torch.utils.data.Dataset):
 @torch.no_grad()
 def tsdf_from_splats_dlnr(
     model: GaussianSplat3d,
-    camera_to_world_matrices: torch.Tensor,
-    projection_matrices: torch.Tensor,
-    image_sizes: torch.Tensor,
+    camera_to_world_matrices: NumericMaxRank3,
+    projection_matrices: NumericMaxRank3,
+    image_sizes: NumericMaxRank2,
     truncation_margin: float,
     grid_shell_thickness: float | int = 3.0,
     baseline: float = 0.07,
     near: float = 4.0,
     far: float = 20.0,
     disparity_reprojection_threshold: float = 3.0,
+    alpha_threshold: float = 0.1,
+    image_downsample_factor: int = 1,
     dtype: torch.dtype = torch.float16,
     feature_dtype: torch.dtype = torch.uint8,
     dlnr_backbone: str = "middleburry",
@@ -491,6 +509,8 @@ def tsdf_from_splats_dlnr(
         near (float): Near plane distance below which to ignore depth samples, as a multiple of the baseline.
         far (float): Far plane distance above which to ignore depth samples, as a multiple of the baseline.
         disparity_reprojection_threshold (float): Reprojection error threshold for occlusion masking in pixels (default is 3.0).
+        alpha_threshold (float): Alpha threshold to mask pixels where the Gaussian splat model is transparent (usually indicating the background) (default is 0.1).
+        image_downsample_factor (int): Factor by which to downsample the rendered images for depth estimation (default is 1, i.e. no downsampling).
         dtype (torch.dtype): Data type for the TSDF grid (default is torch.float16).
         feature_dtype (torch.dtype): Data type for the color features (default is torch.uint8).
         dlnr_backbone (str): Backbone to use for the DLNR model, either "middleburry" or "sceneflow".
@@ -510,6 +530,15 @@ def tsdf_from_splats_dlnr(
     if grid_shell_thickness <= 1.0:
         raise ValueError("grid_shell_thickness must be greater than 1.0")
 
+    camera_to_world_matrices, projection_matrices, image_sizes = validate_camera_matrices_and_image_sizes(
+        camera_to_world_matrices, projection_matrices, image_sizes
+    )
+
+    if image_downsample_factor > 1:
+        image_sizes = image_sizes // image_downsample_factor
+        projection_matrices = projection_matrices.clone()
+        projection_matrices[:, :2, :] /= image_downsample_factor
+
     with tempfile.TemporaryDirectory() as cache_path:
         dataset = TSDFInputDataset(
             cache_path=pathlib.Path(cache_path),
@@ -521,6 +550,7 @@ def tsdf_from_splats_dlnr(
             near=near,
             far=far,
             reprojection_threshold=disparity_reprojection_threshold,
+            alpha_threshold=alpha_threshold,
             dlnr_model=DLNRModel(backbone=dlnr_backbone, device=model.device),
             use_absolute_baseline=use_absolute_baseline,
             show_progress=show_progress,

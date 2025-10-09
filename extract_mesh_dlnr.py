@@ -20,6 +20,8 @@ def main(
     near: float = 4.0,
     far: float = 20.0,
     disparity_reprojection_threshold: float = 3.0,
+    alpha_threshold: float = 0.1,
+    image_downsample_factor: int = 1,
     dlnr_backbone: str = "middleburry",
     output_path: pathlib.Path = pathlib.Path("mesh.ply"),
     use_absolute_baseline: bool = False,
@@ -46,6 +48,10 @@ def main(
         near (float): Near plane distance (as a multiple of the baseline) below which we'll ignore depth samples (default is 4.0).
         far (float): Far plane distance (as a multiple of the baseline) above which we'll ignore depth samples (default is 20.0).
         disparity_reprojection_threshold (float): Reprojection error threshold for occlusion masking in pixels (default is 3.0).
+        alpha_threshold (float): Alpha threshold to mask pixels where the Gaussian splat model is transparent,
+            usually indicating the background. (default is 0.1).
+        image_downsample_factor (int): Factor by which to downsample the rendered images for
+            depth estimation (default is 1, _i.e._ no downsampling).
         dlnr_backbone (str): Backbone to use for the DLNR model, either "middleburry" or "sceneflow" (default is "middleburry").
         output_path (pathlib.Path): Path to save the extracted mesh (default is "mesh.ply").
         use_absolute_baseline (bool): If True, use the provided baseline as an absolute distance in world units (default is False).
@@ -94,6 +100,8 @@ def main(
         near=near,
         far=far,
         disparity_reprojection_threshold=disparity_reprojection_threshold,
+        alpha_threshold=alpha_threshold,
+        image_downsample_factor=image_downsample_factor,
         dlnr_backbone=dlnr_backbone,
         use_absolute_baseline=use_absolute_baseline,
         show_progress=True,

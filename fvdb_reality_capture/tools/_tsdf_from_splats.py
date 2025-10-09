@@ -4,18 +4,23 @@
 import torch
 import tqdm
 from fvdb import GaussianSplat3d, Grid
+from fvdb.types import NumericMaxRank2, NumericMaxRank3
+
+from ._common import validate_camera_matrices_and_image_sizes
 
 
 @torch.no_grad()
 def tsdf_from_splats(
     model: GaussianSplat3d,
-    camera_to_world_matrices: torch.Tensor,
-    projection_matrices: torch.Tensor,
-    image_sizes: torch.Tensor,
+    camera_to_world_matrices: NumericMaxRank3,
+    projection_matrices: NumericMaxRank3,
+    image_sizes: NumericMaxRank2,
     truncation_margin: float,
     grid_shell_thickness: float = 3.0,
     near: float = 0.1,
     far: float = 1e10,
+    alpha_threshold: float = 0.1,
+    image_downsample_factor: int = 1,
     dtype: torch.dtype = torch.float16,
     feature_dtype: torch.dtype = torch.uint8,
     show_progress: bool = True,
@@ -43,7 +48,7 @@ def tsdf_from_splats(
             matrices to render depth images from for mesh extraction where C is the number of camera views.
         projection_matrices (torch.Tensor): A (C, 3, 3)-shaped Tensor containing the perspective projection matrices
             used to render images for mesh extraction where C is the number of camera views.
-        image_sizes (torch.Tensor): A (C, 2)-shaped Tensor containing the height and width of each image to extract
+        image_sizes (NumericMaxRank2): A (C, 2)-shaped Tensor containing the height and width of each image to extract
             from the Gaussian splat where C is the number of camera views.
         truncation_margin (float): Margin for truncating the TSDF, in world units.
         grid_shell_thickness (float): Thickness of the TSDF grid shell in multiples of the truncation margin (default is 3.0).
@@ -51,6 +56,11 @@ def tsdf_from_splats(
             from the surface of the model. This value must be greater than 1.0.
         near (float): Near plane distance below which to ignore depth samples (default is 0.0).
         far (float): Far plane distance above which to ignore depth samples (default is 1e10).
+        alpha_threshold (float): Alpha threshold to mask pixels where the Gaussian splat model
+            is transparent, which usually indicates the pixel is part of the background. (default is 0.1).
+        image_downsample_factor (int): Factor by which to downsample the rendered images for depth estimation.
+            A downsample factor of N means the rendered images will be 1/N the width and height of the input image size.
+            (default is 1, _i.e._ no downsampling).
         dtype: Data type for the TSDF and weights. Default is torch.float16.
         feature_dtype: Data type for the features (default is torch.uint8 which is good for RGB colors).
         show_progress (bool): Whether to show a progress bar (default is True).
@@ -66,21 +76,9 @@ def tsdf_from_splats(
 
     device = model.device
 
-    num_cameras = camera_to_world_matrices.shape[0]
-    if camera_to_world_matrices.shape != (num_cameras, 4, 4):
-        raise ValueError(
-            f"Expected camera_to_world_matrices to have shape (C, 4, 4) where C is the number of cameras, but got {camera_to_world_matrices.shape}"
-        )
-
-    if projection_matrices.shape != (num_cameras, 3, 3):
-        raise ValueError(
-            f"Expected projection_matrices to have shape (C, 3, 3) where C is the number of cameras, but got {projection_matrices.shape}"
-        )
-
-    if image_sizes.shape != (num_cameras, 2):
-        raise ValueError(
-            f"Expected image_sizes to have shape (C, 2) where C is the number of cameras, but got {image_sizes.shape}"
-        )
+    camera_to_world_matrices, projection_matrices, image_sizes = validate_camera_matrices_and_image_sizes(
+        camera_to_world_matrices, projection_matrices, image_sizes
+    )
 
     voxel_size = truncation_margin / grid_shell_thickness
     accum_grid = Grid.from_zero_voxels(voxel_size=voxel_size, origin=0.0, device=model.device)
@@ -93,6 +91,11 @@ def tsdf_from_splats(
         if show_progress
         else range(len(camera_to_world_matrices))
     )
+
+    if image_downsample_factor > 1:
+        image_sizes = image_sizes // image_downsample_factor
+        projection_matrices = projection_matrices.clone()
+        projection_matrices[:, :2, :] /= image_downsample_factor
 
     for i in enumerator:
         cam_to_world_matrix = camera_to_world_matrices[i].to(model.device).to(dtype=torch.float32, device=device)
@@ -119,10 +122,15 @@ def tsdf_from_splats(
             )
         else:
             feature_images = feature_and_depth[..., : model.num_channels].to(feature_dtype)
-        feature_images = feature_images.squeeze(0)
-        depth_images = (feature_and_depth[..., -1].unsqueeze(-1) / alpha.clamp(min=1e-10)).to(dtype).squeeze(0)
-        weight_images = ((depth_images > near) & (depth_images < far)).to(dtype).squeeze(0)
 
+        alpha = alpha[0].clamp(min=1e-10).squeeze(-1)
+        feature_images = feature_images.squeeze(0)
+        depth_images = (feature_and_depth[0, ..., -1] / alpha).to(dtype)
+        if alpha_threshold > 0.0:
+            alpha_mask = alpha > alpha_threshold
+            weight_images = ((depth_images > near) & (depth_images < far) & alpha_mask).to(dtype).squeeze(0)
+        else:
+            weight_images = ((depth_images > near) & (depth_images < far)).to(dtype).squeeze(0)
         accum_grid, tsdf, weights, features = accum_grid.integrate_tsdf_with_features(
             truncation_margin,
             projection_matrix.to(dtype),

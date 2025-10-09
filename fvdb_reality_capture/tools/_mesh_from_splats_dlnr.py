@@ -3,22 +3,26 @@
 #
 import torch
 from fvdb import GaussianSplat3d
+from fvdb.types import NumericMaxRank2, NumericMaxRank3
 
+from ._common import validate_camera_matrices_and_image_sizes
 from ._tsdf_from_splats_dlnr import tsdf_from_splats_dlnr
 
 
 @torch.no_grad()
 def mesh_from_splats_dlnr(
     model: GaussianSplat3d,
-    camera_to_world_matrices: torch.Tensor,
-    projection_matrices: torch.Tensor,
-    image_sizes: torch.Tensor,
+    camera_to_world_matrices: NumericMaxRank3,
+    projection_matrices: NumericMaxRank3,
+    image_sizes: NumericMaxRank2,
     truncation_margin: float,
     grid_shell_thickness: float = 3.0,
     baseline: float = 0.07,
     near: float = 4.0,
     far: float = 20.0,
     disparity_reprojection_threshold: float = 3.0,
+    alpha_threshold: float = 0.1,
+    image_downsample_factor: int = 1,
     dtype: torch.dtype = torch.float16,
     feature_dtype: torch.dtype = torch.uint8,
     dlnr_backbone: str = "middleburry",
@@ -73,6 +77,10 @@ def mesh_from_splats_dlnr(
         near (float): Near plane distance below which to ignore depth samples, as a multiple of the baseline.
         far (float): Far plane distance above which to ignore depth samples, as a multiple of the baseline.
         disparity_reprojection_threshold (float): Reprojection error threshold for occlusion masking in pixels (default is 3.0).
+        alpha_threshold (float): Alpha threshold to mask pixels where the Gaussian splat model is transparent
+            (usually indicating the background) . Default is 0.1.
+        image_downsample_factor (int): Factor by which to downsample the rendered images for depth estimation.
+            Default is 1, _i.e._ no downsampling.
         dtype (torch.dtype): Data type for the TSDF grid (default is torch.float16).
         feature_dtype (torch.dtype): Data type for the color features (default is torch.uint8).
         dlnr_backbone (str): Backbone to use for the DLNR model, either "middleburry" or "sceneflow".
@@ -86,6 +94,9 @@ def mesh_from_splats_dlnr(
         mesh_colors (torch.Tensor): Colors of the extracted mesh vertices.
     """
 
+    camera_to_world_matrices, projection_matrices, image_sizes = validate_camera_matrices_and_image_sizes(
+        camera_to_world_matrices, projection_matrices, image_sizes
+    )
     accum_grid, tsdf, colors = tsdf_from_splats_dlnr(
         model=model,
         camera_to_world_matrices=camera_to_world_matrices,
@@ -97,6 +108,8 @@ def mesh_from_splats_dlnr(
         near=near,
         far=far,
         disparity_reprojection_threshold=disparity_reprojection_threshold,
+        alpha_threshold=alpha_threshold,
+        image_downsample_factor=image_downsample_factor,
         dtype=dtype,
         feature_dtype=feature_dtype,
         dlnr_backbone=dlnr_backbone,

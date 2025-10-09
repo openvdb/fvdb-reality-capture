@@ -3,20 +3,24 @@
 #
 import torch
 from fvdb import GaussianSplat3d
+from fvdb.types import NumericMaxRank2, NumericMaxRank3
 
+from ._common import validate_camera_matrices_and_image_sizes
 from ._tsdf_from_splats import tsdf_from_splats
 
 
 @torch.no_grad()
 def mesh_from_splats(
     model: GaussianSplat3d,
-    camera_to_world_matrices: torch.Tensor,
-    projection_matrices: torch.Tensor,
-    image_sizes: torch.Tensor,
+    camera_to_world_matrices: NumericMaxRank3,
+    projection_matrices: NumericMaxRank3,
+    image_sizes: NumericMaxRank2,
     truncation_margin: float,
     grid_shell_thickness: float = 3.0,
     near: float = 0.1,
     far: float = 1e10,
+    alpha_threshold: float = 0.1,
+    image_downsample_factor: int = 1,
     dtype: torch.dtype = torch.float16,
     feature_dtype: torch.dtype = torch.uint8,
     show_progress: bool = True,
@@ -53,6 +57,9 @@ def mesh_from_splats(
             from the surface of the model.
         near (float): Near plane distance below which to ignore depth samples (default is 0.1).
         far (float): Far plane distance above which to ignore depth samples (default is 1e10).
+        alpha_threshold (float): Alpha threshold to mask pixels where the Gaussian splat model is transparent
+            (usually indicating the background). Default is 0.1.
+        image_downsample_factor (int): Factor by which to downsample the rendered images for depth estimation (default is 1, i.e. no downsampling).
         dtype: Data type for the TSDF and weights. Default is torch.float16.
         feature_dtype: Data type for the features (default is torch.uint8 which is good for RGB colors).
         show_progress (bool): Whether to show a progress bar (default is True).
@@ -63,6 +70,10 @@ def mesh_from_splats(
         mesh_colors (torch.Tensor): Colors of the extracted mesh vertices.
     """
 
+    camera_to_world_matrices, projection_matrices, image_sizes = validate_camera_matrices_and_image_sizes(
+        camera_to_world_matrices, projection_matrices, image_sizes
+    )
+
     accum_grid, tsdf, colors = tsdf_from_splats(
         model,
         camera_to_world_matrices,
@@ -72,6 +83,8 @@ def mesh_from_splats(
         grid_shell_thickness=grid_shell_thickness,
         near=near,
         far=far,
+        alpha_threshold=alpha_threshold,
+        image_downsample_factor=image_downsample_factor,
         dtype=dtype,
         feature_dtype=feature_dtype,
         show_progress=show_progress,

@@ -19,6 +19,8 @@ def main(
     near: float = 0.1,
     far: float = 4.0,
     use_scene_scale_units: bool = True,
+    alpha_threshold: float = 0.1,
+    image_downsample_factor: int = 1,
     output_path: pathlib.Path = pathlib.Path("mesh.ply"),
     device: str = "cuda",
 ):
@@ -33,6 +35,10 @@ def main(
             from the surface of the model.
         near (float): Near plane distance (as a multiple of the scene scale) below which we'll ignore depth samples (default is 0.1).
         far (float): Far plane distance (as a multiple of the scene scale) above which we'll ignore depth samples.
+        alpha_threshold (float): Alpha threshold to mask pixels where the Gaussian splat model is transparent,
+            usually indicating the background. (default is 0.1).
+        image_downsample_factor (int): Factor by which to downsample the rendered images for
+            depth estimation (default is 1, _i.e._ no downsampling).
         use_scene_scale_units (bool): Whether to use scene scale units for the near, plane, far plane and truncation margin.
         output_path (pathlib.Path): Path to save the extracted mesh (default is "mesh.ply").
         device (str): Device to use for computation (default is "cuda").
@@ -83,6 +89,8 @@ def main(
         grid_shell_thickness=grid_shell_thickness,
         near=near,
         far=far,
+        alpha_threshold=alpha_threshold,
+        image_downsample_factor=image_downsample_factor,
         show_progress=True,
     )
 
