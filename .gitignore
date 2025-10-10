@@ -70,3 +70,4 @@ tests/data/
 *.pth
 *.log
 *.nsys-rep
+*.usdz
