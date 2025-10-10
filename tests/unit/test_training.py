@@ -39,11 +39,9 @@ class GaussianSplatReconstructionTests(unittest.TestCase):
             use_every_n_as_val=2,
         )
 
-        splats, metadata = runner.train()
+        runner.train()
 
-        self.assertIsNotNone(splats)
-        self.assertIsNotNone(metadata)
-        self.assertEqual(splats.num_gaussians, self.sfm_scene.points.shape[0])
+        self.assertEqual(runner.model.num_gaussians, self.sfm_scene.points.shape[0])
 
     def test_run_training_with_saving(self):
 
@@ -79,16 +77,14 @@ class GaussianSplatReconstructionTests(unittest.TestCase):
             self.assertEqual(num_stats_files, 0)
             self.assertEqual(num_ckpt_files, 0)
 
-            splats, metadata = runner.train()
+            runner.train()
 
             num_stats_files = sum(1 for item in runner.stats_path.iterdir() if item.is_file())
             num_ckpt_files = sum(1 for item in runner.checkpoints_path.iterdir() if item.is_file())
             self.assertEqual(num_stats_files, 2)
             self.assertEqual(num_ckpt_files, 4)
 
-        self.assertIsNotNone(splats)
-        self.assertIsNotNone(metadata)
-        self.assertEqual(splats.num_gaussians, self.sfm_scene.points.shape[0])
+        self.assertEqual(runner.model.num_gaussians, self.sfm_scene.points.shape[0])
 
     def test_run_training_with_saving_and_image_rendering(self):
 
@@ -129,7 +125,7 @@ class GaussianSplatReconstructionTests(unittest.TestCase):
             self.assertEqual(num_ckpt_files, 0)
             self.assertEqual(num_image_files, 0)
 
-            splats, metadata = runner.train()
+            runner.train()
 
             num_stats_files = len([item for item in runner.stats_path.iterdir() if item.is_file()])
             num_ckpt_files = len([item for item in runner.checkpoints_path.iterdir() if item.is_file()])
@@ -146,9 +142,7 @@ class GaussianSplatReconstructionTests(unittest.TestCase):
                     num_image_files = sum(1 for subitem in item.iterdir() if subitem.is_file())
                     self.assertEqual(num_image_files, num_val)
 
-        self.assertIsNotNone(splats)
-        self.assertIsNotNone(metadata)
-        self.assertEqual(splats.num_gaussians, self.sfm_scene.points.shape[0])
+        self.assertEqual(runner.model.num_gaussians, self.sfm_scene.points.shape[0])
 
     def test_checkpoint_loading(self):
 
@@ -186,7 +180,7 @@ class GaussianSplatReconstructionTests(unittest.TestCase):
             self.assertEqual(num_stats_files, 0)
             self.assertEqual(num_ckpt_files, 0)
 
-            splats, metadata = runner.train()
+            runner.train()
 
             all_saved_files_before_delete = [item for item in runner.checkpoints_path.iterdir() if item.is_file()]
 
@@ -221,7 +215,7 @@ class GaussianSplatReconstructionTests(unittest.TestCase):
 
             # Now try to load the checkpoint
             runner2 = frc.GaussianSplatReconstruction.from_checkpoint(
-                lowest_checkpoint_path, device=runner.model.device
+                lowest_checkpoint_path, device=runner.model.device, run_name_suffix="_resumed"
             )
 
             assert runner2.checkpoints_path is not None
@@ -250,6 +244,4 @@ class GaussianSplatReconstructionTests(unittest.TestCase):
             expected_set = {item.name for item in all_saved_files_before_delete}
             self.assertEqual(expected_set.intersection(result_set), result_set)
 
-        self.assertIsNotNone(splats)
-        self.assertIsNotNone(metadata)
-        self.assertEqual(splats.num_gaussians, self.sfm_scene.points.shape[0])
+        self.assertEqual(runner.model.num_gaussians, self.sfm_scene.points.shape[0])
