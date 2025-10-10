@@ -1184,7 +1184,7 @@ class GaussianSplatReconstruction:
                         colors.permute(0, 3, 1, 2).contiguous(),
                         pixels.permute(0, 3, 1, 2).contiguous(),
                     )
-                    loss = torch.lerp(l1loss, ssimloss, torch.Tensor([self.config.ssim_lambda]).to(ssimloss))
+                    loss = torch.lerp(l1loss, ssimloss, self.config.ssim_lambda)
 
                     # Rgularize opacity to ensure Gaussian's don't become too opaque
                     if self.config.opacity_reg > 0.0:
