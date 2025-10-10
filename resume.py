@@ -15,6 +15,7 @@ from fvdb_reality_capture.training import GaussianSplatReconstruction
 def main(
     checkpoint_path: pathlib.Path,
     override_results_path: pathlib.Path | None = None,
+    run_name_suffix: str = "_resumed",
     device: str | torch.device = "cuda",
     visualize_every_epoch: int = -1,
     log_tensorboard_every_step: int = 100,
@@ -36,6 +37,7 @@ def main(
         save_eval_images=save_eval_images,
         device=device,
         viewer=viewer,
+        run_name_suffix=run_name_suffix,
         viewer_update_interval_epochs=visualize_every_epoch,
     )
 

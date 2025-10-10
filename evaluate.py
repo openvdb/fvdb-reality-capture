@@ -12,7 +12,7 @@ from fvdb_reality_capture.training import GaussianSplatReconstruction
 
 def main(
     checkpoint_path: pathlib.Path,
-    results_path: pathlib.Path = pathlib.Path("results"),
+    save_results: bool = True,
     save_images: bool = True,
     device: str | torch.device = "cuda",
 ):
@@ -23,14 +23,15 @@ def main(
 
     Args:
         checkpoint_path (pathlib.Path): Path to the checkpoint file containing the Gaussian splat model.
-        dataset_path (pathlib.Path | None): Path to the dataset used for training or None to use the dataset
-            in the checkpoint if it is available (default is None).
+        save_results (bool): Whether to save the evaluation results (default is True).
+            Results will be saved in a subdirectory of the checkpoint directory.
+        save_images (bool): Whether to save the rendered images (default is True).
         device (str | torch.device): Device to use for computation (default is "cuda").
     """
     logging.basicConfig(level=logging.INFO, format="%(levelname)s : %(message)s")
 
     runner = GaussianSplatReconstruction.from_checkpoint(
-        checkpoint_path=checkpoint_path, save_eval_images=save_images, device=device
+        checkpoint_path=checkpoint_path, save_eval_images=save_images, device=device, save_results=save_results
     )
 
     logger = logging.getLogger("evaluate")

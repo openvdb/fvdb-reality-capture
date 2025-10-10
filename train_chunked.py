@@ -19,15 +19,14 @@ from fvdb_reality_capture.sfm_scene import SfmScene
 from fvdb_reality_capture.training import (
     GaussianSplatReconstruction,
     SceneOptimizationConfig,
-    SfmDataset,
 )
 from fvdb_reality_capture.transforms import (
     Compose,
+    CropScene,
     DownsampleImages,
     NormalizeScene,
     PercentileFilterPoints,
 )
-from fvdb_reality_capture.viewer import Viewer
 
 
 def _make_unique_name_directory_based_on_time(results_base_path: pathlib.Path, prefix: str) -> tuple[str, pathlib.Path]:
@@ -68,18 +67,12 @@ def _make_unique_name_directory_based_on_time(results_base_path: pathlib.Path, p
 def _run_on_chunk(
     chunk_id: int,
     chunk_bboxes: Sequence[tuple[float, float, float, float, float, float]],
-    dataset_path: pathlib.Path,
-    cfg: GaussianSplatReconstruction,
+    sfm_scene: SfmScene,
+    config: SceneOptimizationConfig,
     chunk_run_name_prefix: str,
-    image_downsample_factor: int,
-    points_percentile_filter: float,
-    normalization_type: Literal["none", "pca", "ecef2enu", "similarity"],
     results_path: pathlib.Path,
     device: str | torch.device,
     use_every_n_as_val: int,
-    log_tensorboard_every: int,
-    log_images_to_tensorboard: bool,
-    save_results: bool,
     save_eval_images: bool,
 ):
     """
@@ -106,82 +99,23 @@ def _run_on_chunk(
         save_results (bool): Whether to save the results of the training.
         save_eval_images (bool): Whether to save evaluation images during training.
     """
-    runner = GaussianSplatReconstruction.new_run(
-        config=cfg,
-        dataset_path=dataset_path,
+    chunk_transform = CropScene(crop_bbox=chunk_bboxes[chunk_id])
+
+    scene_chunk = chunk_transform(sfm_scene)
+
+    runner = GaussianSplatReconstruction.from_sfm_scene(
+        sfm_scene=scene_chunk,
+        config=config,
+        use_every_n_as_val=use_every_n_as_val,
         run_name=chunk_run_name_prefix + f"_chunk_{chunk_id:04d}",
-        image_downsample_factor=image_downsample_factor,
-        points_percentile_filter=points_percentile_filter,
-        normalization_type=normalization_type,
-        crop_bbox=chunk_bboxes[chunk_id],
         results_path=results_path,
         device=device,
-        use_every_n_as_val=use_every_n_as_val,
-        disable_viewer=False,
-        log_tensorboard_every=log_tensorboard_every,
-        log_images_to_tensorboard=log_images_to_tensorboard,
-        save_results=save_results,
+        viewer=None,
+        tensorboard_path=None,
         save_eval_images=save_eval_images,
     )
 
     runner.train()
-
-
-def plot_chunk_bboxes(
-    chunk_bboxes: Sequence[tuple[float, float, float, float, float, float]],
-    scene_points: np.ndarray,
-    full_train_dataset: SfmDataset,
-):
-    """
-    Debug utility to visualize the chunk bounding boxes and scene points in a viewer.
-    This function will open a viewer and display the scene points and chunk bounding boxes.
-
-    Args:
-        chunk_bboxes: A sequence of bounding boxes for each chunk of the form
-            (xmin, ymin, zmin, xmax, ymax, zmax).
-        scene_points: The points in the scene to visualize.
-        full_train_dataset: The full training dataset containing the points and their RGB colors.
-    """
-
-    logger = logging.getLogger("train_chunked")
-
-    viewer = Viewer()
-    server = viewer.viser_server
-
-    scene_points = full_train_dataset.points
-    scene_points_rgb = full_train_dataset.points_rgb
-
-    xmin, ymin, zmin = scene_points.min(axis=0)
-    xmax, ymax, zmax = scene_points.max(axis=0)
-
-    points = server.scene.add_point_cloud("scene points", points=scene_points, colors=scene_points_rgb)
-    points.point_size = 0.001
-    box_origin = np.array([xmin, ymin, zmin])
-    box_size = np.array([xmax - xmin, ymax - ymin, zmax - zmin])
-    box_center = box_origin + 0.5 * box_size
-    box = server.scene.add_box(
-        f"bbox",
-        position=box_center,
-        dimensions=box_size,
-        color=(1.0, 0.0, 0.0),
-    )
-    box.wireframe = True
-
-    for i, chunk_bbox in enumerate(chunk_bboxes):
-        crop_origin = np.array(chunk_bbox[:3])
-        crop_size = np.array(chunk_bbox[3:]) - np.array(chunk_bbox[:3])
-        crop_center = crop_origin + 0.5 * crop_size
-        color = np.random.rand(3) / 2.0 + 0.5
-        crop_box = server.scene.add_box(
-            f"chunk_{i}",
-            position=crop_center,
-            dimensions=crop_size,
-            color=color,
-        )
-        crop_box.wireframe = True
-
-    logger.info("Viewer is running. Press Ctrl+C to exit.")
-    time.sleep(10000000)  # Keep the viewer open for a while
 
 
 def main(
@@ -198,9 +132,6 @@ def main(
     results_path: pathlib.Path = pathlib.Path("results"),
     device: str | torch.device = "cuda",
     use_every_n_as_val: int = 8,
-    log_tensorboard_every: int = 100,
-    log_images_to_tensorboard: bool = False,
-    save_results: bool = True,
     save_eval_images: bool = False,
 ):
     """
@@ -228,9 +159,6 @@ def main(
         results_path (pathlib.Path): Path to save the results of the training.
         device (str | torch.device): Device to run the training on, e.g., "cuda" or "cpu".
         use_every_n_as_val (int): Use every n-th image as validation data.
-        log_tensorboard_every (int): Log to TensorBoard every n iterations.
-        log_images_to_tensorboard (bool): Whether to log images to TensorBoard.
-        save_results (bool): Whether to save the results of the training.
         save_eval_images (bool): Whether to save evaluation images during training.
     """
     logging.basicConfig(level=logging.INFO, format="%(levelname)s : %(message)s")
@@ -250,14 +178,7 @@ def main(
 
     sfm_scene: SfmScene = transform(SfmScene.from_colmap(dataset_path))
 
-    indices = np.arange(sfm_scene.num_images)
-    mask = np.ones(len(indices), dtype=bool)
-    mask[::use_every_n_as_val] = False
-    train_indices = indices[mask]
-
-    full_train_dataset = SfmDataset(sfm_scene, train_indices)
-
-    scene_points = full_train_dataset.points
+    scene_points = sfm_scene.points
 
     xmin, ymin, zmin = scene_points.min(axis=0)
     xmax, ymax, zmax = scene_points.max(axis=0)
@@ -307,18 +228,12 @@ def main(
     chunk_runner_partial = partial(
         _run_on_chunk,
         chunk_bboxes=crops_bboxes,
-        dataset_path=dataset_path,
-        cfg=cfg,
+        sfm_scene=sfm_scene,
+        config=cfg,
         chunk_run_name_prefix=chunk_run_name,
-        image_downsample_factor=image_downsample_factor,
-        points_percentile_filter=points_percentile_filter,
-        normalization_type=normalization_type,
         results_path=chunk_results_path,
         device=device,
         use_every_n_as_val=use_every_n_as_val,
-        log_tensorboard_every=log_tensorboard_every,
-        log_images_to_tensorboard=log_images_to_tensorboard,
-        save_results=save_results,
         save_eval_images=save_eval_images,
     )
 
@@ -342,11 +257,16 @@ def main(
     merged_splats = GaussianSplat3d.cat(splats)
     logger.info(f"Merging completed. Saving merged checkpoint to {chunk_results_path / 'merged.ply'}")
 
+    # Only save training metadata for the training images
+    mask = np.ones(sfm_scene.num_images, dtype=bool)
+    mask[::use_every_n_as_val] = False
+    sfm_scene = sfm_scene.filter_images(mask)
+
     out_ply_path = chunk_results_path / "merged.ply"
-    normalization_transform = torch.from_numpy(full_train_dataset.sfm_scene.transformation_matrix).to(torch.float32)
-    training_camera_to_world_matrices = torch.from_numpy(full_train_dataset.camera_to_world_matrices).to(torch.float32)
-    training_projection_matrices = torch.from_numpy(full_train_dataset.projection_matrices).to(torch.float32)
-    image_sizes = torch.from_numpy(full_train_dataset.image_sizes).to(torch.int32)
+    normalization_transform = torch.from_numpy(sfm_scene.transformation_matrix).to(torch.float32)
+    training_camera_to_world_matrices = torch.from_numpy(sfm_scene.camera_to_world_matrices).to(torch.float32)
+    training_projection_matrices = torch.from_numpy(sfm_scene.projection_matrices).to(torch.float32)
+    image_sizes = torch.from_numpy(sfm_scene.image_sizes).to(torch.int32)
 
     training_metadata = {
         "normalization_transform": normalization_transform,

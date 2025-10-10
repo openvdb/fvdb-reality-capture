@@ -246,6 +246,8 @@ class GaussianSplatReconstruction:
         viewer_update_interval_epochs: int = 10,
         tensorboard_log_interval_steps: int = 10,
         save_eval_images: bool = False,
+        run_name_suffix: str | None = None,
+        save_results: bool = True,
         device: str | torch.device = "cuda",
     ) -> "GaussianSplatReconstruction":
         logger = logging.getLogger(f"{cls.__module__}.{cls.__name__}")
@@ -302,7 +304,7 @@ class GaussianSplatReconstruction:
             raise ValueError("No results path specified and no results path found in checkpoint.")
 
         global_step = checkpoint["step"]
-        run_name = checkpoint["run_name"] + "_resumed"
+        run_name = checkpoint["run_name"] + run_name_suffix if run_name_suffix is not None else checkpoint["run_name"]
         optimization_config = SceneOptimizationConfig(**checkpoint["config"])
         optimizer_config = GaussianSplatOptimizerConfig(**checkpoint["optimizer_config"])
         sfm_scene: SfmScene = SfmScene.from_state_dict(checkpoint["sfm_scene"])
@@ -1155,7 +1157,7 @@ class GaussianSplatReconstruction:
                 # If self.optimization_config.crops_per_image is 1, then this just returns the image
                 for pixels, mask_pixels, crop, is_last in crop_image_batch(image, mask, self.config.crops_per_image):
                     # Actual pixels to compute the loss on, normalized to [0, 1]
-                    pixels = pixels.to(self.device) / 255.0  # [1, H, W, 3]
+                    pixels: torch.Tensor = pixels.to(self.device) / 255.0  # [1, H, W, 3]
 
                     # Render an image from the gaussian splats
                     # possibly using a crop of the full image

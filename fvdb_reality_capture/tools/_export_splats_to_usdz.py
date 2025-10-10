@@ -15,9 +15,9 @@ from typing import Any
 
 import msgpack
 import numpy as np
-from pxr import Gf, Sdf, Usd, UsdGeom, UsdUtils, UsdVol
-
+import torch
 from fvdb import GaussianSplat3d
+from pxr import Gf, Sdf, Usd, UsdGeom, UsdUtils, UsdVol
 
 # Set up logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
@@ -43,7 +43,7 @@ class NamedUSDStage:
         os.unlink(temp_file_path)
 
 
-def initialize_usd_stage():
+def _initialize_usd_stage():
     """
     Initialize a new USD stage with standard settings.
 
@@ -62,7 +62,7 @@ def initialize_usd_stage():
     return stage
 
 
-def serialize_usd_stage_to_bytes(stage: Usd.Stage) -> bytes:
+def _serialize_usd_stage_to_bytes(stage: Usd.Stage) -> bytes:
     """
     Export a USD stage to a temporary file and read it back as bytes.
 
@@ -84,7 +84,7 @@ def serialize_usd_stage_to_bytes(stage: Usd.Stage) -> bytes:
     return content
 
 
-def serialize_nurec_usd(
+def _serialize_nurec_usd(
     model_file, positions: np.ndarray, normalizing_transform: np.ndarray = np.eye(4)
 ) -> NamedUSDStage:
     """
@@ -113,7 +113,7 @@ def serialize_nurec_usd(
     max_list = [max_x, max_y, max_z]
 
     # Initialize the USD stage with standard settings
-    stage = initialize_usd_stage()
+    stage = _initialize_usd_stage()
 
     # Set up render settings
     render_settings = {
@@ -234,7 +234,7 @@ def serialize_usd_default_layer(gauss_stage: NamedUSDStage) -> NamedUSDStage:
     Returns:
         NamedUSDStage: The default USD stage with the gauss reference
     """
-    stage = initialize_usd_stage()
+    stage = _initialize_usd_stage()
 
     # The delegate captures all errors about dangling references, effectively silencing them.
     delegate = UsdUtils.CoalescingDiagnosticDelegate()
@@ -508,18 +508,30 @@ def fill_3dgut_template(
     return template
 
 
-def export_to_usdz(
-    splats: GaussianSplat3d,
-    out_path: Path,
+@torch.no_grad()
+def export_splats_to_usdz(
+    model: GaussianSplat3d,
+    out_path: str | Path,
 ):
+    """
+    Export a GaussianSplat3d model to a USDZ file.
 
-    means = splats.means.cpu().numpy()
-    quats = splats.quats.cpu().numpy()
-    log_scales = splats.log_scales.cpu().numpy()
-    logit_opacities = splats.logit_opacities.cpu().numpy()
-    sh0 = splats.sh0.cpu().numpy()
-    shN = splats.shN.cpu().numpy()
-    n_sh_coeffs = splats.num_sh_bases
+    Args:
+        model (fvdb.GaussianSplat3d): The Gaussian Splat model to save to a usdz file
+        out_path (str | Path): The output path for the usdz file. If the file extension is not .usdz,
+            it will be added. _e.g._ "./scene" will save to "./scene.usdz".
+    """
+
+    if isinstance(out_path, str):
+        out_path = Path(out_path)
+    out_path = out_path.with_suffix(".usdz")
+    means = model.means.cpu().numpy()
+    quats = model.quats.cpu().numpy()
+    log_scales = model.log_scales.cpu().numpy()
+    logit_opacities = model.logit_opacities.cpu().numpy()
+    sh0 = model.sh0.cpu().numpy()
+    shN = model.shN.cpu().numpy()
+    n_sh_coeffs = model.num_sh_bases
 
     # convert shN from interleaved RGBRGBRGB... to planar RRRGGGBBB... layout
     shN = shN.reshape((shN.shape[0], 3, shN.shape[1]))
@@ -566,19 +578,8 @@ def export_to_usdz(
     model_file = NamedSerialized(filename=out_path.stem + ".nurec", serialized=buffer.getvalue())
 
     # Create USD representations
-    gauss_usd = serialize_nurec_usd(model_file, means, np.eye(4))
+    gauss_usd = _serialize_nurec_usd(model_file, means, np.eye(4))
     default_usd = serialize_usd_default_layer(gauss_usd)
 
     # Write the final USDZ file
     write_to_usdz(out_path, model_file, gauss_usd, default_usd)
-
-
-def main(ply_path: str):
-    splats, _ = GaussianSplat3d.from_ply(ply_path)
-    export_to_usdz(splats, Path("out.usdz"))
-
-
-if __name__ == "__main__":
-    import tyro
-
-    tyro.cli(main)
