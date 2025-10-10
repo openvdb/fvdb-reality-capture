@@ -1279,8 +1279,8 @@ class GaussianSplatReconstruction:
                         self.pose_adjust_scheduler is not None
                     ), "Pose scheduler should be initialized if pose optimization is enabled."
                     self.pose_adjust_optimizer.step()
-                    self.pose_adjust_scheduler.step()
                     self.pose_adjust_optimizer.zero_grad(set_to_none=True)
+                    self.pose_adjust_scheduler.step()
 
                 # Log to tensorboard if you requested it
                 if self._summary_writer is not None and self._global_step % self._tensorboard_log_interval == 0:
