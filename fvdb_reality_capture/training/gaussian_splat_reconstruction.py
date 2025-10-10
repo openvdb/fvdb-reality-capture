@@ -468,7 +468,7 @@ class GaussianSplatReconstruction:
         self._training_dataset = SfmDataset(sfm_scene=sfm_scene, dataset_indices=train_indices)
         self._validation_dataset = SfmDataset(sfm_scene=sfm_scene, dataset_indices=val_indices)
 
-        self.device = model.device
+        self.device: torch.device = model.device
 
         # Set up directories for saving results if a results path is provided
         self._run_name = run_name
