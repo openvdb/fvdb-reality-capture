@@ -5,6 +5,7 @@ import itertools
 import logging
 import pathlib
 import time
+from typing import Generator
 
 import numpy as np
 import torch
@@ -45,7 +46,9 @@ def make_unique_name_directory_based_on_time(results_base_path: pathlib.Path, pr
     return run_name, results_path
 
 
-def crop_image_batch(image: torch.Tensor, mask: torch.Tensor | None, ncrops: int):
+def crop_image_batch(
+    image: torch.Tensor, mask: torch.Tensor | None, ncrops: int
+) -> Generator[tuple[torch.Tensor, torch.Tensor | None, tuple[int, int, int, int], bool], None, None]:
     """
     Generator to iterate a minibatch of images (B, H, W, C) into disjoint patches patches (B, H_patch, W_patch, C).
     We use this function when training on very large images so that we can accumulate gradients over
