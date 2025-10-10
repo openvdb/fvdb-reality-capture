@@ -7,12 +7,13 @@ import pathlib
 import torch
 import tyro
 
-from fvdb_reality_capture.training import Checkpoint, GaussianSplatReconstruction
+from fvdb_reality_capture.training import GaussianSplatReconstruction
 
 
 def main(
     checkpoint_path: pathlib.Path,
-    dataset_path: pathlib.Path | None = None,
+    results_path: pathlib.Path = pathlib.Path("results"),
+    save_images: bool = True,
     device: str | torch.device = "cuda",
 ):
     """
@@ -28,22 +29,8 @@ def main(
     """
     logging.basicConfig(level=logging.INFO, format="%(levelname)s : %(message)s")
 
-    checkpoint: Checkpoint = Checkpoint.load(
-        checkpoint_path,
-        device=device,
-        dataset_path=dataset_path,
-    )
-
-    # The runner will create a visualization for us so we'll just create one pause while the
-    # viewer is running.
     runner = GaussianSplatReconstruction.from_checkpoint(
-        checkpoint=checkpoint,
-        results_path=pathlib.Path("results"),
-        disable_viewer=True,
-        log_tensorboard_every=100,
-        log_images_to_tensorboard=False,
-        save_eval_images=True,
-        save_results=True,
+        checkpoint_path=checkpoint_path, save_eval_images=save_images, device=device
     )
 
     logger = logging.getLogger("evaluate")
