@@ -1157,7 +1157,7 @@ class GaussianSplatReconstruction:
                 # If self.optimization_config.crops_per_image is 1, then this just returns the image
                 for pixels, mask_pixels, crop, is_last in crop_image_batch(image, mask, self.config.crops_per_image):
                     # Actual pixels to compute the loss on, normalized to [0, 1]
-                    pixels: torch.Tensor = pixels.to(self.device) / 255.0  # [1, H, W, 3]
+                    pixels: torch.Tensor = pixels.to(device=self.device) / 255.0  # [1, H, W, 3]
 
                     # Render an image from the gaussian splats
                     # possibly using a crop of the full image
