@@ -162,6 +162,33 @@ class GaussianSplatReconstruction:
         device: str | torch.device = "cuda",
         save_eval_images: bool = False,
     ):
+        """
+        Create a `GaussianSplatReconstruction` instance from an `SfmScene`, used to reconstruct
+        a 3D Gaussian Splat radiance field from posed images. The optimization process can be
+        configured using the `config` and `optimizer_config` parameters, though the defaults
+        should produce acceptable results.
+
+        There are also several parameters to configure logging and visualization of the training
+        process, as well as saving results.
+
+        Args:
+            sfm_scene (SfmScene): The Structure-from-Motion scene containing images and camera poses.
+            config (GaussianSplatReconstructionConfig): Configuration for the reconstruction process.
+            optimizer_config (GaussianSplatOptimizerConfig): Configuration for the optimizer.
+            use_every_n_as_val (int): Use every n-th image as a validation image. Default of -1 means no validation images are used.
+            run_name (str | None): Name of the training run. If None, a unique name based on the current time will be generated.
+            results_path (str | pathlib.Path | None): Base path to save results. If None, results will not be saved.
+            viewer (Viewer | None): Optional Viewer instance for visualizing training progress. If None, no visualization is performed.
+            tensorboard_path (pathlib.Path | None): Optional path to save TensorBoard logs. If None, TensorBoard logging is disabled.
+            viewer_update_interval_epochs (int): Interval in epochs at which to update the viewer.
+                An epoch is one full pass through the training dataset.
+            tensorboard_log_interval_steps (int): Interval in steps to log to TensorBoard.
+            device (str | torch.device): Device to run the training on.
+            save_eval_images (bool): Whether to save evaluation images during training if results_path is not None.
+
+        Returns:
+            GaussianSplatReconstruction: An instance ready to train the model.
+        """
         if isinstance(results_path, str):
             results_path = pathlib.Path(results_path)
 
@@ -250,6 +277,30 @@ class GaussianSplatReconstruction:
         save_results: bool = True,
         device: str | torch.device = "cuda",
     ) -> "GaussianSplatReconstruction":
+        """
+        Load a `GaussianSplatReconstruction` instance from a checkpoint file. This will restore the model, optimizer, and training state.
+        You can optionally override the SfM scene and the train/validation split, as well as the results path.
+        This is useful for resuming training on a different dataset or with a different train/val split.
+
+        Args:
+            checkpoint_path (str | pathlib.Path): Path to the checkpoint file.
+            override_sfm_scene (SfmScene | None): Optional SfM scene to use instead of the one in the checkpoint.
+            override_use_every_n_as_val (int | None): If specified, will override the train/val split using this value.
+                Default of None means to use the train/val split from the checkpoint.
+            override_results_path (str | pathlib.Path | None): Optional path to save results. If None, uses the path from the checkpoint.
+            viewer (Viewer | None): Optional Viewer instance for visualizing training progress. If None, no visualization is performed.
+            tensorboard_path (str | pathlib.Path | None): Optional path to save TensorBoard logs. If None, TensorBoard logging is disabled.
+            viewer_update_interval_epochs (int): Interval in epochs at which to update the viewer.
+                An epoch is one full pass through the training dataset.
+            tensorboard_log_interval_steps (int): Interval in steps to log to TensorBoard.
+            save_eval_images (bool): Whether to save evaluation images during training if results_path is not None.
+            run_name_suffix (str | None): Optional suffix to append to the run name from the checkpoint.
+                Useful for distinguishing multiple runs from the same checkpoint. _e.g._ passing "_resumed" will
+                change a run name of "my_run" to "my_run_resumed".
+            save_results (bool): Whether to save results during training. If False, results will not be saved even
+                if a results path is specified in the checkpoint or via override_results_path.
+            device (str | torch.device): Device to run the training on.
+        """
         logger = logging.getLogger(f"{cls.__module__}.{cls.__name__}")
 
         logger.info(f"Loading checkpoint from {checkpoint_path} on device {device}")
@@ -367,6 +418,10 @@ class GaussianSplatReconstruction:
 
         if isinstance(results_path, str):
             results_path = pathlib.Path(results_path)
+
+        # If you are not saving results, we Nullify the results path to prevent any output.
+        if not save_results:
+            results_path = None
 
         # Setup output directories.
         run_name, run_results_path = cls._make_run_directory(
@@ -537,6 +592,16 @@ class GaussianSplatReconstruction:
     def _tensorboard_log_train(
         self, loss: float, l1loss: float, ssimloss: float, sh_degree: int, pose_loss: float | None = None
     ):
+        """
+        Log training statistics to TensorBoard.
+
+        Args:
+            loss: The total loss value.
+            l1loss: The L1 loss component.
+            ssimloss: The SSIM loss component.
+            sh_degree: The current spherical harmonics degree.
+            pose_loss: The camera pose loss component, if applicable.
+        """
         if self._summary_writer is None:
             return
 
@@ -635,7 +700,11 @@ class GaussianSplatReconstruction:
     @torch.no_grad()
     def _save_checkpoint_and_ply(self, ckpt_path: pathlib.Path, ply_path: pathlib.Path):
         """
-        Saves a checkpoint and a PLY file to disk
+        Saves a checkpoint and a PLY file to disk.
+
+        Args:
+            ckpt_path (pathlib.Path): The path to save the checkpoint file to.
+            ply_path (pathlib.Path): The path to save the PLY file to.
         """
         if self._checkpoints_path is None:
             return
@@ -692,6 +761,23 @@ class GaussianSplatReconstruction:
 
     @torch.no_grad()
     def _splat_ply_metadata(self) -> dict[str, torch.Tensor | float | int | str]:
+        """
+        Get metadata about the current model and training dataset to save in a PLY file.
+
+        Returns:
+            dict: A dictionary containing metadata about the model and training dataset. It's keys include:
+                - normalization_transform: The transformation matrix used to normalize the scene.
+                - camera_to_world_matrices: The optimized camera-to-world matrices for the training images.
+                - projection_matrices: The projection matrices for the training images.
+                - image_sizes: The sizes of the training images.
+                - scene_scale: The computed scale of the scene.
+                - eps2d: The 2D epsilon value used in rendering.
+                - near_plane: The near plane distance used in rendering.
+                - far_plane: The far plane distance used in rendering.
+                - min_radius_2d: The minimum 2D radius used in rendering.
+                - antialias: Whether anti-aliasing is enabled (1) or not (0).
+                - tile_size: The tile size used in rendering.
+        """
         training_camera_to_world_matrices = torch.from_numpy(self._training_dataset.camera_to_world_matrices).to(
             dtype=torch.float32, device=self.device
         )
@@ -1032,7 +1118,7 @@ class GaussianSplatReconstruction:
         )
         return pose_adjust_model, pose_adjust_optimizer, pose_adjust_scheduler
 
-    def train(self):
+    def train(self, show_progress: bool = True) -> None:
         """
         Run the training loop for the Gaussian Splatting model.
 
@@ -1050,11 +1136,10 @@ class GaussianSplatReconstruction:
         - Rendering images from the model's projected Gaussians.
         - Computing losses (L1, SSIM, LPIPS) and updating model parameters.
         - Logging training metrics to TensorBoard and the viewer.
+        - Saving checkpoints and evaluation renders at specified intervals.
 
-        Returns:
-            Checkpoint: A checkpoint object containing the current training state, including the model, optimizer,
-            and training configuration. This can be used to save the current state of the training process
-            or resume training later.
+        Args:
+            show_progress (bool): Whether to display a progress bar during training.
         """
         if self.optimizer is None:
             raise ValueError("This runner was not created with an optimizer. Cannot run training.")
@@ -1092,7 +1177,10 @@ class GaussianSplatReconstruction:
             self._logger.info(
                 f"Using max_steps={self.config.max_steps} (overriding computed {computed_total_steps} steps)"
             )
-        pbar = tqdm.tqdm(range(0, total_steps), unit="imgs", desc="Training")
+        if show_progress:
+            pbar = tqdm.tqdm(range(0, total_steps), unit="imgs", desc="Training")
+        else:
+            pbar = None
 
         # Flag to break out of outer epoch loop when max_steps is reached
         reached_max_steps = False
@@ -1108,11 +1196,14 @@ class GaussianSplatReconstruction:
 
                 # Skip steps before the start step
                 if self._global_step < self._start_step:
-                    pbar.set_description(
-                        f"Skipping step {self._global_step:,} (before start step {self._start_step:,})"
-                    )
-                    pbar.update(batch_size)
-                    self._global_step = pbar.n
+                    if pbar is not None:
+                        pbar.set_description(
+                            f"Skipping step {self._global_step:,} (before start step {self._start_step:,})"
+                        )
+                        pbar.update(batch_size)
+                        self._global_step = pbar.n
+                    else:
+                        self._global_step += batch_size
                     continue
 
                 cam_to_world_mats: torch.Tensor = minibatch["camera_to_world"].to(self.device)  # [B, 4, 4]
@@ -1213,11 +1304,12 @@ class GaussianSplatReconstruction:
                     loss.backward(retain_graph=not is_last)
 
                 # Update the log in the progress bar
-                pbar.set_description(
-                    f"loss={loss.item():.3f}| "
-                    f"sh degree={sh_degree_to_use}| "
-                    f"num gaussians={self.model.num_gaussians:,}"
-                )
+                if pbar is not None:
+                    pbar.set_description(
+                        f"loss={loss.item():.3f}| "
+                        f"sh degree={sh_degree_to_use}| "
+                        f"num gaussians={self.model.num_gaussians:,}"
+                    )
 
                 # Refine the gaussians via splitting/duplication/pruning
                 if (
@@ -1300,8 +1392,11 @@ class GaussianSplatReconstruction:
                         self._logger.debug(f"Updating viewer at step {self._global_step:,}")
                         self._viewer.add_gaussian_splat_3d("Gaussian Scene", self.model)
 
-                pbar.update(batch_size)
-                self._global_step = pbar.n
+                if pbar is not None:
+                    pbar.update(batch_size)
+                    self._global_step = pbar.n
+                else:
+                    self._global_step += batch_size
 
                 # Check if we've reached max_steps and break out of training
                 if self.config.max_steps is not None and self._global_step >= self.config.max_steps:
