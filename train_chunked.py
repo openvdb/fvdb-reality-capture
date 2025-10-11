@@ -18,7 +18,7 @@ from fvdb import GaussianSplat3d
 from fvdb_reality_capture.sfm_scene import SfmScene
 from fvdb_reality_capture.training import (
     GaussianSplatReconstruction,
-    SceneOptimizationConfig,
+    GaussianSplatReconstructionConfig,
 )
 from fvdb_reality_capture.transforms import (
     Compose,
@@ -68,7 +68,7 @@ def _run_on_chunk(
     chunk_id: int,
     chunk_bboxes: Sequence[tuple[float, float, float, float, float, float]],
     sfm_scene: SfmScene,
-    config: SceneOptimizationConfig,
+    config: GaussianSplatReconstructionConfig,
     chunk_run_name_prefix: str,
     results_path: pathlib.Path,
     device: str | torch.device,
@@ -124,7 +124,9 @@ def main(
     ny: int = 1,
     nz: int = 1,
     overlap_percent: float = 0.1,
-    cfg: SceneOptimizationConfig = SceneOptimizationConfig(remove_gaussians_outside_scene_bbox=True),
+    cfg: GaussianSplatReconstructionConfig = GaussianSplatReconstructionConfig(
+        remove_gaussians_outside_scene_bbox=True
+    ),
     run_name: str | None = None,
     image_downsample_factor: int = 4,
     points_percentile_filter: float = 0.0,

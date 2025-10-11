@@ -34,7 +34,7 @@ from .utils import crop_image_batch, make_unique_name_directory_based_on_time
 
 
 @dataclass
-class SceneOptimizationConfig:
+class GaussianSplatReconstructionConfig:
     """
     Parameters for the radiance field optimization process.
     See the comments for each parameter for details.
@@ -150,7 +150,7 @@ class GaussianSplatReconstruction:
     def from_sfm_scene(
         cls,
         sfm_scene: SfmScene,
-        config: SceneOptimizationConfig = SceneOptimizationConfig(),
+        config: GaussianSplatReconstructionConfig = GaussianSplatReconstructionConfig(),
         optimizer_config: GaussianSplatOptimizerConfig = GaussianSplatOptimizerConfig(),
         use_every_n_as_val: int = -1,
         run_name: str | None = None,
@@ -305,7 +305,7 @@ class GaussianSplatReconstruction:
 
         global_step = checkpoint["step"]
         run_name = checkpoint["run_name"] + run_name_suffix if run_name_suffix is not None else checkpoint["run_name"]
-        optimization_config = SceneOptimizationConfig(**checkpoint["config"])
+        optimization_config = GaussianSplatReconstructionConfig(**checkpoint["config"])
         optimizer_config = GaussianSplatOptimizerConfig(**checkpoint["optimizer_config"])
         sfm_scene: SfmScene = SfmScene.from_state_dict(checkpoint["sfm_scene"])
         train_indices = np.array(checkpoint["train_indices"], dtype=int)
@@ -407,7 +407,7 @@ class GaussianSplatReconstruction:
         model: GaussianSplat3d,
         sfm_scene: SfmScene,
         optimizer: GaussianSplatOptimizer,
-        config: SceneOptimizationConfig,
+        config: GaussianSplatReconstructionConfig,
         optimizer_config: GaussianSplatOptimizerConfig,
         train_indices: np.ndarray,
         val_indices: np.ndarray,
@@ -743,7 +743,7 @@ class GaussianSplatReconstruction:
         return self._splat_ply_metadata()
 
     @property
-    def config(self) -> SceneOptimizationConfig:
+    def config(self) -> GaussianSplatReconstructionConfig:
         """
         Get the configuration object for the current training run.
 
@@ -876,7 +876,7 @@ class GaussianSplatReconstruction:
 
     @staticmethod
     def _init_model(
-        config: SceneOptimizationConfig,
+        config: GaussianSplatReconstructionConfig,
         device: torch.device | str,
         training_dataset: SfmDataset,
     ):
@@ -989,7 +989,7 @@ class GaussianSplatReconstruction:
 
     @classmethod
     def _make_pose_optimizer(
-        cls, optimization_config: SceneOptimizationConfig, device: torch.device | str, num_images: int
+        cls, optimization_config: GaussianSplatReconstructionConfig, device: torch.device | str, num_images: int
     ) -> tuple[CameraPoseAdjustment, torch.optim.Adam, torch.optim.lr_scheduler.ExponentialLR]:
         """
         Create a camera pose adjustment model, optimizer, and scheduler if camera pose optimization is enabled in the config.

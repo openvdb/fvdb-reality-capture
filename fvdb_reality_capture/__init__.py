@@ -8,7 +8,7 @@ from .tools import download_example_data
 from .training import (
     GaussianSplatOptimizerConfig,
     GaussianSplatReconstruction,
-    SceneOptimizationConfig,
+    GaussianSplatReconstructionConfig,
 )
 
 __all__ = [
@@ -16,7 +16,7 @@ __all__ = [
     "sfm_scene",
     "tools",
     "training",
-    "SceneOptimizationConfig",
+    "GaussianSplatReconstructionConfig",
     "GaussianSplatOptimizerConfig",
     "GaussianSplatReconstruction",
     "transforms",

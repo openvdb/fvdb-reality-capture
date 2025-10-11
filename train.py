@@ -16,7 +16,7 @@ from fvdb_reality_capture import SfmScene
 from fvdb_reality_capture.training import (
     GaussianSplatOptimizerConfig,
     GaussianSplatReconstruction,
-    SceneOptimizationConfig,
+    GaussianSplatReconstructionConfig,
 )
 from fvdb_reality_capture.transforms import (
     Compose,
@@ -76,7 +76,7 @@ class SceneTransformConfig:
 
 def main(
     dataset_path: pathlib.Path,
-    cfg: SceneOptimizationConfig = SceneOptimizationConfig(),
+    cfg: GaussianSplatReconstructionConfig = GaussianSplatReconstructionConfig(),
     tx: SceneTransformConfig = SceneTransformConfig(),
     opt: GaussianSplatOptimizerConfig = GaussianSplatOptimizerConfig(),
     run_name: str | None = None,

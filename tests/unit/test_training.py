@@ -27,7 +27,7 @@ class GaussianSplatReconstructionTests(unittest.TestCase):
 
     def test_run_training_with_no_saving(self):
 
-        short_config = frc.training.SceneOptimizationConfig(
+        short_config = frc.training.GaussianSplatReconstructionConfig(
             max_epochs=1,
             refine_start_epoch=5,
             eval_at_percent=[],
@@ -45,7 +45,7 @@ class GaussianSplatReconstructionTests(unittest.TestCase):
 
     def test_run_training_with_saving(self):
 
-        short_config = frc.training.SceneOptimizationConfig(
+        short_config = frc.training.GaussianSplatReconstructionConfig(
             max_epochs=2,
             refine_start_epoch=5,
             eval_at_percent=[50, 100],
@@ -88,7 +88,7 @@ class GaussianSplatReconstructionTests(unittest.TestCase):
 
     def test_run_training_with_saving_and_image_rendering(self):
 
-        short_config = frc.training.SceneOptimizationConfig(
+        short_config = frc.training.GaussianSplatReconstructionConfig(
             max_epochs=2,
             refine_start_epoch=5,
             eval_at_percent=[50, 100],
@@ -146,7 +146,7 @@ class GaussianSplatReconstructionTests(unittest.TestCase):
 
     def test_checkpoint_loading(self):
 
-        short_config = frc.training.SceneOptimizationConfig(
+        short_config = frc.training.GaussianSplatReconstructionConfig(
             max_epochs=4,
             refine_start_epoch=5,
             eval_at_percent=[],

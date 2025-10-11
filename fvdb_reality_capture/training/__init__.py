@@ -9,13 +9,13 @@ from .gaussian_splat_optimizer import (
 )
 from .gaussian_splat_reconstruction import (
     GaussianSplatReconstruction,
-    SceneOptimizationConfig,
+    GaussianSplatReconstructionConfig,
 )
 from .sfm_dataset import SfmDataset
 
 __all__ = [
     "GaussianSplatReconstruction",
-    "SceneOptimizationConfig",
+    "GaussianSplatReconstructionConfig",
     "SfmDataset",
     "GaussianSplatOptimizer",
     "GaussianSplatOptimizerConfig",

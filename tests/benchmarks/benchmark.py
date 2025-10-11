@@ -14,8 +14,8 @@ import yaml
 
 from fvdb_reality_capture.sfm_scene import SfmScene
 from fvdb_reality_capture.training import (
-    Checkpoint,
-    SceneOptimizationConfig,
+    GaussianSplatReconstruction,
+    GaussianSplatReconstructionConfig,
     SfmDataset,
 )
 
@@ -54,7 +54,7 @@ class Benchmark3dgs:
             raise ValueError("No training dataset found in checkpoint")
         train_indices = self.checkpoint.dataset_splits["train"]
 
-        self.config = SceneOptimizationConfig(**self.checkpoint.config)
+        self.config = GaussianSplatReconstructionConfig(**self.checkpoint.config)
         self.train_dataset = SfmDataset(sfm_scene, train_indices)
 
         step = self.checkpoint.step if self.checkpoint.step is not None else 0

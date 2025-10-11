@@ -18,7 +18,7 @@ import yaml
 sys.path.insert(0, str(pathlib.Path(__file__).parent.parent.parent.resolve()))
 from fvdb_reality_capture.training import (
     GaussianSplatReconstruction,
-    SceneOptimizationConfig,
+    GaussianSplatReconstructionConfig,
 )
 
 logger = logging.getLogger("train benchmark checkpoints")
@@ -98,7 +98,7 @@ def main(
     training_params = config["optimization_config"]["training_arguments"]
 
     # Create base Config object
-    base_config = SceneOptimizationConfig()
+    base_config = GaussianSplatReconstructionConfig()
 
     # Override config with values from YAML
     for key, value in config["optimization_config"]["optimization_config"].items():
