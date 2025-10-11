@@ -8,7 +8,9 @@ from typing import Literal, Sequence
 
 import cv2
 import numpy as np
+import torch
 import tqdm
+from fvdb.types import NumericMaxRank1, to_VecNf
 from scipy.spatial import ConvexHull
 
 from ..sfm_scene import SfmCache, SfmImageMetadata, SfmScene
@@ -258,7 +260,7 @@ class CropScene(BaseTransform):
 
     def __init__(
         self,
-        bbox: Sequence[float] | np.ndarray,
+        bbox: NumericMaxRank1,
         mask_format: Literal["png", "jpg", "npy"] = "png",
         composite_with_existing_masks: bool = True,
     ):
@@ -266,13 +268,14 @@ class CropScene(BaseTransform):
         Initialize the Crop transform with a bounding box.
 
         Args:
-            bbox (tuple): A tuple defining the bounding box in the format (min_x, min_y, min_z, max_x, max_y, max_z).
+            bbox (NumericMaxRank1): A bounding box in the format (min_x, min_y, min_z, max_x, max_y, max_z).
             mask_format (Literal["png", "jpg", "npy"]): The format to save the masks in. Defaults to "png".
             composite_with_existing_masks (bool): Whether to composite the masks generated into existing masks for
                 pixels corresponding to regions outside the cropped scene. If set to True, existing masks
                 will be loaded and composited with the new mask. Defaults to True.
         """
         super().__init__()
+        bbox = to_VecNf(bbox, 6, dtype=torch.float64).numpy()
         self._logger = logging.getLogger(f"{self.__class__.__module__}.{self.__class__.__name__}")
         if not len(bbox) == 6:
             raise ValueError("Bounding box must be a tuple of the form (min_x, min_y, min_z, max_x, max_y, max_z).")

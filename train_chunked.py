@@ -99,7 +99,7 @@ def _run_on_chunk(
         save_results (bool): Whether to save the results of the training.
         save_eval_images (bool): Whether to save evaluation images during training.
     """
-    chunk_transform = CropScene(crop_bbox=chunk_bboxes[chunk_id])
+    chunk_transform = CropScene(bbox=chunk_bboxes[chunk_id])
 
     scene_chunk = chunk_transform(sfm_scene)
 
