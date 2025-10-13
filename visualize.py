@@ -56,9 +56,9 @@ def main(
 
     logger.info(f"Setting viewer camera to {initial_camera_position} looking at {scene_centroid}")
     viewer.set_camera_lookat(
-        camera_origin=initial_camera_position,
-        lookat_point=scene_centroid,
-        up_direction=[0, 0, -1],
+        eye=initial_camera_position,
+        center=scene_centroid,
+        up=[0, 0, -1],
     )
 
     if has_camera_to_world_matrices and has_projection_matrices:
