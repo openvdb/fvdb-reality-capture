@@ -22,26 +22,65 @@ class GaussianReconstructionBaseWriter(ABC):
         pass
 
     @abstractmethod
-    def log_metric(self, global_step: int, metric_name: str, metric_value: NumericScalar):
+    def log_metric(self, global_step: int, metric_name: str, metric_value: NumericScalar) -> None:
+        """
+        Log a scalar metric value. This function is called during training to log metrics such as loss, PSNR, etc.
+
+        Args:
+            global_step (int): The global step at which the metric is being logged.
+            metric_name (str): The name of the metric being logged.
+            metric_value (NumericScalar): The value of the metric being logged. Must be a scalar type
+                (int, float, np.number, torch.number, etc.).
+        """
         pass
 
     @abstractmethod
-    def save_image(self, global_step: int, image_name: str, image: torch.Tensor):
+    def save_image(self, global_step: int, image_name: str, image: torch.Tensor) -> None:
+        """
+        Save an image. This function is called during training to save images such as rendered outputs or intermediate results.
+
+        Args:
+            global_step (int): The global step at which the image is being saved.
+            image_name (str): The name of the image being saved.
+            image (torch.Tensor): The image tensor to be saved.
+        """
         pass
 
     @abstractmethod
     def save_checkpoint(self, global_step: int, checkpoint_name: str, checkpoint: dict[str, Any]) -> None:
+        """
+        Save a checkpoint. This function is called during training to save model checkpoints.
+
+        Args:
+            global_step (int): The global step at which the checkpoint is being saved.
+            checkpoint_name (str): The name of the checkpoint being saved.
+            checkpoint (dict[str, Any]): The checkpoint data to be saved.
+        """
         pass
 
     @abstractmethod
     def save_ply(
         self, global_step: int, ply_name: str, model: GaussianSplat3d, metadata: dict[str, Any] | None = None
     ) -> None:
+        """
+        Save a Gaussian splat model to a PLY file. This function is called during training to save the current state of the model.
+
+        Args:
+            global_step (int): The global step at which the PLY file is being saved.
+            ply_name (str): The name of the PLY file being saved.
+            model (GaussianSplat3d): The Gaussian splat model to be saved.
+            metadata (dict[str, Any] | None): Optional metadata to be saved with the PLY file.
+        """
         pass
 
 
 @dataclass
 class GaussianReconstructionWriterConfig:
+    """
+    Parameters for configuring the behavior of the GaussianReconstructionWriter.
+    Controls what data gets saved to disk, how much buffering to use, and whether to use TensorBoard.
+    """
+
     # Configure what kind of data gets saved to disk
     save_images: bool = False
     save_checkpoints: bool = True
@@ -95,6 +134,17 @@ class GaussianReconstructionWriter(GaussianReconstructionBaseWriter):
         exist_ok: bool = False,
         config: GaussianReconstructionWriterConfig = GaussianReconstructionWriterConfig(),
     ) -> None:
+        """
+        Create a new GaussianReconstructionWriter instance, which can log and save data during training.
+
+        Args:
+            run_name (str | None): Name of this training run. If None, a unique name will be generated.
+            save_path (pathlib.Path | None): Path to the directory where results should be saved.
+                If None, no data will be saved to disk.
+            exist_ok (bool): Whether to keep existing data in the save_path/run_name directory if it exists. If False,
+                an error will be raised if the directory already exists. Default is False.
+            config (GaussianReconstructionWriterConfig): Configuration parameters for what data to save and how.
+        """
         super().__init__()
         self._logger = logging.getLogger(f"{self.__class__.__module__}.{self.__class__.__name__}")
         self._config = config
@@ -110,8 +160,9 @@ class GaussianReconstructionWriter(GaussianReconstructionBaseWriter):
             save_path = save_path.resolve()
             run_name, save_path = self._make_unique_results_directory_based_on_time(save_path, prefix="run")
         elif run_name is None and save_path is None:
-            # You are not saving data, and did not provide a run name, so generate one
-            run_name = str(uuid.uuid4())
+            # You are not saving data, and did not provide a run name
+            save_path = None
+            run_name = None
         elif run_name is not None and save_path is not None:
             # You are saving data, and provided a run name, so use it
             save_path = (save_path / run_name).resolve()
@@ -119,7 +170,7 @@ class GaussianReconstructionWriter(GaussianReconstructionBaseWriter):
                 raise FileExistsError(f"Directory {save_path} already exists. Use exist_ok=True to overwrite.")
             save_path.mkdir(parents=True, exist_ok=exist_ok)
         else:
-            # You are not saving data, but provided a run name, so just use it
+            # You are not saving data, but provided a run name, so use it as a tag only
             run_name = run_name
             save_path = None
 
@@ -171,6 +222,20 @@ class GaussianReconstructionWriter(GaussianReconstructionBaseWriter):
 
     @staticmethod
     def _to_batched_uint8_image(image: torch.Tensor):
+        """
+        Convert a torch.Tensor image of shape (H, W), (H, W, C) or (B, H, W, C) to a batched uint8 image with shape (B, H, W, C).
+
+        Handles error checking and conversion from floating point to uint8 if necessary.
+
+        Args:
+            image (torch.Tensor): Input image tensor. Must have shape (H, W), (H, W, C) or (B, H, W, C) and a floating point or uint8 dtype.
+                If the image is 2D (H, W), it is treated as a grayscale image with 1 channel.
+                If the image is 3D (H, W, C), it is treated as a single image with C channels.
+                If the image is 4D (B, H, W, C), it is treated as a batch of B images with C channels.
+        Returns:
+            torch.Tensor: Batched uint8 image tensor with shape (B, H, W, C) and dtype torch.uint8.
+
+        """
         # Ensure image is a torch.Tensor with 2 (H, W), 3 (H, W, C) or 4 (B, H, W, C) dimensions
         if not isinstance(image, torch.Tensor):
             raise ValueError("Image must be a torch.Tensor")
@@ -215,6 +280,21 @@ class GaussianReconstructionWriter(GaussianReconstructionBaseWriter):
         allowed_sufixes: tuple[str, ...],
         default_suffix: str,
     ) -> pathlib.Path:
+        """
+        Resolve the full path for a file to be saved at a given global step, and create necessary directories needed to save it.
+        Ensures the file name is safe and valid, and that the file has an allowed suffix/extension.
+
+        Args:
+            base_path (pathlib.Path): Base directory where the file should be saved.
+            global_step (int): Global step at which the file is being saved. A subdirectory with this name will be created under base_path.
+            file_name (str): Name of the file to be saved. Can include subdirectories (e.g. "train/image_0001.png").
+            file_type (str): Type of the file used for error messages (E.g. "Image", "Checkpoint").
+            allowed_sufixes (tuple[str, ...]): Allowed file suffixes/extensions.
+            default_suffix (str): Default file suffix/extension to use if none is provided.
+
+        Returns:
+            pathlib.Path: Full path where the file should be saved. All necessary directories will be created.
+        """
         # Resolve the path for the file to be saved at this global step
         step_file_path = (base_path / f"{global_step:08d}" / file_name).resolve()
 
@@ -278,14 +358,35 @@ class GaussianReconstructionWriter(GaussianReconstructionBaseWriter):
 
     @property
     def run_name(self) -> str | None:
+        """
+        Return the name of this training run, or None if no name was specified. The name of the run matches
+        the name of the directory where results are being saved.
+
+        Returns:
+            str | None: The name of this training run, or None if no name was specified.
+        """
         return self._run_name
 
     @property
     def results_path(self) -> pathlib.Path | None:
+        """
+        Return the path where results are being saved, or None if no results are being saved.
+
+        Returns:
+            pathlib.Path | None: The path where results are being saved, or None if no results are being saved.
+        """
         return self._save_path
 
     @torch.no_grad()
-    def log_metric(self, global_step: int, metric_name: str, metric_value: NumericScalar):
+    def log_metric(self, global_step: int, metric_name: str, metric_value: NumericScalar) -> None:
+        """
+        Log a scalar metric value. This function is called during training to log metrics such as loss, PSNR, etc.
+
+        Args:
+            global_step (int): The global step at which the metric is being logged.
+            metric_name (str): The name of the metric being logged.
+            metric_value (NumericScalar): The value of the metric being logged.
+        """
         # Append metric to CSV file if requested
         if self._config.save_metrics and self._metrics_log_file_handle is not None:
             metric_value = to_FloatingScalar(metric_value).item()
@@ -298,6 +399,18 @@ class GaussianReconstructionWriter(GaussianReconstructionBaseWriter):
 
     @torch.no_grad()
     def save_image(self, global_step: int, image_name: str, image: torch.Tensor, jpeg_quality: int = 98):
+        """
+        Save an image to disk and/or TensorBoard. This function is called during training to save
+        rendered images, error maps, etc.
+
+        Args:
+            global_step (int): The global step at which the image is being saved.
+            image_name (str): The name of the image being saved. This will be used as the file name. Must have a .png
+                or .jpg/.jpeg suffix.
+            image (torch.Tensor): The image tensor to be saved. Must have shape (H, W), (H, W, C) or (B, H, W, C) and
+                have a floating point or uint8 dtype.
+            jpeg_quality (int): Quality of JPEG images if saving as JPEG. Must be between 0 and 100. Default is 98.
+        """
         # This function only does something if you are saving images to disk or TensorBoard
         if not self._config.save_images and not (
             self._config.use_tensorboard and self._config.save_images_to_tensorboard
@@ -358,6 +471,16 @@ class GaussianReconstructionWriter(GaussianReconstructionBaseWriter):
 
     @torch.no_grad()
     def save_checkpoint(self, global_step: int, checkpoint_name: str, checkpoint: dict[str, Any]) -> None:
+        """
+        Save a training checkpoint to disk. This function is called during training to save model and optimizer state.
+
+        Args:
+            global_step (int): The global step at which the checkpoint is being saved.
+            checkpoint_name (str): The name of the checkpoint file. This will be used as the file name.
+                Must have a .pth or .pt suffix.
+            checkpoint (dict[str, Any]): The checkpoint dictionary to be saved. Typically contains model state,
+                optimizer state, etc.
+        """
         if self._config.save_checkpoints and self._checkpoints_path is not None:
             ckpt_path = self._resolve_saved_file(
                 base_path=self._checkpoints_path,
@@ -375,6 +498,17 @@ class GaussianReconstructionWriter(GaussianReconstructionBaseWriter):
     def save_ply(
         self, global_step: int, ply_name: str, model: GaussianSplat3d, metadata: dict[str, Any] | None = None
     ) -> None:
+        """
+        Save the current Gaussian splat model to a PLY file. This function is called during training to save
+        the reconstructed model at various stages.
+
+        Args:
+            global_step (int): The global step at which the PLY file is being saved.
+            ply_name (str): The name of the PLY file. This will be used as the file name. Must have a .ply suffix.
+            model (GaussianSplat3d): The Gaussian splat model to be saved.
+            metadata (dict[str, Any] | None): Optional metadata to include in the PLY file
+                (e.g. camera parameters, training config, etc.).
+        """
         if self._config.save_plys and self._ply_path is not None:
             ply_path = self._resolve_saved_file(
                 base_path=self._ply_path,
