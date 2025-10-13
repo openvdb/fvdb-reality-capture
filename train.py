@@ -14,6 +14,8 @@ from fvdb.viz import Viewer
 
 from fvdb_reality_capture import SfmScene
 from fvdb_reality_capture.training import (
+    GaussianReconstructionWriter,
+    GaussianReconstructionWriterConfig,
     GaussianSplatOptimizerConfig,
     GaussianSplatReconstruction,
     GaussianSplatReconstructionConfig,
@@ -79,17 +81,15 @@ def main(
     cfg: GaussianSplatReconstructionConfig = GaussianSplatReconstructionConfig(),
     tx: SceneTransformConfig = SceneTransformConfig(),
     opt: GaussianSplatOptimizerConfig = GaussianSplatOptimizerConfig(),
+    io: GaussianReconstructionWriterConfig = GaussianReconstructionWriterConfig(),
+    dataset_type: Literal["colmap", "simple_directory", "e57"] = "colmap",
     run_name: str | None = None,
     results_path: pathlib.Path = pathlib.Path("results"),
-    device: str | torch.device = "cuda",
-    tensorboard_path: pathlib.Path | None = None,
     use_every_n_as_val: int = -1,
+    device: str | torch.device = "cuda",
+    log_every: int = 10,
     visualize_every: int = -1,
-    log_tensorboard_every: int = 10,
-    save_results: bool = True,
-    save_eval_images: bool = False,
     verbose: bool = False,
-    dataset_type: Literal["colmap", "simple_directory", "e57"] = "colmap",
 ):
     log_level = logging.DEBUG if verbose else logging.INFO
     logging.basicConfig(level=log_level, format="%(levelname)s : %(message)s")
@@ -108,19 +108,17 @@ def main(
     else:
         viewer = None
 
+    writer = GaussianReconstructionWriter(run_name=run_name, save_path=results_path, config=io, exist_ok=False)
     runner = GaussianSplatReconstruction.from_sfm_scene(
         tx.scene_transform(sfm_scene),
         config=cfg,
         optimizer_config=opt,
-        run_name=run_name,
-        results_path=results_path if save_results else None,
-        device=device,
-        use_every_n_as_val=use_every_n_as_val,
-        save_eval_images=save_eval_images,
-        tensorboard_path=tensorboard_path,
-        tensorboard_log_interval_steps=log_tensorboard_every,
+        writer=writer,
         viewer=viewer,
+        use_every_n_as_val=use_every_n_as_val,
+        log_interval_steps=log_every,
         viewer_update_interval_epochs=visualize_every,
+        device=device,
     )
 
     runner.train()

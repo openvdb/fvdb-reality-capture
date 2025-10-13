@@ -1,16 +1,14 @@
 # Copyright Contributors to the OpenVDB Project
 # SPDX-License-Identifier: Apache-2.0
 #
-import json
 import logging
 import pathlib
 import random
 import time
 import uuid
 from dataclasses import dataclass, field
-from typing import List, Literal
+from typing import Any, List, Literal
 
-import cv2
 import numpy as np
 import torch
 import torch.nn.functional as nnf
@@ -20,7 +18,6 @@ from fvdb import GaussianSplat3d
 from fvdb.utils.metrics import psnr, ssim
 from fvdb.viz import Viewer
 from scipy.spatial import cKDTree  # type: ignore
-from torch.utils.tensorboard import SummaryWriter
 
 from ..sfm_scene import SfmScene
 from .camera_pose_adjust import CameraPoseAdjustment
@@ -28,9 +25,13 @@ from .gaussian_splat_optimizer import (
     GaussianSplatOptimizer,
     GaussianSplatOptimizerConfig,
 )
+from .gaussian_splat_reconstruction_writer import (
+    GaussianReconstructionBaseWriter,
+    GaussianReconstructionWriter,
+)
 from .lpips import LPIPSLoss
 from .sfm_dataset import SfmDataset
-from .utils import crop_image_batch, make_unique_name_directory_based_on_time
+from .utils import crop_image_batch
 
 
 @dataclass
@@ -152,15 +153,12 @@ class GaussianSplatReconstruction:
         sfm_scene: SfmScene,
         config: GaussianSplatReconstructionConfig = GaussianSplatReconstructionConfig(),
         optimizer_config: GaussianSplatOptimizerConfig = GaussianSplatOptimizerConfig(),
-        use_every_n_as_val: int = -1,
-        run_name: str | None = None,
-        results_path: str | pathlib.Path | None = None,
+        writer: GaussianReconstructionBaseWriter = GaussianReconstructionWriter(run_name=None, save_path=None),
         viewer: Viewer | None = None,
-        tensorboard_path: pathlib.Path | None = None,
+        use_every_n_as_val: int = -1,
         viewer_update_interval_epochs: int = 10,
-        tensorboard_log_interval_steps: int = 10,
+        log_interval_steps: int = 10,
         device: str | torch.device = "cuda",
-        save_eval_images: bool = False,
     ):
         """
         Create a `GaussianSplatReconstruction` instance from an `SfmScene`, used to reconstruct
@@ -175,22 +173,17 @@ class GaussianSplatReconstruction:
             sfm_scene (SfmScene): The Structure-from-Motion scene containing images and camera poses.
             config (GaussianSplatReconstructionConfig): Configuration for the reconstruction process.
             optimizer_config (GaussianSplatOptimizerConfig): Configuration for the optimizer.
-            use_every_n_as_val (int): Use every n-th image as a validation image. Default of -1 means no validation images are used.
-            run_name (str | None): Name of the training run. If None, a unique name based on the current time will be generated.
-            results_path (str | pathlib.Path | None): Base path to save results. If None, results will not be saved.
+            writer (GaussianReconstrutionBaseWriter): Writer instance to handle saving images, ply files, and other results.
             viewer (Viewer | None): Optional Viewer instance for visualizing training progress. If None, no visualization is performed.
-            tensorboard_path (pathlib.Path | None): Optional path to save TensorBoard logs. If None, TensorBoard logging is disabled.
+            use_every_n_as_val (int): Use every n-th image as a validation image. Default of -1 means no validation images are used.
             viewer_update_interval_epochs (int): Interval in epochs at which to update the viewer.
                 An epoch is one full pass through the training dataset.
-            tensorboard_log_interval_steps (int): Interval in steps to log to TensorBoard.
+            log_interval_steps (int): Interval in steps to log to TensorBoard.
             device (str | torch.device): Device to run the training on.
-            save_eval_images (bool): Whether to save evaluation images during training if results_path is not None.
 
         Returns:
             GaussianSplatReconstruction: An instance ready to train the model.
         """
-        if isinstance(results_path, str):
-            results_path = pathlib.Path(results_path)
 
         np.random.seed(config.seed)
         random.seed(config.seed)
@@ -234,10 +227,123 @@ class GaussianSplatReconstruction:
                 config, device, len(train_dataset)
             )
 
-        # Setup output directories.
-        run_name, run_results_path = cls._make_run_directory(
-            run_name=run_name, results_base_path=results_path, exists_ok=False
+        return GaussianSplatReconstruction(
+            model=model,
+            sfm_scene=sfm_scene,
+            optimizer=optimizer,
+            config=config,
+            optimizer_config=optimizer_config,
+            train_indices=train_indices,
+            val_indices=val_indices,
+            pose_adjust_model=pose_adjust_model,
+            pose_adjust_optimizer=pose_adjust_optimizer,
+            pose_adjust_scheduler=pose_adjust_scheduler,
+            writer=writer,
+            start_step=0,
+            viewer=viewer,
+            tensorboard_log_interval=log_interval_steps,
+            viewer_log_interval=viewer_update_interval_epochs,
+            _private=GaussianSplatReconstruction.__PRIVATE__,
         )
+
+    @classmethod
+    def from_state_dict(
+        cls,
+        state_dict: dict[str, Any],
+        override_sfm_scene: SfmScene | None = None,
+        override_use_every_n_as_val: int | None = None,
+        writer: GaussianReconstructionBaseWriter = GaussianReconstructionWriter(run_name=None, save_path=None),
+        viewer: Viewer | None = None,
+        viewer_update_interval_epochs: int = 1,
+        log_interval_steps: int = 10,
+        device: str | torch.device = "cuda",
+    ):
+        """
+        Load a `GaussianSplatReconstruction` instance from a checkpoint file. This will restore the model, optimizer, and training state.
+        You can optionally override the SfM scene and the train/validation split, as well as the results path.
+        This is useful for resuming training on a different dataset or with a different train/val split.
+
+        Args:
+            checkpoint_path (str | pathlib.Path): Path to the checkpoint file.
+            override_sfm_scene (SfmScene | None): Optional SfM scene to use instead of the one in the checkpoint.
+            override_use_every_n_as_val (int | None): If specified, will override the train/val split using this value.
+                Default of None means to use the train/val split from the checkpoint.
+            writer (GaussianReconstructionBaseWriter): Writer instance to handle saving images, ply files, and other results.
+            viewer (Viewer | None): Optional Viewer instance for visualizing training progress. If None, no visualization is performed.
+            viewer_update_interval_epochs (int): Interval in epochs at which to update the viewer.
+                An epoch is one full pass through the training dataset.
+            log_interval_steps (int): Interval in steps to log to TensorBoard.
+            device (str | torch.device): Device to run the training on.
+        """
+        logger = logging.getLogger(f"{cls.__module__}.{cls.__name__}")
+
+        # Ensure this is a valid state dict
+        if state_dict.get("magic", "") != cls._magic:
+            raise ValueError(f"State dict has invalid magic value.")
+
+        # Ensure the state_dict version matches the current version of this class
+        if state_dict.get("version", "") != cls.version:
+            raise ValueError(
+                f"Checkpoint version {state_dict.get('version', '')} does not match current version {cls.version}."
+            )
+
+        # Check that all required keys in the state dict are present and their values have the correct types
+        if not isinstance(state_dict.get("step", None), int):
+            raise ValueError("Checkpoint step is missing or invalid.")
+        if not isinstance(state_dict.get("config", None), dict):
+            raise ValueError("Checkpoint config is missing or invalid.")
+        if not isinstance(state_dict.get("sfm_scene", None), dict):
+            raise ValueError("Checkpoint SfM scene is missing or invalid.")
+        if not isinstance(state_dict.get("model", None), dict):
+            raise ValueError("Checkpoint model state is missing or invalid.")
+        if not isinstance(state_dict.get("optimizer", None), dict):
+            raise ValueError("Checkpoint optimizer state is missing or invalid.")
+        if not isinstance(state_dict.get("train_indices", None), (list, np.ndarray, torch.Tensor)):
+            raise ValueError("Checkpoint train indices are missing or invalid.")
+        if not isinstance(state_dict.get("val_indices", None), (list, np.ndarray, torch.Tensor)):
+            raise ValueError("Checkpoint val indices are missing or invalid.")
+        if not isinstance(state_dict.get("optimizer_config", None), dict):
+            raise ValueError("Checkpoint optimizer_config is missing or invalid.")
+        if "num_training_poses" not in state_dict:
+            raise ValueError("Checkpoint is missing num_training_poses key.")
+        if "pose_adjust_model" not in state_dict:
+            raise ValueError("Checkpoint is missing pose_adjust_model key.")
+        if "pose_adjust_optimizer" not in state_dict:
+            raise ValueError("Checkpoint is missing pose_adjust_optimizer key.")
+        if "pose_adjust_scheduler" not in state_dict:
+            raise ValueError("Checkpoint is missing pose_adjust_scheduler key.")
+
+        global_step = state_dict["step"]
+        config = GaussianSplatReconstructionConfig(**state_dict["config"])
+        optimizer_config = GaussianSplatOptimizerConfig(**state_dict["optimizer_config"])
+        if override_sfm_scene is not None:
+            sfm_scene: SfmScene = override_sfm_scene
+            logger.info("Using override SfM scene instead of the one from the checkpoint.")
+        else:
+            sfm_scene: SfmScene = SfmScene.from_state_dict(state_dict["sfm_scene"])
+        if override_use_every_n_as_val is not None:
+            train_indices, val_indices = cls._make_index_splits(sfm_scene, override_use_every_n_as_val)
+        else:
+            train_indices = np.array(state_dict["train_indices"], dtype=int)
+            val_indices = np.array(state_dict["val_indices"], dtype=int)
+        model = GaussianSplat3d.from_state_dict(state_dict["model"])
+        optimizer = GaussianSplatOptimizer.from_state_dict(model, state_dict["optimizer"])
+        num_training_poses = state_dict["num_training_poses"]
+        pose_adjust_model, pose_adjust_optimizer, pose_adjust_scheduler = None, None, None
+
+        if state_dict["pose_adjust_model"] is not None:
+            if not isinstance(state_dict.get("pose_adjust_model", None), dict):
+                raise ValueError("Checkpoint pose adjustment model state is invalid.")
+            if not isinstance(state_dict.get("pose_adjust_optimizer", None), dict):
+                raise ValueError("Checkpoint pose adjustment optimizer state is invalid.")
+            if not isinstance(state_dict.get("pose_adjust_scheduler", None), dict):
+                raise ValueError("Checkpoint pose adjustment scheduler state is invalid.")
+            pose_adjust_model, pose_adjust_optimizer, pose_adjust_scheduler = cls._make_pose_optimizer(
+                config, device, num_training_poses
+            )
+            pose_adjust_model.load_state_dict(state_dict["pose_adjust_model"])
+            pose_adjust_optimizer.load_state_dict(state_dict["pose_adjust_optimizer"])
+            pose_adjust_scheduler.load_state_dict(state_dict["pose_adjust_scheduler"])
 
         return GaussianSplatReconstruction(
             model=model,
@@ -250,209 +356,10 @@ class GaussianSplatReconstruction:
             pose_adjust_model=pose_adjust_model,
             pose_adjust_optimizer=pose_adjust_optimizer,
             pose_adjust_scheduler=pose_adjust_scheduler,
-            start_step=0,
-            run_name=run_name,
-            run_results_path=run_results_path,
-            viewer=viewer,
-            tensorboard_path=tensorboard_path,
-            eval_logs_images=save_eval_images,
-            tensorboard_log_interval=tensorboard_log_interval_steps,
-            viewer_log_interval=viewer_update_interval_epochs,
-            _private=GaussianSplatReconstruction.__PRIVATE__,
-        )
-
-    @classmethod
-    def from_checkpoint(
-        cls,
-        checkpoint_path: str | pathlib.Path,
-        override_sfm_scene: SfmScene | None = None,
-        override_use_every_n_as_val: int | None = None,
-        override_results_path: pathlib.Path | str | None = None,
-        viewer: Viewer | None = None,
-        tensorboard_path: str | pathlib.Path | None = None,
-        viewer_update_interval_epochs: int = 10,
-        tensorboard_log_interval_steps: int = 10,
-        save_eval_images: bool = False,
-        run_name_suffix: str | None = None,
-        save_results: bool = True,
-        device: str | torch.device = "cuda",
-    ) -> "GaussianSplatReconstruction":
-        """
-        Load a `GaussianSplatReconstruction` instance from a checkpoint file. This will restore the model, optimizer, and training state.
-        You can optionally override the SfM scene and the train/validation split, as well as the results path.
-        This is useful for resuming training on a different dataset or with a different train/val split.
-
-        Args:
-            checkpoint_path (str | pathlib.Path): Path to the checkpoint file.
-            override_sfm_scene (SfmScene | None): Optional SfM scene to use instead of the one in the checkpoint.
-            override_use_every_n_as_val (int | None): If specified, will override the train/val split using this value.
-                Default of None means to use the train/val split from the checkpoint.
-            override_results_path (str | pathlib.Path | None): Optional path to save results. If None, uses the path from the checkpoint.
-            viewer (Viewer | None): Optional Viewer instance for visualizing training progress. If None, no visualization is performed.
-            tensorboard_path (str | pathlib.Path | None): Optional path to save TensorBoard logs. If None, TensorBoard logging is disabled.
-            viewer_update_interval_epochs (int): Interval in epochs at which to update the viewer.
-                An epoch is one full pass through the training dataset.
-            tensorboard_log_interval_steps (int): Interval in steps to log to TensorBoard.
-            save_eval_images (bool): Whether to save evaluation images during training if results_path is not None.
-            run_name_suffix (str | None): Optional suffix to append to the run name from the checkpoint.
-                Useful for distinguishing multiple runs from the same checkpoint. _e.g._ passing "_resumed" will
-                change a run name of "my_run" to "my_run_resumed".
-            save_results (bool): Whether to save results during training. If False, results will not be saved even
-                if a results path is specified in the checkpoint or via override_results_path.
-            device (str | torch.device): Device to run the training on.
-        """
-        logger = logging.getLogger(f"{cls.__module__}.{cls.__name__}")
-
-        logger.info(f"Loading checkpoint from {checkpoint_path} on device {device}")
-        if isinstance(checkpoint_path, str):
-            checkpoint_path = pathlib.Path(checkpoint_path)
-        if not checkpoint_path.exists():
-            raise FileNotFoundError(f"Checkpoint path {checkpoint_path} does not exist.")
-        checkpoint = torch.load(checkpoint_path, map_location=device, weights_only=False)
-
-        if checkpoint.get("magic", "") != cls._magic:
-            raise ValueError(f"Checkpoint at {checkpoint_path} is not a valid checkpoint file.")
-        if checkpoint.get("version", "") != cls.version:
-            raise ValueError(
-                f"Checkpoint version {checkpoint.get('version', '')} does not match current version {cls.version}."
-            )
-        if not isinstance(checkpoint.get("step", None), int):
-            raise ValueError("Checkpoint step is missing or invalid.")
-        if not isinstance(checkpoint.get("config", None), dict):
-            raise ValueError("Checkpoint config is missing or invalid.")
-        if not isinstance(checkpoint.get("sfm_scene", None), dict):
-            raise ValueError("Checkpoint SfM scene is missing or invalid.")
-        if not isinstance(checkpoint.get("splats", None), dict):
-            raise ValueError("Checkpoint model state is missing or invalid.")
-        if not isinstance(checkpoint.get("optimizer", None), dict):
-            raise ValueError("Checkpoint optimizer state is missing or invalid.")
-        if not isinstance(checkpoint.get("train_indices", None), (list, np.ndarray, torch.Tensor)):
-            raise ValueError("Checkpoint train indices are missing or invalid.")
-        if not isinstance(checkpoint.get("val_indices", None), (list, np.ndarray, torch.Tensor)):
-            raise ValueError("Checkpoint val indices are missing or invalid.")
-        if not isinstance(checkpoint.get("optimizer_config", None), dict):
-            raise ValueError("Checkpoint optimizer_config is missing or invalid.")
-        if not isinstance(checkpoint.get("run_name", None), str):
-            raise ValueError("Checkpoint run name is missing or invalid.")
-        if not isinstance(checkpoint.get("results_path", None), (str)):
-            raise ValueError("Checkpoint results_path is missing or invalid.")
-
-        results_path = override_results_path if override_results_path is not None else checkpoint["results_path"]
-        if isinstance(results_path, str):
-            results_path = pathlib.Path(results_path)
-
-        ckpt_results_path = checkpoint["results_path"]
-        if ckpt_results_path is not None and not isinstance(ckpt_results_path, str):
-            raise ValueError("Checkpoint results_path is invalid.")
-
-        # If you didn't specif a results path, use the one from the checkpoint
-        if results_path is None:
-            results_path = ckpt_results_path
-        if not isinstance(checkpoint.get("results_path", None), (str, type(None))):
-            raise ValueError("Checkpoint results_path is missing or invalid.")
-
-        if results_path is None:
-            raise ValueError("No results path specified and no results path found in checkpoint.")
-
-        global_step = checkpoint["step"]
-        run_name = checkpoint["run_name"] + run_name_suffix if run_name_suffix is not None else checkpoint["run_name"]
-        optimization_config = GaussianSplatReconstructionConfig(**checkpoint["config"])
-        optimizer_config = GaussianSplatOptimizerConfig(**checkpoint["optimizer_config"])
-        sfm_scene: SfmScene = SfmScene.from_state_dict(checkpoint["sfm_scene"])
-        train_indices = np.array(checkpoint["train_indices"], dtype=int)
-        val_indices = np.array(checkpoint["val_indices"], dtype=int)
-
-        model = GaussianSplat3d.from_state_dict(checkpoint["splats"])
-        optimizer = GaussianSplatOptimizer.from_state_dict(model, checkpoint["optimizer"])
-
-        logger.info(f"Loaded checkpoint with {model.num_gaussians:,} Gaussians.")
-
-        if override_sfm_scene is not None:
-            sfm_scene = override_sfm_scene
-            logger.info("Using override SfM scene instead of the one from the checkpoint.")
-            sfm_scene = checkpoint.dataset_transform(sfm_scene)
-
-        if override_use_every_n_as_val is not None:
-            indices = np.arange(sfm_scene.num_images)
-            if override_use_every_n_as_val > 0:
-                mask = np.ones(len(indices), dtype=bool)
-                mask[::override_use_every_n_as_val] = False
-                train_indices = indices[mask]
-                val_indices = indices[~mask]
-            else:
-                train_indices = indices
-                val_indices = np.array([], dtype=int)
-
-        if override_sfm_scene is not None:
-            if train_indices.min() < 0 or train_indices.max() >= sfm_scene.num_images:
-                raise ValueError(
-                    "Loaded training indices are out of bounds for the overridden SfM scene. If you are changing the SfM scene, you may also need to set override_use_every_n_as_val to change the train/val split."
-                )
-            if val_indices.size > 0 and (val_indices.min() < 0 or val_indices.max() >= sfm_scene.num_images):
-                raise ValueError(
-                    "Loaded validation indices are out of bounds for the overridden SfM scene. If you are changing the SfM scene, you may also need to set override_use_every_n_as_val to change the train/val split."
-                )
-
-        num_training_poses = len(train_indices)
-        if num_training_poses == 0:
-            raise ValueError("Checkpoint has no training poses.")
-
-        pose_adjust_model = None
-        pose_adjust_optimizer = None
-        pose_adjust_scheduler = None
-        if checkpoint.get("pose_adjust_model", None) is not None:
-            if not isinstance(checkpoint.get("pose_adjust_model", None), dict):
-                raise ValueError("Checkpoint pose adjustment model state is invalid.")
-            if not isinstance(checkpoint.get("pose_adjust_optimizer", None), dict):
-                raise ValueError("Checkpoint pose adjustment optimizer state is invalid.")
-            if not isinstance(checkpoint.get("pose_adjust_scheduler", None), dict):
-                raise ValueError("Checkpoint pose adjustment scheduler state is invalid.")
-            (
-                pose_adjust_model,
-                pose_adjust_optimizer,
-                pose_adjust_scheduler,
-            ) = cls._make_pose_optimizer(optimization_config, device, num_training_poses)
-            pose_adjust_model.load_state_dict(checkpoint["pose_adjust_model"])
-            pose_adjust_optimizer.load_state_dict(checkpoint["pose_adjust_optimizer"])
-            pose_adjust_scheduler.load_state_dict(checkpoint["pose_adjust_scheduler"])
-
-        if isinstance(results_path, str):
-            results_path = pathlib.Path(results_path)
-
-        # If you are not saving results, we Nullify the results path to prevent any output.
-        if not save_results:
-            results_path = None
-
-        # Setup output directories.
-        run_name, run_results_path = cls._make_run_directory(
-            run_name=run_name, results_base_path=results_path, exists_ok=False
-        )
-
-        np.random.seed(optimization_config.seed)
-        random.seed(optimization_config.seed)
-        torch.manual_seed(optimization_config.seed)
-
-        if isinstance(tensorboard_path, str):
-            tensorboard_path = pathlib.Path(tensorboard_path)
-
-        return GaussianSplatReconstruction(
-            model=model,
-            sfm_scene=sfm_scene,
-            optimizer=optimizer,
-            config=optimization_config,
-            optimizer_config=optimizer_config,
-            train_indices=train_indices,
-            val_indices=val_indices,
-            pose_adjust_model=pose_adjust_model,
-            pose_adjust_optimizer=pose_adjust_optimizer,
-            pose_adjust_scheduler=pose_adjust_scheduler,
+            writer=writer,
             start_step=global_step,
-            run_name=run_name,
-            run_results_path=run_results_path,
             viewer=viewer,
-            tensorboard_path=tensorboard_path,
-            eval_logs_images=save_eval_images,
-            tensorboard_log_interval=tensorboard_log_interval_steps,
+            tensorboard_log_interval=log_interval_steps,
             viewer_log_interval=viewer_update_interval_epochs,
             _private=GaussianSplatReconstruction.__PRIVATE__,
         )
@@ -469,12 +376,9 @@ class GaussianSplatReconstruction:
         pose_adjust_model: CameraPoseAdjustment | None,
         pose_adjust_optimizer: torch.optim.Adam | None,
         pose_adjust_scheduler: torch.optim.lr_scheduler.ExponentialLR | None,
+        writer: GaussianReconstructionBaseWriter,
         start_step: int,
-        run_name: str,
-        run_results_path: pathlib.Path | None,
         viewer: Viewer | None,
-        tensorboard_path: pathlib.Path | None,
-        eval_logs_images: bool,
         tensorboard_log_interval: int,
         viewer_log_interval: int,
         _private: object | None = None,
@@ -527,39 +431,17 @@ class GaussianSplatReconstruction:
 
         self.device: torch.device = model.device
 
-        # Set up directories for saving results if a results path is provided
-        self._run_name = run_name
-        self._results_path = run_results_path
-        if self._results_path is not None:
-            self._image_render_path = self._results_path / "eval_renders" if eval_logs_images else None
-            self._stats_path = self._results_path / "stats"
-            self._checkpoints_path = self._results_path / "checkpoints"
-
-            self._stats_path.mkdir(parents=True, exist_ok=True)
-            self._checkpoints_path.mkdir(parents=True, exist_ok=True)
-            if self._image_render_path is not None:
-                self._image_render_path.mkdir(parents=True, exist_ok=True)
-        else:
-            self._image_render_path = None
-            self._stats_path = None
-            self._checkpoints_path = None
-
         self._global_step: int = 0
 
-        # Create an optional TensorBoard summary writer.
-        if tensorboard_path is not None and tensorboard_log_interval > 0:
-            tensorboard_run_path = tensorboard_path / self._run_name
-            tensorboard_run_path.mkdir(parents=True, exist_ok=True)
-            self._summary_writer = SummaryWriter(log_dir=str(tensorboard_run_path))
-        else:
-            self._summary_writer = None
         self._tensorboard_log_interval: int = tensorboard_log_interval
+
+        self._writer = writer
 
         # Setup viewer for visualizing training progress if a Viewer is provided.
         self._viewer = viewer
         if self._viewer is not None:
             with torch.no_grad():
-                self._viewer.add_gaussian_splat_3d(f"Gaussian Scene for run {self._run_name}", self.model)
+                self._viewer.add_gaussian_splat_3d(f"Gaussian Scene", self.model)
                 train_cam_poses = torch.from_numpy(self._training_dataset.camera_to_world_matrices).to(
                     dtype=torch.float32
                 )
@@ -589,183 +471,37 @@ class GaussianSplatReconstruction:
         else:
             raise ValueError(f"Unknown LPIPS network: {self.config.lpips_net}")
 
-    def _tensorboard_log_train(
-        self, loss: float, l1loss: float, ssimloss: float, sh_degree: int, pose_loss: float | None = None
-    ):
-        """
-        Log training statistics to TensorBoard.
-
-        Args:
-            loss: The total loss value.
-            l1loss: The L1 loss component.
-            ssimloss: The SSIM loss component.
-            sh_degree: The current spherical harmonics degree.
-            pose_loss: The camera pose loss component, if applicable.
-        """
-        if self._summary_writer is None:
-            return
-
-        mem_allocated = torch.cuda.max_memory_allocated() / 1024**3
-        mem_reserved = torch.cuda.max_memory_reserved() / 1024**3
-
-        self._summary_writer.add_scalar("train/loss", loss, self._global_step)
-        self._summary_writer.add_scalar("train/l1loss", l1loss, self._global_step)
-        self._summary_writer.add_scalar("train/ssimloss", ssimloss, self._global_step)
-        if pose_loss is not None:
-            self._summary_writer.add_scalar("train/pose_loss", pose_loss, self._global_step)
-        self._summary_writer.add_scalar("train/num_gaussians", self._model.num_gaussians, self._global_step)
-        self._summary_writer.add_scalar("train/sh_degree", sh_degree, self._global_step)
-        self._summary_writer.add_scalar("train/mem_allocated", mem_allocated, self._global_step)
-        self._summary_writer.add_scalar("train/mem_reserved", mem_reserved, self._global_step)
-
-    def _save_statistics(self, step: int, stage: str, stats: dict) -> None:
-        """
-        Save statistics in a dict to a JSON file.
-
-        Args:
-            step: The current training step.
-            stage: The stage of training (e.g., "train", "eval").
-            stats: A dictionary containing statistics to save.
-        """
-        if self._stats_path is None:
-            self._logger.info("No stats path specified, skipping statistics save.")
-            return
-        stats_path = self._stats_path / pathlib.Path(f"stats_{stage}_{step:04d}.json")
-
-        self._logger.info(f"Saving {stage} statistics at step {step} to path {stats_path}.")
-
-        with open(stats_path, "w") as f:
-            json.dump(stats, f, indent=4)
-
-    def _save_rendered_image(
-        self, step: int, stage: str, image_name: str, predicted_image: torch.Tensor, ground_truth_image: torch.Tensor
-    ):
-        """
-        Save a rendered image and its ground truth image to the evaluation renders directory.
-
-        The rendered image and ground truth image are concatenated horizontally and saved as a single image file.
-
-        Args:
-            step: The current training step.
-            stage: The stage of training (e.g., "train", "eval").
-            image_name: The name of the image file to save.
-            predicted_image: The predicted image tensor to save.
-            ground_truth_image: The ground truth image tensor to save.
-        """
-        if self._image_render_path is None:
-            self._logger.debug("No image render path specified, skipping image save.")
-            return
-        eval_render_directory_path = self._image_render_path / pathlib.Path(f"{stage}_{step:04d}")
-        eval_render_directory_path.mkdir(parents=True, exist_ok=True)
-        image_path = eval_render_directory_path / pathlib.Path(image_name)
-        self._logger.info(f"Saving {stage} image at step {step} to {image_path}")
-        canvas = torch.cat([predicted_image, ground_truth_image], dim=2).squeeze(0).cpu().numpy()
-        canvas = cv2.cvtColor(canvas, cv2.COLOR_RGB2BGR)
-        cv2.imwrite(
-            str(image_path),
-            (canvas * 255).astype(np.uint8),
-        )
-
     @torch.no_grad()
-    def _save_checkpoint(self, checkpoint_path: pathlib.Path) -> None:
+    def state_dict(self) -> dict[str, Any]:
         """
-        Save the current state of the training run to a checkpoint file.
+        Get the state dictionary of the current training state, including model, optimizer, and training parameters.
 
-        Args:
-            checkpoint_path (pathlib.Path): The path to save the checkpoint file to.
+
         """
-        if self._checkpoints_path is None:
-            raise RuntimeError("No checkpoints path specified, cannot save checkpoint.")
-        self._logger.info(f"Saving checkpoint at step {self._global_step} to path {checkpoint_path}")
-        checkpoint = {
+        return {
             "magic": "GaussianSplattingCheckpoint",
             "version": self.version,
             "step": self._global_step,
-            "run_name": self._run_name,
-            "results_path": str(self._stats_path.parent.parent) if self._stats_path is not None else None,
-            "splats": self._model.state_dict(),
-            "sfm_scene": self._sfm_scene.state_dict(),
             "config": vars(self.config),
-            "optimizer_config": vars(self._optimizer_config),
+            "sfm_scene": self._sfm_scene.state_dict(),
+            "model": self._model.state_dict(),
+            "optimizer": self._optimizer.state_dict(),
             "train_indices": self._training_dataset.indices,
             "val_indices": self._validation_dataset.indices,
-            "optimizer": self._optimizer.state_dict(),
+            "optimizer_config": vars(self._optimizer_config),
             "num_training_poses": self._pose_adjust_model.num_poses if self._pose_adjust_model else None,
             "pose_adjust_model": self._pose_adjust_model.state_dict() if self._pose_adjust_model else None,
             "pose_adjust_optimizer": self._pose_adjust_optimizer.state_dict() if self._pose_adjust_optimizer else None,
             "pose_adjust_scheduler": self._pose_adjust_scheduler.state_dict() if self._pose_adjust_scheduler else None,
         }
-        torch.save(checkpoint, checkpoint_path)
 
-    @torch.no_grad()
-    def _save_checkpoint_and_ply(self, ckpt_path: pathlib.Path, ply_path: pathlib.Path):
+    @property
+    def optimization_metadata(self) -> dict[str, torch.Tensor | float | int | str]:
         """
-        Saves a checkpoint and a PLY file to disk.
-
-        Args:
-            ckpt_path (pathlib.Path): The path to save the checkpoint file to.
-            ply_path (pathlib.Path): The path to save the PLY file to.
-        """
-        if self._checkpoints_path is None:
-            return
-
-        self._save_checkpoint(ckpt_path)
-
-        self.model.save_ply(
-            ply_path,
-            metadata=self._splat_ply_metadata(),
-        )
-
-    @classmethod
-    def _make_run_directory(
-        cls,
-        run_name: str | None,
-        results_base_path: pathlib.Path | None,
-        exists_ok: bool = False,
-    ):
-        """
-        Create or get the path to the run directory for the training run.
-
-        Args:
-            run_name (str | None): The name of the run. If None, a unique name will be generated.
-            results_base_path (pathlib.Path | None): The base path where results will be saved. If None, no results will be saved.
-                and the function will return None for the results path.
-            exists_ok (bool): If True, will not raise an error if the run name already exists.
-        Returns:
-            run_name (str): The name of the run.
-            results_path (pathlib.Path | None): The path to the run directory, or None if no results path is provided.
-        """
-        logger = logging.getLogger(f"{cls.__module__}.{cls.__name__}")
-
-        if results_base_path is None:
-            logger.info("No results will be saved. You can set `results_path` to save the training run.")
-            # If no results are saved and you didn't pass a run name, we'll generate a unique one
-            if run_name is None:
-                run_name = str(uuid.uuid4())
-                logger.info(f"Generated a unique run name '{run_name}' for this run.")
-            return run_name, None
-        else:
-            results_base_path.mkdir(exist_ok=True)
-            if run_name is None:
-                run_name, results_path = make_unique_name_directory_based_on_time(results_base_path, prefix="run")
-            else:
-                results_path = results_base_path / pathlib.Path(run_name)
-                if not exists_ok and results_path.exists():
-                    raise FileExistsError(
-                        f"Run name {run_name} already exists in results path {results_base_path}. "
-                        "Please provide a different run name or set exists_ok=True."
-                    )
-                results_path.mkdir(exist_ok=True)
-            logger.info(f"Created run named {run_name}. Results will be saved to {results_path.absolute()}.")
-            return run_name, results_path
-
-    @torch.no_grad()
-    def _splat_ply_metadata(self) -> dict[str, torch.Tensor | float | int | str]:
-        """
-        Get metadata about the current model and training dataset to save in a PLY file.
+        Get metadata about the current optimization state, including camera parameters and scene scale.
 
         Returns:
-            dict: A dictionary containing metadata about the model and training dataset. It's keys include:
+            dict: A dictionary containing metadata about the optimization state. It's keys include:
                 - normalization_transform: The transformation matrix used to normalize the scene.
                 - camera_to_world_matrices: The optimized camera-to-world matrices for the training images.
                 - projection_matrices: The projection matrices for the training images.
@@ -808,27 +544,6 @@ class GaussianSplatReconstruction:
         }
 
     @property
-    def optimization_metadata(self) -> dict[str, torch.Tensor | float | int | str]:
-        """
-        Get metadata about the current optimization state, including camera parameters and scene scale.
-
-        Returns:
-            dict: A dictionary containing metadata about the optimization state. It's keys include:
-                - normalization_transform: The transformation matrix used to normalize the scene.
-                - camera_to_world_matrices: The optimized camera-to-world matrices for the training images.
-                - projection_matrices: The projection matrices for the training images.
-                - image_sizes: The sizes of the training images.
-                - scene_scale: The computed scale of the scene.
-                - eps2d: The 2D epsilon value used in rendering.
-                - near_plane: The near plane distance used in rendering.
-                - far_plane: The far plane distance used in rendering.
-                - min_radius_2d: The minimum 2D radius used in rendering.
-                - antialias: Whether anti-aliasing is enabled (1) or not (0).
-                - tile_size: The tile size used in rendering.
-        """
-        return self._splat_ply_metadata()
-
-    @property
     def config(self) -> GaussianSplatReconstructionConfig:
         """
         Get the configuration object for the current training run.
@@ -837,16 +552,6 @@ class GaussianSplatReconstruction:
             Config: The configuration object containing all parameters for the training run.
         """
         return self._cfg
-
-    @property
-    def run_name(self) -> str:
-        """
-        Get the name of the current run.
-
-        Returns:
-            str | None: The name of the run, or None if no run name is set.
-        """
-        return self._run_name
 
     @property
     def model(self) -> GaussianSplat3d:
@@ -917,39 +622,6 @@ class GaussianSplatReconstruction:
             SfmDataset: The validation dataset instance.
         """
         return self._validation_dataset
-
-    @property
-    def stats_path(self) -> pathlib.Path | None:
-        """
-        Get the path where training statistics are saved.
-
-        Returns:
-            pathlib.Path | None: The path to the statistics directory, or None if not set.
-        """
-        return self._stats_path
-
-    @property
-    def image_render_path(self) -> pathlib.Path | None:
-        """
-        Get the path where rendered images are saved during evaluation.
-
-        Returns:
-            pathlib.Path | None: The path to the evaluation renders directory, or None if not set.
-        """
-        return self._image_render_path
-
-    @property
-    def checkpoints_path(self) -> pathlib.Path | None:
-        """
-        Get the path where model checkpoints are saved.
-
-        Returns:
-            pathlib.Path | None: The path to the checkpoints directory, or None if not set.
-        """
-        return self._checkpoints_path
-
-    @property
-    def results_path(self) -> pathlib.Path | None:
         """
         Get the base path where all results (stats, renders, checkpoints, tensorboard logs) are saved.
 
@@ -1377,14 +1049,18 @@ class GaussianSplatReconstruction:
                     self.pose_adjust_optimizer.zero_grad(set_to_none=True)
 
                 # Log to tensorboard if you requested it
-                if self._summary_writer is not None and self._global_step % self._tensorboard_log_interval == 0:
-                    self._tensorboard_log_train(
-                        loss=loss.item(),
-                        l1loss=l1loss.item(),
-                        ssimloss=ssimloss.item(),
-                        sh_degree=sh_degree_to_use,
-                        pose_loss=pose_reg.item() if pose_reg is not None else None,
-                    )
+                if self._global_step % self._tensorboard_log_interval == 0:
+                    mem_allocated = torch.cuda.memory_allocated(self.device) / (1024**3)
+                    mem_reserved = torch.cuda.memory_reserved(self.device) / (1024**3)
+                    self._writer.log_metric(self._global_step, "train/loss", loss.item())
+                    self._writer.log_metric(self._global_step, "train/l1loss", l1loss.item())
+                    self._writer.log_metric(self._global_step, "train/ssimloss", ssimloss.item())
+                    self._writer.log_metric(self._global_step, "train/num_gaussians", self.model.num_gaussians)
+                    self._writer.log_metric(self._global_step, "train/sh_degree", sh_degree_to_use)
+                    self._writer.log_metric(self._global_step, "train/mem_allocated", mem_allocated)
+                    self._writer.log_metric(self._global_step, "train/mem_reserved", mem_reserved)
+                    if pose_reg is not None:
+                        self._writer.log_metric(self._global_step, "train/pose_reg_loss", pose_reg.item())
 
                 # Update the viewer
                 if self._viewer is not None and self._global_step % update_viewer_every_step == 0:
@@ -1409,17 +1085,14 @@ class GaussianSplatReconstruction:
 
             # Save the model if we've reached a percentage of the total epochs specified in save_at_percent
             if epoch in [(pct * self.config.max_epochs // 100) - 1 for pct in self.config.save_at_percent]:
-                if self._global_step <= self._start_step and self._checkpoints_path is not None:
+                if self._global_step <= self._start_step:
                     self._logger.info(
                         f"Skipping checkpoint save at epoch {epoch + 1} (before start step {self._start_step})."
                     )
                     continue
-                if self._checkpoints_path is not None:
-                    ckpt_path = self._checkpoints_path / pathlib.Path(f"ckpt_{self._global_step:04d}.pt")
-                    self._logger.info(f"Saving checkpoint at epoch {epoch + 1} to {ckpt_path}.")
-                    ply_path = self._checkpoints_path / pathlib.Path(f"ckpt_{self._global_step:04d}.ply")
-                    self._logger.info(f"Saving PLY file at epoch {epoch + 1} to {ply_path}.")
-                    self._save_checkpoint_and_ply(ckpt_path, ply_path)
+                self._logger.info(f"Saving checkpoint at global step {self._global_step}.")
+                self._writer.save_checkpoint(self._global_step, "ckpt.pt", self.state_dict())
+                self._writer.save_ply(self._global_step, "ckpt.ply", self.model, self.optimization_metadata)
 
             # Run evaluation if we've reached a percentage of the total epochs specified in eval_at_percent
             if epoch in [(pct * self.config.max_epochs // 100) - 1 for pct in self.config.eval_at_percent]:
@@ -1432,30 +1105,7 @@ class GaussianSplatReconstruction:
                     continue
                 self.eval()
 
-        if self._checkpoints_path is not None and 100 in self.config.save_at_percent:
-            # If we already saved the final checkpoint at 100%, create a symlink to it so there is always a ckpt_final.pt
-            final_ckpt_path = self._checkpoints_path / pathlib.Path(f"ckpt_{self._global_step:04d}.pt")
-            final_ckpt_symlink_path = self._checkpoints_path / pathlib.Path("ckpt_final.pt")
-            final_ply_path = self._checkpoints_path / pathlib.Path(f"ckpt_{self._global_step:04d}.ply")
-            final_ply_symlink_path = self._checkpoints_path / pathlib.Path("ckpt_final.ply")
-            self._logger.info(
-                f"Training completed. Creating symlink {final_ckpt_symlink_path} pointing to final checkpoint at {final_ckpt_path}."
-            )
-            # Use relative paths for symlink so it works if you move the results directory
-            final_ckpt_symlink_path.absolute().symlink_to(
-                final_ckpt_path.absolute().relative_to(final_ckpt_symlink_path.absolute().parent)
-            )
-            final_ply_symlink_path.absolute().symlink_to(
-                final_ply_path.absolute().relative_to(final_ply_symlink_path.absolute().parent)
-            )
-        elif self._checkpoints_path is not None and 100 not in self.config.save_at_percent:
-            ckpt_path = self._checkpoints_path / pathlib.Path(f"ckpt_final.pt")
-            self._logger.info(f"Saving checkpoint at epoch {epoch + 1} to {ckpt_path}.")
-            ply_path = self._checkpoints_path / pathlib.Path(f"ckpt_final.ply")
-            self._logger.info(f"Saving PLY file at epoch {epoch + 1} to {ply_path}.")
-            self._save_checkpoint_and_ply(ckpt_path, ply_path)
-        else:
-            self._logger.info("Training completed. No checkpoints path specified, not saving final checkpoint.")
+        self._logger.info("Training completed.")
 
     @torch.no_grad()
     def eval(self, stage: str = "val"):
@@ -1513,10 +1163,9 @@ class GaussianSplatReconstruction:
                 mask_pixels = mask_pixels.to(self.device)
                 ground_truth_image[~mask_pixels] = predicted_image.detach()[~mask_pixels]
 
-            # write images
-            self._save_rendered_image(
-                self._global_step, stage, f"image_{i:04d}.jpg", predicted_image, ground_truth_image
-            )
+            # Save images
+            self._writer.save_image(self._global_step, f"{stage}/predicted_image{i:04d}.jpg", predicted_image)
+            self._writer.save_image(self._global_step, f"{stage}/ground_truth_image{i:04d}.jpg", ground_truth_image)
 
             ground_truth_image = ground_truth_image.permute(0, 3, 1, 2).contiguous()  # [1, 3, H, W]
             predicted_image = predicted_image.permute(0, 3, 1, 2).contiguous()  # [1, 3, H, W]
@@ -1532,25 +1181,14 @@ class GaussianSplatReconstruction:
         self._logger.info(f"Evaluation for stage {stage} completed. Average time per image: {evaluation_time:.3f}s")
         self._logger.info(f"PSNR: {psnr_mean.item():.3f}, SSIM: {ssim_mean.item():.4f}, LPIPS: {lpips_mean.item():.3f}")
 
-        # Save stats as json
-        stats = {
-            "psnr": psnr_mean.item(),
-            "ssim": ssim_mean.item(),
-            "lpips": lpips_mean.item(),
-            "evaluation_time": evaluation_time,
-            "num_gaussians": self.model.num_gaussians,
-        }
-        self._save_statistics(self._global_step, stage, stats)
-
-        # Log to tensorboard if enabled
-        if self._summary_writer is not None:
-            self._summary_writer.add_scalar("PSNR", psnr_mean.item(), self._global_step)
-            self._summary_writer.add_scalar("SSIM", ssim_mean.item(), self._global_step)
-            self._summary_writer.add_scalar("LPIPS", lpips_mean.item(), self._global_step)
-            self._summary_writer.add_scalar("Evaluation Time", evaluation_time, self._global_step)
-            self._summary_writer.add_scalar("Num Gaussians", self.model.num_gaussians, self._global_step)
+        self._writer.log_metric(self._global_step, f"{stage}/psnr", psnr_mean.item())
+        self._writer.log_metric(self._global_step, f"{stage}/ssim", ssim_mean.item())
+        self._writer.log_metric(self._global_step, f"{stage}/lpips", lpips_mean.item())
+        self._writer.log_metric(self._global_step, f"{stage}/evaluation_time", evaluation_time)
+        self._writer.log_metric(self._global_step, f"{stage}/num_gaussians", self.model.num_gaussians)
 
         # Update the viewer with evaluation results
         if self._viewer is not None:
             self._logger.debug(f"Updating viewer after evaluation at step {self._global_step:,}")
+            self._viewer.add_gaussian_splat_3d("Gaussian Scene", self.model)
             self._viewer.add_gaussian_splat_3d("Gaussian Scene", self.model)

@@ -4,10 +4,35 @@
 import pathlib
 import tempfile
 import unittest
+from typing import Any
 
+import fvdb
 import numpy as np
+import torch
 
 import fvdb_reality_capture as frc
+from fvdb_reality_capture import training
+
+
+class MockWriter(training.GaussianReconstructionBaseWriter):
+    def __init__(self):
+        super().__init__()
+        self.metric_log: list[tuple[int, str, float]] = []
+        self.checkpoint_log: list[tuple[int, str, dict[str, float]]] = []
+        self.ply_log: list[tuple[int, str]] = []
+        self.image_log: list[tuple[int, str, torch.Size, torch.dtype]] = []
+
+    def log_metric(self, global_step: int, metric_name: str, metric_value: float) -> None:
+        self.metric_log.append((global_step, metric_name, metric_value))
+
+    def save_checkpoint(self, global_step: int, checkpoint_name: str, checkpoint: dict[str, Any]) -> None:
+        self.checkpoint_log.append((global_step, checkpoint_name, checkpoint))
+
+    def save_ply(self, global_step: int, ply_name: str, model: fvdb.GaussianSplat3d, metadata: dict[str, Any]) -> None:
+        self.ply_log.append((global_step, ply_name))
+
+    def save_image(self, global_step: int, image_name: str, image: torch.Tensor, jpeg_quality: int = 98) -> None:
+        self.image_log.append((global_step, image_name, image.shape, image.dtype))
 
 
 class GaussianSplatReconstructionTests(unittest.TestCase):
@@ -44,7 +69,6 @@ class GaussianSplatReconstructionTests(unittest.TestCase):
         self.assertEqual(runner.model.num_gaussians, self.sfm_scene.points.shape[0])
 
     def test_run_training_with_saving(self):
-
         short_config = frc.training.GaussianSplatReconstructionConfig(
             max_epochs=2,
             refine_start_epoch=5,
@@ -52,196 +76,88 @@ class GaussianSplatReconstructionTests(unittest.TestCase):
             save_at_percent=[100],
         )
 
-        with tempfile.TemporaryDirectory() as tmpdirname:
-            results_path = pathlib.Path(tmpdirname)
-            runner = frc.GaussianSplatReconstruction.from_sfm_scene(
-                self.sfm_scene,
-                config=short_config,
-                use_every_n_as_val=2,
-                results_path=results_path,
-            )
-            num_val = len(np.arange(0, len(self.sfm_scene.images), 2))
-            num_train = len(self.sfm_scene.images) - num_val
-            self.assertEqual(len(runner.training_dataset), num_train)
-            self.assertEqual(len(runner.validation_dataset), num_val)
+        writer = MockWriter()
 
-            self.assertTrue(results_path.exists())
-            self.assertTrue(runner.stats_path is not None and runner.stats_path.exists())
-            self.assertTrue(runner.checkpoints_path is not None and runner.checkpoints_path.exists())
-            self.assertTrue(runner.image_render_path is None)
+        runner = frc.GaussianSplatReconstruction.from_sfm_scene(
+            self.sfm_scene,
+            config=short_config,
+            use_every_n_as_val=2,
+            writer=writer,
+        )
+        num_val = len(np.arange(0, len(self.sfm_scene.images), 2))
+        num_train = len(self.sfm_scene.images) - num_val
+        self.assertEqual(len(runner.training_dataset), num_train)
+        self.assertEqual(len(runner.validation_dataset), num_val)
 
-            assert runner.stats_path is not None
-            assert runner.checkpoints_path is not None
-            num_stats_files = sum(1 for item in runner.stats_path.iterdir() if item.is_file())
-            num_ckpt_files = sum(1 for item in runner.checkpoints_path.iterdir() if item.is_file())
-            self.assertEqual(num_stats_files, 0)
-            self.assertEqual(num_ckpt_files, 0)
+        self.assertEqual(len(writer.metric_log), 0)
+        self.assertEqual(len(writer.checkpoint_log), 0)
+        self.assertEqual(len(writer.ply_log), 0)
+        self.assertEqual(len(writer.image_log), 0)
 
-            runner.train()
+        runner.train()
 
-            num_stats_files = sum(1 for item in runner.stats_path.iterdir() if item.is_file())
-            num_ckpt_files = sum(1 for item in runner.checkpoints_path.iterdir() if item.is_file())
-            self.assertEqual(num_stats_files, 2)
-            self.assertEqual(num_ckpt_files, 4)
+        self.assertGreater(len(writer.metric_log), 0)
+        self.assertEqual(len(writer.checkpoint_log), 1)  # One per save
+        self.assertEqual(len(writer.ply_log), 1)  # One per save
+        self.assertEqual(
+            len(writer.image_log), 2 * len(runner.validation_dataset) * 2
+        )  # Two images (predicted and ground truth) per validation view per eval
 
-        self.assertEqual(runner.model.num_gaussians, self.sfm_scene.points.shape[0])
-
-    def test_run_training_with_saving_and_image_rendering(self):
+    def test_resuming_from_checkpoint(self):
 
         short_config = frc.training.GaussianSplatReconstructionConfig(
             max_epochs=2,
             refine_start_epoch=5,
             eval_at_percent=[50, 100],
-            save_at_percent=[100],
+            save_at_percent=[50, 100],
         )
 
-        with tempfile.TemporaryDirectory() as tmpdirname:
-            results_path = pathlib.Path(tmpdirname)
-            runner = frc.GaussianSplatReconstruction.from_sfm_scene(
-                self.sfm_scene,
-                config=short_config,
-                use_every_n_as_val=2,
-                results_path=results_path,
-                save_eval_images=True,
-            )
-            num_val = len(np.arange(0, len(self.sfm_scene.images), 2))
-            num_train = len(self.sfm_scene.images) - num_val
-            self.assertEqual(len(runner.training_dataset), num_train)
-            self.assertEqual(len(runner.validation_dataset), num_val)
+        writer = MockWriter()
 
-            self.assertTrue(results_path.exists())
-            self.assertTrue(runner.stats_path is not None and runner.stats_path.exists())
-            self.assertTrue(runner.checkpoints_path is not None and runner.checkpoints_path.exists())
-            self.assertTrue(runner.image_render_path is not None and runner.image_render_path.exists())
-
-            assert runner.stats_path is not None
-            assert runner.checkpoints_path is not None
-            assert runner.image_render_path is not None
-            num_stats_files = len([item for item in runner.stats_path.iterdir() if item.is_file()])
-            num_ckpt_files = len([item for item in runner.checkpoints_path.iterdir() if item.is_file()])
-            num_image_files = len([item for item in runner.image_render_path.iterdir() if item.is_file()])
-
-            self.assertEqual(num_stats_files, 0)
-            self.assertEqual(num_ckpt_files, 0)
-            self.assertEqual(num_image_files, 0)
-
-            runner.train()
-
-            num_stats_files = len([item for item in runner.stats_path.iterdir() if item.is_file()])
-            num_ckpt_files = len([item for item in runner.checkpoints_path.iterdir() if item.is_file()])
-            num_image_files = len([item for item in runner.image_render_path.iterdir() if item.is_file()])
-            num_image_directories = len([item for item in runner.image_render_path.iterdir() if item.is_dir()])
-
-            self.assertEqual(num_stats_files, 2)
-            self.assertEqual(num_ckpt_files, 4)  # 2 numbered + 2 symlinks
-            self.assertEqual(num_image_files, 0)  # all images in subdirectories
-            self.assertEqual(num_image_directories, 2)  # one per eval
-
-            for item in runner.image_render_path.iterdir():
-                if item.is_dir():
-                    num_image_files = sum(1 for subitem in item.iterdir() if subitem.is_file())
-                    self.assertEqual(num_image_files, num_val)
-
-        self.assertEqual(runner.model.num_gaussians, self.sfm_scene.points.shape[0])
-
-    def test_checkpoint_loading(self):
-
-        short_config = frc.training.GaussianSplatReconstructionConfig(
-            max_epochs=4,
-            refine_start_epoch=5,
-            eval_at_percent=[],
-            save_at_percent=[25, 50, 75, 100],
+        runner = frc.GaussianSplatReconstruction.from_sfm_scene(
+            self.sfm_scene,
+            config=short_config,
+            use_every_n_as_val=2,
+            writer=writer,
         )
+        num_val = len(np.arange(0, len(self.sfm_scene.images), 2))
+        num_train = len(self.sfm_scene.images) - num_val
+        self.assertEqual(len(runner.training_dataset), num_train)
+        self.assertEqual(len(runner.validation_dataset), num_val)
 
-        with tempfile.TemporaryDirectory() as tmpdirname:
-            results_path = pathlib.Path(tmpdirname)
-            runner = frc.GaussianSplatReconstruction.from_sfm_scene(
-                self.sfm_scene,
-                config=short_config,
-                use_every_n_as_val=2,
-                results_path=results_path,
-                save_eval_images=False,
-            )
-            num_val = len(np.arange(0, len(self.sfm_scene.images), 2))
-            num_train = len(self.sfm_scene.images) - num_val
-            self.assertEqual(len(runner.training_dataset), num_train)
-            self.assertEqual(len(runner.validation_dataset), num_val)
+        self.assertEqual(len(writer.metric_log), 0)
+        self.assertEqual(len(writer.checkpoint_log), 0)
+        self.assertEqual(len(writer.ply_log), 0)
+        self.assertEqual(len(writer.image_log), 0)
 
-            self.assertTrue(results_path.exists())
-            self.assertTrue(runner.stats_path is not None and runner.stats_path.exists())
-            self.assertTrue(runner.checkpoints_path is not None and runner.checkpoints_path.exists())
-            self.assertTrue(runner.image_render_path is None)
+        runner.train()
 
-            assert runner.stats_path is not None
-            assert runner.checkpoints_path is not None
-            num_stats_files = len([item for item in runner.stats_path.iterdir() if item.is_file()])
-            num_ckpt_files = len([item for item in runner.checkpoints_path.iterdir() if item.is_file()])
+        num_metric_logs = len(writer.metric_log)
+        print(writer.metric_log)
+        self.assertGreater(num_metric_logs, 0)
+        self.assertEqual(len(writer.checkpoint_log), 2)  # One per save
+        self.assertEqual(len(writer.ply_log), 2)  # One per save
+        self.assertEqual(
+            len(writer.image_log), 2 * len(runner.validation_dataset) * 2
+        )  # Two images (predicted and ground truth) per validation view per eval
 
-            self.assertEqual(num_stats_files, 0)
-            self.assertEqual(num_ckpt_files, 0)
+        # Now let's grab one of the middle checkpoints and load the runner from that
+        ckpt_step, ckpt_name, ckpt_dict = writer.checkpoint_log[0]
 
-            runner.train()
+        # We'll create a runner from this checkpoint, but use the same writer so things get appended
+        runner2 = frc.GaussianSplatReconstruction.from_state_dict(ckpt_dict, device=runner.model.device, writer=writer)
 
-            all_saved_files_before_delete = [item for item in runner.checkpoints_path.iterdir() if item.is_file()]
+        self.assertEqual(len(runner2.training_dataset), num_train)
+        self.assertEqual(len(runner2.validation_dataset), num_val)
 
-            num_ckpt_files = len([item for item in runner.checkpoints_path.iterdir() if item.is_file()])
-            self.assertEqual(num_stats_files, 0)
-            self.assertEqual(num_ckpt_files, 10)  # 1 ply + 1 checkpoint per save + 2 symlinks
+        # This should pick up from where we left off (50% through 2 epochs is epoch 1)
+        # and save and evalute at 100% again
+        runner2.train()
 
-            # Delete all but the first checkpoint
-            lowest_checkpoint_path = sorted(
-                [
-                    item
-                    for item in all_saved_files_before_delete
-                    if item.suffix == ".pt" and not item.name.endswith("_final.pt")
-                ]
-            )[0]
-            lowest_ply_path = sorted(
-                [
-                    item
-                    for item in all_saved_files_before_delete
-                    if item.suffix == ".ply" and not item.name.endswith("_final.ply")
-                ]
-            )[0]
-
-            for item in runner.checkpoints_path.iterdir():
-                if item in (lowest_checkpoint_path, lowest_ply_path):
-                    continue
-                if item.is_file():
-                    item.unlink()
-
-            num_ckpt_files = len([item for item in runner.checkpoints_path.iterdir() if item.is_file()])
-            self.assertEqual(num_ckpt_files, 2)  # 1 ply + 1 checkpoint per save + 2 symlinks
-
-            # Now try to load the checkpoint
-            runner2 = frc.GaussianSplatReconstruction.from_checkpoint(
-                lowest_checkpoint_path, device=runner.model.device, run_name_suffix="_resumed"
-            )
-
-            assert runner2.checkpoints_path is not None
-            assert runner2.stats_path is not None
-            assert runner2.image_render_path is None
-            expected_results_path = results_path / (runner._run_name + "_resumed")
-            self.assertEqual(str(runner2.results_path), str(expected_results_path))
-            self.assertEqual(len(runner2.training_dataset), num_train)
-            self.assertEqual(len(runner2.validation_dataset), num_val)
-            num_stats_files = len([item for item in runner2.stats_path.iterdir() if item.is_file()])
-            num_ckpt_files = len([item for item in runner2.checkpoints_path.iterdir() if item.is_file()])
-            self.assertEqual(num_ckpt_files, 0)
-            self.assertEqual(num_stats_files, 0)
-
-            runner2.train()
-
-            num_stats_files = len([item for item in runner2.stats_path.iterdir() if item.is_file()])
-            num_ckpt_files = len([item for item in runner2.checkpoints_path.iterdir() if item.is_file()])
-            self.assertEqual(num_ckpt_files, 8)
-            self.assertEqual(num_stats_files, 0)
-
-            result_set = {item.name for item in runner2.checkpoints_path.iterdir() if item.is_file()}
-            start_set = {lowest_checkpoint_path.name, lowest_ply_path.name}
-            result_set = result_set.union(start_set)
-
-            expected_set = {item.name for item in all_saved_files_before_delete}
-            self.assertEqual(expected_set.intersection(result_set), result_set)
-
-        self.assertEqual(runner.model.num_gaussians, self.sfm_scene.points.shape[0])
+        print(writer.metric_log)
+        self.assertEqual(len(writer.metric_log), num_metric_logs + num_metric_logs // 2)
+        self.assertEqual(len(writer.checkpoint_log), 3)  # One more per save
+        self.assertEqual(len(writer.ply_log), 3)  # One more per save
+        self.assertEqual(
+            len(writer.image_log), 3 * len(runner.validation_dataset) * 2
+        )  # Two more images (predicted and ground truth) per validation view per eval

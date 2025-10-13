@@ -1,7 +1,7 @@
 {
     "files.trimTrailingWhitespace": true,
     "files.insertFinalNewline": true,
-    "editor.rulers": [ 100 ],
+    "editor.rulers": [ 120 ],
     "terminal.integrated.defaultLocation": "editor",
     "[python]": {
         "editor.defaultFormatter": "ms-python.black-formatter",
