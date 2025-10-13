@@ -7,12 +7,16 @@ import pathlib
 import torch
 import tyro
 
-from fvdb_reality_capture.training import GaussianSplatReconstruction
+from fvdb_reality_capture.training import (
+    GaussianSplatReconstruction,
+    GaussianSplatReconstructionWriter,
+    GaussianSplatReconstructionWriterConfig,
+)
 
 
 def main(
     checkpoint_path: pathlib.Path,
-    save_results: bool = True,
+    save_path: pathlib.Path | None = None,
     save_images: bool = True,
     device: str | torch.device = "cuda",
 ):
@@ -30,9 +34,19 @@ def main(
     """
     logging.basicConfig(level=logging.INFO, format="%(levelname)s : %(message)s")
 
-    runner = GaussianSplatReconstruction.from_checkpoint(
-        checkpoint_path=checkpoint_path, save_eval_images=save_images, device=device, save_results=save_results
+    checkpoint_state = torch.load(checkpoint_path, map_location="cpu")
+
+    writer_config = GaussianSplatReconstructionWriterConfig(
+        save_images=save_images, save_metrics=True, save_plys=False, save_checkpoints=False, use_tensorboard=False
     )
+    writer = GaussianSplatReconstructionWriter(
+        run_name=None,
+        save_path=save_path if save_path is not None else checkpoint_path.parent / "eval",
+        config=writer_config,
+        exist_ok=True,
+    )
+
+    runner = GaussianSplatReconstruction.from_state_dict(checkpoint_state, device=device, writer=writer)
 
     logger = logging.getLogger("evaluate")
     logger.info("Running eval on checkpoint.")
