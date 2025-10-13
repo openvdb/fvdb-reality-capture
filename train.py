@@ -14,11 +14,11 @@ from fvdb.viz import Viewer
 
 from fvdb_reality_capture import SfmScene
 from fvdb_reality_capture.training import (
-    GaussianReconstructionWriter,
-    GaussianReconstructionWriterConfig,
     GaussianSplatOptimizerConfig,
     GaussianSplatReconstruction,
     GaussianSplatReconstructionConfig,
+    GaussianSplatReconstructionWriter,
+    GaussianSplatReconstructionWriterConfig,
 )
 from fvdb_reality_capture.transforms import (
     Compose,
@@ -81,7 +81,7 @@ def main(
     cfg: GaussianSplatReconstructionConfig = GaussianSplatReconstructionConfig(),
     tx: SceneTransformConfig = SceneTransformConfig(),
     opt: GaussianSplatOptimizerConfig = GaussianSplatOptimizerConfig(),
-    io: GaussianReconstructionWriterConfig = GaussianReconstructionWriterConfig(),
+    io: GaussianSplatReconstructionWriterConfig = GaussianSplatReconstructionWriterConfig(),
     dataset_type: Literal["colmap", "simple_directory", "e57"] = "colmap",
     run_name: str | None = None,
     results_path: pathlib.Path = pathlib.Path("results"),
@@ -108,7 +108,7 @@ def main(
     else:
         viewer = None
 
-    writer = GaussianReconstructionWriter(run_name=run_name, save_path=results_path, config=io, exist_ok=False)
+    writer = GaussianSplatReconstructionWriter(run_name=run_name, save_path=results_path, config=io, exist_ok=False)
     runner = GaussianSplatReconstruction.from_sfm_scene(
         tx.scene_transform(sfm_scene),
         config=cfg,

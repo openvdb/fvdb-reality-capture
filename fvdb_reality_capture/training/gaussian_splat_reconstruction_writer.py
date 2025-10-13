@@ -13,7 +13,7 @@ from fvdb import GaussianSplat3d
 from fvdb.types import NumericScalar, to_FloatingScalar
 
 
-class GaussianReconstructionBaseWriter(ABC):
+class GaussianSplatReconstructionBaseWriter(ABC):
     """
     Base class for logging and saving data during Gaussian splat reconstruction.
     """
@@ -75,7 +75,7 @@ class GaussianReconstructionBaseWriter(ABC):
 
 
 @dataclass
-class GaussianReconstructionWriterConfig:
+class GaussianSplatReconstructionWriterConfig:
     """
     Parameters for configuring the behavior of the GaussianReconstructionWriter.
     Controls what data gets saved to disk, how much buffering to use, and whether to use TensorBoard.
@@ -94,7 +94,7 @@ class GaussianReconstructionWriterConfig:
     save_images_to_tensorboard: bool = False
 
 
-class GaussianReconstructionWriter(GaussianReconstructionBaseWriter):
+class GaussianSplatReconstructionWriter(GaussianSplatReconstructionBaseWriter):
     """
     Class to handle logging and saving data during Gaussian splat reconstruction.
     This class is responsible for saving, checkpoints, PLY files, images, and metrics.
@@ -132,7 +132,7 @@ class GaussianReconstructionWriter(GaussianReconstructionBaseWriter):
         run_name: str | None,
         save_path: pathlib.Path | None,
         exist_ok: bool = False,
-        config: GaussianReconstructionWriterConfig = GaussianReconstructionWriterConfig(),
+        config: GaussianSplatReconstructionWriterConfig = GaussianSplatReconstructionWriterConfig(),
     ) -> None:
         """
         Create a new GaussianReconstructionWriter instance, which can log and save data during training.

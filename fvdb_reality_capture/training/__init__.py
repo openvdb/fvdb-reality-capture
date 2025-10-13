@@ -12,16 +12,16 @@ from .gaussian_splat_reconstruction import (
     GaussianSplatReconstructionConfig,
 )
 from .gaussian_splat_reconstruction_writer import (
-    GaussianReconstructionBaseWriter,
-    GaussianReconstructionWriter,
-    GaussianReconstructionWriterConfig,
+    GaussianSplatReconstructionBaseWriter,
+    GaussianSplatReconstructionWriter,
+    GaussianSplatReconstructionWriterConfig,
 )
 from .sfm_dataset import SfmDataset
 
 __all__ = [
-    "GaussianReconstructionBaseWriter",
-    "GaussianReconstructionWriter",
-    "GaussianReconstructionWriterConfig",
+    "GaussianSplatReconstructionBaseWriter",
+    "GaussianSplatReconstructionWriter",
+    "GaussianSplatReconstructionWriterConfig",
     "GaussianSplatReconstruction",
     "GaussianSplatReconstructionConfig",
     "SfmDataset",

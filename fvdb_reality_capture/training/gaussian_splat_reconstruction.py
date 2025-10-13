@@ -26,8 +26,8 @@ from .gaussian_splat_optimizer import (
     GaussianSplatOptimizerConfig,
 )
 from .gaussian_splat_reconstruction_writer import (
-    GaussianReconstructionBaseWriter,
-    GaussianReconstructionWriter,
+    GaussianSplatReconstructionBaseWriter,
+    GaussianSplatReconstructionWriter,
 )
 from .lpips import LPIPSLoss
 from .sfm_dataset import SfmDataset
@@ -153,7 +153,9 @@ class GaussianSplatReconstruction:
         sfm_scene: SfmScene,
         config: GaussianSplatReconstructionConfig = GaussianSplatReconstructionConfig(),
         optimizer_config: GaussianSplatOptimizerConfig = GaussianSplatOptimizerConfig(),
-        writer: GaussianReconstructionBaseWriter = GaussianReconstructionWriter(run_name=None, save_path=None),
+        writer: GaussianSplatReconstructionBaseWriter = GaussianSplatReconstructionWriter(
+            run_name=None, save_path=None
+        ),
         viewer: Viewer | None = None,
         use_every_n_as_val: int = -1,
         viewer_update_interval_epochs: int = 10,
@@ -252,7 +254,9 @@ class GaussianSplatReconstruction:
         state_dict: dict[str, Any],
         override_sfm_scene: SfmScene | None = None,
         override_use_every_n_as_val: int | None = None,
-        writer: GaussianReconstructionBaseWriter = GaussianReconstructionWriter(run_name=None, save_path=None),
+        writer: GaussianSplatReconstructionBaseWriter = GaussianSplatReconstructionWriter(
+            run_name=None, save_path=None
+        ),
         viewer: Viewer | None = None,
         viewer_update_interval_epochs: int = 1,
         log_interval_steps: int = 10,
@@ -376,7 +380,7 @@ class GaussianSplatReconstruction:
         pose_adjust_model: CameraPoseAdjustment | None,
         pose_adjust_optimizer: torch.optim.Adam | None,
         pose_adjust_scheduler: torch.optim.lr_scheduler.ExponentialLR | None,
-        writer: GaussianReconstructionBaseWriter,
+        writer: GaussianSplatReconstructionBaseWriter,
         start_step: int,
         viewer: Viewer | None,
         tensorboard_log_interval: int,

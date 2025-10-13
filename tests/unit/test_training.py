@@ -14,7 +14,7 @@ import fvdb_reality_capture as frc
 from fvdb_reality_capture import training
 
 
-class MockWriter(training.GaussianReconstructionBaseWriter):
+class MockWriter(training.GaussianSplatReconstructionBaseWriter):
     def __init__(self):
         super().__init__()
         self.metric_log: list[tuple[int, str, float]] = []
