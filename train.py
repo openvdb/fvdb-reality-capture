@@ -147,7 +147,8 @@ def main(
 
     runner.model.save_ply(out_file_name, metadata=runner.optimization_metadata)
 
-    logger = logging.getLogger("train")
+    logger = logging.getLogger(__name__)
+
     if viewer is not None:
         logger.info("Viewer running... Ctrl+C to exit.")
         time.sleep(1000000)

@@ -23,7 +23,7 @@ def main(
 
     Args:
         ply_path (pathlib.Path): Path to a PLY file containing the Gaussian splat model.
-        viewer_port (int): The port to expose the viewer server on
+        viewer_port (int): The port to expose the viewer server on.
         verbose (bool): If True, then the viewer will log verbosely.
         device (str | torch.device): Device to use for computation (default is "cuda").
     """
@@ -75,6 +75,7 @@ def main(
     else:
         logger.info("No camera information found in PLY metadata, not adding camera views to viewer")
     logger.info("Viewer running... Ctrl+C to exit.")
+    viewer.show()
     time.sleep(1000000)
 
 
