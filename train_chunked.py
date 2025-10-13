@@ -123,7 +123,8 @@ def main(
         io (GaussianSplatReconstructionWriterConfig): Configuration for saving metrics and checkpoints.
         dataset_type (Literal["colmap", "simple_directory", "e57"]): Type of dataset.
         run_name (str | None): Name of the training run.
-        results_path (pathlib.Path | None): Path to log metrics, and checkpoints. If None, no metrics or checkpoints will be saved.
+        log_path (pathlib.Path | None): Path to log metrics, and checkpoints. If None, no metrics or
+            checkpoints will be saved. Default is "fvdb_gslogs".
         use_every_n_as_val (int): Use every n-th image as a validation image.
         device (str | torch.device): Device to use for training.
         log_every (int): Log training metrics every n steps.

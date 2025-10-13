@@ -332,35 +332,35 @@ class GaussianSplatReconstructionWriter(GaussianSplatReconstructionBaseWriter):
         it will attempt to create a new one by appending an incremented number to the name
 
         Returns:
-            run_name: The name of a unique results directory in the format "run_YYYY-MM-DD-HH-MM-SS".
-            run_path: A pathlib.Path object pointing to the created results directory.
+            run_name: The name of a unique log directory for a specific run in the format "run_YYYY-MM-DD-HH-MM-SS".
+            log_path: A pathlib.Path object pointing to the created log directory.
         """
         attempts = 0
         max_attempts = 50
         run_name = f"{prefix}_{time.strftime('%Y-%m-%d-%H-%M-%S')}"
         while attempts < 50:
-            results_path = base_path / run_name
+            log_path = base_path / run_name
             try:
-                results_path.mkdir(exist_ok=False, parents=True)
+                log_path.mkdir(exist_ok=False, parents=True)
                 break
             except FileExistsError:
                 attempts += 1
-                self._logger.debug(f"Results directory {results_path} already exists. Attempting to create a new one.")
+                self._logger.debug(f"Results directory {log_path} already exists. Attempting to create a new one.")
                 # Generate a new run name with an incremented attempt number
                 run_name = f"{prefix}_{time.strftime('%Y-%m-%d-%H-%M-%S')}_{attempts+1:02d}"
                 continue
         if attempts >= max_attempts:
-            raise FileExistsError(f"Failed to generate a unique results directory name after {max_attempts} attempts.")
+            raise FileExistsError(f"Failed to generate a unique log directory name after {max_attempts} attempts.")
 
-        self._logger.info(f"Created unique results directory with name {run_name} after {attempts} attempts.")
+        self._logger.info(f"Created unique log directory with name {run_name} after {attempts} attempts.")
 
-        return run_name, results_path
+        return run_name, log_path
 
     @property
     def run_name(self) -> str | None:
         """
         Return the name of this training run, or None if no name was specified. The name of the run matches
-        the name of the directory where results are being saved.
+        the name of the directory where logged results are being saved.
 
         Returns:
             str | None: The name of this training run, or None if no name was specified.
@@ -368,12 +368,13 @@ class GaussianSplatReconstructionWriter(GaussianSplatReconstructionBaseWriter):
         return self._run_name
 
     @property
-    def results_path(self) -> pathlib.Path | None:
+    def log_path(self) -> pathlib.Path | None:
         """
-        Return the path where results are being saved, or None if no results are being saved.
+        Return the path where logged results are being saved, or None if no results are being saved.
 
         Returns:
-            pathlib.Path | None: The path where results are being saved, or None if no results are being saved.
+            log_path (pathlib.Path | None): The path where logged results are being saved, or None if
+                no logged results are being saved.
         """
         return self._save_path
 
