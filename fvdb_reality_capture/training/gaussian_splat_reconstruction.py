@@ -13,7 +13,7 @@ from typing import List, Literal
 import cv2
 import numpy as np
 import torch
-import torch.nn.functional as F
+import torch.nn.functional as nnf
 import torch.utils.data
 import tqdm
 from fvdb import GaussianSplat3d
@@ -1272,7 +1272,7 @@ class GaussianSplatReconstruction:
                         pixels[~mask_pixels] = colors.detach()[~mask_pixels]
 
                     # Image losses
-                    l1loss = F.l1_loss(colors, pixels)
+                    l1loss = nnf.l1_loss(colors, pixels)
                     ssimloss = 1.0 - ssim(
                         colors.permute(0, 3, 1, 2).contiguous(),
                         pixels.permute(0, 3, 1, 2).contiguous(),
