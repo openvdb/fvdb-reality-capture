@@ -150,6 +150,12 @@ class GaussianSplatOptimizer:
             )
         self._logger = logging.getLogger(f"{self.__class__.__module__}.{self.__class__.__name__}")
 
+        # How many timeds we've called step() on this optimizer
+        self._step_count = 0
+
+        # How many times we've called refine() on this optimizer
+        self._refine_count = 0
+
         self._model = model
         self._model.accumulate_mean_2d_gradients = True  # Make sure we track the 2D gradients for refinement
         self._config = config
@@ -260,6 +266,7 @@ class GaussianSplatOptimizer:
         Step the optimizer (updating the model's parameters) and decay the learning rate of the means.
         """
         self._optimizer.step()
+        self._step_count += 1
         # Decay the means learning rate
         for param_group in self._optimizer.param_groups:
             if param_group["name"] == "means":
@@ -397,6 +404,7 @@ class GaussianSplatOptimizer:
             self._logger.warning(
                 f"Refinement would insert a net of {num_added_gaussians} leading to {num_gaussians_after_refinement} which exceeds max_gaussians ({self._config.max_gaussians}), skipping refinement step"
             )
+            self._refine_count += 1
             return 0, 0, 0
 
         # Get indices of Gaussians which are preserved during refinement
@@ -447,6 +455,7 @@ class GaussianSplatOptimizer:
 
         self._update_optimizer_params_and_state(update_state_function)
 
+        self._refine_count += 1
         return num_duplicated, num_split, num_deleted
 
     @staticmethod

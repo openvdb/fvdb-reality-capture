@@ -2,10 +2,8 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 import logging
-import pathlib
 import random
 import time
-import uuid
 from dataclasses import dataclass, field
 from typing import Any, List, Literal
 
@@ -1069,7 +1067,7 @@ class GaussianSplatReconstruction:
                     self.pose_adjust_scheduler.step()
                     self.pose_adjust_optimizer.zero_grad(set_to_none=True)
 
-                # Log to tensorboard if you requested it
+                # Log metrics
                 if self._global_step % self._log_interval_steps == 0:
                     mem_allocated = torch.cuda.memory_allocated(self.device) / (1024**3)
                     mem_reserved = torch.cuda.memory_reserved(self.device) / (1024**3)
@@ -1089,6 +1087,7 @@ class GaussianSplatReconstruction:
                         self._logger.info(f"Updating viewer at step {self._global_step:,}")
                         self._viewer.add_gaussian_splat_3d("Gaussian Scene", self.model)
 
+                # Update the progress bar and global step
                 if pbar is not None:
                     pbar.update(batch_size)
                     self._global_step = pbar.n
