@@ -90,6 +90,7 @@ def main(
     log_every: int = 10,
     visualize_every: int = -1,
     verbose: bool = False,
+    out_file_name: str = "result.ply",
 ):
     log_level = logging.DEBUG if verbose else logging.INFO
     logging.basicConfig(level=log_level, format="%(levelname)s : %(message)s")
@@ -122,6 +123,8 @@ def main(
     )
 
     runner.train()
+
+    runner.model.save_ply(out_file_name, metadata=runner.optimization_metadata)
 
     logger = logging.getLogger("train")
     if viewer is not None:

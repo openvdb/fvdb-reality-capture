@@ -626,15 +626,6 @@ class GaussianSplatReconstruction:
             SfmDataset: The validation dataset instance.
         """
         return self._validation_dataset
-        """
-        Get the base path where all results (stats, renders, checkpoints, tensorboard logs) are saved.
-
-        Returns:
-            pathlib.Path | None: The base results path, or None if not set.
-        """
-        if self._stats_path is not None:
-            return self._stats_path.parent
-        return None
 
     @staticmethod
     def _init_model(
@@ -794,7 +785,7 @@ class GaussianSplatReconstruction:
         )
         return pose_adjust_model, pose_adjust_optimizer, pose_adjust_scheduler
 
-    def train(self, show_progress: bool = True) -> None:
+    def train(self, show_progress: bool = True, log_tag: str = "train") -> None:
         """
         Run the training loop for the Gaussian Splatting model.
 
@@ -816,6 +807,10 @@ class GaussianSplatReconstruction:
 
         Args:
             show_progress (bool): Whether to display a progress bar during training.
+            log_tag (str): Tag to use for logging metrics (e.g., "train). Data logged will use this tag as a prefix.
+                For metrics, this will be "{log_tag}/metric_name".
+                For checkpoints, this will be "{log_tag}_ckpt.pt".
+                For PLY files, this will be "{log_tag}_ckpt.ply".
         """
         if self.optimizer is None:
             raise ValueError("This runner was not created with an optimizer. Cannot run training.")
@@ -1056,20 +1051,20 @@ class GaussianSplatReconstruction:
                 if self._global_step % self._tensorboard_log_interval == 0:
                     mem_allocated = torch.cuda.memory_allocated(self.device) / (1024**3)
                     mem_reserved = torch.cuda.memory_reserved(self.device) / (1024**3)
-                    self._writer.log_metric(self._global_step, "train/loss", loss.item())
-                    self._writer.log_metric(self._global_step, "train/l1loss", l1loss.item())
-                    self._writer.log_metric(self._global_step, "train/ssimloss", ssimloss.item())
-                    self._writer.log_metric(self._global_step, "train/num_gaussians", self.model.num_gaussians)
-                    self._writer.log_metric(self._global_step, "train/sh_degree", sh_degree_to_use)
-                    self._writer.log_metric(self._global_step, "train/mem_allocated", mem_allocated)
-                    self._writer.log_metric(self._global_step, "train/mem_reserved", mem_reserved)
+                    self._writer.log_metric(self._global_step, f"{log_tag}/loss", loss.item())
+                    self._writer.log_metric(self._global_step, f"{log_tag}/l1loss", l1loss.item())
+                    self._writer.log_metric(self._global_step, f"{log_tag}/ssimloss", ssimloss.item())
+                    self._writer.log_metric(self._global_step, f"{log_tag}/num_gaussians", self.model.num_gaussians)
+                    self._writer.log_metric(self._global_step, f"{log_tag}/sh_degree", sh_degree_to_use)
+                    self._writer.log_metric(self._global_step, f"{log_tag}/mem_allocated", mem_allocated)
+                    self._writer.log_metric(self._global_step, f"{log_tag}/mem_reserved", mem_reserved)
                     if pose_reg is not None:
-                        self._writer.log_metric(self._global_step, "train/pose_reg_loss", pose_reg.item())
+                        self._writer.log_metric(self._global_step, f"{log_tag}/pose_reg_loss", pose_reg.item())
 
                 # Update the viewer
                 if self._viewer is not None and self._global_step % update_viewer_every_step == 0:
                     with torch.no_grad():
-                        self._logger.debug(f"Updating viewer at step {self._global_step:,}")
+                        self._logger.info(f"Updating viewer at step {self._global_step:,}")
                         self._viewer.add_gaussian_splat_3d("Gaussian Scene", self.model)
 
                 if pbar is not None:
@@ -1095,8 +1090,8 @@ class GaussianSplatReconstruction:
                     )
                     continue
                 self._logger.info(f"Saving checkpoint at global step {self._global_step}.")
-                self._writer.save_checkpoint(self._global_step, "ckpt.pt", self.state_dict())
-                self._writer.save_ply(self._global_step, "ckpt.ply", self.model, self.optimization_metadata)
+                self._writer.save_checkpoint(self._global_step, f"{log_tag}_ckpt.pt", self.state_dict())
+                self._writer.save_ply(self._global_step, f"{log_tag}_ckpt.ply", self.model, self.optimization_metadata)
 
             # Run evaluation if we've reached a percentage of the total epochs specified in eval_at_percent
             if epoch in [(pct * self.config.max_epochs // 100) - 1 for pct in self.config.eval_at_percent]:
@@ -1107,12 +1102,12 @@ class GaussianSplatReconstruction:
                         f"Skipping evaluation at epoch {epoch + 1} (before start step {self._start_step})."
                     )
                     continue
-                self.eval()
+                self.eval(log_tag=log_tag + "_eval")
 
         self._logger.info("Training completed.")
 
     @torch.no_grad()
-    def eval(self, stage: str = "val"):
+    def eval(self, log_tag: str = "eval"):
         """
         Run evaluation of the Gaussian Splatting model on the validation dataset.
 
@@ -1168,8 +1163,8 @@ class GaussianSplatReconstruction:
                 ground_truth_image[~mask_pixels] = predicted_image.detach()[~mask_pixels]
 
             # Save images
-            self._writer.save_image(self._global_step, f"{stage}/predicted_image{i:04d}.jpg", predicted_image)
-            self._writer.save_image(self._global_step, f"{stage}/ground_truth_image{i:04d}.jpg", ground_truth_image)
+            self._writer.save_image(self._global_step, f"{log_tag}/predicted_image{i:04d}.jpg", predicted_image)
+            self._writer.save_image(self._global_step, f"{log_tag}/ground_truth_image{i:04d}.jpg", ground_truth_image)
 
             ground_truth_image = ground_truth_image.permute(0, 3, 1, 2).contiguous()  # [1, 3, H, W]
             predicted_image = predicted_image.permute(0, 3, 1, 2).contiguous()  # [1, 3, H, W]
@@ -1182,17 +1177,16 @@ class GaussianSplatReconstruction:
         psnr_mean = torch.stack(metrics["psnr"]).mean()
         ssim_mean = torch.stack(metrics["ssim"]).mean()
         lpips_mean = torch.stack(metrics["lpips"]).mean()
-        self._logger.info(f"Evaluation for stage {stage} completed. Average time per image: {evaluation_time:.3f}s")
+        self._logger.info(f"Evaluation for stage {log_tag} completed. Average time per image: {evaluation_time:.3f}s")
         self._logger.info(f"PSNR: {psnr_mean.item():.3f}, SSIM: {ssim_mean.item():.4f}, LPIPS: {lpips_mean.item():.3f}")
 
-        self._writer.log_metric(self._global_step, f"{stage}/psnr", psnr_mean.item())
-        self._writer.log_metric(self._global_step, f"{stage}/ssim", ssim_mean.item())
-        self._writer.log_metric(self._global_step, f"{stage}/lpips", lpips_mean.item())
-        self._writer.log_metric(self._global_step, f"{stage}/evaluation_time", evaluation_time)
-        self._writer.log_metric(self._global_step, f"{stage}/num_gaussians", self.model.num_gaussians)
+        self._writer.log_metric(self._global_step, f"{log_tag}/psnr", psnr_mean.item())
+        self._writer.log_metric(self._global_step, f"{log_tag}/ssim", ssim_mean.item())
+        self._writer.log_metric(self._global_step, f"{log_tag}/lpips", lpips_mean.item())
+        self._writer.log_metric(self._global_step, f"{log_tag}/evaluation_time", evaluation_time)
+        self._writer.log_metric(self._global_step, f"{log_tag}/num_gaussians", self.model.num_gaussians)
 
         # Update the viewer with evaluation results
         if self._viewer is not None:
-            self._logger.debug(f"Updating viewer after evaluation at step {self._global_step:,}")
-            self._viewer.add_gaussian_splat_3d("Gaussian Scene", self.model)
+            self._logger.info(f"Updating viewer after evaluation at step {self._global_step:,}")
             self._viewer.add_gaussian_splat_3d("Gaussian Scene", self.model)
