@@ -84,7 +84,7 @@ def main(
     io: GaussianSplatReconstructionWriterConfig = GaussianSplatReconstructionWriterConfig(),
     dataset_type: Literal["colmap", "simple_directory", "e57"] = "colmap",
     run_name: str | None = None,
-    results_path: pathlib.Path = pathlib.Path("results"),
+    log_path: pathlib.Path | None = pathlib.Path("fvdb_gslogs"),
     use_every_n_as_val: int = -1,
     device: str | torch.device = "cuda",
     log_every: int = 10,
@@ -92,6 +92,27 @@ def main(
     verbose: bool = False,
     out_file_name: str = "result.ply",
 ):
+    """
+    Optimize a Gaussian splat radiance field from a set of images and camera poses.
+
+    Args:
+        dataset_path (pathlib.Path): Path to the dataset. For "colmap" datasets, this should be the
+            directory containing the `images` and `sparse` subdirectories. For "simple_directory" datasets,
+            this should be the directory containing the images and a `cameras.txt` file.
+        cfg (GaussianSplatReconstructionConfig): Configuration for the Gaussian splat reconstruction.
+        tx (SceneTransformConfig): Configuration for the transforms to apply to the SfmScene before training.
+        opt (GaussianSplatOptimizerConfig): Configuration for the optimizer.
+        io (GaussianSplatReconstructionWriterConfig): Configuration for saving metrics and checkpoints.
+        dataset_type (Literal["colmap", "simple_directory", "e57"]): Type of dataset to load.
+        run_name (str | None): Name of the run. If None, a name will be generated based on the current date and time.
+        log_path (pathlib.Path | None): Path to log metrics, and checkpoints. If None, no metrics or checkpoints will be saved.
+        use_every_n_as_val (int): Use every n-th image as a validation image.
+        device (str | torch.device): Device to use for training.
+        log_every (int): Log training metrics every n steps.
+        visualize_every (int): Update the viewer every n epochs. If -1, do not visualize.
+        verbose (bool): Whether to log debug messages.
+        out_file_name (str): Name of the output PLY file to save the model. Default is "result.ply".
+    """
     log_level = logging.DEBUG if verbose else logging.INFO
     logging.basicConfig(level=log_level, format="%(levelname)s : %(message)s")
 
@@ -109,7 +130,7 @@ def main(
     else:
         viewer = None
 
-    writer = GaussianSplatReconstructionWriter(run_name=run_name, save_path=results_path, config=io, exist_ok=False)
+    writer = GaussianSplatReconstructionWriter(run_name=run_name, save_path=log_path, config=io, exist_ok=False)
     runner = GaussianSplatReconstruction.from_sfm_scene(
         tx.scene_transform(sfm_scene),
         config=cfg,
