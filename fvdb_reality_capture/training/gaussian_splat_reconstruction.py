@@ -86,11 +86,7 @@ class GaussianSplatReconstructionConfig:
     # When to stop refining Gaussians during optimization
     refine_stop_epoch: int = 100
     # How often to refine Gaussians during optimization
-    refine_every_epoch: float = 0.75
-    # How often to reset the opacities of the Gaussians during optimization
-    reset_opacities_every_epoch: int = 16
-    # When to stop using the 2d projected scale for refinement (default of 0 is to never use it)
-    refine_using_scale2d_stop_epoch: int = 0
+    refine_every_epoch: float = 0.65
     # Whether to ignore masks during training
     ignore_masks: bool = False
     # Whether to remove Gaussians that fall outside the scene bounding box
@@ -689,9 +685,6 @@ class GaussianSplatReconstruction:
         model = GaussianSplat3d(means, quats, log_scales, logit_opacities, sh_0, sh_n, True)
         model.requires_grad = True
 
-        if config.refine_using_scale2d_stop_epoch > 0:
-            model.accumulate_max_2d_radii = True
-
         return model
 
     @staticmethod
@@ -851,10 +844,6 @@ class GaussianSplatReconstruction:
         refine_start_step: int = int(self.config.refine_start_epoch * len(self.training_dataset))
         refine_stop_step: int = int(self.config.refine_stop_epoch * len(self.training_dataset))
         refine_every_step: int = int(self.config.refine_every_epoch * len(self.training_dataset))
-        reset_opacities_every_step: int = int(self.config.reset_opacities_every_epoch * len(self.training_dataset))
-        refine_using_scale2d_stop_step: int = int(
-            self.config.refine_using_scale2d_stop_epoch * len(self.training_dataset)
-        )
         increase_sh_degree_every_step: int = int(
             self.config.increase_sh_degree_every_epoch * len(self.training_dataset)
         )
@@ -1009,14 +998,7 @@ class GaussianSplatReconstruction:
                     and self._global_step < refine_stop_step
                 ):
                     num_gaussians_before: int = self.model.num_gaussians
-                    use_scales_for_refinement: bool = self._global_step > reset_opacities_every_step
-                    use_screen_space_scales_for_refinement: bool = self._global_step < refine_using_scale2d_stop_step
-                    if not use_screen_space_scales_for_refinement:
-                        self.model.accumulate_max_2d_radii = False
-                    num_dup, num_split, num_prune = self.optimizer.refine(
-                        use_scales_for_deletion=use_scales_for_refinement,
-                        use_screen_space_scales=use_screen_space_scales_for_refinement,
-                    )
+                    num_dup, num_split, num_prune = self.optimizer.refine()
                     self._logger.debug(
                         f"Step {self._global_step:,}: Refinement: {num_dup:,} duplicated, {num_split:,} split, {num_prune:,} pruned. "
                         f"Num Gaussians: {self.model.num_gaussians:,} (before: {num_gaussians_before:,})"
@@ -1027,13 +1009,14 @@ class GaussianSplatReconstruction:
                     if self.config.remove_gaussians_outside_scene_bbox:
                         bbox_min, bbox_max = self.training_dataset.scene_bbox
                         ng_prior = self.model.num_gaussians
-                        points = self.model.means
+                        with torch.no_grad():
+                            points = self.model.means
 
-                        outside_mask = torch.logical_or(points[:, 0] < bbox_min[0], points[:, 0] > bbox_max[0])
-                        outside_mask = torch.logical_or(outside_mask, points[:, 1] < bbox_min[1])
-                        outside_mask = torch.logical_or(outside_mask, points[:, 1] > bbox_max[1])
-                        outside_mask = torch.logical_or(outside_mask, points[:, 2] < bbox_min[2])
-                        outside_mask = torch.logical_or(outside_mask, points[:, 2] > bbox_max[2])
+                            outside_mask = torch.logical_or(points[:, 0] < bbox_min[0], points[:, 0] > bbox_max[0])
+                            outside_mask.logical_or_(points[:, 1] < bbox_min[1])
+                            outside_mask.logical_or_(points[:, 1] > bbox_max[1])
+                            outside_mask.logical_or_(points[:, 2] < bbox_min[2])
+                            outside_mask.logical_or_(points[:, 2] > bbox_max[2])
 
                         self.optimizer.filter_gaussians(~outside_mask)
                         ng_post = self.model.num_gaussians
@@ -1041,14 +1024,6 @@ class GaussianSplatReconstruction:
                         self._logger.debug(
                             f"Clipped {nclip:,} Gaussians outside the crop bounding box min={bbox_min}, max={bbox_max}."
                         )
-
-                # Reset the opacity parameters every so often
-                if (
-                    self.config.reset_opacities_every_epoch > 0
-                    and self._global_step % reset_opacities_every_step == 0
-                    and self._global_step > 0
-                ):
-                    self.optimizer.reset_opacities()
 
                 # Step the Gaussian optimizer
                 self.optimizer.step()

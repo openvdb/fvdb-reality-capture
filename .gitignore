@@ -71,3 +71,4 @@ tests/data/
 *.log
 *.nsys-rep
 *.usdz
+**/fvdb_gslogs/

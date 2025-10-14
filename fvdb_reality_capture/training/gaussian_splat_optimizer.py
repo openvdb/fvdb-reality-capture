@@ -99,6 +99,24 @@ class GaussianSplatOptimizerConfig:
     # This value must be >= 2.
     insertion_duplication_factor: int = 2
 
+    # If > 0, then reset all opacities to be <= 2 * deletion_opacity_threshold every N refinements.
+    # This prevents Gaussians from becoming completely occluded by denser Gaussians and thus unable to be optimized.
+    reset_opacities_every_n_refinements: int = 30
+
+    # If > 0, then after this many refinements, use the 3D scales of the Gaussians to determine whether to delete them.
+    # This will delete Gaussians that have grown too large in 3D space and are not contributing to the optimization.
+    use_scales_for_deletion_after_n_refinements: int = reset_opacities_every_n_refinements
+
+    # If > 0 then use screen space scales for refinement until this many refinements have been performed.
+    # If set to true, threshold the maximum projected size of Gaussians between refinement steps
+    # to decide whether to split or delete Gaussians that are too large.
+    use_screen_space_scales_for_refinement_until: int = 0
+
+    # If True, the thresolds on 3d scale (deletion_scale_3d_threshold, insertion_scale_3d_threshold)
+    # are interpreted as absolute units in the scene, otherwise they are relative to the
+    # scene's diagonal length (i.e. a value of 0.01 means 1% of the scene diagonal).
+    scale_3d_thresholds_use_absolute_units: bool = False
+
     # Learning rate for the means
     means_lr: float = 1.6e-4
     # Learning rate for the log scales
@@ -130,6 +148,8 @@ class GaussianSplatOptimizer:
         optimizer: torch.optim.Adam,
         means_lr_decay_exponent: float,
         config: GaussianSplatOptimizerConfig,
+        refine_count: int,
+        step_count: int,
         _private: Any = None,
     ):
         """
@@ -142,6 +162,8 @@ class GaussianSplatOptimizer:
             optimizer (torch.optim.Adam): The optimizer for the model.
             means_lr_decay_exponent (float): The exponent used for decaying the means learning rate.
             config (GaussianSplatOptimizerConfig): Configuration options for the optimizer.
+            refine_count (int): The number of times `refine()` has been called on this optimizer.
+            step_count (int): The number of times `step()` has been called on this optimizer.
             _private (Any): A private object to prevent direct instantiation. Must be `GaussianSplatOptimizer.__PRIVATE__`.
         """
         if _private is not self.__PRIVATE__:
@@ -151,14 +173,16 @@ class GaussianSplatOptimizer:
         self._logger = logging.getLogger(f"{self.__class__.__module__}.{self.__class__.__name__}")
 
         # How many timeds we've called step() on this optimizer
-        self._step_count = 0
+        self._step_count = step_count
 
         # How many times we've called refine() on this optimizer
-        self._refine_count = 0
+        self._refine_count = refine_count
 
+        self._config = config
         self._model = model
         self._model.accumulate_mean_2d_gradients = True  # Make sure we track the 2D gradients for refinement
-        self._config = config
+        if self._config.use_screen_space_scales_for_refinement_until > 0:
+            self._model.accumulate_max_2d_radii = True  # Make sure we track the max 2D radii for refinement
         if self._config.insertion_split_factor < 2:
             raise ValueError("insertion_split_factor must be >= 2")
         if self._config.insertion_duplication_factor < 2:
@@ -226,6 +250,8 @@ class GaussianSplatOptimizer:
             optimizer=optimizer,
             means_lr_decay_exponent=means_lr_decay_exponent,
             config=config,
+            refine_count=0,
+            step_count=0,
             _private=cls.__PRIVATE__,
         )
 
@@ -255,6 +281,8 @@ class GaussianSplatOptimizer:
             optimizer=optimizer,
             means_lr_decay_exponent=state_dict["means_lr_decay_exponent"],
             config=config,
+            step_count=state_dict["step_count"],
+            refine_count=state_dict["refine_count"],
             _private=cls.__PRIVATE__,
         )
         optimizer._insertion_grad_2d_abs_threshold = state_dict["insertion_grad_2d_abs_threshold"]
@@ -296,6 +324,8 @@ class GaussianSplatOptimizer:
             "insertion_grad_2d_abs_threshold": self._insertion_grad_2d_abs_threshold,
             "num_grad_accumulation_steps": self._num_grad_accumulation_steps,
             "config": vars(self._config),
+            "step_count": self._step_count,
+            "refine_count": self._refine_count,
             "version": 3,
         }
 
@@ -344,9 +374,7 @@ class GaussianSplatOptimizer:
         )
 
     @torch.no_grad()
-    def refine(
-        self, use_scales_for_deletion: bool, use_screen_space_scales: bool, zero_gradients: bool = True
-    ) -> tuple[int, int, int]:
+    def refine(self, zero_gradients: bool = True) -> tuple[int, int, int]:
         """
         Perform a step of refinement by inserting Gaussians where more detail is needed and deleting Gaussians that are not contributing to the optimization.
         Refinement happens via three mechanisms:
@@ -366,10 +394,6 @@ class GaussianSplatOptimizer:
 
 
         Args:
-            use_scales_for_deletion (bool): If set to True, use the 3D scales to decide whether to delete Gaussians that are too large.
-            use_screen_space_scales (bool): If set to true, threshold the maximum projected size of Gaussians between refinement steps
-                to decide whether to split or delete Gaussians that are too large.
-                Note that the model must have been configured to track these scales by setting `GaussianSplat3d.accumulate_max_2d_radii = True`.
             zero_gradients (bool): If True, zero the gradients after refinement.
 
         Returns:
@@ -378,7 +402,14 @@ class GaussianSplatOptimizer:
             num_deleted (int): The number of Gaussians that were deleted.
         """
 
+        use_screen_space_scales = self._refine_count < self._config.use_screen_space_scales_for_refinement_until
+        if not use_screen_space_scales and self._model.accumulate_max_2d_radii:
+            # We no longer need to track the max 2D radii since we're not using them for refinement
+            self._model.accumulate_max_2d_radii = False
+
         is_duplicated, is_split = self._compute_insertion_masks(use_screen_space_scales)
+
+        use_scales_for_deletion = self._refine_count > self._config.use_scales_for_deletion_after_n_refinements
         is_deleted = self._compute_deletion_mask(use_scales_for_deletion, use_screen_space_scales)
 
         # We won't insert Gaussians which are up for deletion since they will be deleted anyway
@@ -393,6 +424,13 @@ class GaussianSplatOptimizer:
         num_duplicated = len(duplication_indices)
         num_deleted = int(is_deleted.sum().item())
 
+        # Should we reset opacities after refinement?
+        should_reset_opacities = (
+            self._refine_count > 0
+            and self._config.reset_opacities_every_n_refinements > 0
+            and self._refine_count % self._config.reset_opacities_every_n_refinements == 0
+        )
+
         # The net number of Gaussians added to the total number of Gaussians after refinement
         num_added_gaussians = (
             num_duplicated * (self._config.insertion_duplication_factor - 1)
@@ -404,6 +442,9 @@ class GaussianSplatOptimizer:
             self._logger.warning(
                 f"Refinement would insert a net of {num_added_gaussians} leading to {num_gaussians_after_refinement} which exceeds max_gaussians ({self._config.max_gaussians}), skipping refinement step"
             )
+            if should_reset_opacities:
+                self.reset_opacities()
+
             self._refine_count += 1
             return 0, 0, 0
 
@@ -454,6 +495,9 @@ class GaussianSplatOptimizer:
             return ret
 
         self._update_optimizer_params_and_state(update_state_function)
+
+        if should_reset_opacities:
+            self.reset_opacities()
 
         self._refine_count += 1
         return num_duplicated, num_split, num_deleted

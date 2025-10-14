@@ -115,6 +115,7 @@ def main(
     """
     log_level = logging.DEBUG if verbose else logging.INFO
     logging.basicConfig(level=log_level, format="%(levelname)s : %(message)s")
+    logger = logging.getLogger(__name__)
 
     if dataset_type == "colmap":
         sfm_scene = SfmScene.from_colmap(dataset_path)
@@ -146,8 +147,6 @@ def main(
     runner.train()
 
     runner.model.save_ply(out_file_name, metadata=runner.optimization_metadata)
-
-    logger = logging.getLogger(__name__)
 
     if viewer is not None:
         logger.info("Viewer running... Ctrl+C to exit.")
