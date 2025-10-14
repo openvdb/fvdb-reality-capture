@@ -91,9 +91,6 @@ class GaussianSplatReconstructionConfig:
     ignore_masks: bool = False
     # Whether to remove Gaussians that fall outside the scene bounding box
     remove_gaussians_outside_scene_bbox: bool = False
-    # What units to use for the 3D scale thresholds in the optimizer (i.e. insertion_scale_3d_threshold, deletion_scale_3d_threshold)
-    # If set to "scene_scale", the thresholds are multiplied by the scene scale
-    optimizer_scale_3d_threshold_units: Literal["absolute", "scene_scale"] = "scene_scale"
 
     #
     # Pose optimization parameters
@@ -202,21 +199,13 @@ class GaussianSplatReconstruction:
         logger.info(f"Model initialized with {model.num_gaussians:,} Gaussians")
 
         # Initialize optimizer
-        scene_scale = GaussianSplatReconstruction._compute_scene_scale(train_dataset.sfm_scene)
         max_steps = config.max_epochs * len(train_dataset)
-        mean_lr_decay_exponent = 0.01 ** (1.0 / max_steps)
-        # Copy the optimizer config so we don't modify the input config
-        opt_config = GaussianSplatOptimizerConfig(**vars(optimizer_config))
-        if config.optimizer_scale_3d_threshold_units == "scene_scale":
-            opt_config.deletion_scale_3d_threshold *= scene_scale * 1.1
-            opt_config.insertion_scale_3d_threshold *= scene_scale * 1.1
-        opt_config.means_lr *= scene_scale * 1.1  # Scale the means learning rate by the scene scale
         optimizer = GaussianSplatOptimizer.from_model_and_config(
             model=model,
-            config=opt_config,
-            means_lr_decay_exponent=mean_lr_decay_exponent,
-            batch_size=config.batch_size,
+            sfm_scene=train_dataset.sfm_scene,
+            config=optimizer_config,
         )
+        optimizer.reset_learning_rates_and_decay(batch_size=config.batch_size, expected_steps=max_steps)
 
         # Initialize pose optimizer
         pose_adjust_model, pose_adjust_optimizer, pose_adjust_scheduler = None, None, None
@@ -553,7 +542,6 @@ class GaussianSplatReconstruction:
             "camera_to_world_matrices": training_camera_to_world_matrices,
             "projection_matrices": training_projection_matrices,
             "image_sizes": training_image_sizes,
-            "scene_scale": GaussianSplatReconstruction._compute_scene_scale(self.training_dataset.sfm_scene),
             "eps2d": self.config.eps_2d,
             "near_plane": self.config.near_plane,
             "far_plane": self.config.far_plane,
@@ -686,47 +674,6 @@ class GaussianSplatReconstruction:
         model.requires_grad = True
 
         return model
-
-    @staticmethod
-    def _compute_scene_scale(sfm_scene: SfmScene, use_sfm_depths=True) -> float:
-        """
-        Compute a measure of the "scale" of a scene. I.e. how far away objects of interest are from
-        the cameras in the capture.
-
-        Args:
-            sfm_scene (SfmScene): The scene loaded from an structure-from-motion (SfM) pipeline.
-            use_sfm_depths (bool): Whether to use the SfM depths for scale estimation (True by default).
-
-        Returns:
-            scene_scale (float): An estimate of how far objects in the scene are from the cameras that captured them
-        """
-        if use_sfm_depths and sfm_scene.has_visible_point_indices:
-            # Estimate the scene scale as the median across the median distances from cameras to the
-            # sfm points they see. If there is not too much variance in how far the cameras are from the scene
-            # this gives a rough estimate of the scene scale.
-            median_depth_per_camera = []
-            for image_meta in sfm_scene.images:
-                # Don't use cameras that don't see any points in the estimate
-                assert (
-                    image_meta.point_indices is not None
-                ), "SfmScene.has_visible_point_indices is True but image has no point indices"
-                if len(image_meta.point_indices) == 0:
-                    continue
-                points = sfm_scene.points[image_meta.point_indices]
-                dist_to_points = np.linalg.norm(points - image_meta.origin, axis=1)
-                median_dist = np.median(dist_to_points)
-                median_depth_per_camera.append(median_dist)
-            return float(np.median(median_depth_per_camera))
-        else:
-            # The old way used the maximum distance from any camera to the centroid of all cameras
-            # which worked well for orbit scans with a central point of interest but not so much
-            # for other types of capture (e.g. drone footage).
-            # This code is around as a reference and so we can compare the new behavior to the old
-            # but is not used
-            origins = np.stack([cam.origin for cam in sfm_scene.images], axis=0)
-            centroid = np.mean(origins, axis=0)
-            dists = np.linalg.norm(origins - centroid, axis=1)
-            return np.max(dists)
 
     @staticmethod
     def _make_index_splits(sfm_scene: SfmScene, use_every_n_as_val: int) -> tuple[np.ndarray, np.ndarray]:

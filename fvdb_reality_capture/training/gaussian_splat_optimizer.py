@@ -14,6 +14,8 @@ import torch.optim
 from fvdb import GaussianSplat3d
 from scipy.special import logit
 
+from ..sfm_scene import SfmScene
+
 
 class InsertionGrad2dThresholdMode(str, Enum):
     """
@@ -36,6 +38,27 @@ class InsertionGrad2dThresholdMode(str, Enum):
     CONSTANT = "constant"
     PERCENTILE_FIRST_ITERATION = "percentile_first_iteration"
     PERCENTILE_EVERY_ITERATION = "percentile_every_iteration"
+
+
+class SpatialScaleMode(str, Enum):
+    """
+    How to interpret 3D optimization scale thresholds (insertion_scale_3d_threshold, deletion_scale_3d_threshold)
+    and learning rates. These thresholds specified in a unitless space, and are subsequently multipled by a spatial scale
+    computed from the scene being optimized. There are several heuristics for computing this spatial scale, specified by the config:
+
+    - ABSOLUTE_UNITS: Use the thresholds as-is, in absolute world units (e.g. meters).
+    - MEDIAN_CAMERA_DEPTH: Compute the median depth of SfmPoints across of all cameras in the scene, and use that as the spatial scale.
+    - MAX_CAMERA_DEPTH: Compute the maximum depth of SfmPoints across all cameras in the scene, and use that as the spatial scale.
+    - MAX_CAMERA_TO_CENTROID: Compute the maximum distance from any camera to the centroid of all camera positions (good for orbits around an object).
+    - SCENE_DIAGONAL_PERCENTILE: Compute the axis-aligned bounding box of all points within the 5-95th percentile range along each axis,
+        and use the given percentile of the length of the diagonal of this box as the spatial scale.
+    """
+
+    ABSOLUTE_UNITS = "absolute_units"
+    MEDIAN_CAMERA_DEPTH = "median_camera_depth"
+    MAX_CAMERA_DEPTH = "max_camera_depth"
+    MAX_CAMERA_TO_CENTROID = "max_camera_diagonal"
+    SCENE_DIAGONAL_PERCENTILE = "relative_to_scene_diagonal"
 
 
 @dataclass
@@ -112,10 +135,12 @@ class GaussianSplatOptimizerConfig:
     # to decide whether to split or delete Gaussians that are too large.
     use_screen_space_scales_for_refinement_until: int = 0
 
-    # If True, the thresolds on 3d scale (deletion_scale_3d_threshold, insertion_scale_3d_threshold)
-    # are interpreted as absolute units in the scene, otherwise they are relative to the
-    # scene's diagonal length (i.e. a value of 0.01 means 1% of the scene diagonal).
-    scale_3d_thresholds_use_absolute_units: bool = False
+    # How to interpret 3D optimization scale thresholds (insertion_scale_3d_threshold, deletion_scale_3d_threshold)
+    # and learning rates. These are scaled by a spatial scale computed from the scene, so they are relative
+    # to the size of the scene being optimized.
+    spatial_scale_mode: SpatialScaleMode = SpatialScaleMode.MEDIAN_CAMERA_DEPTH
+    # Multiplier to apply to the spatial scale computed from the scene to get a slightly larger scale.
+    spatial_scale_multiplier: float = 1.1
 
     # Learning rate for the means
     means_lr: float = 1.6e-4
@@ -145,9 +170,9 @@ class GaussianSplatOptimizer:
     def __init__(
         self,
         model: GaussianSplat3d,
-        optimizer: torch.optim.Adam,
-        means_lr_decay_exponent: float,
+        optimizer: torch.optim.Adam | torch.optim.SparseAdam,
         config: GaussianSplatOptimizerConfig,
+        spatial_scale: float,
         refine_count: int,
         step_count: int,
         _private: Any = None,
@@ -160,8 +185,8 @@ class GaussianSplatOptimizer:
         Args:
             model (GaussianSplat3d): The `GaussianSplat3d` model to optimize.
             optimizer (torch.optim.Adam): The optimizer for the model.
-            means_lr_decay_exponent (float): The exponent used for decaying the means learning rate.
             config (GaussianSplatOptimizerConfig): Configuration options for the optimizer.
+            spatial_scale (float): A spatial scale for the scene used to interpret 3D scale thresholds in the config.
             refine_count (int): The number of times `refine()` has been called on this optimizer.
             step_count (int): The number of times `step()` has been called on this optimizer.
             _private (Any): A private object to prevent direct instantiation. Must be `GaussianSplatOptimizer.__PRIVATE__`.
@@ -177,6 +202,9 @@ class GaussianSplatOptimizer:
 
         # How many times we've called refine() on this optimizer
         self._refine_count = refine_count
+
+        # A spatial scale for the scene used to interpret 3D scale thresholds in the config
+        self._spatial_scale = spatial_scale
 
         self._config = config
         self._model = model
@@ -220,15 +248,57 @@ class GaussianSplatOptimizer:
         self._optimizer = optimizer
 
         # Store the decay exponent for the means learning rate schedule so we can serialize it
-        self._means_lr_decay_exponent = means_lr_decay_exponent
+        self._means_lr_decay_exponent = 1.0
+
+    def reset_learning_rates_and_decay(self, batch_size: int, expected_steps: int):
+        """
+        Set the learning rates and learning rate decay factor based on the batch size and the exected
+        number of optimization steps (times .step() is called).
+
+        This is useful if you want to change the batch size or expected number of steps after creating
+        the optimizer.
+
+        Args:
+            batch_size (int): The batch size used for training. This is used to scale the learning rates.
+            expected_steps (int): The expected number of optimization steps.
+        """
+        if batch_size <= 0:
+            raise ValueError("batch_size must be > 0")
+        if expected_steps <= 0:
+            raise ValueError("expected_steps must be > 0")
+
+        self._means_lr_decay_exponent = 0.01 ** (1.0 / expected_steps)
+
+        # Scale the learning rate and momentum parameters (epsilon, betas) based on batch size,
+        # reference: https://www.cs.princeton.edu/~smalladi/blog/2024/01/22/SDEs-ScalingRules/
+        # Note that this will not make the training exactly equivalent to the original INRIA
+        # Gaussian splat implementation.
+        # See https://arxiv.org/pdf/2402.18824v1 for more details.
+        lr_batch_rescale = math.sqrt(float(batch_size))
+
+        # Store learning rates in a dictionary so we can look them up
+        # using param_group['name'] for each parameter group in the optimizer.
+        reset_lr_values = {
+            "means": self._config.means_lr * self._spatial_scale * lr_batch_rescale,
+            "log_scales": self._config.log_scales_lr * lr_batch_rescale,
+            "quats": self._config.quats_lr * lr_batch_rescale,
+            "logit_opacities": self._config.logit_opacities_lr * lr_batch_rescale,
+            "sh0": self._config.sh0_lr * lr_batch_rescale,
+            "shN": self._config.shN_lr * lr_batch_rescale,
+        }
+
+        rescaled_betas = (1.0 - batch_size * (1.0 - 0.9), 1.0 - batch_size * (1.0 - 0.999))
+        for param_group in self._optimizer.param_groups:
+            param_group["betas"] = rescaled_betas
+            param_group["lr"] = reset_lr_values[param_group["name"]]
+            param_group["eps"] = 1e-15 / lr_batch_rescale
 
     @classmethod
     def from_model_and_config(
         cls,
         model: GaussianSplat3d,
+        sfm_scene: SfmScene,
         config: GaussianSplatOptimizerConfig = GaussianSplatOptimizerConfig(),
-        means_lr_decay_exponent: float = 1.0,
-        batch_size: int = 1,
     ) -> "GaussianSplatOptimizer":
         """
         Create a new `GaussianSplatOptimizer` instance from a model and config.
@@ -236,6 +306,7 @@ class GaussianSplatOptimizer:
         Args:
             model (GaussianSplat3d): The `GaussianSplat3d` model to optimize.
             config (GaussianSplatOptimizerConfig): Configuration options for the optimizer.
+            means_lr_scale (float): A scale factor to apply to the means learning rate.
             means_lr_decay_exponent (float): The exponent used for decaying the means learning rate.
             batch_size (int): The batch size used for training. This is used to scale the learning rates.
 
@@ -243,13 +314,16 @@ class GaussianSplatOptimizer:
             GaussianSplatOptimizer: A new `GaussianSplatOptimizer` instance.
         """
 
-        optimizer = GaussianSplatOptimizer._make_optimizer(model, batch_size, config)
+        spatial_scale = (
+            cls._compute_spatial_scale(sfm_scene, config.spatial_scale_mode) * config.spatial_scale_multiplier
+        )
+        optimizer = GaussianSplatOptimizer._make_optimizer(model, spatial_scale, config)
 
         return cls(
             model=model,
             optimizer=optimizer,
-            means_lr_decay_exponent=means_lr_decay_exponent,
             config=config,
+            spatial_scale=spatial_scale,
             refine_count=0,
             step_count=0,
             _private=cls.__PRIVATE__,
@@ -273,19 +347,23 @@ class GaussianSplatOptimizer:
             raise ValueError(f"Unsupported version: {state_dict['version']}")
 
         config = GaussianSplatOptimizerConfig(**state_dict["config"])
-        optimizer = GaussianSplatOptimizer._make_optimizer(model, batch_size=1, config=config)
+
+        # We pass in 1.0 for the means_lr_scale since this is already baked into the optimizer state
+        # which we load below.
+        optimizer = GaussianSplatOptimizer._make_optimizer(model=model, means_lr_scale=1.0, config=config)
         optimizer.load_state_dict(state_dict["optimizer"])
 
         optimizer = cls(
             model=model,
             optimizer=optimizer,
-            means_lr_decay_exponent=state_dict["means_lr_decay_exponent"],
+            spatial_scale=state_dict["spatial_scale"],
             config=config,
             step_count=state_dict["step_count"],
             refine_count=state_dict["refine_count"],
             _private=cls.__PRIVATE__,
         )
         optimizer._insertion_grad_2d_abs_threshold = state_dict["insertion_grad_2d_abs_threshold"]
+        optimizer._means_lr_decay_exponent = state_dict["means_lr_decay_exponent"]
 
         return optimizer
 
@@ -324,6 +402,7 @@ class GaussianSplatOptimizer:
             "insertion_grad_2d_abs_threshold": self._insertion_grad_2d_abs_threshold,
             "num_grad_accumulation_steps": self._num_grad_accumulation_steps,
             "config": vars(self._config),
+            "spatial_scale": self._spatial_scale,
             "step_count": self._step_count,
             "refine_count": self._refine_count,
             "version": 3,
@@ -503,45 +582,38 @@ class GaussianSplatOptimizer:
         return num_duplicated, num_split, num_deleted
 
     @staticmethod
-    def _make_optimizer(model, batch_size, config):
+    def _make_optimizer(model, means_lr_scale, config):
         """
         Make an Adam optimizer for the given model and config.
         This is just a helper function used by the constructors since this logic is shared and verbose.
 
         Args:
             model (GaussianSplat3d): The model to optimize.
-            batch_size (int): The batch size used for training. This is used to scale the learning rates
-                and momentum parameters.
+            means_lr_scale (float): A scale factor to apply to the means learning rate.
             config (GaussianSplatOptimizerConfig): The configuration for the optimizer.
 
         Returns:
             torch.optim.Adam: An Adam optimizer for the model.
         """
-        # Scale the learning rate and momentum parameters (epsilon, betas) based on batch size,
-        # reference: https://www.cs.princeton.edu/~smalladi/blog/2024/01/22/SDEs-ScalingRules/
-        # Note that this will not make the training exactly equivalent to the original INRIA
-        # Gaussian splat implementation.
-        # See https://arxiv.org/pdf/2402.18824v1 for more details.
-        lr_batch_rescale = math.sqrt(float(batch_size))
         return torch.optim.Adam(
             [
-                {"params": model.means, "lr": config.means_lr * lr_batch_rescale, "name": "means"},
+                {"params": model.means, "lr": means_lr_scale * config.means_lr, "name": "means"},
                 {
                     "params": model.log_scales,
-                    "lr": config.log_scales_lr * lr_batch_rescale,
+                    "lr": config.log_scales_lr,
                     "name": "log_scales",
                 },
-                {"params": model.quats, "lr": config.quats_lr * lr_batch_rescale, "name": "quats"},
+                {"params": model.quats, "lr": config.quats_lr, "name": "quats"},
                 {
                     "params": model.logit_opacities,
-                    "lr": config.logit_opacities_lr * lr_batch_rescale,
+                    "lr": config.logit_opacities_lr,
                     "name": "logit_opacities",
                 },
-                {"params": model.sh0, "lr": config.sh0_lr * lr_batch_rescale, "name": "sh0"},
-                {"params": model.shN, "lr": config.shN_lr * lr_batch_rescale, "name": "shN"},
+                {"params": model.sh0, "lr": config.sh0_lr, "name": "sh0"},
+                {"params": model.shN, "lr": config.shN_lr, "name": "shN"},
             ],
-            eps=1e-15 / lr_batch_rescale,
-            betas=(1.0 - batch_size * (1.0 - 0.9), 1.0 - batch_size * (1.0 - 0.999)),
+            eps=1e-15,
+            betas=(0.9, 0.999),
             fused=True,
         )
 
@@ -648,7 +720,9 @@ class GaussianSplatOptimizer:
         is_grad_high = avg_norm_of_projected_mean_gradients > self._compute_insertion_grad_2d_threshold(
             avg_norm_of_projected_mean_gradients
         )
-        is_small = self._model.log_scales.max(dim=-1).values <= np.log(self._config.insertion_scale_3d_threshold)
+        is_small = self._model.log_scales.max(dim=-1).values <= np.log(
+            self._config.insertion_scale_3d_threshold * self._spatial_scale
+        )
         is_duplicated = is_grad_high & is_small
 
         # If the Gaussian is high error and its 3d spatial size is large, split the Gaussian
@@ -689,7 +763,9 @@ class GaussianSplatOptimizer:
         # If you specify it, we will also delete Gaussians that are too large since they are likely not contributing
         # meaningfully to the reconstruction.
         if use_scales_for_deletion:
-            is_too_big = self._model.log_scales.max(dim=-1).values > np.log(self._config.deletion_scale_3d_threshold)
+            is_too_big = self._model.log_scales.max(dim=-1).values > np.log(
+                self._config.deletion_scale_3d_threshold * self._spatial_scale
+            )
             is_deleted.logical_or_(is_too_big)
 
             # We can also use the tracked screen space scales to delete Gaussians that
@@ -888,6 +964,58 @@ class GaussianSplatOptimizer:
             "sh0": sh0_to_add,
             "shN": shN_to_add,
         }
+
+    @classmethod
+    def _compute_spatial_scale(cls, sfm_scene: SfmScene, mode: SpatialScaleMode) -> float:
+        """
+        Calculate a spatial scale for the scene based on the given mode.
+
+        Args:
+            sfm_scene (SfmScene): The scene to calculate the scale for.
+            mode (SpatialScaleMode): The mode to use for calculating the scale.
+        Returns:
+            float: The calculated spatial scale.
+        """
+
+        if not sfm_scene.has_visible_point_indices and mode in (
+            SpatialScaleMode.MEDIAN_CAMERA_DEPTH,
+            SpatialScaleMode.MAX_CAMERA_DEPTH,
+        ):
+            raise ValueError(f"Cannot use {mode} when SfmScene.has_visible_point_indices is False")
+
+        if mode == SpatialScaleMode.ABSOLUTE_UNITS:
+            return 1.0
+        elif mode == SpatialScaleMode.MEDIAN_CAMERA_DEPTH or mode == SpatialScaleMode.MAX_CAMERA_DEPTH:
+            # Compute the median distance from the SfmPoints seen by each camera to the position of the camera
+            median_depth_per_camera = []
+            for image_meta in sfm_scene.images:
+                assert (
+                    image_meta.point_indices is not None
+                ), "SfmScene.has_visible_point_indices is True but image has no point indices"
+
+                # Don't use cameras that don't see any points in the estimate
+                if len(image_meta.point_indices) == 0:
+                    continue
+                points = sfm_scene.points[image_meta.point_indices]
+                dist_to_points = np.linalg.norm(points - image_meta.origin, axis=1)
+                median_dist = np.median(dist_to_points)
+                median_depth_per_camera.append(median_dist)
+            if mode == SpatialScaleMode.MEDIAN_CAMERA_DEPTH:
+                return float(np.median(median_depth_per_camera))
+            elif mode == SpatialScaleMode.MAX_CAMERA_DEPTH:
+                return float(np.max(median_depth_per_camera))
+        elif mode == SpatialScaleMode.MAX_CAMERA_TO_CENTROID:
+            origins = np.stack([cam.origin for cam in sfm_scene.images], axis=0)
+            centroid = np.mean(origins, axis=0)
+            dists = np.linalg.norm(origins - centroid, axis=1)
+            return float(np.max(dists))
+        elif mode == SpatialScaleMode.SCENE_DIAGONAL_PERCENTILE:
+            percentiles = np.percentile(sfm_scene.points, [5, 95], axis=1)
+            bbox_min, bbox_max = percentiles[:, 0], percentiles[:, 1]
+            scene_diag = np.linalg.norm(bbox_max - bbox_min)
+            return float(scene_diag)
+        else:
+            raise ValueError(f"Unknown spatial scale mode: {mode}")
 
     @staticmethod
     def _unit_quats_to_rotation_matrices(quaternions: torch.Tensor) -> torch.Tensor:
