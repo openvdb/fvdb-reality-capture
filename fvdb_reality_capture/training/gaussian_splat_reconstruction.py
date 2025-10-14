@@ -427,25 +427,6 @@ class GaussianSplatReconstruction:
         if self._viewer is not None:
             with torch.no_grad():
                 self._viewer.add_gaussian_splat_3d(f"Gaussian Scene", self.model)
-                train_cam_poses = torch.from_numpy(self._training_dataset.camera_to_world_matrices).to(
-                    dtype=torch.float32
-                )
-                train_projection_matrices = torch.from_numpy(
-                    self._training_dataset.projection_matrices.astype(np.float32)
-                )
-                first_cam_pos = self._training_dataset.camera_to_world_matrices[0, :3, 3]
-                self._viewer.set_camera_lookat(
-                    eye=first_cam_pos,
-                    center=self.model.means.mean(dim=0).cpu().numpy(),
-                    up=[0, 0, -1],
-                )
-                # image_sizes = torch.from_numpy(self._training_dataset.image_sizes.astype(np.int32))
-                # self._viewer.add_camera_view(
-                #     name=f"Training Cameras for run {self._run_name}",
-                #     cam_to_world_matrices=train_cam_poses,
-                #     projection_matrices=train_projection_matrices,
-                #     image_sizes=image_sizes,
-                # )
 
         # Losses & Metrics.
         if self.config.lpips_net == "alex":
