@@ -171,7 +171,7 @@ class GaussianSplatOptimizer(BaseGaussianSplatOptimizer):
     def __init__(
         self,
         model: GaussianSplat3d,
-        optimizer: torch.optim.Adam | torch.optim.SparseAdam,
+        optimizer: torch.optim.Adam,
         config: GaussianSplatOptimizerConfig,
         spatial_scale: float,
         refine_count: int,
