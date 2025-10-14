@@ -1,7 +1,10 @@
+# Copyright Contributors to the OpenVDB Project
+# SPDX-License-Identifier: Apache-2.0
+#
+
 import logging
 import pathlib
 import time
-import uuid
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import Any, TextIO
