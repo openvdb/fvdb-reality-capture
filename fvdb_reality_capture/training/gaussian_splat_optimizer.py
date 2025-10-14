@@ -3,6 +3,7 @@
 #
 import logging
 import math
+from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from enum import Enum
 from typing import Any, Callable
@@ -15,6 +16,99 @@ from fvdb import GaussianSplat3d
 from scipy.special import logit
 
 from ..sfm_scene import SfmScene
+
+
+class BaseGaussianSplatOptimizer(ABC):
+    """
+    Base class for optimizers that reconstruct a scene using Gaussian Splat radiance fields over a collection of posed images.
+
+    This class defines the interface for optimizers that optimize the parameters of a `fvdb.GaussianSplat3d` model, and
+    provides utilities to refine the model by inserting and deleting Gaussians based on their contribution to the optimization.
+
+    Currently, the only concrete implementation is `GaussianSplatOptimizer`, which implements the algorithm in the original
+    Gaussian Splatting paper (https://arxiv.org/abs/2308.04079).
+    """
+
+    @classmethod
+    @abstractmethod
+    def from_state_dict(cls, model: GaussianSplat3d, state_dict: dict[str, Any]) -> "BaseGaussianSplatOptimizer":
+        """
+        Abstract method to create a new `BaseGaussianSplatOptimizer` instance from a model and a state dict (usually obtained from `state_dict()`).
+
+        Args:
+            model (GaussianSplat3d): The `GaussianSplat3d` model to optimize.
+            state_dict (dict[str, Any]): A state dict previously obtained from `state_dict()`.
+
+        Returns:
+            optimizer (BaseGaussianSplatOptimizer): A new `BaseGaussianSplatOptimizer` instance.
+        """
+        pass
+
+    @abstractmethod
+    def state_dict(self) -> dict[str, Any]:
+        """
+        Abstract method to return a serializable state dict for the optimizer.
+
+        Returns:
+            state_dict (dict[str, Any]): A state dict containing the state of the optimizer.
+        """
+        pass
+
+    @abstractmethod
+    def reset_learning_rates_and_decay(self, batch_size: int, expected_steps: int) -> None:
+        """
+        Abstract method to set the learning rates and learning rate decay factor based on the batch size and the expected
+        number of optimization steps (times .step() is called).
+
+        This is useful if you want to change the batch size or expected number of steps after creating
+        the optimizer.
+
+        Args:
+            batch_size (int): The batch size used for training. This is used to scale the learning rates.
+            expected_steps (int): The expected number of optimization steps.
+        """
+        pass
+
+    @abstractmethod
+    def step(self):
+        """
+        Abstract method to step the optimizer (updating the model's parameters).
+        """
+        pass
+
+    @abstractmethod
+    def zero_grad(self, set_to_none: bool = False):
+        """
+        Abstract method to zero the gradients of all tensors being optimized.
+
+        Args:
+            set_to_none (bool): If True, set the gradients to None instead of zeroing them. This can be more memory efficient.
+        """
+        pass
+
+    @abstractmethod
+    def filter_gaussians(self, indices_or_mask: torch.Tensor):
+        """
+        Abstract method to filter the Gaussians in the model based on the given indices or mask, and update the corresponding
+        optimizer state accordingly. This can be used to delete, shuffle, or duplicate the Gaussians during optimization.
+
+        Args:
+            indices_or_mask (torch.Tensor): A 1D tensor of indices or a boolean mask indicating which Gaussians to keep.
+        """
+        pass
+
+    @abstractmethod
+    def refine(self, zero_gradients: bool = True) -> dict[str, Any]:
+        """
+        Abstract method to refine the model by inserting and deleting Gaussians based on their contribution to the optimization.
+
+        Args:
+            zero_gradients (bool): If True, zero the gradients of all tensors being optimized after refining.
+
+        Returns:
+            refinement_stat (dict[str, Any]): A dictionary containing statistics about the refinement step.
+        """
+        pass
 
 
 class InsertionGrad2dThresholdMode(str, Enum):
@@ -156,7 +250,7 @@ class GaussianSplatOptimizerConfig:
     shN_lr: float = 2.5e-3 / 20
 
 
-class GaussianSplatOptimizer:
+class GaussianSplatOptimizer(BaseGaussianSplatOptimizer):
     """
     Optimizer for reconstructing a scene using Gaussian Splat radiance fields over a collection of posed images.
 
@@ -435,25 +529,7 @@ class GaussianSplatOptimizer:
         self._update_optimizer_params_and_state(lambda x: x[indices_or_mask])
 
     @torch.no_grad()
-    def reset_opacities(self):
-        """
-        Clamp the logit_opacities of all Gaussians to be less than or equal to a small value above
-        the deletion threshold. This is useful to call periodically during optimization to prevent
-        Gaussians from becoming completely occluded by denser Gaussians, and thus unable to be optimized.
-        """
-        # Clamp all opacities to be less than or equal to twice the deletion threshold
-        clip_value = logit(self._config.deletion_opacity_threshold * 2.0)
-        self._model.logit_opacities.clamp_max_(clip_value)
-        # This operation invalidates any existing gradients since the tracked
-        # adam states no longer make sense after clamping, and we want any gradient
-        # steps after this to not be influenced by previous gradients.
-        self._model.logit_opacities.grad = None
-        self._update_optimizer_params_and_state(
-            lambda x: x.zero_(), parameter_names={"logit_opacities"}, reset_adam_step_counts=True
-        )
-
-    @torch.no_grad()
-    def refine(self, zero_gradients: bool = True) -> tuple[int, int, int]:
+    def refine(self, zero_gradients: bool = True) -> dict[str, int]:
         """
         Perform a step of refinement by inserting Gaussians where more detail is needed and deleting Gaussians that are not contributing to the optimization.
         Refinement happens via three mechanisms:
@@ -516,16 +592,17 @@ class GaussianSplatOptimizer:
             + num_split * (self._config.insertion_split_factor - 1)
             - num_deleted
         )
-        num_gaussians_after_refinement = self._model.num_gaussians + num_added_gaussians
+        num_gaussians_before_refinement = self._model.num_gaussians
+        num_gaussians_after_refinement = num_gaussians_before_refinement + num_added_gaussians
         if self._config.max_gaussians > 0 and num_gaussians_after_refinement > self._config.max_gaussians:
             self._logger.warning(
                 f"Refinement would insert a net of {num_added_gaussians} leading to {num_gaussians_after_refinement} which exceeds max_gaussians ({self._config.max_gaussians}), skipping refinement step"
             )
             if should_reset_opacities:
-                self.reset_opacities()
+                self._reset_opacities()
 
             self._refine_count += 1
-            return 0, 0, 0
+            return {"num_duplicated": 0, "num_split": 0, "num_deleted": 0}
 
         # Get indices of Gaussians which are preserved during refinement
         kept_indices = torch.where(~(is_split | is_deleted))[0]
@@ -576,10 +653,35 @@ class GaussianSplatOptimizer:
         self._update_optimizer_params_and_state(update_state_function)
 
         if should_reset_opacities:
-            self.reset_opacities()
+            self._reset_opacities()
 
         self._refine_count += 1
-        return num_duplicated, num_split, num_deleted
+        self._logger.debug(
+            f"Optimizer refinement (step {self._step_count:,}): {num_duplicated:,} duplicated, {num_split:,} split, {num_deleted:,} pruned. "
+            f"Before refinement model had {num_gaussians_before_refinement:,} Gaussians, after refinement has {num_gaussians_after_refinement:,} Gaussians."
+        )
+        return {"num_duplicated": num_duplicated, "num_split": num_split, "num_deleted": num_deleted}
+
+    @torch.no_grad()
+    def _reset_opacities(self):
+        """
+        Clamp the logit_opacities of all Gaussians to be less than or equal to a small value above
+        the deletion threshold. This is useful to call periodically during optimization to prevent
+        Gaussians from becoming completely occluded by denser Gaussians, and thus unable to be optimized.
+        """
+        # Clamp all opacities to be less than or equal to twice the deletion threshold
+        clip_value = logit(self._config.deletion_opacity_threshold * 2.0)
+        self._model.logit_opacities.clamp_max_(clip_value)
+        # This operation invalidates any existing gradients since the tracked
+        # adam states no longer make sense after clamping, and we want any gradient
+        # steps after this to not be influenced by previous gradients.
+        self._model.logit_opacities.grad = None
+        self._update_optimizer_params_and_state(
+            lambda x: x.zero_(), parameter_names={"logit_opacities"}, reset_adam_step_counts=True
+        )
+        self._logger.debug(
+            f"Reset all opacities to be <= 2 * deletion_opacity_threshold ({self._config.deletion_opacity_threshold * 2.0:.3f})"
+        )
 
     @staticmethod
     def _make_optimizer(model, means_lr_scale, config):

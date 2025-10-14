@@ -92,13 +92,14 @@ class SfmDataset(torch.utils.data.Dataset, Iterable):
         """
         Get the bounding box of the scene.
 
-        The bounding box is defined as a tensor of shape (2, 3) where the first row is the minimum
-        corner and the second row is the maximum corner of the bounding box.
+        The bounding box is defined as a tensor of shape (6,) where the first three elements are the minimum
+        corner and the last three elements are the maximum corner of the bounding box.
+        _i.e._ [min_x, min_y, min_z, max_x, max_y, max_z].
 
         Returns:
-            torch.Tensor: A tensor of shape (2, 3) representing the bounding box of the scene.
+            torch.Tensor: A tensor of shape (6,) representing the bounding box of the scene.
         """
-        return self._sfm_scene.scene_bbox.reshape([2, 3])
+        return self._sfm_scene.scene_bbox
 
     @property
     def camera_to_world_matrices(self) -> np.ndarray:
