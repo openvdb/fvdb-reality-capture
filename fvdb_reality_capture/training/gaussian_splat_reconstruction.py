@@ -20,6 +20,7 @@ from scipy.spatial import cKDTree  # type: ignore
 from ..sfm_scene import SfmScene
 from .camera_pose_adjust import CameraPoseAdjustment
 from .gaussian_splat_optimizer import (
+    BaseGaussianSplatOptimizer,
     GaussianSplatOptimizer,
     GaussianSplatOptimizerConfig,
 )
@@ -142,12 +143,12 @@ class GaussianSplatReconstruction:
     def from_sfm_scene(
         cls,
         sfm_scene: SfmScene,
-        config: GaussianSplatReconstructionConfig = GaussianSplatReconstructionConfig(),
-        optimizer_config: GaussianSplatOptimizerConfig = GaussianSplatOptimizerConfig(),
         writer: GaussianSplatReconstructionBaseWriter = GaussianSplatReconstructionWriter(
             run_name=None, save_path=None
         ),
         viewer: Viewer | None = None,
+        config: GaussianSplatReconstructionConfig = GaussianSplatReconstructionConfig(),
+        optimizer_config: GaussianSplatOptimizerConfig = GaussianSplatOptimizerConfig(),
         use_every_n_as_val: int = -1,
         viewer_update_interval_epochs: int = 10,
         log_interval_steps: int = 10,
@@ -200,7 +201,7 @@ class GaussianSplatReconstruction:
 
         # Initialize optimizer
         max_steps = config.max_epochs * len(train_dataset)
-        optimizer = GaussianSplatOptimizer.from_model_and_config(
+        optimizer = GaussianSplatOptimizer.from_model_and_scene(
             model=model,
             sfm_scene=train_dataset.sfm_scene,
             config=optimizer_config,
@@ -219,7 +220,6 @@ class GaussianSplatReconstruction:
             sfm_scene=sfm_scene,
             optimizer=optimizer,
             config=config,
-            optimizer_config=optimizer_config,
             train_indices=train_indices,
             val_indices=val_indices,
             pose_adjust_model=pose_adjust_model,
@@ -295,8 +295,6 @@ class GaussianSplatReconstruction:
             raise ValueError("Checkpoint train indices are missing or invalid.")
         if not isinstance(state_dict.get("val_indices", None), (list, np.ndarray, torch.Tensor)):
             raise ValueError("Checkpoint val indices are missing or invalid.")
-        if not isinstance(state_dict.get("optimizer_config", None), dict):
-            raise ValueError("Checkpoint optimizer_config is missing or invalid.")
         if "num_training_poses" not in state_dict:
             raise ValueError("Checkpoint is missing num_training_poses key.")
         if "pose_adjust_model" not in state_dict:
@@ -308,7 +306,6 @@ class GaussianSplatReconstruction:
 
         global_step = state_dict["step"]
         config = GaussianSplatReconstructionConfig(**state_dict["config"])
-        optimizer_config = GaussianSplatOptimizerConfig(**state_dict["optimizer_config"])
         if override_sfm_scene is not None:
             sfm_scene: SfmScene = override_sfm_scene
             logger.info("Using override SfM scene instead of the one from the checkpoint.")
@@ -343,7 +340,6 @@ class GaussianSplatReconstruction:
             sfm_scene=sfm_scene,
             optimizer=optimizer,
             config=config,
-            optimizer_config=optimizer_config,
             train_indices=train_indices,
             val_indices=val_indices,
             pose_adjust_model=pose_adjust_model,
@@ -361,9 +357,8 @@ class GaussianSplatReconstruction:
         self,
         model: GaussianSplat3d,
         sfm_scene: SfmScene,
-        optimizer: GaussianSplatOptimizer,
+        optimizer: BaseGaussianSplatOptimizer,
         config: GaussianSplatReconstructionConfig,
-        optimizer_config: GaussianSplatOptimizerConfig,
         train_indices: np.ndarray,
         val_indices: np.ndarray,
         pose_adjust_model: CameraPoseAdjustment | None,
@@ -386,7 +381,6 @@ class GaussianSplatReconstruction:
             sfm_scene (SfmScene): The Structure-from-Motion scene.
             optimizer (GaussianSplatOptimizer | None): The optimizer for the model.
             config (Config): Configuration object containing model parameters.
-            optimizer_config (GaussianSplatOptimizerConfig): Configuration for the optimizer.
             train_indices (np.ndarray): The indices for the training set.
             val_indices (np.ndarray): The indices for the validation set.
             pose_adjust_model (CameraPoseAdjustment | None): The camera pose adjustment model, if used
@@ -408,7 +402,6 @@ class GaussianSplatReconstruction:
         self._logger = logging.getLogger(f"{self.__class__.__module__}.{self.__class__.__name__}")
 
         self._cfg = config
-        self._optimizer_config = optimizer_config
         self._model = model
         self._optimizer = optimizer
         self._pose_adjust_model = pose_adjust_model
@@ -479,7 +472,6 @@ class GaussianSplatReconstruction:
                 - optimizer: The state dictionary of the optimizer.
                 - train_indices: The indices of the training dataset.
                 - val_indices: The indices of the validation dataset.
-                - optimizer_config: The configuration parameters used for the optimizer.
                 - num_training_poses: The number of training poses if pose adjustment is used, otherwise None.
                 - pose_adjust_model: The state dictionary of the camera pose adjustment model if used, otherwise None.
                 - pose_adjust_optimizer: The state dictionary of the pose adjustment optimizer if used, otherwise None.
@@ -495,7 +487,6 @@ class GaussianSplatReconstruction:
             "optimizer": self._optimizer.state_dict(),
             "train_indices": self._training_dataset.indices,
             "val_indices": self._validation_dataset.indices,
-            "optimizer_config": vars(self._optimizer_config),
             "num_training_poses": self._pose_adjust_model.num_poses if self._pose_adjust_model else None,
             "pose_adjust_model": self._pose_adjust_model.state_dict() if self._pose_adjust_model else None,
             "pose_adjust_optimizer": self._pose_adjust_optimizer.state_dict() if self._pose_adjust_optimizer else None,
@@ -571,12 +562,12 @@ class GaussianSplatReconstruction:
         return self._model
 
     @property
-    def optimizer(self) -> GaussianSplatOptimizer:
+    def optimizer(self) -> BaseGaussianSplatOptimizer:
         """
         Get the optimizer used for training the Gaussian Splatting model.
 
         Returns:
-            GaussianSplatOptimizer: The optimizer instance.
+            optimizer (BaseGaussianSplatOptimizer): The optimizer instance.
         """
         return self._optimizer
 
@@ -743,6 +734,36 @@ class GaussianSplatReconstruction:
             pose_adjust_optimizer, gamma=optimization_config.pose_opt_lr_decay ** (1.0 / num_pose_opt_steps)
         )
         return pose_adjust_model, pose_adjust_optimizer, pose_adjust_scheduler
+
+    def _clip_gaussians_to_scene_bbox(self) -> None:
+        """
+        Remove all Gaussians whose means lie outside the scene bounding box defined in the training dataset.
+        """
+        bbox_min, bbox_max = self.training_dataset.scene_bbox
+        if (
+            np.any(np.isinf(bbox_min))
+            or np.any(np.isinf(bbox_max))
+            or np.any(np.isnan(bbox_min))
+            or np.any(np.isnan(bbox_max))
+        ):
+            self._logger.warning("Scene bounding box is infinite or NaN. Skipping Gaussian clipping.")
+            return
+
+        num_gaussians_before_clipping = self.model.num_gaussians
+        with torch.no_grad():
+            points = self.model.means
+            outside_mask = torch.logical_or(points[:, 0] < bbox_min[0], points[:, 0] > bbox_max[0])
+            outside_mask.logical_or_(points[:, 1] < bbox_min[1])
+            outside_mask.logical_or_(points[:, 1] > bbox_max[1])
+            outside_mask.logical_or_(points[:, 2] < bbox_min[2])
+            outside_mask.logical_or_(points[:, 2] > bbox_max[2])
+
+        self.optimizer.filter_gaussians(~outside_mask)
+        num_gaussians_after_clipping = self.model.num_gaussians
+        num_clipped_gaussians = num_gaussians_before_clipping - num_gaussians_after_clipping
+        self._logger.debug(
+            f"Clipped {num_clipped_gaussians:,} Gaussians outside the crop bounding box min={bbox_min}, max={bbox_max}."
+        )
 
     def train(self, show_progress: bool = True, log_tag: str = "train") -> None:
         """
@@ -944,33 +965,13 @@ class GaussianSplatReconstruction:
                     and self._global_step % refine_every_step == 0
                     and self._global_step < refine_stop_step
                 ):
-                    num_gaussians_before: int = self.model.num_gaussians
-                    num_dup, num_split, num_prune = self.optimizer.refine()
-                    self._logger.debug(
-                        f"Step {self._global_step:,}: Refinement: {num_dup:,} duplicated, {num_split:,} split, {num_prune:,} pruned. "
-                        f"Num Gaussians: {self.model.num_gaussians:,} (before: {num_gaussians_before:,})"
-                    )
+                    self.optimizer.refine()
+
                     # If you specified a crop bounding box, clip the Gaussians that are outside the crop
                     # bounding box. This is useful if you want to train on a subset of the scene
                     # and don't want to waste resources on Gaussians that are outside the crop.
                     if self.config.remove_gaussians_outside_scene_bbox:
-                        bbox_min, bbox_max = self.training_dataset.scene_bbox
-                        ng_prior = self.model.num_gaussians
-                        with torch.no_grad():
-                            points = self.model.means
-
-                            outside_mask = torch.logical_or(points[:, 0] < bbox_min[0], points[:, 0] > bbox_max[0])
-                            outside_mask.logical_or_(points[:, 1] < bbox_min[1])
-                            outside_mask.logical_or_(points[:, 1] > bbox_max[1])
-                            outside_mask.logical_or_(points[:, 2] < bbox_min[2])
-                            outside_mask.logical_or_(points[:, 2] > bbox_max[2])
-
-                        self.optimizer.filter_gaussians(~outside_mask)
-                        ng_post = self.model.num_gaussians
-                        nclip = ng_prior - ng_post
-                        self._logger.debug(
-                            f"Clipped {nclip:,} Gaussians outside the crop bounding box min={bbox_min}, max={bbox_max}."
-                        )
+                        self._clip_gaussians_to_scene_bbox()
 
                 # Step the Gaussian optimizer
                 self.optimizer.step()
