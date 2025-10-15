@@ -468,8 +468,7 @@ class SfmImageMetadata:
         This transformation applies to the left of the camera to world transformation matrix,
         meaning it transforms the camera in world space.
 
-        _i.e._
-            new_camera_to_world_matrix = transformation_matrix @ self.camera_to_world_matrix
+        _i.e._ new_camera_to_world_matrix = transformation_matrix @ self.camera_to_world_matrix
         Args:
             transformation_matrix (np.ndarray): A 4x4 transformation matrix to apply.
 
