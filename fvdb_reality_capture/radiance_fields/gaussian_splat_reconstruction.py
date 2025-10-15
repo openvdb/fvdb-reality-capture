@@ -500,21 +500,19 @@ class GaussianSplatReconstruction:
         Get metadata about the current optimization state, including camera parameters and scene scale.
 
         Returns:
-            dict: A dictionary containing metadata about the optimization state. It's keys include:
-                - normalization_transform: The transformation matrix used to normalize the scene.
-                - camera_to_world_matrices: The optimized camera-to-world matrices for the images used during
-                    reconstruction.
-                - projection_matrices: The projection matrices for the images used during reconstruction.
-                - image_sizes: The sizes of the images used during reconstruction.
-                - median_depths: The median depth values (distance from camera to scene) for each image used
-                    during reconstruction.
-                - scene_scale: The computed scale of the scene.
-                - eps2d: The 2D epsilon value used in rendering.
-                - near_plane: The near plane distance used in rendering.
-                - far_plane: The far plane distance used in rendering.
-                - min_radius_2d: The minimum 2D radius used in rendering.
-                - antialias: Whether anti-aliasing is enabled (1) or not (0).
-                - tile_size: The tile size used in rendering.
+            metadata (dict): A dictionary containing metadata about the optimization state. It's keys include:
+                - `normalization_transform`: The transformation matrix used to normalize the scene.
+                - `camera_to_world_matrices`: The optimized camera-to-world matrices for the images used during reconstruction.
+                - `projection_matrices`: The projection matrices for the images used during reconstruction.
+                - `image_sizes`: The sizes of the images used during reconstruction.
+                - `median_depths`: The median depth values (distance from camera to scene) for each image used during reconstruction.
+                - `scene_scale`: The computed scale of the scene.
+                - `eps2d`: The 2D epsilon value used in rendering.
+                - `near_plane`: The near plane distance used in rendering.
+                - `far_plane`: The far plane distance used in rendering.
+                - `min_radius_2d`: The minimum 2D radius used in rendering.
+                - `antialias`: Whether anti-aliasing is enabled (1) or not (0).
+                - `tile_size`: The tile size used in rendering.
         """
         training_camera_to_world_matrices = torch.from_numpy(self._training_dataset.camera_to_world_matrices).to(
             dtype=torch.float32, device=self.device

@@ -24,20 +24,19 @@ class GaussianSplatReconstructionBaseWriter(ABC):
     @abstractmethod
     def log_metric(self, global_step: int, metric_name: str, metric_value: NumericScalar) -> None:
         """
-        Log a scalar metric value. This function is called during training to log metrics such as loss, PSNR, etc.
+        Abstract method to log a scalar metric value. This function is called during reconstruction to log metrics such as loss, PSNR, etc.
 
         Args:
             global_step (int): The global step at which the metric is being logged.
             metric_name (str): The name of the metric being logged.
-            metric_value (NumericScalar): The value of the metric being logged. Must be a scalar type
-                (int, float, np.number, torch.number, etc.).
+            metric_value (NumericScalar): The value of the metric being logged. Must be a scalar type (int, float, np.number, torch.number, etc.).
         """
         pass
 
     @abstractmethod
     def save_image(self, global_step: int, image_name: str, image: torch.Tensor) -> None:
         """
-        Save an image. This function is called during training to save images such as rendered outputs or intermediate results.
+        Abstract method to save an image. This function is called during reconstruction to save images such as rendered outputs or intermediate results.
 
         Args:
             global_step (int): The global step at which the image is being saved.
@@ -49,7 +48,7 @@ class GaussianSplatReconstructionBaseWriter(ABC):
     @abstractmethod
     def save_checkpoint(self, global_step: int, checkpoint_name: str, checkpoint: dict[str, Any]) -> None:
         """
-        Save a checkpoint. This function is called during training to save model checkpoints.
+        Abstract method to save a checkpoint. This function is called during reconstruction to save model checkpoints.
 
         Args:
             global_step (int): The global step at which the checkpoint is being saved.
@@ -63,7 +62,7 @@ class GaussianSplatReconstructionBaseWriter(ABC):
         self, global_step: int, ply_name: str, model: GaussianSplat3d, metadata: dict[str, Any] | None = None
     ) -> None:
         """
-        Save a Gaussian splat model to a PLY file. This function is called during training to save the current state of the model.
+        Abstract method to save a Gaussian splat model to a PLY file. This function is called during reconstruction to save the current state of the model.
 
         Args:
             global_step (int): The global step at which the PLY file is being saved.
@@ -108,31 +107,34 @@ class GaussianSplatReconstructionWriter(GaussianSplatReconstructionBaseWriter):
     Class to handle logging and saving data during Gaussian splat reconstruction.
     This class is responsible for saving, checkpoints, PLY files, images, and metrics.
     It can also log metrics and images to TensorBoard if requested.
-    save_path/run_name/
-        checkpoints/
-            <step>/
-                <first_checkpoint>.pth
-                <second_checkpoint>.pth
-                ...
-            <step>/
-                ...
-        ply/
-            <step>/
-                <first_ply>.ply
-                <second_ply>.ply
-                ...
-            <step>/
-                ...
-        images/
-            <step>/
-                <first_image>.png
-                <second_image>.png
-                ...
-            <step>/
-                ...
-        tensorboard/
-            events.out.tfevents...
-        metrics_log.csv
+
+    .. code-block:: text
+
+        save_path/run_name/
+            checkpoints/
+                <step>/
+                    <first_checkpoint>.pth
+                    <second_checkpoint>.pth
+                    ...
+                <step>/
+                    ...
+            ply/
+                <step>/
+                    <first_ply>.ply
+                    <second_ply>.ply
+                    ...
+                <step>/
+                    ...
+            images/
+                <step>/
+                    <first_image>.png
+                    <second_image>.png
+                    ...
+                <step>/
+                    ...
+            tensorboard/
+                events.out.tfevents...
+            metrics_log.csv
 
     """
 

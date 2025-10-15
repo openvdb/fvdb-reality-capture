@@ -22,23 +22,29 @@ class InsertionGrad2dThresholdMode(str, Enum):
     """
     The `GaussianSplatOptimizer` uses a threshold on the accumulated norm of 2D mean gradients to use during refinement.
 
-    There are several modes for computing this threshold, specified by the config:
-    - CONSTANT: Always use the fixed threshold specified by self._config.insertion_grad_2d_threshold.
-    - PERCENTILE_FIRST_ITERATION: During the first refinement step, set the threshold to the given percentile of the gradients.
-        For all subsequent refinement steps, use that fixed threshold.
-    - PERCENTILE_EVERY_ITERATION: During every refinement step, set the threshold to the given percentile of the gradients.
-
-    These modes let you adapt the refinement behavior to the statistics of the gradients during training.
-    Generally CONSTANT with a default value (0.0002) will produce okay results, but may not be optimal for all types
-    of captures. Using PERCENTILE_FIRST_ITERATION will have similar behavior to CONSTANT but will adapt to the scale of the gradients
-    which can be more robust across different capture types.
-    For highly detailed scenes, PERCENTILE_EVERY_ITERATION may be useful to adaptively insert more Gaussians as the model learns more detail.
-    This generally produces many more Gaussians and more detailed results at the cost of more memory and compute.
+    There are several modes for computing this threshold, specified by the config. These modes let you adapt the
+    refinement behavior to the statistics of the gradients during training.
     """
 
     CONSTANT = "constant"
+    """
+    Always use the fixed threshold specified by ``self._config.insertion_grad_2d_threshold``. This mode with a default
+    value (``0.0002``) will produce okay results, but may not be optimal for all types of captures.
+    """
+
     PERCENTILE_FIRST_ITERATION = "percentile_first_iteration"
+    """
+    During the first refinement step, set the threshold to the given percentile of the gradients. For all subsequent
+    refinement steps, use that fixed threshold. Using this mode will have similar behavior to ``CONSTANT`` but will
+    adapt to the scale of the gradients which can be more robust across different capture types.
+    """
+
     PERCENTILE_EVERY_ITERATION = "percentile_every_iteration"
+    """
+    During **every** refinement step, set the threshold to the given percentile of the gradients. For highly detailed
+    scenes, this mode may be useful to adaptively insert more Gaussians as the model learns more detail. This generally
+    produces many more Gaussians and more detailed results at the cost of more memory and compute.
+    """
 
 
 class SpatialScaleMode(str, Enum):
@@ -46,124 +52,214 @@ class SpatialScaleMode(str, Enum):
     How to interpret 3D optimization scale thresholds (insertion_scale_3d_threshold, deletion_scale_3d_threshold)
     and learning rates. These thresholds specified in a unitless space, and are subsequently multipled by a spatial scale
     computed from the scene being optimized. There are several heuristics for computing this spatial scale, specified by the config:
-
-    - ABSOLUTE_UNITS: Use the thresholds as-is, in absolute world units (e.g. meters).
-    - MEDIAN_CAMERA_DEPTH: Compute the median depth of SfmPoints across of all cameras in the scene, and use that as the spatial scale.
-    - MAX_CAMERA_DEPTH: Compute the maximum depth of SfmPoints across all cameras in the scene, and use that as the spatial scale.
-    - MAX_CAMERA_TO_CENTROID: Compute the maximum distance from any camera to the centroid of all camera positions (good for orbits around an object).
-    - SCENE_DIAGONAL_PERCENTILE: Compute the axis-aligned bounding box of all points within the 5-95th percentile range along each axis,
-        and use the given percentile of the length of the diagonal of this box as the spatial scale.
     """
 
     ABSOLUTE_UNITS = "absolute_units"
+    """
+    Use the thresholds and learning rates *as-is*, in absolute world units (e.g. meters).
+    """
+
     MEDIAN_CAMERA_DEPTH = "median_camera_depth"
+    """
+    Compute the median depth of SfmPoints across of all cameras in the scene, and use that as the spatial scale.
+    """
+
     MAX_CAMERA_DEPTH = "max_camera_depth"
+    """
+    Compute the maximum depth of SfmPoints across all cameras in the scene, and use that as the spatial scale.
+    """
+
     MAX_CAMERA_TO_CENTROID = "max_camera_diagonal"
+    """
+    Compute the maximum distance from any camera to the centroid of all camera positions
+    (good for orbits around an object).
+    """
+
     SCENE_DIAGONAL_PERCENTILE = "relative_to_scene_diagonal"
+    """
+    Compute the axis-aligned bounding box of all points within the 5th to 95th percentile range along each axis, and
+    use the given percentile of the length of the diagonal of this box as the spatial scale.
+    """
 
 
 @dataclass
 class GaussianSplatOptimizerConfig:
     """
-    Parameters for configuring the `GaussianSplatOptimizer`.
+    Parameters for configuring the ``GaussianSplatOptimizer``.
     """
 
-    # The maximum number of Gaussians to allow in the model. If -1, no limit.
     max_gaussians: int = -1
+    """The maximum number of Gaussians to allow in the model. If -1, no limit."""
 
-    # Whether to use a fixed threshold for insertion_grad_2d_threshold (constant),
-    # a value computed as a percentile of the grad_2d distribution on the first iteration
-    # or a percentile value computed at each refinement step
     insertion_grad_2d_threshold_mode: InsertionGrad2dThresholdMode = InsertionGrad2dThresholdMode.CONSTANT
+    """
+    Whether to use a fixed threshold for :obj:`insertion_grad_2d_threshold` (constant), a value computed as a percentile of
+    the distribution of screen space mean gradients on the first iteration, or a percentile value
+    computed at each refinement step.
 
-    # If a Gaussian's opacity drops below this value, delete it
+    See :class:`InsertionGrad2dThresholdMode` for details on the available modes.
+    """
+
     deletion_opacity_threshold: float = 0.005
+    """
+    If a Gaussian's opacity drops below this value, delete it during refinement.
+    """
 
-    # If a Gaussian's 3d scale is above this value, then delete it.
     deletion_scale_3d_threshold: float = 0.1
+    """
+    If a Gaussian's 3d scale is above this value, then delete it during refinement.
+    """
 
-    # If the maximum projected size of a Gaussian between refinement steps exceeds this value then delete it.
-    # Note this parameter is only used if you call refine with use_screen_space_scales=True
     deletion_scale_2d_threshold: float = 0.15
+    """
+    If the maximum projected size of a Gaussian between refinement steps exceeds this value then delete it during
+    refinement.
 
-    # Threshold value on the accumulated norm of projected mean gradients between refinement steps to
-    # determine whether a Gaussian has high error and is a candidate for duplication or splitting.
-    # This value must be positive if using CONSTANT mode, or in the range (0.0, 1.0) if using
-    # PERCENTILE_FIRST_ITERATION or PERCENTILE_EVERY_ITERATION modes.
+    .. note:: This parameter is only used if set :obj:`use_screen_space_scales_for_refinement_until` is greater than 0.
+    """
+
     insertion_grad_2d_threshold: float = (
         0.0002 if insertion_grad_2d_threshold_mode == InsertionGrad2dThresholdMode.CONSTANT else 0.9
     )
+    """
+    Threshold value on the accumulated norm of projected mean gradients between refinement steps to
+    determine whether a Gaussian has high error and is a candidate for duplication or splitting.
 
-    # Duplicate high-error (determined by insertion_grad_2d_threshold) Gaussians whose 3d scale is below this value.
-    # These Gaussians are too small to capture the detail in the region they cover, so we duplicate them to
-    # allow them to specialize.
+    .. note:: If ``insertion_grad_2d_threshold_mode`` is :obj:`InsertionGrad2dThresholdMode.CONSTANT`, then this value
+              is used directly as the threshold, and **must be positive**.
+
+    .. note:: If ``insertion_grad_2d_threshold_mode`` is :obj:`InsertionGrad2dThresholdMode.PERCENTILE_FIRST_ITERATION`
+              or :obj:`InsertionGrad2dThresholdMode.PERCENTILE_EVERY_ITERATION`, then this value must be in the
+              range ``(0.0, 1.0)`` (exclusive).
+    """
+
     insertion_scale_3d_threshold: float = 0.01
+    """
+    Duplicate high-error (determined by ``insertion_grad_2d_threshold``) Gaussians whose 3d scale is below this value.
+    These Gaussians are too small to capture the detail in the region they cover, so we duplicate them to
+    allow them to specialize.
+    """
 
-    # Split high-error (determined by insertion_grad_2d_threshold) Gaussians whose maximum projected
-    # size exceeds this value. These Gaussians are too large to capture the detail in the region they cover,
-    # so we split them to allow them to specialize.
-    # Note this parameter is only used if you call refine with use_screen_space_scales=True
     insertion_scale_2d_threshold: float = 0.05
+    """
+    Split high-error (determined by ``insertion_grad_2d_threshold``) Gaussians whose maximum projected
+    size exceeds this value. These Gaussians are too large to capture the detail in the region they cover,
+    so we split them to allow them to specialize.
 
-    # When splitting Gaussians, update the opacities of the new Gaussians using the revised formulation from
-    # "Revising Densification in Gaussian Splatting" (https://arxiv.org/abs/2404.06109).
-    # This removes a bias which weighs newly split Gaussians contribution to the image more heavily than
-    # older Gaussians.
+    .. note:: This parameter is only used if set :obj:`use_screen_space_scales_for_refinement_until` is greater than 0.
+
+    """
+
     opacity_updates_use_revised_formulation: bool = False
+    """
+    When splitting Gaussians, whether to update the opacities of the new Gaussians using the revised formulation from
+    *"Revising Densification in Gaussian Splatting" (https://arxiv.org/abs/2404.06109)*.
+    This removes a bias which weighs newly split Gaussians contribution to the image more heavily than
+    older Gaussians.
+    """
 
-    # When splitting Gaussians during insertion, this value specifies the total number of new Gaussians that will
-    # replace each selected source Gaussian. The original is removed and replaced by `insertion_split_factor` new Gaussians.
-    # _e.g._ if this value is 2, each split Gaussian is replaced by 2 new smaller Gaussians (the original is removed).
-    # This value must be >= 2.
     insertion_split_factor: int = 2
+    """
+    When splitting Gaussians during insertion, this value specifies the total number of new Gaussians that will
+    replace each selected source Gaussian. The original is removed and replaced by ``insertion_split_factor`` new
+    Gaussians. *e.g.* if this value is 2, each split Gaussian is replaced by 2 new smaller Gaussians
+    (the original is removed). This value must be >= 2.
+    """
 
-    # When duplicating Gaussians during insertion, this value specifies the total number of copies (including the original)
-    # that will result for each selected source Gaussian. The original is kept, and (`insertion_duplication_factor` - 1) new
-    # identical copies are added. _e.g._ if this value is 3, each duplicated Gaussian becomes 3 copies of itself (the original plus 2 new).
-    # This value must be >= 2.
     insertion_duplication_factor: int = 2
+    """
+    When duplicating Gaussians during insertion, this value specifies the total number of copies (including
+    the original) that will result for each selected source Gaussian. The original is kept, and
+    ``insertion_duplication_factor - 1`` new identical copies are added. *e.g.* if this value is 3,
+    each duplicated Gaussian becomes 3 copies of itself (the original plus 2 new). This value must be >= 2.
+    """
 
-    # If > 0, then reset all opacities to be <= 2 * deletion_opacity_threshold every N refinements.
-    # This prevents Gaussians from becoming completely occluded by denser Gaussians and thus unable to be optimized.
     reset_opacities_every_n_refinements: int = 30
+    """
+    If set to a positive value, then clamp all opacities to be at most twice the value of
+    :obj:`deletion_opacity_threshold` every time :func:`GaussianSplatOptimizer.refine` is called ``reset_opacities_every_n_refinements``
+    times. This prevents Gaussians from becoming completely occluded by denser Gaussians and thus unable to
+    be optimized.
+    """
 
-    # If > 0, then after this many refinements, use the 3D scales of the Gaussians to determine whether to delete them.
-    # This will delete Gaussians that have grown too large in 3D space and are not contributing to the optimization.
     use_scales_for_deletion_after_n_refinements: int = reset_opacities_every_n_refinements
+    """
+    If set to a positive value, then after ``use_scales_for_deletion_after_n_refinements`` calls to
+    :func:`GaussianSplatOptimizer.refine`, use the 3D scales of the Gaussians to determine whether to delete them.
+    This will delete Gaussians that have grown
+    too large in 3D space and are not contributing to the optimization.
 
-    # If > 0 then use screen space scales for refinement until this many refinements have been performed.
-    # If set to true, threshold the maximum projected size of Gaussians between refinement steps
-    # to decide whether to split or delete Gaussians that are too large.
+    By default, this value matches :obj:`reset_opacities_every_n_refinements` so that both behaviors are enabled at the
+    same time.
+    """
+
     use_screen_space_scales_for_refinement_until: int = 0
+    """
+    If set to a positive value, then use threshold the maximum projected size of Gaussians between refinement steps
+    to decide whether to split or delete Gaussians that are too large. This behavior is enabled until
+    :func:`GaussianSplatOptimizer.refine` has been called ``use_screen_space_scales_for_refinement_until`` times.
+    After that, only 3D scales are used for refinement.
+    """
 
-    # How to interpret 3D optimization scale thresholds (insertion_scale_3d_threshold, deletion_scale_3d_threshold)
-    # and learning rates. These are scaled by a spatial scale computed from the scene, so they are relative
-    # to the size of the scene being optimized.
     spatial_scale_mode: SpatialScaleMode = SpatialScaleMode.MEDIAN_CAMERA_DEPTH
-    # Multiplier to apply to the spatial scale computed from the scene to get a slightly larger scale.
-    spatial_scale_multiplier: float = 1.1
+    """
+    How to interpret 3D optimization scale thresholds and learning rates (*i.e.* :obj:`insertion_scale_3d_threshold`,
+    :obj:`deletion_scale_3d_threshold`, and :obj:`means_lr`). These are scaled by a spatial scale computed from
+    the scene, so they are relative to the size of the scene being optimized.
 
-    # Learning rate for the means
+    See :class:`SpatialScaleMode` for details on the available modes.
+    """
+
+    spatial_scale_multiplier: float = 1.1
+    """
+    Multiplier to apply to the spatial scale computed from the scene to get a slightly larger scale.
+    """
+
     means_lr: float = 1.6e-4
-    # Learning rate for the log scales
+    """
+    Learning rate for the means of the Gaussians. This is also scaled by the spatial scale computed from the scene.
+
+    See :obj:`spatial_scale_mode` for details on how the spatial scale is computed.
+    """
+
     log_scales_lr: float = 5e-3
-    # Learning rate for the quaternions
+    """
+    Learning rate for the log scales of the Gaussians.
+    """
+
     quats_lr: float = 1e-3
-    # Learning rate for the logit opacities
+    """
+    Learning rate for the quaternions of the Gaussians.
+    """
+
     logit_opacities_lr: float = 5e-2
-    # Learning rate for the spherical harmonics of order 0
+    """
+    Learning rate for the logit opacities of the Gaussians.
+    """
+
     sh0_lr: float = 2.5e-3
-    # Learning rate for the spherical harmonics of order N (N > 0)
+    """
+    Learning rate for the diffuse spherical harmonics (order 0).
+    """
+
     shN_lr: float = 2.5e-3 / 20
+    """
+    Learning rate for the specular spherical harmonics (order > 0).
+    """
 
 
 class GaussianSplatOptimizer(BaseGaussianSplatOptimizer):
     """
     Optimizer for reconstructing a scene using Gaussian Splat radiance fields over a collection of posed images.
 
-    The optimizer uses an Adam optimizer to optimize the parameters of a `fvdb.GaussianSplat3d` model, and
-    provides utilities to refine the model by inserting and deleting Gaussians based on their contribution to the optimization.
-    The tools here mostly follow the algorithm in the original Gaussian Splatting paper (https://arxiv.org/abs/2308.04079).
+    The optimizer uses an Adam optimizer to optimize the parameters of a ``fvdb.GaussianSplat3d`` model, and
+    provides utilities to refine the model by inserting and deleting Gaussians based on their contribution to the
+    optimization. The tools here mostly follow the algorithm in the original Gaussian Splatting paper
+    (https://arxiv.org/abs/2308.04079).
+
+    .. note:: You should not call the constructor of this class directly. Instead use :func:`from_model_and_config`
+              or :func:`from_state_dict`.
+
     """
 
     __PRIVATE__ = object()
@@ -179,18 +275,20 @@ class GaussianSplatOptimizer(BaseGaussianSplatOptimizer):
         _private: Any = None,
     ):
         """
-        Create a new `GaussianSplatOptimizer` instance from a model, optimizer and a config.
+        Create a new ``GaussianSplatOptimizer`` instance from a model, optimizer and a config.
 
-        Note: You should not call this constructor directly. Instead use `from_model_and_config()` or `from_state_dict()`.
+        .. note:: You should not call this constructor directly.  Instead use :func:`from_model_and_config`
+                  or :func:`from_state_dict`.
 
         Args:
-            model (GaussianSplat3d): The `GaussianSplat3d` model to optimize.
+            model (GaussianSplat3d): The ``GaussianSplat3d`` model to optimize.
             optimizer (torch.optim.Adam): The optimizer for the model.
             config (GaussianSplatOptimizerConfig): Configuration options for the optimizer.
             spatial_scale (float): A spatial scale for the scene used to interpret 3D scale thresholds in the config.
-            refine_count (int): The number of times `refine()` has been called on this optimizer.
-            step_count (int): The number of times `step()` has been called on this optimizer.
-            _private (Any): A private object to prevent direct instantiation. Must be `GaussianSplatOptimizer.__PRIVATE__`.
+            refine_count (int): The number of times :func:`refine()` has been called on this optimizer.
+            step_count (int): The number of times :func:`step()` has been called on this optimizer.
+            _private (Any): A private object to prevent direct instantiation. Must be
+                :obj:`GaussianSplatOptimizer.__PRIVATE__`.
         """
         if _private is not self.__PRIVATE__:
             raise RuntimeError(
@@ -253,8 +351,8 @@ class GaussianSplatOptimizer(BaseGaussianSplatOptimizer):
 
     def reset_learning_rates_and_decay(self, batch_size: int, expected_steps: int):
         """
-        Set the learning rates and learning rate decay factor based on the batch size and the exected
-        number of optimization steps (times .step() is called).
+        Set the learning rates and learning rate decay factor based on the batch size and the expected
+        number of optimization steps (*i.e.* the number of times :func:`step()` is called).
 
         This is useful if you want to change the batch size or expected number of steps after creating
         the optimizer.
@@ -302,17 +400,17 @@ class GaussianSplatOptimizer(BaseGaussianSplatOptimizer):
         config: GaussianSplatOptimizerConfig = GaussianSplatOptimizerConfig(),
     ) -> "GaussianSplatOptimizer":
         """
-        Create a new `GaussianSplatOptimizer` instance from a model and config.
+        Create a new ``GaussianSplatOptimizer`` instance from a model and config.
 
         Args:
-            model (GaussianSplat3d): The `GaussianSplat3d` model to optimize.
+            model (GaussianSplat3d): The ``GaussianSplat3d`` model to optimize.
             config (GaussianSplatOptimizerConfig): Configuration options for the optimizer.
             means_lr_scale (float): A scale factor to apply to the means learning rate.
             means_lr_decay_exponent (float): The exponent used for decaying the means learning rate.
             batch_size (int): The batch size used for training. This is used to scale the learning rates.
 
         Returns:
-            GaussianSplatOptimizer: A new `GaussianSplatOptimizer` instance.
+            GaussianSplatOptimizer: A new :class:`GaussianSplatOptimizer` instance.
         """
 
         spatial_scale = (
@@ -333,14 +431,13 @@ class GaussianSplatOptimizer(BaseGaussianSplatOptimizer):
     @classmethod
     def from_state_dict(cls, model: GaussianSplat3d, state_dict: dict[str, Any]) -> "GaussianSplatOptimizer":
         """
-        Create a new `GaussianSplatOptimizer` instance from a model and a state dict.
+        Create a new :class:`GaussianSplatOptimizer` instance from a model and a state dict.
 
         Args:
-            model (GaussianSplat3d): The `GaussianSplat3d` model to optimize.
-            state_dict (dict[str, Any]): A state dict previously obtained from `state_dict()`.
-
+            model (GaussianSplat3d): The :class:`GaussianSplat3d` model to optimize.
+            state_dict (dict[str, Any]): A state dict previously obtained from :func:`state_dict`.
         Returns:
-            GaussianSplatOptimizer: A new `GaussianSplatOptimizer` instance.
+            optimizer (GaussianSplatOptimizer): A new :class:`GaussianSplatOptimizer` instance.
         """
         if "version" not in state_dict:
             raise ValueError("State dict is missing version information")
@@ -385,7 +482,8 @@ class GaussianSplatOptimizer(BaseGaussianSplatOptimizer):
         Zero the gradients of all tensors being optimized.
 
         Args:
-            set_to_none (bool): If True, set the gradients to None instead of zeroing them. This can be more memory efficient.
+            set_to_none (bool): If ``True``, set the gradients to ``None`` instead of zeroing them.
+                This can be more memory efficient.
         """
         self._num_grad_accumulation_steps = 0
         self._optimizer.zero_grad(set_to_none=set_to_none)
@@ -395,7 +493,7 @@ class GaussianSplatOptimizer(BaseGaussianSplatOptimizer):
         Return a serializable state dict for the optimizer.
 
         Returns:
-            dict[str, Any]: A state dict containing the state of the optimizer.
+            state_dict (dict[str, Any]): A state dict containing the state of the optimizer.
         """
         return {
             "optimizer": self._optimizer.state_dict(),
@@ -438,30 +536,37 @@ class GaussianSplatOptimizer(BaseGaussianSplatOptimizer):
     @torch.no_grad()
     def refine(self, zero_gradients: bool = True) -> dict[str, int]:
         """
-        Perform a step of refinement by inserting Gaussians where more detail is needed and deleting Gaussians that are not contributing to the optimization.
-        Refinement happens via three mechanisms:
+        Perform a step of refinement by inserting Gaussians where more detail is needed and deleting Gaussians that are
+        not contributing to the optimization. Refinement happens via three mechanisms:
 
-        **Duplication**: Make `self._config.insertion_duplication_factor` copies of a Gaussian.
-          - We duplicate a Gaussian if its 3D size is below some threshold and the gradient of its projected means over time is high on
-            average. Intuitively, this means the Gaussian is not taking up a lot of space in the scene, but consistently wants to change positions
-            when viewed from different cameras. Likely this Gaussian is stuck trying to represent too much of the scene and should
-            be split into multiple copies.
+        **Duplication**: Make :obj:`~GaussianSplatOptimizerConfig.insertion_duplication_factor` copies of a Gaussian.
 
-        **Splitting**: Split a Gaussian into `self._config.insertion_split_factor` smaller ones.
-          - We split a Gaussian when its 3D size exceeds a threshold value and the gradient of its projected mean over time is high on average.
-            In this case, a Gaussian is likely too large for the amount of detail it represents and should be split to capture detail in the image.
+          We duplicate a Gaussian if its 3D size is below some threshold and the gradient of its projected means over
+          time is high on average. Intuitively, this means the Gaussian is not taking up a lot of space in the scene,
+          but consistently wants to change positions when viewed from different cameras. Likely this Gaussian is stuck
+          trying to represent too much of the scene and should be split into multiple copies.
+
+        **Splitting**: Split a Gaussian into :obj:`~GaussianSplatOptimizerConfig.insertion_split_factor` smaller ones.
+
+          We split a Gaussian when its 3D size exceeds a threshold value and the gradient of its projected mean over
+          time is high on average. In this case, a Gaussian is likely too large for the amount of detail it represents
+          and should be split to capture detail in the image.
 
         **Deletion**: Removing a Gaussian from the scene.
-          - We delete a Gaussian if its opacity falls below a threshold since it is not contributing much to rendered images.
+
+          We delete a Gaussian if its opacity falls below a threshold since it is not contributing much to
+          rendered images.
 
 
         Args:
-            zero_gradients (bool): If True, zero the gradients after refinement.
+            zero_gradients (bool): If ``True``, zero the gradients after refinement.
 
         Returns:
-            num_duplicated (int): The number of Gaussians that were duplicated.
-            num_split (int): The number of Gaussians that were split.
-            num_deleted (int): The number of Gaussians that were deleted.
+            refine_stats (dict[str, int]): A dictionary containing statistics about the refinement step with the keys:
+
+                * ``"num_duplicated"``: The number of Gaussians that were duplicated.
+                * ``"num_split"``: The number of Gaussians that were split.
+                * ``"num_deleted"``: The number of Gaussians that were deleted.
         """
 
         use_screen_space_scales = self._refine_count < self._config.use_screen_space_scales_for_refinement_until
@@ -602,7 +707,7 @@ class GaussianSplatOptimizer(BaseGaussianSplatOptimizer):
             config (GaussianSplatOptimizerConfig): The configuration for the optimizer.
 
         Returns:
-            torch.optim.Adam: An Adam optimizer for the model.
+            optimizer (torch.optim.Adam): An Adam optimizer for the model.
         """
         return torch.optim.Adam(
             [
@@ -632,25 +737,28 @@ class GaussianSplatOptimizer(BaseGaussianSplatOptimizer):
         Compute the threshold on the accumulated norm of 2D mean gradients to use during refinement.
 
         There are several modes for computing this threshold, specified by the config:
-        - CONSTANT: Always use the fixed threshold specified by self._config.insertion_grad_2d_threshold.
-        - PERCENTILE_FIRST_ITERATION: During the first refinement step, set the threshold to the given percentile of the gradients.
-            For all subsequent refinement steps, use that fixed threshold.
-        - PERCENTILE_EVERY_ITERATION: During every refinement step, set the threshold to the given percentile of the gradients.
+
+        - ``CONSTANT``: Always use the fixed threshold specified by ``self._config.insertion_grad_2d_threshold``.
+        - ``PERCENTILE_FIRST_ITERATION``: During the first refinement step, set the threshold to the given percentile
+        of the gradients. For all subsequent refinement steps, use that fixed threshold.
+        - ``PERCENTILE_EVERY_ITERATION``: During every refinement step, set the threshold to the given percentile
+        of the gradients.
 
         These modes let you adapt the refinement behavior to the statistics of the gradients during training.
-        Generally CONSTANT with a default value (0.0002) will produce okay results, but may not be optimal for all types
-        of captures. Using PERCENTILE_FIRST_ITERATION will have similar behavior to CONSTANT but will adapt to the scale of the gradients
-        which can be more robust across different capture types.
-        For highly detailed scenes, PERCENTILE_EVERY_ITERATION may be useful to adaptively insert more Gaussians as the model learns more detail.
-        This generally produces many more Gaussians and more detailed results at the cost of more memory and compute.
+        Generally ``CONSTANT`` with a default value (0.0002) will produce okay results, but may not be optimal for all types
+        of captures. Using ``PERCENTILE_FIRST_ITERATION`` will have similar behavior to ``CONSTANT`` but will adapt to
+        the scale of the gradients, which can be more robust across different capture types.
+        For highly detailed scenes, ``PERCENTILE_EVERY_ITERATION`` may be useful to adaptively insert more Gaussians
+        as the model learns more detail. This generally produces many more Gaussians and more detailed results at the
+        cost of more memory and compute.
 
         Args:
             accumulated_mean_2d_gradients (torch.Tensor): The average norm of the projected mean gradients of shape (num_gaussians,).
-                This is typically obtained from `model.accumulated_mean_2d_gradient_norms / model.accumulated_gradient_step_counts`
-                where `model.accumulated_gradient_step_counts` is the number of optimization steps since the last refinement.
+                This is typically obtained from ``model.accumulated_mean_2d_gradient_norms / model.accumulated_gradient_step_counts``
+                where ``model.accumulated_gradient_step_counts`` is the number of optimization steps since the last refinement.
 
         Returns:
-            float: The threshold value to use for deciding whether to insert Gaussians during refinement.
+            insertion_grad_2d_threshold (float): The threshold value to use for deciding whether to insert Gaussians during refinement.
         """
 
         # Helper to compute the quantile of the gradients, using NumPy if we have too many Gaussians for torch.quantile
@@ -698,8 +806,8 @@ class GaussianSplatOptimizer(BaseGaussianSplatOptimizer):
 
         Args:
             use_screen_space_scales_for_splitting: If set to true, use the tracked screen space scales to decide whether to split.
-                                              Note that the model must have been configured to track these scales by setting
-                                              `GaussianSplat3d.accumulate_max_2d_radii = True`.
+                Note that the model must have been configured to track these scales by
+                setting ``GaussianSplat3d.accumulate_max_2d_radii = True``.
 
         Returns:
             duplication_mask (torch.Tensor): A boolean mask indicating which Gaussians should be duplicated.
@@ -756,12 +864,13 @@ class GaussianSplatOptimizer(BaseGaussianSplatOptimizer):
         """
         Compute a boolean mask indicating which Gaussians should be deleted.
 
+        .. note:: If you pass in ``use_screen_space_scales_for_deletion``, the model must have been configured to
+                  track these scales by setting ``model.accumulate_max_2d_radii = True``.
+
         Args:
             use_scales_for_deletion: If set to true, use a threshold on the 3D scales to delete Gaussians that are too large.
             use_screen_space_scales_for_deletion: If set to true, use a threshold on the maximum 2D projected scale
                 between refinements to delete Gaussians that are too large.
-                Note: the model must have been configured to track these scales by setting
-                `model.accumulate_max_2d_radii = True`.
 
         Returns:
             deletion_mask (torch.Tensor): A boolean mask indicating which Gaussians should be deleted.
@@ -804,10 +913,11 @@ class GaussianSplatOptimizer(BaseGaussianSplatOptimizer):
         It also applies the Adam moments for each parameter being updated 'exp_avg' and 'exp_avg_sq'.
 
         Args:
-            optimizer_fn (Callable[[torch.Tensor], torch.Tensor]): A function to apply to each Adam moment Tensor for each parameter.
-                Accepts the old moment Tensor and returns the new moment Tensor.
-            parameter_names (set[str] | None): If provided, only update the parameter groups with these names. If None, update all parameter groups.
-            reset_adam_step_counts (bool): If True, reset the Adam step counts to zero for all parameters being updated.
+            optimizer_fn (Callable[[torch.Tensor], torch.Tensor]): A function to apply to each Adam moment Tensor for
+                each parameter. Accepts the old moment Tensor and returns the new moment Tensor.
+            parameter_names (set[str] | None): If provided, only update the parameter groups with these names.
+                If ``None``, update all parameter groups.
+            reset_adam_step_counts (bool): If ``True``, reset the Adam step counts to zero for all parameters being updated.
         """
         for i, param_group in enumerate(self._optimizer.param_groups):
             parameter_name = param_group["name"]
@@ -843,7 +953,7 @@ class GaussianSplatOptimizer(BaseGaussianSplatOptimizer):
             eps (float): A small value to clamp the opacities to avoid numerical issues when computing the logit.
 
         Returns:
-            torch.Tensor: A tensor of revised logit opacities of shape (len(indices),).
+            revised_opacities (torch.Tensor): A tensor of revised logit opacities of shape ``(len(indices),)``.
         """
         # Update opacity values for the new Gaussians using the revised formulation from
         # the paper "Revising Densification in Gaussian Splatting" (https://arxiv.org/abs/2404.06109).
@@ -857,17 +967,22 @@ class GaussianSplatOptimizer(BaseGaussianSplatOptimizer):
         """
         Compute the new Gaussians to add by duplicating the Gaussians at the given indices.
 
+        Returns a dictionary containing the new Gaussians to add with keys:
+
+        * ``"means"``: The means of the new Gaussians of shape ``[(D-1)*M, 3]`` where ``D`` is the duplication
+        factor and ``M`` is the number of duplicated Gaussians.
+        * ``"quats"``: The quaternions of the new Gaussians of shape ``[(D-1)*M, 4]``.
+        * ``"log_scales"``: The log scales of the new Gaussians of shape ``[(D-1)*M, 3]``.
+        * ``"logit_opacities"``: The logit opacities of the new Gaussians of shape ``[(D-1)*M]``.
+        * ``"sh0"``: The SH0 coefficients of the new Gaussians of shape ``[(D-1)*M, 1, 3]``.
+        * ``"shN"``: The SHN coefficients of the new Gaussians of shape ``[(D-1)*M, K-1, 3]``.
+
         Args:
             duplication_indices (torch.Tensor): A 1D tensor of indices indicating which Gaussians to duplicate.
 
         Returns:
-            dict[str, torch.Tensor]: A dictionary containing the new Gaussians to add with keys (where D is the duplication factor and M is the number of duplicated Gaussians):
-                - "means": The means of the new Gaussians of shape [(D-1)*M, 3] where D is the duplication factor and M is the number of duplicated Gaussians.
-                - "quats": The quaternions of the new Gaussians of shape [(D-1)*M, 4].
-                - "log_scales": The log scales of the new Gaussians of shape [(D-1)*M, 3].
-                - "logit_opacities": The logit opacities of the new Gaussians of shape [(D-1)*M].
-                - "sh0": The SH0 coefficients of the new Gaussians of shape [(D-1)*M, 1, 3].
-                - "shN": The SHN coefficients of the new Gaussians of shape [(D-1)*M, K-1, 3].
+            duplicated_gaussian_parameters (dict[str, torch.Tensor]): A dictionary containing the new Gaussians to add.
+
         """
         duplication_factor = self._config.insertion_duplication_factor
         if duplication_factor < 2:
@@ -913,17 +1028,22 @@ class GaussianSplatOptimizer(BaseGaussianSplatOptimizer):
         """
         Compute the new Gaussians to add by splitting the Gaussians at the given indices.
 
+        Returns a dictionary containing the new Gaussians to add with keys:
+
+        - ``"means"``: The means of the new Gaussians of shape ``[S*M, 3]`` where ``S`` is the split factor
+        and ``M`` is the number of split Gaussians.
+        - ``"quats"``: The quaternions of the new Gaussians of shape ``[S*M, 4]``.
+        - ``"log_scales"``: The log scales of the new Gaussians of shape ``[S*M, 3]``.
+        - ``"logit_opacities"``: The logit opacities of the new Gaussians of shape ``[S*M]``.
+        - ``"sh0"``: The SH0 coefficients of the new Gaussians of shape ``[S*M, 1, 3]``.
+        - ``"shN"``: The SHN coefficients of the new Gaussians of shape ``[S*M, K-1, 3]``.
+
         Args:
             split_indices (torch.Tensor): A 1D tensor of indices indicating which Gaussians to split.
 
         Returns:
-            dict[str, torch.Tensor]: A dictionary containing the new Gaussians to add with keys:
-                - "means": The means of the new Gaussians of shape [S*M, 3] where S is the split factor and M is the number of split Gaussians.
-                - "quats": The quaternions of the new Gaussians of shape [S*M, 4].
-                - "log_scales": The log scales of the new Gaussians of shape [S*M, 3].
-                - "logit_opacities": The logit opacities of the new Gaussians of shape [S*M].
-                - "sh0": The SH0 coefficients of the new Gaussians of shape [S*M, 1, 3].
-                - "shN": The SHN coefficients of the new Gaussians of shape [S*M, K-1, 3].
+            dict[str, torch.Tensor]: A dictionary containing the new Gaussians to add.
+
         """
         split_factor = self._config.insertion_split_factor
         if split_indices.numel() == 0:
@@ -983,7 +1103,7 @@ class GaussianSplatOptimizer(BaseGaussianSplatOptimizer):
             sfm_scene (SfmScene): The scene to calculate the scale for.
             mode (SpatialScaleMode): The mode to use for calculating the scale.
         Returns:
-            float: The calculated spatial scale.
+            spatial_scale (float): The calculated spatial scale.
         """
 
         if not sfm_scene.has_visible_point_indices and mode in (
@@ -1032,10 +1152,10 @@ class GaussianSplatOptimizer(BaseGaussianSplatOptimizer):
         Convert a tensor of unit quaternions (encoding 3d rotations) to a tensor of rotation matrices.
 
         Args:
-            quaternions (torch.Tensor): A Tensor of unit quaternions in wxyz convention with shape [*, 4]
+            quaternions (torch.Tensor): A Tensor of unit quaternions in wxyz convention with shape  ``[*, 4]``
 
         Returns:
-            rotation_matrices (torch.Tensor): A tensor of rotation matrices of shape [*, 3, 3]
+            rotation_matrices (torch.Tensor): A tensor of rotation matrices of shape ``[*, 3, 3]``
         """
         assert quaternions.shape[-1] == 4, quaternions.shape
         w, x, y, z = torch.unbind(quaternions, dim=-1)
