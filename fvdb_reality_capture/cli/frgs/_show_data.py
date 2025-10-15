@@ -13,6 +13,7 @@ import tyro
 from fvdb.viz import Viewer
 
 import fvdb_reality_capture
+from fvdb_reality_capture.cli import BaseCommand
 from fvdb_reality_capture.transforms import (
     Compose,
     FilterImagesWithLowPoints,
@@ -20,7 +21,7 @@ from fvdb_reality_capture.transforms import (
     PercentileFilterPoints,
 )
 
-from ._common import BaseCommand, DatasetType, load_sfm_scene
+from ._common import DatasetType, load_sfm_scene
 
 
 def center_and_scale_scene(sfm_scene: fvdb_reality_capture.SfmScene, scale: float) -> fvdb_reality_capture.SfmScene:

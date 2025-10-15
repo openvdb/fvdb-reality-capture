@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 
-from . import foundation_models, tools, training, transforms
+from . import dev, foundation_models, tools, training, transforms
 from .sfm_scene import SfmCache, SfmCameraMetadata, SfmImageMetadata, SfmScene
 from .tools import download_example_data
 from .training import (
@@ -15,6 +15,7 @@ __all__ = [
     "foundation_models",
     "sfm_scene",
     "tools",
+    "dev",
     "training",
     "GaussianSplatReconstructionConfig",
     "GaussianSplatOptimizerConfig",

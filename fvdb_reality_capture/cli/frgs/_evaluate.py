@@ -11,13 +11,12 @@ import torch
 import tyro
 from tyro.conf import arg
 
+from fvdb_reality_capture.cli import BaseCommand
 from fvdb_reality_capture.training import (
     GaussianSplatReconstruction,
     GaussianSplatReconstructionWriter,
     GaussianSplatReconstructionWriterConfig,
 )
-
-from ._common import BaseCommand
 
 
 @dataclass

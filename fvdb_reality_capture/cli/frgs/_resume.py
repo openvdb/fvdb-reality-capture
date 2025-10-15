@@ -11,13 +11,14 @@ import tyro
 from fvdb.viz import Viewer
 from tyro.conf import arg
 
+from fvdb_reality_capture.cli import BaseCommand
 from fvdb_reality_capture.training import (
     GaussianSplatReconstruction,
     GaussianSplatReconstructionWriter,
     GaussianSplatReconstructionWriterConfig,
 )
 
-from ._common import BaseCommand, save_model_from_runner
+from ._common import save_model_from_runner
 
 
 @dataclass

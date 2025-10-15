@@ -3,7 +3,6 @@
 #
 
 import pathlib
-from abc import ABC, abstractmethod
 from typing import Literal
 
 import torch
@@ -16,21 +15,6 @@ from fvdb_reality_capture.training import GaussianSplatReconstruction
 
 DatasetType = Literal["colmap", "simple_directory", "e57"]
 NearFarUnits = Literal["absolute", "camera_extent", "median_depth"]
-
-
-class BaseCommand(ABC):
-    """
-    Base class for CLI commands.
-
-    Commands should implement the `execute` method, which will be called when the command is run.
-    """
-
-    @abstractmethod
-    def execute(self) -> None:
-        """
-        Execute the command.
-        """
-        pass
 
 
 def load_splats_from_file(path: pathlib.Path, device: DeviceIdentifier) -> tuple[GaussianSplat3d, dict]:

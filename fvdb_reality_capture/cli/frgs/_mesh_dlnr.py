@@ -14,9 +14,10 @@ import tyro
 from fvdb.types import to_Mat33fBatch, to_Mat44fBatch, to_Vec2iBatch, to_VecNf
 from tyro.conf import arg
 
+from fvdb_reality_capture.cli import BaseCommand
 from fvdb_reality_capture.tools import mesh_from_splats_dlnr
 
-from ._common import BaseCommand, load_splats_from_file
+from ._common import load_splats_from_file
 
 
 @dataclass

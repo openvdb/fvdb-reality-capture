@@ -4,7 +4,8 @@
 
 import tyro
 
-from ._common import BaseCommand
+from fvdb_reality_capture.cli import BaseCommand
+
 from ._convert import Convert
 from ._download import Download
 from ._evaluate import Evaluate

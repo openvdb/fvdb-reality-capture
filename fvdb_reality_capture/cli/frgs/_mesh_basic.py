@@ -12,10 +12,10 @@ import torch
 import tyro
 from tyro.conf import arg
 
+from fvdb_reality_capture.cli import BaseCommand
 from fvdb_reality_capture.tools import mesh_from_splats
 
 from ._common import (
-    BaseCommand,
     NearFarUnits,
     load_camera_metadata,
     load_splats_from_file,

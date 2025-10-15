@@ -8,9 +8,8 @@ from typing import Literal
 
 from tyro.conf import Positional
 
+from fvdb_reality_capture.cli import BaseCommand
 from fvdb_reality_capture.tools import download_example_data
-
-from ._common import BaseCommand
 
 # dataset names
 DatasetName = Literal[

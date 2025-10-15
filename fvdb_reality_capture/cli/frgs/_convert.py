@@ -10,10 +10,9 @@ import torch
 import tyro
 from fvdb import GaussianSplat3d
 
+from fvdb_reality_capture.cli import BaseCommand
 from fvdb_reality_capture.tools import export_splats_to_usdz
 from fvdb_reality_capture.training import GaussianSplatReconstruction
-
-from ._common import BaseCommand
 
 
 @dataclass

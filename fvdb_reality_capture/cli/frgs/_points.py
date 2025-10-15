@@ -9,13 +9,12 @@ from typing import Annotated
 import point_cloud_utils as pcu
 import torch
 import tyro
-from fvdb import GaussianSplat3d
 from tyro.conf import arg
 
+from fvdb_reality_capture.cli import BaseCommand
 from fvdb_reality_capture.tools import point_cloud_from_splats
 
 from ._common import (
-    BaseCommand,
     NearFarUnits,
     load_camera_metadata,
     load_splats_from_file,

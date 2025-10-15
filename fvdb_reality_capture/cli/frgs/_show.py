@@ -13,7 +13,9 @@ import tyro
 from fvdb.types import to_Mat33fBatch, to_Mat44fBatch, to_Vec2fBatch
 from fvdb.viz import Viewer
 
-from ._common import BaseCommand, load_splats_from_file
+from fvdb_reality_capture.cli import BaseCommand
+
+from ._common import load_splats_from_file
 
 
 @dataclass

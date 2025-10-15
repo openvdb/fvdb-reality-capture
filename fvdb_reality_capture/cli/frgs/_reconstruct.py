@@ -17,6 +17,7 @@ from fvdb import GaussianSplat3d
 from fvdb.viz import Viewer
 from tyro.conf import Positional, arg
 
+from fvdb_reality_capture.cli import BaseCommand
 from fvdb_reality_capture.sfm_scene import SfmScene
 from fvdb_reality_capture.training import (
     GaussianSplatOptimizerConfig,
@@ -37,7 +38,6 @@ from fvdb_reality_capture.transforms import (
 )
 
 from ._common import (
-    BaseCommand,
     DatasetType,
     load_sfm_scene,
     save_model_from_runner,
