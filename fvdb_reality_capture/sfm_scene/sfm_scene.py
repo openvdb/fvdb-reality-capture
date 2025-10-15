@@ -17,18 +17,13 @@ class SfmScene:
     """
     Class representing a scene extracted from a structure-from-motion (SFM) pipeline such as COLMAP or GLOMAP.
     The scene consists of:
-        - cameras: A dictionary mapping unique integer camera identifiers to `SfmCameraMetadata` objects
-                   which contain information about each camera used to capture the scene (e.g. focal length,
-                   distortion parameters).
-        - images: A list of `SfmImageMetadata` objects containing metadata for each posed image in the scene (e.g. camera ID,
-                  image path, view transform, etc.).
-        - points: An Nx3 array of 3D points in the scene, where N is the number of points.
-        - points_err: An array of shape (N,) representing the error or uncertainty of each point in `points`.
-        - points_rgb: An Nx3 uint8 array of RGB color values for each point in the scene, where N is the number of points.
-        - scene_bbox: An array of shape (6,) representing a bounding box containing the scene. In the form
-            (bbmin_x, bbmin_y, bbmin_z, bbmax_x, bbmax_y, bbmax_z)
-        - transformation_matrix: A 4x4 matrix encoding a transformation from some canonical coordinate space
-            to scene coordinates.
+        - `cameras`: A dictionary mapping unique integer camera identifiers to `SfmCameraMetadata` objects which contain information about each camera used to capture the scene (e.g. focal length, distortion parameters).
+        - `images`: A list of `SfmImageMetadata` objects containing metadata for each posed image in the scene (e.g. camera ID, image path, view transform, etc.).
+        - `points`: An Nx3 array of 3D points in the scene, where N is the number of points.
+        - `points_err`: An array of shape (N,) representing the error or uncertainty of each point in `points`.
+        - `points_rgb`: An Nx3 uint8 array of RGB color values for each point in the scene, where N is the number of points.
+        - `scene_bbox`: An array of shape (6,) representing a bounding box containing the scene. In the form (bbmin_x, bbmin_y, bbmin_z, bbmax_x, bbmax_y, bbmax_z)
+        - `transformation_matrix`: A 4x4 matrix encoding a transformation from some canonical coordinate space to scene coordinates.
 
     The scene can be transformed using a 4x4 transformation matrix, which applies to both the camera poses and the 3D points in the scene.
     The scene also provides properties to access the world-to-camera and camera-to-world matrices,
