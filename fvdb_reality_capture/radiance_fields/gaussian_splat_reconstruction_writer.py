@@ -21,9 +21,6 @@ class GaussianSplatReconstructionBaseWriter(ABC):
     Base class for logging and saving data during Gaussian splat reconstruction.
     """
 
-    def __init__(self) -> None:
-        pass
-
     @abstractmethod
     def log_metric(self, global_step: int, metric_name: str, metric_value: NumericScalar) -> None:
         """
@@ -156,6 +153,7 @@ class GaussianSplatReconstructionWriter(GaussianSplatReconstructionBaseWriter):
             exist_ok (bool): Whether to keep existing data in the save_path/run_name directory if it exists. If False,
                 an error will be raised if the directory already exists. Default is False.
             config (GaussianReconstructionWriterConfig): Configuration parameters for what data to save and how.
+
         """
         super().__init__()
         self._logger = logging.getLogger(f"{self.__class__.__module__}.{self.__class__.__name__}")
