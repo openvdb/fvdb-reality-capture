@@ -12,7 +12,7 @@ import tyro
 from tyro.conf import arg
 
 from fvdb_reality_capture.cli import BaseCommand
-from fvdb_reality_capture.training import (
+from fvdb_reality_capture.radiance_fields import (
     GaussianSplatReconstruction,
     GaussianSplatReconstructionWriter,
     GaussianSplatReconstructionWriterConfig,

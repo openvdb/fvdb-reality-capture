@@ -18,14 +18,14 @@ from fvdb.viz import Viewer
 from tyro.conf import Positional, arg
 
 from fvdb_reality_capture.cli import BaseCommand
-from fvdb_reality_capture.sfm_scene import SfmScene
-from fvdb_reality_capture.training import (
+from fvdb_reality_capture.radiance_fields import (
     GaussianSplatOptimizerConfig,
     GaussianSplatReconstruction,
     GaussianSplatReconstructionConfig,
     GaussianSplatReconstructionWriter,
     GaussianSplatReconstructionWriterConfig,
 )
+from fvdb_reality_capture.sfm_scene import SfmScene
 from fvdb_reality_capture.transforms import (
     BaseTransform,
     Compose,

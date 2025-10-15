@@ -9,9 +9,9 @@ import torch
 from fvdb import GaussianSplat3d
 from fvdb.types import DeviceIdentifier, to_Mat33fBatch, to_Mat44fBatch, to_Vec2iBatch
 
+from fvdb_reality_capture.radiance_fields import GaussianSplatReconstruction
 from fvdb_reality_capture.sfm_scene import SfmScene
 from fvdb_reality_capture.tools import export_splats_to_usdz
-from fvdb_reality_capture.training import GaussianSplatReconstruction
 
 DatasetType = Literal["colmap", "simple_directory", "e57"]
 NearFarUnits = Literal["absolute", "camera_extent", "median_depth"]

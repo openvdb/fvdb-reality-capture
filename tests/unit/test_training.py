@@ -2,7 +2,6 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 import pathlib
-import tempfile
 import unittest
 from typing import Any
 
@@ -11,10 +10,10 @@ import numpy as np
 import torch
 
 import fvdb_reality_capture as frc
-from fvdb_reality_capture import training
+from fvdb_reality_capture import radiance_fields
 
 
-class MockWriter(training.GaussianSplatReconstructionBaseWriter):
+class MockWriter(radiance_fields.GaussianSplatReconstructionBaseWriter):
     def __init__(self):
         super().__init__()
         self.metric_log: list[tuple[int, str, float]] = []
@@ -52,7 +51,7 @@ class GaussianSplatReconstructionTests(unittest.TestCase):
 
     def test_run_training_with_no_saving(self):
 
-        short_config = frc.training.GaussianSplatReconstructionConfig(
+        short_config = frc.radiance_fields.GaussianSplatReconstructionConfig(
             max_epochs=1,
             refine_start_epoch=5,
             eval_at_percent=[],
@@ -69,7 +68,7 @@ class GaussianSplatReconstructionTests(unittest.TestCase):
         self.assertEqual(runner.model.num_gaussians, self.sfm_scene.points.shape[0])
 
     def test_run_training_with_saving(self):
-        short_config = frc.training.GaussianSplatReconstructionConfig(
+        short_config = frc.radiance_fields.GaussianSplatReconstructionConfig(
             max_epochs=2,
             refine_start_epoch=5,
             eval_at_percent=[50, 100],
@@ -105,7 +104,7 @@ class GaussianSplatReconstructionTests(unittest.TestCase):
 
     def test_resuming_from_checkpoint(self):
 
-        short_config = frc.training.GaussianSplatReconstructionConfig(
+        short_config = frc.radiance_fields.GaussianSplatReconstructionConfig(
             max_epochs=2,
             refine_start_epoch=5,
             eval_at_percent=[50, 100],

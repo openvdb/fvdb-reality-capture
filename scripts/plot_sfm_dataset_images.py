@@ -9,8 +9,8 @@ import cv2
 import numpy as np
 import tqdm
 
+from fvdb_reality_capture.radiance_fields import SfmDataset
 from fvdb_reality_capture.sfm_scene import SfmScene
-from fvdb_reality_capture.training import SfmDataset
 from fvdb_reality_capture.transforms import DownsampleImages
 
 if __name__ == "__main__":
