@@ -3,42 +3,62 @@
 #
 import logging
 import pathlib
-from typing import Sequence
+from typing import Any, Sequence
 
 import numpy as np
 
 from ._load_colmap_scene import load_colmap_scene
-from ._load_simple_scene import load_simple_scene
 from .sfm_cache import SfmCache
-from .sfm_metadata import SfmCameraMetadata, SfmImageMetadata
+from .sfm_metadata import SfmCameraMetadata, SfmPosedImageMetadata
 
 
 class SfmScene:
     """
-    Class representing a scene extracted from a structure-from-motion (SFM) pipeline such as COLMAP or GLOMAP.
-    The scene consists of:
-        - cameras: A dictionary mapping unique integer camera identifiers to `SfmCameraMetadata` objects
-                   which contain information about each camera used to capture the scene (e.g. focal length,
-                   distortion parameters).
-        - images: A list of `SfmImageMetadata` objects containing metadata for each posed image in the scene (e.g. camera ID,
-                  image path, view transform, etc.).
-        - points: An Nx3 array of 3D points in the scene, where N is the number of points.
-        - points_err: An array of shape (N,) representing the error or uncertainty of each point in `points`.
-        - points_rgb: An Nx3 uint8 array of RGB color values for each point in the scene, where N is the number of points.
-        - scene_bbox: An array of shape (6,) representing a bounding box containing the scene. In the form
-            (bbmin_x, bbmin_y, bbmin_z, bbmax_x, bbmax_y, bbmax_z)
-        - transformation_matrix: A 4x4 matrix encoding a transformation from some canonical coordinate space
-            to scene coordinates.
+    Lightweight in-memory representation of a scene extracted from a structure-from-motion (SFM) pipeline such as
+    `COLMAP <https://github.com/colmap/colmap>`_ or `GLOMAP <https://github.com/colmap/glomap>`_.
 
-    The scene can be transformed using a 4x4 transformation matrix, which applies to both the camera poses and the 3D points in the scene.
-    The scene also provides properties to access the world-to-camera and camera-to-world matrices,
-    the scale of the scene, and the number of images and cameras.
+    This class does not load large data, but instead stores metadata about the scene, including camera parameters,
+    image paths, and 3D points. It also provides methods to manipulate and transform the scene, such as filtering points
+    or images, applying transformations, and accessing camera and image properties.
+
+    .. note:: The :class:`SfmScene` class is *immutable*. Methods that modify the scene (e.g. filtering points or images,
+            applying transformations) return new instances rather than modifying the existing one.
+
+    .. note:: The :class:`SfmScene` class does not load or store the actual image data. It only stores
+              paths to the images on disk.
+
+
+    In general, an :class:`SfmScene` consists of the following components:
+
+    **Cameras** (:obj:`cameras`): A dictionary mapping unique integer camera identifiers to
+    :class:`SfmCameraMetadata` objects which contain information about each camera used to capture the scene
+    (e.g. focal length, distortion parameters).
+
+    **Posed Images** (:obj:`images`): A list of :class:`SfmImageMetadata` objects containing metadata for each posed
+    image in the scene (e.g. the ID of the camera that captured it, the path to the image on disk, the camera to
+    world matrix, etc.).
+
+    **Points** (:obj:`points`): An Nx3 array of 3D points in the scene, where ``N`` is the number of points.
+    **Point Errors** (:obj:`points_err`): An array of shape ``(N,)`` representing the error or uncertainty of each
+    point where ``N`` is the number of points.
+
+    **Point RGB Colors** (:obj:`points_rgb`): An Nx3 uint8 array of RGB color values for each point in the
+    scene, where ``N`` is the number of points.
+
+    **Scene Bounding Box** (:obj:`scene_bbox`): An array of shape (6,) representing a bounding box containing the scene.
+    In the form ``(bbmin_x, bbmin_y, bbmin_z, bbmax_x, bbmax_y, bbmax_z)``.
+
+    **Transformation Matrix** (:obj:`transformation_matrix`): A 4x4 matrix encoding a transformation from some canonical
+    coordinate space to scene coordinates.
+
+    **Cache** (:obj:`cache`): An :class:`SfmCache` object representing a cache folder for storing quantities
+    derived from the scene (e.g. depth maps, feature matches, etc.).
     """
 
     def __init__(
         self,
         cameras: dict[int, SfmCameraMetadata],
-        images: list[SfmImageMetadata],
+        images: Sequence[SfmPosedImageMetadata],
         points: np.ndarray,
         points_err: np.ndarray,
         points_rgb: np.ndarray,
@@ -47,37 +67,37 @@ class SfmScene:
         cache: SfmCache,
     ):
         """
-        Initialize the SfmScene with cameras, images, and points.
+        Initialize an :class:`SfmScene` instance from the given components.
 
         Args:
-            cameras (dict[int, SfmCameraMetadata]): A dictionary mapping camera IDs to `SfmCameraMetadata` objects
-                                                     containing information about each camera used to capture the
-                                                     scene (e.g. focal length, distortion parameters, etc.).
-            images (list[SfmImageMetadata]): A list of `SfmImageMetadata` objects containing metadata for each image
-                                              in the scene (e.g. camera ID, image path, view transform, etc.).
-            points (np.ndarray): An Nx3 array of 3D points in the scene,
-                                 where N is the number of points.
-            points_err (np.ndarray): An array of shape (N,) representing the error or uncertainty
-                                     of each point in `points`.
-            points_rgb (np.ndarray): An Nx3 uint8 array of RGB color values for each point in the scene,
-                                     where N is the number of points.
-            scene_bbox (np.ndarray): A (6)-shaped array of the form [bmin_x, bmin_y, bmin_z, bmax_x, bmax_y, bmax_z]
-                defining the bounding box of the scene. If None is passed in, it will default to
-                [-inf, -inf, -inf, inf, inf, inf] (i.e. all of R^3)
-            transformation_matrix (np.ndarray): A 4x4 transformation matrix encoding the transformation from a reference coordinate
-                system to the scene's coordinate system.
-                Note that this is not applied to the scene but simply stored to track transformations applied
-                to the scene (e.g. via apply_transformation_matrix).
+            cameras (dict[int, SfmCameraMetadata]): A dictionary mapping camera IDs to :class:`SfmCameraMetadata`
+                objects containing information about each camera used to capture the scene
+                (e.g. focal length, distortion parameters, etc.).
+            images (Sequence[SfmImageMetadata]): A sequence of :class:`SfmImageMetadata` objects containing metadata
+                for each image in the scene (e.g. camera ID, image path, view transform, etc.).
+            points (np.ndarray): An ``(N, 3)``-shaped array of 3D points in the scene, where ``N`` is the number of points.
+            points_err (np.ndarray): An array of shape  ``(N,)`` representing the error or uncertainty of each point
+                in ``points``.
+            points_rgb (np.ndarray): An ``(N,3)``-shaped uint8 array of RGB color values for each point in the scene,
+                where ``N`` is the number of points.
+            scene_bbox (np.ndarray | None): A ``(6,)``-shaped array of the form
+                ``[bmin_x, bmin_y, bmin_z, bmax_x, bmax_y, bmax_z]`` defining the bounding box of the scene.
+                If ``None`` is passed in, it will default to ``[-inf, -inf, -inf, inf, inf, inf]``
+                (i.e. all of :math:`\\mathbb{R}^3`)
+            transformation_matrix (np.ndarray | None): A 4x4 transformation matrix encoding the transformation from a reference
+                coordinate system to the scene's coordinate system. Note that this is not applied to the scene but simply
+                stored to track transformations applied to the scene (e.g. via apply_transformation_matrix).
+                If ``None`` is passed in, it will default to the identity matrix.
         """
+        self._logger = logging.getLogger(f"{self.__class__.__module__}.{self.__class__.__name__}")
         self._cameras = cameras
-        self._images = images
+        self._images = list(images)
         self._points = points
         self._points_err = points_err
         self._points_rgb = points_rgb
         self._transformation_matrix = transformation_matrix if transformation_matrix is not None else np.eye(4)
         self._scene_bbox = scene_bbox
         self._cache = cache
-        self._logger = logging.getLogger(f"{self.__class__.__module__}.{self.__class__.__name__}")
 
         # Validate the scene_bbox
         if self._scene_bbox is not None and np.any(np.isinf(self._scene_bbox)):
@@ -102,14 +122,20 @@ class SfmScene:
     @classmethod
     def from_colmap(cls, colmap_path: str | pathlib.Path) -> "SfmScene":
         """
-        Load an `SfmScene` (with a cache to store derived quantities) from the output of a COLMAP
-        structure-from-motion (SfM) pipeline. COLMAP produces a directory of images, a set of
-        correspondence points, as well as a lightweight SqLite database containing image poses
-        (camera to world matrices), camera intrinsics (projection matrices, camera type, etc.), and
-        indices of which points are seen from which images.
+        Load an :class:`SfmScene` (with a cache to store derived quantities) from the output of a
+        `COLMAP <https://github.com/colmap/colmap>`_  structure-from-motion (SfM) pipeline.
+        COLMAP produces a directory of images, a set of 3D correspondence points, as well as a lightweight SqLite
+        database containing image poses (camera to world matrices), camera intrinsics
+        (projection matrices, camera type, etc.), and indices of which points are seen from which images.
+
+        These are loaded into memory as an :class:`SfmScene` object which provides easy access to the camera parameters,
+        image paths, and 3D points, as well as methods to manipulate and transform the scene.
 
         Args:
             colmap_path (str | pathlib.Path): The path to the output of a COLMAP run.
+
+        Returns:
+            scene (SfmScene): An in-memory representation of the loaded scene.
         """
 
         if isinstance(colmap_path, str):
@@ -130,12 +156,15 @@ class SfmScene:
     @classmethod
     def from_e57(cls, e57_path: str | pathlib.Path, point_downsample_factor: int = 1) -> "SfmScene":
         """
-        Load an `SfmScene` (with a cache to store derived quantities) from a set of E57 files.
+        Load an :class:`SfmScene` (with a cache to store derived quantities) from a set of E57 files.
 
         Args:
             e57_path (str | pathlib.Path): The path to a directory containing E57 files.
             point_downsample_factor (int): Factor by which to downsample the points loaded from the E57 files.
                 Defaults to 1 (i.e. no downsampling).
+
+        Returns:
+            scene (SfmScene): An in-memory representation of the loaded scene.
         """
 
         if isinstance(e57_path, str):
@@ -158,26 +187,30 @@ class SfmScene:
     @classmethod
     def from_simple_directory(cls, data_path: str | pathlib.Path) -> "SfmScene":
         """
-        Load an `SfmScene` (with a cache to store derived quantities) from a simple directory structure
+        Load an :class:`SfmScene` (with a cache to store derived quantities) from a simple directory structure
         containing images, camera parameters (stored as JSON), and 3D points (stored as a PLY).
 
         The directory should contain:
-            - images/: A directory of images.
-            - cameras.json: A JSON file containing camera parameters.
-                The cameras.json file is a list of dictionaries, each containing:
-                    - camera_name: The name of the image file.
-                    - width: The width of the image.
-                    - height: The height of the image.
-                    - camera_intrinsics: The perspective projection matrix
-                    - world_to_camera: The world-to-camera transformation matrix.
-                    - image_path: The path to the image file relative to the images directory.
-            - points.ply: A PLY file containing 3D points.
+
+        - **images/**: A directory of images.
+
+        - **cameras.json**: A JSON file containing camera parameters.
+          The cameras.json file is a list of dictionaries, each containing the following keys:
+
+            - ``"camera_name"``: The name of the image file.
+            - ``"width"``: The width of the image.
+            - ``"height"``: The height of the image.
+            - ``"camera_intrinsics"``: The perspective projection matrix
+            - ``"world_to_camera"``: The world-to-camera transformation matrix.
+            - ``"image_path"``: The path to the image file relative to the images directory.
+
+        - **points.ply**: A PLY file containing 3D points.
 
         Args:
             data_path (str | pathlib.Path): The path to the data directory.
 
         Returns:
-            SfmScene: An in-memory representation of the of the loaded scene
+            scene (SfmScene): An in-memory representation of the loaded scene.
         """
 
         if isinstance(data_path, str):
@@ -197,12 +230,13 @@ class SfmScene:
             cache=cache,
         )
 
-    def state_dict(self) -> dict:
+    def state_dict(self) -> dict[str, Any]:
         """
-        Get a state dictionary representing the SfmScene.
+        Get a state dictionary representing the SfmScene. This can be used to serialize the scene to disk
+        or to create a new SfmScene instance via :meth:`from_state_dict`.
 
         Returns:
-            dict: A dictionary containing the state of the SfmScene.
+            state_dict (dict[str, Any]): A dictionary containing the state of the SfmScene.
         """
         return {
             "cameras": {k: v.state_dict() for k, v in self._cameras.items()},
@@ -220,7 +254,16 @@ class SfmScene:
         }
 
     @classmethod
-    def from_state_dict(cls, state_dict: dict) -> "SfmScene":
+    def from_state_dict(cls, state_dict: dict[str, Any]) -> "SfmScene":
+        """
+        Create an :class:`SfmScene` from a state dictionary previously obtained via :meth:`state_dict`.
+
+        Args:
+            state_dict (dict[str, Any]): A state dictionary representing the SfmScene originally created with :meth:`state_dict`.
+
+        Returns:
+            scene (SfmScene): An in-memory representation of the loaded scene.
+        """
         if "images" not in state_dict:
             raise KeyError("State dictionary is missing 'images' key.")
         if "cameras" not in state_dict:
@@ -254,7 +297,7 @@ class SfmScene:
         cache = SfmCache.get_cache(cache_path, name=cache_name, description=cache_description)
 
         cameras = {int(k): SfmCameraMetadata.from_state_dict(v) for k, v in state_dict["cameras"].items()}
-        images = [SfmImageMetadata.from_state_dict(img_dict, cameras) for img_dict in state_dict["images"]]
+        images = [SfmPosedImageMetadata.from_state_dict(img_dict, cameras) for img_dict in state_dict["images"]]
         points = np.array(state_dict["points"], dtype=np.float32)
         points_err = np.array(state_dict["points_err"], dtype=np.float32)
         points_rgb = np.array(state_dict["points_rgb"], dtype=np.uint8)
@@ -279,19 +322,19 @@ class SfmScene:
 
     def filter_points(self, mask: np.ndarray | Sequence[bool]) -> "SfmScene":
         """
-        Filter the points in the scene based on a boolean mask.
+        Return a new :class:`SfmScene` instance containing only the points for which the mask is ``True``.
 
         Args:
-            mask (np.ndarray | Sequence[bool]): A boolean array of shape (N,) where N is the number of points.
-                               True values indicate that the corresponding point should be kept.
+            mask (np.ndarray | Sequence[bool]): A boolean array of shape ``(N,)`` where ``N`` is the number of points.
+                ``True`` values indicate that the corresponding point should be kept.
 
         Returns:
-            SfmScene: A new SfmScene instance with filtered points and corresponding metadata.
+            SfmScene: A new :class:`SfmScene` instance with filtered points and corresponding metadata.
         """
         visible_point_indices = set(np.argwhere(mask).ravel().tolist())
         remap_indices = np.cumsum(mask, dtype=int)
         filtered_images = []
-        image_meta: SfmImageMetadata
+        image_meta: SfmPosedImageMetadata
         for image_meta in self._images:
             new_point_indices = None
             if image_meta.point_indices is not None:
@@ -299,7 +342,7 @@ class SfmScene:
                 old_visible_points_filtered = old_visible_points.intersection(visible_point_indices)
                 new_point_indices = remap_indices[np.array(list(old_visible_points_filtered), dtype=np.int64)] - 1
             filtered_images.append(
-                SfmImageMetadata(
+                SfmPosedImageMetadata(
                     world_to_camera_matrix=image_meta.world_to_camera_matrix,
                     camera_to_world_matrix=image_meta.camera_to_world_matrix,
                     camera_metadata=image_meta.camera_metadata,
@@ -328,15 +371,15 @@ class SfmScene:
 
     def filter_images(self, mask: np.ndarray | Sequence[bool]) -> "SfmScene":
         """
-        Filter the images in the scene based on a Boolean mask.
+        Return a new :class:`SfmScene` instance containing only the images for which the mask is ``True``.
 
         Args:
-            mask (np.ndarray | Sequence[bool]): A Boolean array of shape (M,) where M is the number of images.
-                               True values indicate that the corresponding image should be kept.
-
+            mask (np.ndarray | Sequence[bool]): A Boolean array of shape ``(I,)`` where ``I`` is the number of images.
+                ``True`` values indicate that the corresponding image should be kept.
         Returns:
-            SfmScene: A new SfmScene instance with filtered images and corresponding metadata.
+            SfmScene: A new :class:`SfmScene` instance with filtered images and corresponding metadata.
         """
+
         filtered_images = [img for img, keep in zip(self._images, mask) if keep]
         return SfmScene(
             cameras=self._cameras,
@@ -351,13 +394,14 @@ class SfmScene:
 
     def select_images(self, indices: np.ndarray | Sequence[int]) -> "SfmScene":
         """
-        Select specific images from the scene based on their indices.
+        Return a new :class:`SfmScene` instance containing only the images specified by the given indices.
 
         Args:
             indices (np.ndarray | Sequence[int]): An array of integer indices specifying which images to select.
+                The indices should be in the range ``[0, num_images - 1]``.
 
         Returns:
-            SfmScene: A new SfmScene instance with the selected images and corresponding metadata.
+            SfmScene: A new :class:`SfmScene` instance with the selected images and corresponding metadata.
         """
         filtered_images = [self._images[i] for i in indices]
         return SfmScene(
@@ -373,18 +417,19 @@ class SfmScene:
 
     def apply_transformation_matrix(self, transformation_matrix: np.ndarray) -> "SfmScene":
         """
-        Apply a transformation to the scene using a 4x4 transformation matrix.
+        Return a new :class:`SfmScene` instance with the transformation applied.
 
         The transformation applies to the camera poses and the 3D points in the scene.
-
-        Note: This does not modify the original scene, but returns a new SfmScene instance with the transformed data.
 
         Args:
             transformation_matrix (np.ndarray): A 4x4 transformation matrix to apply to the scene.
 
         Returns:
-            SfmScene: A new SfmScene instance with the transformed cameras and points.
+            SfmScene: A new :class:`SfmScene` instance with the transformed cameras and points.
         """
+        if transformation_matrix.shape != (4, 4):
+            raise ValueError("Transformation matrix must be a 4x4 matrix.")
+
         camera_locations = []
         transformed_images = []
         for image in self._images:
@@ -418,10 +463,10 @@ class SfmScene:
     @property
     def cache(self) -> SfmCache:
         """
-        Return the cache folder for storing derived quantities related to the scene.
+        Return an :class:`SfmCache` object representing a cache folder for storing quantities derived from the scene.
 
-        Return:
-            SfmCache: The cache object associated with the scene.
+        Returns:
+            cache (SfmCache): The :class:`SfmCache` object associated with this scene.
         """
         return self._cache
 
@@ -431,17 +476,47 @@ class SfmScene:
         Return whether the images in the scene have point indices indicating which 3D points are visible in each image.
 
         Returns:
-            bool: True if the images have point indices, False otherwise.
+            has_visible_point_indices (bool): ``True`` if the images have point indices, ``False`` otherwise.
         """
         return self._has_point_indices
 
     @property
-    def image_centers(self):
+    def median_depth_per_image(self) -> np.ndarray:
         """
-        Returns the position where each image was captured in the scene.
+        Return an array containing the median depth of the points observed in each image.
 
         Returns:
-            np.ndarray: A (N, 3) array representing the 3D positions of the image centers.
+            median_depth_per_image (np.ndarray): An array of shape ``(I,)`` where ``I`` is the number of images.
+                Each value represents the median depth of the points observed in the corresponding image.
+                If this scene does not have visible points per image (*i.e* :obj:`has_visible_point_indices` is ``False``),
+                an array of ``np.nan`` values is returned.
+        """
+        if not self._has_point_indices:
+            return np.full((len(self._images),), np.nan, dtype=np.float32)
+
+        if len(self._images) == 0:
+            return np.zeros((0,), dtype=np.float32)
+
+        median_depths = np.full((len(self._images),), np.nan, dtype=np.float32)
+        for i, img in enumerate(self._images):
+            if img.point_indices is None or len(img.point_indices) == 0:
+                continue
+            points_in_image = self._points[img.point_indices]
+            camera_origin = img.origin.reshape(1, 3)
+            depths = np.linalg.norm(points_in_image - camera_origin, axis=1)
+            if len(depths) > 0:
+                median_depths[i] = np.median(depths)
+        return median_depths
+
+    @property
+    def image_centers(self) -> np.ndarray:
+        """
+        Returns the position where each posed image was captured in the scene (i.e. the position of the camera
+        when it captured the image).
+
+        Returns:
+            image_centers (np.ndarray): A ``(I, 3)``-shaped array representing the 3D positions of the image centers,
+                where ``N`` is the number of images.
         """
 
         if not self._images:
@@ -451,11 +526,13 @@ class SfmScene:
     @property
     def image_sizes(self) -> np.ndarray:
         """
-        Return the dimensions of each image in the scene as a numpy array of shape (N, 2)
-        where N is the number of images and each entry is (height, width).
+        Return the resolution of each posed image in the scene as a numpy array of shape (N, 2)
+        where ``N`` is the number of images and each entry is (height, width).
 
         Returns:
-            np.ndarray: A (N, 2) array representing the dimensions of each image in the scene.
+            image_sizes (np.ndarray): A ``(I, 2)``-shaped array representing the resolution of each posed
+                image in the scene, where ``I`` is the number of images, `image_sizes[i, 0]` is the height of image ``i``,
+                and `image_sizes[i, 1]` is the width of image ``i``.
         """
         if not self._images:
             return np.zeros((0, 2), dtype=int)
@@ -464,18 +541,23 @@ class SfmScene:
     @property
     def transformation_matrix(self) -> np.ndarray:
         """
-        Return the 4x4 transformation matrix for the scene which encodes the transformation
-        from some reference coordinate system to the scene's coordinates.
+        Return the 4x4 transformation matrix for the scene. This matrix encodes the transformation
+        from the coordinate system the scene was loaded in to the current scene's coordinates.
+
+        Returns:
+            transformation_matrix (np.ndarray): A 4x4 numpy array representing the transformation matrix from
+                the original coordinate system to the current scene's coordinate system.
         """
         return self._transformation_matrix
 
     @property
     def world_to_camera_matrices(self) -> np.ndarray:
         """
-        Return the world-to-camera matrices for each image in the scene.
+        Return the world-to-camera matrices for each posed image in the scene.
 
         Returns:
-            np.ndarray: A (N, 4, 4) array representing the world-to-camera transformation matrices.
+            world_to_camera_matrices (np.ndarray): An ``(I, 4, 4)``-shaped array representing the world-to-camera
+                transformation matrix of each posed image in the scene, where `I` is the number of images.
         """
         if not self._images:
             return np.zeros((0, 4, 4))
@@ -484,10 +566,11 @@ class SfmScene:
     @property
     def camera_to_world_matrices(self) -> np.ndarray:
         """
-        Return the camera-to-world matrices for each image in the scene.
+        Return the camera-to-world matrices for each posed image in the scene.
 
         Returns:
-            np.ndarray: A (N, 4, 4) array representing the camera-to-world transformation matrices.
+            camera_to_world_matrices (np.ndarray): An ``(I, 4, 4)``-shaped array representing the camera-to-world
+                transformation matrix of each posed image in the scene, where `I` is the number of images.
         """
         if not self._images:
             return np.zeros((0, 4, 4))
@@ -496,10 +579,12 @@ class SfmScene:
     @property
     def projection_matrices(self) -> np.ndarray:
         """
-        Return the projection matrices for each image in the scene.
+        Return the projection matrices for each posed image in the scene.
 
         Returns:
-            np.ndarray: A (N, 3, 3) array representing the projection matrices.
+            projection_matrices (np.ndarray): An ``(I, 3, 3)``-shaped array representing the projection matrix of each
+                posed image in the scene, where `I` is the number of images. The projection matrix maps 3D points in camera
+                coordinates to 2D points in pixel coordinates.
         """
         if not self._images:
             return np.zeros((0, 3, 3))
@@ -508,10 +593,10 @@ class SfmScene:
     @property
     def num_images(self) -> int:
         """
-        Return the total number of images used to capture the scene.
+        Return the total number of posed images in the scene.
 
         Returns:
-            int: The number of images in the scene.
+            num_images (int): The number of posed images in the scene.
         """
         return len(self._images)
 
@@ -521,7 +606,7 @@ class SfmScene:
         Return the total number of cameras used to capture the scene.
 
         Returns:
-            int: The number of cameras in the scene.
+            num_cameras (int): The number of cameras in the scene.
         """
         return len(self._cameras)
 
@@ -538,7 +623,7 @@ class SfmScene:
         return self._cameras
 
     @property
-    def images(self) -> list[SfmImageMetadata]:
+    def images(self) -> list[SfmPosedImageMetadata]:
         """
         Get a list of image metadata objects (`SfmImageMetadata`) with information about each image
         in the scene (e.g. it's camera ID, path on the filesystem, etc.).
@@ -552,49 +637,50 @@ class SfmScene:
     @property
     def points(self) -> np.ndarray:
         """
-        Get the 3D points reconstructed in the scene as a numpy array of shape (N, 3),
+        Get the 3D points in the scene as a numpy array of shape ``(N, 3)``.
 
         Note: The points are in the same coordinate system as the camera poses.
 
         Returns:
-            np.ndarray: An Nx3 array of 3D points in the scene.
+            points (np.ndarray): An ``(N, 3)``-shaped array of 3D points in the scene where ``N`` is the number of points.
         """
         return self._points
 
     @property
     def points_err(self) -> np.ndarray:
         """
-        Return an un-normalized confidence value for each point (seel `points`) in the scene.
+        Return an un-normalized confidence value for each point in the scene (see :obj:`points`).
 
         The error is a measure of the uncertainty in the 3D point position, typically derived from the SFM pipeline.
 
         Returns:
-            np.ndarray: An array of shape (N,) where N is the number of points in the scene.
-                        Each value represents the error or uncertainty of the corresponding point in `points`.
+            points_err (np.ndarray): An array of shape ``(N,)`` where ``N`` is the number of points in the scene.
+                        ``points_err[i]`` encodes the error or uncertainty of the i-th corresponding
+                        point in :obj:`points`.
         """
         return self._points_err
 
     @property
     def points_rgb(self) -> np.ndarray:
         """
-        Return the RGB color values for each point in the scene as a uint8 array of shape (N, 3) where N is the number of points.
+        Return the RGB color values for each point in the scene as a uint8 array of shape ``(N, 3)`` where ``N`` is the number of points.
 
         Returns:
-            np.ndarray: An Nx3 uint8 array of RGB color values for each point in the scene where N is the number of points.
+            points_rgb (np.ndarray): An ``(N, 3)``-shaped uint8 array of RGB color values for each point in the scene where ``N`` is the number of points.
         """
         return self._points_rgb
 
     @property
     def scene_bbox(self) -> np.ndarray:
         """
-        Return the clip bounds of the scene as a numpy array of shape (6,) in the form
-        [xmin, ymin, zmin, xmax, ymax, zmax].
+        Return the clip bounds of the scene as a numpy array of shape ``(6,)`` in the form
+        ```[xmin, ymin, zmin, xmax, ymax, zmax]``.
 
-        By default, the clip bounds are [-inf, -inf, -inf, inf, inf, inf].
+        If the scene was not constructed with a bounding box, the default clip bounds are ``[-inf, -inf, -inf, inf, inf, inf]``.
 
         Returns:
-            np.ndarray: A 1D array of shape (6,) representing the bounding box of the scene.
-                        If the bounding box has not been computed, it returns [-inf, -inf, -inf, inf, inf, inf].
+            scene_bbox (np.ndarray): A 1D array of shape ``(6,)`` representing the bounding box of the scene.
+                        If the scene was not constructed with a bounding box, then return ``[-inf, -inf, -inf, inf, inf, inf]``.
         """
         if self._scene_bbox is None:
             # Calculate the bounding box of the scene if not already computed

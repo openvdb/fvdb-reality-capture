@@ -10,13 +10,13 @@ import pye57
 import tqdm
 from scipy.spatial.transform import Rotation
 
-from . import SfmCache, SfmCameraMetadata, SfmCameraType, SfmImageMetadata
+from . import SfmCache, SfmCameraMetadata, SfmCameraType, SfmPosedImageMetadata
 
 
 def _load_e57_scan(
     e57_file: pye57.E57,
     camera_metadata: dict[int, SfmCameraMetadata],
-    image_metadata: list[SfmImageMetadata],
+    image_metadata: list[SfmPosedImageMetadata],
     cum_num_points: int,
     cache: SfmCache,
     total_images: int,
@@ -297,7 +297,7 @@ def _load_e57_scan(
         ) + cum_num_points
 
         image_metadata.append(
-            SfmImageMetadata(
+            SfmPosedImageMetadata(
                 world_to_camera_matrix=world_to_cam_matrix,
                 camera_to_world_matrix=cam_to_world_matrix,
                 camera_metadata=camera_metadata[camera_id],
@@ -350,7 +350,7 @@ def load_e57_dataset(dataset_path: pathlib.Path, point_downsample_factor: int = 
         cache.clear_current_folder()
 
     cum_num_points = 0
-    image_metadata: list[SfmImageMetadata] = []
+    image_metadata: list[SfmPosedImageMetadata] = []
     camera_metadata: dict[int, SfmCameraMetadata] = {}
     points = []
     points_rgb = []

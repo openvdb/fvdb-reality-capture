@@ -15,7 +15,7 @@ DerivedTransform = TypeVar("DerivedTransform", bound=type)
 
 def transform(cls: DerivedTransform) -> DerivedTransform:
     """
-    Decorator to register a transform class.
+    Decorator to register a transform class which inherits from :class:`BaseTransform`.
 
     Args:
         cls: The transform class to register.
@@ -35,15 +35,19 @@ def transform(cls: DerivedTransform) -> DerivedTransform:
 
 
 class BaseTransform(ABC):
-    """Base class for all transforms."""
+    """
+    Base class for all transforms.
 
-    def __init__(self, *args: Any, **kwds: Any):
-        pass
+    Transforms are used to modify an :class:`SfmScene` before it is used for reconstruction or other processing.
+    They can be used to filter images, adjust camera parameters, or perform other modifications to the scene.
+
+    Subclasses of :class:`BaseTransform` must implement the following methods:
+    """
 
     @abstractmethod
     def __call__(self, input_scene: SfmScene) -> SfmScene:
         """
-        Apply the transform to the data.
+        Abstract method to apply the transform to the input scene and return the transformed scene.
 
         Args:
             input_scene (SfmScene): The input scene to transform.
@@ -57,7 +61,7 @@ class BaseTransform(ABC):
     @abstractmethod
     def name() -> str:
         """
-        Return the name of the transform.
+        Abstract method to return the name of the transform.
 
         Returns:
             str: The name of the transform.
@@ -67,7 +71,7 @@ class BaseTransform(ABC):
     @abstractmethod
     def state_dict(self) -> dict[str, Any]:
         """
-        Return the state of the transform for serialization.
+        Abstract method to return a dictionary containing information to serialize/deserialize the transform.
 
         Returns:
             state_dict (dict[str, Any]): A dictionary containing information to serialize/deserialize the transform.
@@ -78,7 +82,7 @@ class BaseTransform(ABC):
     @abstractmethod
     def from_state_dict(state_dict: dict[str, Any]) -> "BaseTransform":
         """
-        Create a transform from a state dictionary.
+        Abstract method to create a transform from a state dictionary generated with :meth:`state_dict`.
 
         Args:
             state_dict (dict[str, Any]): A dictionary containing information to serialize/deserialize the transform.

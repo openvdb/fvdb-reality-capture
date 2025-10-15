@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 from enum import Enum
+from typing import Any
 
 import cv2
 import numpy as np
@@ -13,19 +14,47 @@ class SfmCameraType(Enum):
     """
 
     PINHOLE = "PINHOLE"
+    """
+    A standard pinhole camera model with no lens distortion.
+    Uses separate focal lengths for x and y directions (fx, fy) and a principal point (cx, cy).
+    """
+
     SIMPLE_PINHOLE = "SIMPLE_PINHOLE"
+    """
+    A simplified pinhole camera model with a single focal length and no lens distortion. The principal point is at the image center.
+    """
+
     SIMPLE_RADIAL = "SIMPLE_RADIAL"
+    """
+    A simplified radial distortion camera model with a single focal length and one radial distortion coefficient.
+    """
+
     RADIAL = "RADIAL"
+    """
+    A radial distortion camera model with separate focal lengths and two radial distortion coefficients.
+    """
+
     OPENCV = "OPENCV"
+    """
+    The `OpenCV <http://opencv.org/>`_ camera model with separate focal lengths, a principal point, and five distortion coefficients ``(k1, k2, p1, p2, k3)``.
+
+    See `OpenCV camera documentation <https://docs.opencv.org/4.x/d9/d0c/group__calib3d.html>`_ for more details.
+    """
+
     OPENCV_FISHEYE = "OPENCV_FISHEYE"
+    """
+    The `OpenCV <http://opencv.org/>`_ fisheye camera model with separate focal lengths, a principal point, and four distortion coefficients ``(k1, k2, k3, k4)``.
+
+    See `OpenCV fisheye documentation <https://docs.opencv.org/4.x/db/d58/group__calib3d__fisheye.html>`_ for more details.
+    """
 
 
 class SfmCameraMetadata:
     """
-    This class encodes metadata about a camera used to capture images in a structure-from-motion (SFM) pipeline.
+    This class encodes metadata about a camera used to capture images in an :class:`SfmScene`.
 
     It contains information about the camera's intrinsic parameters (focal length, principal point, etc.),
-    the camera type (e.g., pinhole, radial distortion), and distortion parameters if applicable.
+    the camera type (see :class:`SfmCameraType`) (e.g., pinhole, radial distortion), and distortion parameters if applicable.
 
     The camera metadata is used to project 3D points into 2D pixel coordinates and to undistort images captured by the camera.
     """
@@ -42,7 +71,7 @@ class SfmCameraMetadata:
         distortion_parameters: np.ndarray,
     ):
         """
-        Create a new `SfmCameraMetadata` object.
+        Create a new :class:`SfmCameraMetadata` object.
 
         Args:
             img_width (int): The width of the camera image in pixel units (must be a positive integer).
@@ -51,7 +80,7 @@ class SfmCameraMetadata:
             fy (float): The focal length in the y direction in pixel units.
             cx (float): The x-coordinate of the principal point (optical center) in pixel units.
             cy (float): The y-coordinate of the principal point (optical center) in pixel units.
-            camera_type (SfmCameraType): The type of camera used to capture the image (e.g., "PINHOLE", "SIMPLE_PINHOLE", etc.).
+            camera_type (SfmCameraType): The type of camera used to capture the image (e.g., "PINHOLE", "SIMPLE_PINHOLE", etc.). See :class:`SfmCameraType` for details.
             distortion_parameters (np.ndarray): An array of distortion coefficients corresponding to the camera type, or an empty array if no distortion is present.
         """
 
@@ -88,14 +117,14 @@ class SfmCameraMetadata:
         self._camera_type = camera_type
         self._distortion_parameters = distortion_parameters
 
-    def state_dict(self) -> dict:
+    def state_dict(self) -> dict[str, Any]:
         """
         Return a state dictionary representing the camera metadata.
 
         This dictionary can be used to serialize and deserialize the camera metadata.
 
         Returns:
-            dict: A dictionary containing the camera metadata.
+            state_dict (dict[str, Any]): A dictionary containing the camera metadata.
         """
         return {
             "img_width": self.width,
@@ -109,15 +138,15 @@ class SfmCameraMetadata:
         }
 
     @classmethod
-    def from_state_dict(cls, state_dict: dict) -> "SfmCameraMetadata":
+    def from_state_dict(cls, state_dict: dict[str, Any]) -> "SfmCameraMetadata":
         """
-        Create a new `SfmCameraMetadata` object from a state dictionary.
+        Create a new :class:`SfmCameraMetadata` object from a state dictionary originally created by :meth:`state_dict`.
 
         Args:
-            state_dict (dict): A dictionary containing the camera metadata.
+            state_dict (dict[str, Any]): A dictionary containing the camera metadata.
 
         Returns:
-            SfmCameraMetadata: A new `SfmCameraMetadata` object.
+            SfmCameraMetadata: A new :class:`SfmCameraMetadata` object.
         """
         if "img_width" not in state_dict:
             raise KeyError("img_width is missing from state_dict")
@@ -164,7 +193,7 @@ class SfmCameraMetadata:
         The projection matrix is a 3x3 matrix that maps 3D points in camera coordinates to 2D points in pixel coordinates.
 
         Returns:
-            np.ndarray: The camera projection matrix as a 3x3 numpy array.
+            projection_matrix (np.ndarray): The camera projection matrix as a 3x3 numpy array.
         """
         return self._projection_matrix
 
@@ -174,7 +203,7 @@ class SfmCameraMetadata:
         Return the focal length in the x direction in pixel units.
 
         Returns:
-            float: The focal length in the x direction in pixel units.
+            fx (float): The focal length in the x direction in pixel units.
         """
         return self._fx
 
@@ -184,7 +213,7 @@ class SfmCameraMetadata:
         Return the focal length in the y direction in pixel units.
 
         Returns:
-            float: The focal length in the y direction in pixel units.
+            fy (float): The focal length in the y direction in pixel units.
         """
         return self._fy
 
@@ -194,7 +223,7 @@ class SfmCameraMetadata:
         Return the x-coordinate of the principal point (optical center) in pixel units.
 
         Returns:
-            float: The x-coordinate of the principal point in pixel units.
+            cx (float): The x-coordinate of the principal point in pixel units.
         """
         return self._cx
 
@@ -204,7 +233,7 @@ class SfmCameraMetadata:
         Return the y-coordinate of the principal point (optical center) in pixel units.
 
         Returns:
-            float: The y-coordinate of the principal point in pixel units.
+            cy (float): The y-coordinate of the principal point in pixel units.
         """
         return self._cy
 
@@ -214,7 +243,7 @@ class SfmCameraMetadata:
         Return the horizontal field of view in radians.
 
         Returns:
-            float: The horizontal field of view in radians.
+            fovx (float): The horizontal field of view in radians.
         """
         return self._focal2fov(self.fx, self.width)
 
@@ -224,7 +253,7 @@ class SfmCameraMetadata:
         Return the vertical field of view in radians.
 
         Returns:
-            float: The vertical field of view in radians.
+            fovy (float): The vertical field of view in radians.
         """
         return self._focal2fov(self.fy, self.height)
 
@@ -234,7 +263,7 @@ class SfmCameraMetadata:
         Return the width of the camera image in pixel units.
 
         Returns:
-            int: The width of the camera image in pixels.
+            width (int): The width of the camera image in pixels.
         """
         return self._width
 
@@ -244,7 +273,7 @@ class SfmCameraMetadata:
         Return the height of the camera image in pixel units.
 
         Returns:
-            int: The height of the camera image in pixels.
+            height (int): The height of the camera image in pixels.
         """
         return self._height
 
@@ -254,7 +283,7 @@ class SfmCameraMetadata:
         Return the type of camera used to capture the image.
 
         Returns:
-            SfmCameraType: The camera type (e.g., "PINHOLE", "SIMPLE_PINHOLE", etc.).
+            camera_type (SfmCameraType): The camera type (e.g., "PINHOLE", "SIMPLE_PINHOLE", etc.). See :class:`SfmCameraType` for details.
         """
         return self._camera_type
 
@@ -266,7 +295,7 @@ class SfmCameraMetadata:
         The aspect ratio is defined as the width divided by the height.
 
         Returns:
-            float: The aspect ratio of the camera image.
+            aspect (float): The aspect ratio of the camera image.
         """
         return self.width / self.height
 
@@ -278,20 +307,20 @@ class SfmCameraMetadata:
         The distortion parameters are used to correct lens distortion in the captured images.
 
         Returns:
-            np.ndarray: An array of distortion coefficients.
+            distortion_parameters (np.ndarray): An array of distortion coefficients.
         """
         return self._distortion_parameters
 
     def resize(self, new_width, new_height) -> "SfmCameraMetadata":
         """
-        Resize the camera metadata to a new resolution
+        Return a new :class:`SfmCameraMetadata` object with the camera parameters resized to the new image dimensions.
 
         Args:
             new_width (int): The new width of the camera image (must be a positive integer)
             new_height (int): The new height of the camera image (must be a positive integer)
 
         Returns:
-            A new `SfmCameraMetadata` object with the resized camera parameters.
+            SfmCameraMetadata: A new :class:`SfmCameraMetadata` object with the resized camera parameters.
         """
         if new_width <= 0 or new_height <= 0:
             raise ValueError("New size must be positive integers.")
@@ -311,11 +340,11 @@ class SfmCameraMetadata:
     def undistort_roi(self) -> tuple[int, int, int, int] | None:
         """
         Return the region of interest (ROI) for undistorted images.
-        The ROI is defined as a tuple of (x, y, width, height) that specifies the valid region of the undistorted image.
+        The ROI is defined as a tuple of ``(x, y, width, height)`` that specifies the valid pixel range in an undistorted image.
         If the camera does not have distortion parameters, this will be None.
 
         Returns:
-            tuple[int, int, int, int] | None: The ROI for undistorted images or None if no distortion parameters are present.
+            undistort_roi (tuple[int, int, int, int] | None): The ROI for undistorted images or None if no distortion parameters are present.
         """
         if self._undistort_roi is not None:
             assert len(self._undistort_roi) == 4, "Undistort ROI must be a tuple of (x, y, width, height)"
@@ -325,11 +354,11 @@ class SfmCameraMetadata:
     def undistort_map_x(self) -> np.ndarray | None:
         """
         Return the undistortion map for the x-coordinates of the image.
-        The undistortion map is used to remap the pixel coordinates of the image to correct for lens distortion.
+        The undistortion map is used to remap the pixel coordinates in a distorted image to correct for lens distortion.
         If the camera does not have distortion parameters, this will be None.
 
         Returns:
-            np.ndarray | None: The undistortion map for the x-coordinates or None if no distortion parameters are present.
+            undistort_map_x (np.ndarray | None): The undistortion map for the x-coordinates or None if no distortion parameters are present.
         """
         return self._undistort_map_x
 
@@ -337,18 +366,38 @@ class SfmCameraMetadata:
     def undistort_map_y(self) -> np.ndarray | None:
         """
         Return the undistortion map for the y-coordinates of the image.
-        The undistortion map is used to remap the pixel coordinates of the image to correct for lens distortion.
+        The undistortion map is used to remap the pixel coordinates in a distorted image to correct for lens distortion.
         If the camera does not have distortion parameters, this will be None.
         Returns:
-            np.ndarray | None: The undistortion map for the y-coordinates or None if no distortion parameters are present.
+            undistort_map_y (np.ndarray | None): The undistortion map for the y-coordinates or None if no distortion parameters are present.
         """
         return self._undistort_map_y
 
     @staticmethod
     def _focal2fov(focal: float, pixels: float) -> float:
+        """
+        Convert a focal length in pixel units to a field of view in radians.
+
+        Args:
+            focal (float): The focal length in pixel units.
+            pixels (float): The number of pixels corresponding to the field of view.
+
+        Returns:
+            float: The field of view in radians.
+        """
         return 2 * np.arctan(pixels / (2 * focal))
 
     def undistort_image(self, image: np.ndarray) -> np.ndarray:
+        """
+        Undistort an image using the camera's distortion parameters.
+
+        Args:
+            image (np.ndarray): The distorted image to undistort.
+
+        Returns:
+            undistorted_image (np.ndarray): The undistorted image.
+        """
+
         if self.undistort_map_x is not None and self.undistort_map_y is not None:
             image_remap = cv2.remap(image, self.undistort_map_x, self.undistort_map_y, interpolation=cv2.INTER_LINEAR)
             assert self.undistort_roi is not None
@@ -358,12 +407,12 @@ class SfmCameraMetadata:
             return image
 
 
-class SfmImageMetadata:
+class SfmPosedImageMetadata:
     """
-    This class encodes metadata about a single posed image captured by a camera in a structure-from-motion (SFM) pipeline.
+    This class encodes metadata about a single posed image in an :class:`SfmScene`.
 
     It contains information about the camera pose (world-to-camera and camera-to-world matrices),
-    the camera metadata (intrinsics, distortion parameters, etc.), for the camera that captured this image,
+    a reference to the metadata for the camera that captured the image (see :class:`SfmCameraMetadata`),
     and the image and (optionally) mask file paths.
     """
 
@@ -378,6 +427,19 @@ class SfmImageMetadata:
         point_indices: np.ndarray | None,
         image_id: int,
     ):
+        """
+        Create a new :class:`SfmImageMetadata` object.
+
+        Args:
+            world_to_camera_matrix (np.ndarray): A 4x4 matrix representing the transformation from world coordinates to camera coordinates.
+            camera_to_world_matrix (np.ndarray): A 4x4 matrix representing the transformation from camera coordinates to world coordinates.
+            camera_metadata (SfmCameraMetadata): The metadata for the camera that captured this image.
+            camera_id (int): The unique identifier for the camera that captured this image.
+            image_path (str): The file path to the image on the filesystem.
+            mask_path (str): The file path to the mask image on the filesystem (can be an empty string if no mask is available).
+            point_indices (np.ndarray | None): An optional array of point indices that are visible in this image (can be None if not available).
+            image_id (int): The unique identifier for the image.
+        """
         self._world_to_camera_matrix = world_to_camera_matrix
         self._camera_to_world_matrix = camera_to_world_matrix
         self._camera_id = camera_id
@@ -387,14 +449,14 @@ class SfmImageMetadata:
         self._camera_metadata = camera_metadata
         self._image_id = image_id
 
-    def state_dict(self) -> dict:
+    def state_dict(self) -> dict[str, Any]:
         """
         Return a state dictionary representing the image metadata.
 
         This dictionary can be used to serialize and deserialize the image metadata.
 
         Returns:
-            dict: A dictionary containing the image metadata.
+            state_dict (dict[str, Any]): A dictionary containing the image metadata.
         """
         return {
             "world_to_camera_matrix": self.world_to_camera_matrix.tolist(),
@@ -409,18 +471,17 @@ class SfmImageMetadata:
     @classmethod
     def from_state_dict(
         cls,
-        state_dict: dict,
+        state_dict: dict[str, Any],
         camera_metadata: dict[int, SfmCameraMetadata],
-    ) -> "SfmImageMetadata":
+    ) -> "SfmPosedImageMetadata":
         """
-        Create a new `SfmImageMetadata` object from a state dictionary and camera metadata.
+        Create a new :class:`SfmImageMetadata` object from a state dictionary and camera metadata (see :meth:`state_dict`).
 
         Args:
-            state_dict (dict): A dictionary containing the image metadata.
-            camera_metadata (dict[int, SfmCameraMetadata]): A dictionary mapping camera IDs to `SfmCameraMetadata` objects.
-
+            state_dict (dict[str, Any]): A dictionary containing the image metadata.
+            camera_metadata (dict[int, SfmCameraMetadata]): A dictionary mapping camera IDs to :class:`SfmCameraMetadata` objects.
         Returns:
-            SfmImageMetadata: A new `SfmImageMetadata` object.
+            SfmImageMetadata: A new :class:`SfmImageMetadata` object.
         """
         if "world_to_camera_matrix" not in state_dict:
             raise KeyError("world_to_camera_matrix is missing from state_dict")
@@ -461,25 +522,24 @@ class SfmImageMetadata:
             image_id=image_id,
         )
 
-    def transform(self, transformation_matrix: np.ndarray) -> "SfmImageMetadata":
+    def transform(self, transformation_matrix: np.ndarray) -> "SfmPosedImageMetadata":
         """
-        Apply a transformation to the world-to-camera matrix and camera-to-world matrix of this image.
+        Return a new :class:`SfmImageMetadata` object with the camera pose transformed by the given transformation matrix.
 
         This transformation applies to the left of the camera to world transformation matrix,
         meaning it transforms the camera in world space.
 
-        _i.e._
-            new_camera_to_world_matrix = transformation_matrix @ self.camera_to_world_matrix
+        *i.e.* ``new_camera_to_world_matrix = transformation_matrix @ self.camera_to_world_matrix``
         Args:
             transformation_matrix (np.ndarray): A 4x4 transformation matrix to apply.
 
         Returns:
-            SfmImageMetadata: A new `SfmImageMetadata` object with the transformed matrices.
+            SfmImageMetadata: A new :class:`SfmImageMetadata` object with the transformed matrices.
         """
         new_camera_to_world_matrix = transformation_matrix @ self.camera_to_world_matrix
         new_world_to_camera_matrix = np.linalg.inv(new_camera_to_world_matrix)
 
-        return SfmImageMetadata(
+        return SfmPosedImageMetadata(
             world_to_camera_matrix=new_world_to_camera_matrix,
             camera_to_world_matrix=new_camera_to_world_matrix,
             camera_metadata=self.camera_metadata,
@@ -493,24 +553,24 @@ class SfmImageMetadata:
     @property
     def world_to_camera_matrix(self) -> np.ndarray:
         """
-        Return the world-to-camera transformation matrix.
+        Return the world-to-camera transformation matrix for this posed image.
 
         This matrix transforms points from world coordinates to camera coordinates.
 
         Returns:
-            np.ndarray: The world-to-camera transformation matrix as a 4x4 numpy array.
+            world_to_camera_matrix (np.ndarray): The world-to-camera transformation matrix as a 4x4 numpy array.
         """
         return self._world_to_camera_matrix
 
     @property
     def camera_to_world_matrix(self) -> np.ndarray:
         """
-        Return the camera-to-world transformation matrix.
+        Return the camera-to-world transformation matrix for this posed image.
 
         This matrix transforms points from camera coordinates to world coordinates.
 
         Returns:
-            np.ndarray: The camera-to-world transformation matrix as a 4x4 numpy array.
+            camera_to_world_matrix (np.ndarray): The camera-to-world transformation matrix as a 4x4 numpy array.
         """
         return self._camera_to_world_matrix
 
@@ -520,58 +580,60 @@ class SfmImageMetadata:
         Return the unique identifier for the camera that captured this image.
 
         Returns:
-            int: The camera ID.
+            camera_id (int): The camera ID.
         """
         return self._camera_id
 
     @property
     def image_size(self) -> tuple[int, int]:
         """
-        Return the resolution of the image in pixels as a tuple of the form (height, width)
+        Return the resolution of the posed image in pixels as a tuple of the form ``(height, width)``
 
         Returns:
-            tuple[int, int]: The image resolution as (height, width).
+            image_size (tuple[int, int]): The image resolution as ``(height, width)``.
         """
         return self._camera_metadata.height, self._camera_metadata.width
 
     @property
     def image_path(self) -> str:
         """
-        Return the file path to the image.
+        Return the file path to color image for this posed image.
 
         Returns:
-            str: The path to the image file.
+            image_path (str): The path to the color image file for this posed image.
         """
         return self._image_path
 
     @property
     def mask_path(self) -> str:
         """
-        Return the file path to the mask image.
+        Return the file path to the mask for this posed image.
 
         The mask image is used to indicate which pixels in the image are valid (e.g., not occluded).
 
+        An empty string indicates that no mask is available.
+
         Returns:
-            str: The path to the mask image file.
+            mask_path (str): The path to the posed mask image file.
         """
         return self._mask_path
 
     @property
     def point_indices(self) -> np.ndarray | None:
         """
-        Return the indices of the 3D points that are visible in this image or None if the indices are not available.
+        Return the indices of the 3D points that are visible in this posed image or ``None`` if the indices are not available.
 
-        These indices correspond to the points in the point cloud that are visible in this image.
+        These indices correspond to the points in the :class:`SfmScene`'s point cloud that are visible in this posed image.
 
         Returns:
-            np.ndarray | None: An array of indices of the visible 3D points or None if not available.
+            point_indices (np.ndarray | None): An array of indices of the visible 3D points or ``None`` if not available.
         """
         return self._point_indices
 
     @property
     def camera_metadata(self) -> SfmCameraMetadata:
         """
-        Return the camera metadata associated with this image.
+        Return metadata about the camera that captured this posed image (see :class:`SfmCameraMetadata`).
 
         The camera metadata contains information about the camera's intrinsic parameters, such as focal length and distortion coefficients.
 
@@ -600,19 +662,19 @@ class SfmImageMetadata:
         The lookat vector is the direction the camera is pointing, which is the negative z-axis in the camera coordinate system.
 
         Returns:
-            np.ndarray: The camera lookat vector as a 3D numpy array.
+            lookat (np.ndarray): The camera lookat vector as a 3D numpy array.
         """
         return self.camera_to_world_matrix[:3, 2]
 
     @property
     def origin(self):
         """
-        Return the origin of the camera.
+        Return the origin of the posed image. *i.e.* the position of the camera in world coordinates when it captured the image.
 
         The origin is the position of the camera in world coordinates, which is the translation part of the camera-to-world matrix.
 
         Returns:
-            np.ndarray: The camera origin as a 3D numpy array.
+            origin (np.ndarray): The camera origin as a 3D numpy array.
         """
         return self.camera_to_world_matrix[:3, 3]
 
@@ -624,7 +686,7 @@ class SfmImageMetadata:
         The up vector is the direction that is considered "up" in the camera coordinate system, which is the negative y-axis in the camera coordinate system.
 
         Returns:
-            np.ndarray: The camera up vector as a 3D numpy array.
+            up (np.ndarray): The camera up vector as a 3D numpy array.
         """
         return -self.camera_to_world_matrix[:3, 1]
 
@@ -636,6 +698,6 @@ class SfmImageMetadata:
         The right vector is the direction that is considered "right" in the camera coordinate system, which is the x-axis in the camera coordinate system.
 
         Returns:
-            np.ndarray: The camera right vector as a 3D numpy array.
+            right (np.ndarray): The camera right vector as a 3D numpy array.
         """
         return self.camera_to_world_matrix[:3, 0]

@@ -2,7 +2,6 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 import pathlib
-import tempfile
 import unittest
 from typing import Any
 
@@ -11,10 +10,10 @@ import numpy as np
 import torch
 
 import fvdb_reality_capture as frc
-from fvdb_reality_capture import training
+from fvdb_reality_capture import radiance_fields
 
 
-class MockWriter(training.GaussianSplatReconstructionBaseWriter):
+class MockWriter(radiance_fields.GaussianSplatReconstructionBaseWriter):
     def __init__(self):
         super().__init__()
         self.metric_log: list[tuple[int, str, float]] = []
@@ -38,9 +37,12 @@ class MockWriter(training.GaussianSplatReconstructionBaseWriter):
 class GaussianSplatReconstructionTests(unittest.TestCase):
     def setUp(self):
         # Auto-download this dataset if it doesn't exist.
-        self.dataset_path = pathlib.Path(__file__).parent.parent.parent / "data" / "360_v2" / "counter"
+        self.dataset_root = pathlib.Path(__file__).parent.parent.parent / "data"
+        print("datasets root is ", self.dataset_root)
+        self.dataset_path = self.dataset_root / "360_v2" / "counter"
+        print("dataset path is ", self.dataset_path)
         if not self.dataset_path.exists():
-            frc.tools.download_example_data("mipnerf360", self.dataset_path.parent)
+            frc.tools.download_example_data("mipnerf360", self.dataset_root)
 
         self.sfm_scene = frc.SfmScene.from_colmap(self.dataset_path)
         self.scene_transform = frc.transforms.Compose(
@@ -48,11 +50,11 @@ class GaussianSplatReconstructionTests(unittest.TestCase):
             frc.transforms.DownsampleImages(4),
         )
         self.sfm_scene = self.scene_transform(self.sfm_scene)
-        self.sfm_scene = self.sfm_scene.filter_images(np.arange(0, len(self.sfm_scene.images), 4))
+        self.sfm_scene = self.sfm_scene.select_images(np.arange(0, len(self.sfm_scene.images), 4))
 
     def test_run_training_with_no_saving(self):
 
-        short_config = frc.training.GaussianSplatReconstructionConfig(
+        short_config = frc.radiance_fields.GaussianSplatReconstructionConfig(
             max_epochs=1,
             refine_start_epoch=5,
             eval_at_percent=[],
@@ -64,12 +66,12 @@ class GaussianSplatReconstructionTests(unittest.TestCase):
             use_every_n_as_val=2,
         )
 
-        runner.train()
+        runner.optimize()
 
         self.assertEqual(runner.model.num_gaussians, self.sfm_scene.points.shape[0])
 
     def test_run_training_with_saving(self):
-        short_config = frc.training.GaussianSplatReconstructionConfig(
+        short_config = frc.radiance_fields.GaussianSplatReconstructionConfig(
             max_epochs=2,
             refine_start_epoch=5,
             eval_at_percent=[50, 100],
@@ -94,7 +96,7 @@ class GaussianSplatReconstructionTests(unittest.TestCase):
         self.assertEqual(len(writer.ply_log), 0)
         self.assertEqual(len(writer.image_log), 0)
 
-        runner.train()
+        runner.optimize()
 
         self.assertGreater(len(writer.metric_log), 0)
         self.assertEqual(len(writer.checkpoint_log), 1)  # One per save
@@ -105,7 +107,7 @@ class GaussianSplatReconstructionTests(unittest.TestCase):
 
     def test_resuming_from_checkpoint(self):
 
-        short_config = frc.training.GaussianSplatReconstructionConfig(
+        short_config = frc.radiance_fields.GaussianSplatReconstructionConfig(
             max_epochs=2,
             refine_start_epoch=5,
             eval_at_percent=[50, 100],
@@ -130,7 +132,7 @@ class GaussianSplatReconstructionTests(unittest.TestCase):
         self.assertEqual(len(writer.ply_log), 0)
         self.assertEqual(len(writer.image_log), 0)
 
-        runner.train()
+        runner.optimize()
 
         num_metric_logs = len(writer.metric_log)
         print(writer.metric_log)
@@ -152,7 +154,7 @@ class GaussianSplatReconstructionTests(unittest.TestCase):
 
         # This should pick up from where we left off (50% through 2 epochs is epoch 1)
         # and save and evalute at 100% again
-        runner2.train()
+        runner2.optimize()
 
         print(writer.metric_log)
         self.assertEqual(len(writer.metric_log), num_metric_logs + num_metric_logs // 2)

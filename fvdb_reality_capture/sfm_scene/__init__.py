@@ -3,12 +3,12 @@
 #
 
 from .sfm_cache import SfmCache
-from .sfm_metadata import SfmCameraMetadata, SfmCameraType, SfmImageMetadata
+from .sfm_metadata import SfmCameraMetadata, SfmCameraType, SfmPosedImageMetadata
 from .sfm_scene import SfmScene
 
 __all__ = [
     "SfmCameraMetadata",
-    "SfmImageMetadata",
+    "SfmPosedImageMetadata",
     "SfmCameraType",
     "SfmScene",
     "SfmCache",

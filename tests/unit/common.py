@@ -3,7 +3,11 @@
 #
 import numpy as np
 
-from fvdb_reality_capture.sfm_scene import SfmCameraMetadata, SfmImageMetadata, SfmScene
+from fvdb_reality_capture.sfm_scene import (
+    SfmCameraMetadata,
+    SfmPosedImageMetadata,
+    SfmScene,
+)
 
 
 def remove_point_indices_from_scene(scene: SfmScene) -> SfmScene:
@@ -12,7 +16,7 @@ def remove_point_indices_from_scene(scene: SfmScene) -> SfmScene:
     """
     images_no_points = []
     for img_meta in scene.images:
-        img_meta_no_points = SfmImageMetadata(
+        img_meta_no_points = SfmPosedImageMetadata(
             world_to_camera_matrix=img_meta.world_to_camera_matrix,
             camera_to_world_matrix=img_meta.camera_to_world_matrix,
             camera_id=img_meta.camera_id,
@@ -96,7 +100,7 @@ def sfm_camera_metadata_match(cam1: SfmCameraMetadata, cam2: SfmCameraMetadata) 
     return True
 
 
-def sfm_image_metadata_match(im1: SfmImageMetadata, im2: SfmImageMetadata) -> bool:
+def sfm_image_metadata_match(im1: SfmPosedImageMetadata, im2: SfmPosedImageMetadata) -> bool:
     """
     Return True if the two image metadata objects are equivalent, False otherwise.
 
