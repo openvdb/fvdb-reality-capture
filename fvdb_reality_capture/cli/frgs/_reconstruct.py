@@ -18,7 +18,6 @@ from fvdb.viz import Viewer
 from tyro.conf import Positional, arg
 
 from fvdb_reality_capture.sfm_scene import SfmScene
-from fvdb_reality_capture.tools import export_splats_to_usdz
 from fvdb_reality_capture.training import (
     GaussianSplatOptimizerConfig,
     GaussianSplatReconstruction,
@@ -37,7 +36,13 @@ from fvdb_reality_capture.transforms import (
     PercentileFilterPoints,
 )
 
-from ._common import BaseCommand, DatasetType, load_sfm_scene
+from ._common import (
+    BaseCommand,
+    DatasetType,
+    load_sfm_scene,
+    save_model_from_runner,
+    save_model_from_splats,
+)
 
 
 @dataclass
@@ -258,14 +263,8 @@ class Reconstruct(BaseCommand):
             self.logger.info("All chunks files loaded. Merging...")
             merged_splats = GaussianSplat3d.cat(splats)
 
-            if self.out_path.suffix.lower() == ".ply":
-                self.logger.info(f"Saving final model to {self.out_path}")
-                merged_splats.save_ply(self.out_path, runner.optimization_metadata)
-            elif self.out_path.suffix.lower() == ".usdz":
-                self.logger.info(f"Saving final model to {self.out_path}")
-                export_splats_to_usdz(merged_splats, str(self.out_path))
-            else:
-                raise ValueError("Output path must end in .ply or .usdz")
+            self.logger.info(f"Saving merged model to {self.out_path}")
+            save_model_from_splats(self.out_path, merged_splats, runner.optimization_metadata)
 
     def _run_single_reconstruction(
         self,
@@ -295,14 +294,8 @@ class Reconstruct(BaseCommand):
 
         runner.train()
 
-        if self.out_path.suffix.lower() == ".ply":
-            self.logger.info(f"Saving final model to {self.out_path}")
-            runner.save_ply(self.out_path)
-        elif self.out_path.suffix.lower() == ".usdz":
-            self.logger.info(f"Saving final model to {self.out_path}")
-            runner.save_usdz(self.out_path)
-        else:
-            raise ValueError("Output path must end in .ply or .usdz")
+        self.logger.info(f"Saving final model to {self.out_path}")
+        save_model_from_runner(self.out_path, runner)
 
     def execute(self) -> None:
         log_level = logging.DEBUG if self.verbose else logging.INFO

@@ -8,12 +8,14 @@ from typing import Literal
 
 import torch
 from fvdb import GaussianSplat3d
-from fvdb.types import DeviceIdentifier
+from fvdb.types import DeviceIdentifier, to_VecNf
 
 from fvdb_reality_capture.sfm_scene import SfmScene
+from fvdb_reality_capture.tools import export_splats_to_usdz
 from fvdb_reality_capture.training import GaussianSplatReconstruction
 
 DatasetType = Literal["colmap", "simple_directory", "e57"]
+NearFarUnits = Literal["absolute", "camera_extent", "median_depth"]
 
 
 class BaseCommand(ABC):
@@ -78,3 +80,83 @@ def load_sfm_scene(path: pathlib.Path, dataset_type: DatasetType) -> SfmScene:
         raise ValueError(f"Unsupported dataset_type {dataset_type}")
 
     return sfm_scene
+
+
+def save_model_from_runner(out_path: pathlib.Path, runner: GaussianSplatReconstruction) -> None:
+    """
+    Save the model from the runner to the specified output path in either PLY or USDZ format
+    depending on the file extension.
+
+    Args:
+        out_path (pathlib.Path): Path to save the output file. Must end in .ply or .usdz.
+        runner (GaussianSplatReconstruction): The runner containing the model to be saved.
+    """
+    if out_path.suffix.lower() == ".ply":
+        runner.save_ply(out_path)
+    elif out_path.suffix.lower() == ".usdz":
+        runner.save_usdz(out_path)
+    else:
+        raise ValueError("Output path must end in .ply or .usdz")
+
+
+def save_model_from_splats(out_path: pathlib.Path, model: GaussianSplat3d, metadata: dict) -> None:
+    """
+    Save the given Gaussian Splat model to the specified output path in either PLY or USDZ format
+    depending on the file extension.
+
+    Args:
+        out_path (pathlib.Path): Path to save the output file. Must end in .ply or .usdz.
+        model (GaussianSplat3d): The Gaussian Splat model to be saved.
+        metadata (dict): Metadata to be saved with the model.
+    """
+    if out_path.suffix.lower() == ".ply":
+        model.save_ply(out_path, metadata)
+    elif out_path.suffix.lower() == ".usdz":
+        export_splats_to_usdz(model, str(out_path))
+    else:
+        raise ValueError("Output path must end in .ply or .usdz")
+
+
+def near_far_for_units(
+    near_far_units: NearFarUnits,
+    near: float,
+    far: float,
+    median_depths: torch.Tensor | None,
+    camera_to_world_matrices: torch.Tensor | None,
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """
+    Compute near and far plane distances based on the specified units.
+
+    Args:
+        near_far_units (NearFarUnits): The units to use for near and far plane distances.
+        near (float): The base near plane distance.
+        far (float): The base far plane distance.
+        median_depths (torch.Tensor | None): Tensor of median depths for each camera, required if
+            using "median_depth" units.
+        camera_to_world_matrices (torch.Tensor | None): Tensor of camera-to-world matrices, required if
+            using "camera_extent" or "median_depth" units.
+
+    Returns:
+        near_scaled (torch.Tensor): The computed near plane distances (either a tensor of per-image values or a single value).
+        far_scaled (torch.Tensor): The computed far plane distances (either a tensor of per-image values or a single value).
+    """
+    if near_far_units == "median_depth":
+        if median_depths is None:
+            raise ValueError("'median_depths' is required to use 'median_depth' near/far units")
+        if camera_to_world_matrices is None:
+            raise ValueError("'camera_to_world_matrices' is required to use 'median_depth' near/far units")
+        if torch.any(median_depths.isnan()) or torch.any(median_depths <= 0.0):
+            raise ValueError("median_depths in metadata must be positive and non-NaN")
+        return near * median_depths, far * median_depths
+    elif near_far_units == "camera_extent":
+        if camera_to_world_matrices is None:
+            raise ValueError("'camera_to_world_matrices' is required to use 'camera_extent' near/far units")
+        scene_centroid = camera_to_world_matrices[:, :3, 3].mean(dim=0)
+        max_camera_distance = torch.linalg.norm(
+            camera_to_world_matrices[:, :3, 3] - scene_centroid[None, :], dim=1
+        ).max()
+        return near * max_camera_distance, far * max_camera_distance
+    elif near_far_units == "absolute":
+        return torch.tensor([near]), torch.tensor([far])
+    else:
+        raise ValueError(f"Invalid near_far_units: {near_far_units}")

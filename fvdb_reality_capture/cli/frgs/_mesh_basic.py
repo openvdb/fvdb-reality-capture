@@ -5,19 +5,22 @@
 import logging
 import pathlib
 from dataclasses import dataclass
-from typing import Annotated, Literal
+from typing import Annotated
 
 import point_cloud_utils as pcu
 import torch
 import tyro
-from fvdb.types import to_Mat33fBatch, to_Mat44fBatch, to_Vec2iBatch, to_VecNf
+from fvdb.types import to_Mat33fBatch, to_Mat44fBatch, to_Vec2iBatch
 from tyro.conf import arg
 
 from fvdb_reality_capture.tools import mesh_from_splats
 
-from ._common import BaseCommand, load_splats_from_file
-
-NearFarUnits = Literal["absolute", "camera_extent", "median_depth"]
+from ._common import (
+    BaseCommand,
+    NearFarUnits,
+    load_splats_from_file,
+    near_far_for_units,
+)
 
 
 @dataclass
@@ -110,28 +113,13 @@ class MeshBasic(BaseCommand):
         projection_matrices = to_Mat33fBatch(metadata["projection_matrices"]).to(self.device)
         image_sizes = to_Vec2iBatch(metadata["image_sizes"])
 
-        if self.near_far_units == "median_depth":
-            if "median_depths" not in metadata:
-                raise ValueError(
-                    "Gaussian splats file must contain 'median_depths' to use 'median_depth' near/far units"
-                )
-            median_depths = to_VecNf(metadata["median_depths"], camera_to_world_matrices.shape[0])
-            if torch.any(median_depths.isnan()) or torch.any(median_depths <= 0.0):
-                raise ValueError("median_depths in metadata must be positive and non-NaN")
-            near = self.near * median_depths
-            far = self.far * median_depths
-        elif self.near_far_units == "camera_extent":
-            scene_centroid = camera_to_world_matrices[:, :3, 3].mean(dim=0)
-            max_camera_distance = torch.linalg.norm(
-                camera_to_world_matrices[:, :3, 3] - scene_centroid[None, :], dim=1
-            ).max()
-            near = self.near * max_camera_distance
-            far = self.far * max_camera_distance
-        elif self.near_far_units == "absolute":
-            near = self.near
-            far = self.far
-        else:
-            raise ValueError(f"Invalid near_far_units: {self.near_far_units}")
+        near, far = near_far_for_units(
+            self.near_far_units,
+            self.near,
+            self.far,
+            metadata.get("median_depths", None),
+            camera_to_world_matrices,
+        )
 
         model = model.to(self.device)
 
