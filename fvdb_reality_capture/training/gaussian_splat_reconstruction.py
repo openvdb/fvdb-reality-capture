@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 import logging
+import pathlib
 import random
 import time
 from dataclasses import dataclass, field
@@ -18,6 +19,7 @@ from fvdb.viz import Viewer
 from scipy.spatial import cKDTree  # type: ignore
 
 from ..sfm_scene import SfmScene
+from ..tools import export_splats_to_usdz
 from .camera_pose_adjust import CameraPoseAdjustment
 from .gaussian_splat_optimizer import (
     BaseGaussianSplatOptimizer,
@@ -150,7 +152,7 @@ class GaussianSplatReconstruction:
         config: GaussianSplatReconstructionConfig = GaussianSplatReconstructionConfig(),
         optimizer_config: GaussianSplatOptimizerConfig = GaussianSplatOptimizerConfig(),
         use_every_n_as_val: int = -1,
-        viewer_update_interval_epochs: int = 10,
+        viewer_update_interval_epochs: float = 10,
         log_interval_steps: int = 10,
         device: str | torch.device = "cuda",
     ):
@@ -173,7 +175,7 @@ class GaussianSplatReconstruction:
                 no visualization is performed.
             use_every_n_as_val (int): Use every n-th image as a validation image. Default of -1
                 means no validation images are used.
-            viewer_update_interval_epochs (int): Interval in epochs at which to update the viewer.
+            viewer_update_interval_epochs (float): Interval in epochs at which to update the viewer.
                 An epoch is one full pass through the training dataset.
             log_interval_steps (int): Interval in steps to log to TensorBoard.
             device (str | torch.device): Device to run the reconstruction on.
@@ -243,7 +245,7 @@ class GaussianSplatReconstruction:
             run_name=None, save_path=None
         ),
         viewer: Viewer | None = None,
-        viewer_update_interval_epochs: int = 1,
+        viewer_update_interval_epochs: float = 1.0,
         log_interval_steps: int = 10,
         device: str | torch.device = "cuda",
     ):
@@ -263,7 +265,7 @@ class GaussianSplatReconstruction:
                 and other results.
             viewer (Viewer | None): Optional Viewer instance for visualizing training progress. If None, no
                 visualization is performed.
-            viewer_update_interval_epochs (int): Interval in epochs at which to update the viewer. An epoch is one
+            viewer_update_interval_epochs (float): Interval in epochs at which to update the viewer. An epoch is one
                 full pass through the training dataset.
             log_interval_steps (int): Interval in steps to log to TensorBoard.
             device (str | torch.device): Device to run the reconstruction on.
@@ -368,7 +370,7 @@ class GaussianSplatReconstruction:
         start_step: int,
         viewer: Viewer | None,
         log_interval_steps: int,
-        viewer_update_interval_epochs: int,
+        viewer_update_interval_epochs: float,
         _private: object | None = None,
     ) -> None:
         """
@@ -393,7 +395,7 @@ class GaussianSplatReconstruction:
                 from a checkpoint).
             viewer (Viewer | None): The viewer instance to use for this run.
             log_interval_steps (int): Interval (in steps) at which to log metrics during training.
-            viewer_update_interval_epochs (int): Interval (in epochs) at which to update the viewer with new results if a viewer is specified.
+            viewer_update_interval_epochs (float): Interval (in epochs) at which to update the viewer with new results if a viewer is specified.
             _private (object | None): Private object to ensure this class is only initialized through `new_run` or `resume_from_checkpoint`.
         """
         if _private is not GaussianSplatReconstruction.__PRIVATE__:
@@ -473,6 +475,24 @@ class GaussianSplatReconstruction:
             "pose_adjust_optimizer": self._pose_adjust_optimizer.state_dict() if self._pose_adjust_optimizer else None,
             "pose_adjust_scheduler": self._pose_adjust_scheduler.state_dict() if self._pose_adjust_scheduler else None,
         }
+
+    def save_usdz(self, path: str | pathlib.Path) -> None:
+        """
+        Save the current Gaussian Splatting model to a PLY file.
+
+        Args:
+            path (str | Path): The file path where the PLY file will be saved.
+        """
+        export_splats_to_usdz(self._model, str(path))
+
+    def save_ply(self, path: str | pathlib.Path) -> None:
+        """
+        Save the current Gaussian Splatting model to a PLY file.
+
+        Args:
+            path (str | Path): The file path where the PLY file will be saved.
+        """
+        self._model.save_ply(str(path), self.optimization_metadata)
 
     @property
     def optimization_metadata(self) -> dict[str, torch.Tensor | float | int | str]:
@@ -1032,7 +1052,7 @@ class GaussianSplatReconstruction:
         self._logger.info("Training completed.")
 
     @torch.no_grad()
-    def eval(self, log_tag: str = "eval") -> None:
+    def eval(self, show_progress: bool = True, log_tag: str = "eval") -> None:
         """
         Run evaluation of the Gaussian Splatting model on the validation dataset.
 
@@ -1040,6 +1060,7 @@ class GaussianSplatReconstruction:
         various image quality metrics.
 
         Args:
+            show_progress (bool): Whether to display a progress bar during evaluation.
             log_tag (str): Tag to use for logging metrics and images. Data logged will use this tag as a prefix.
                 For metrics, this will be "{log_tag}/metric_name".
                 For images, this will be "{log_tag}/predicted_imageXXXX.jpg" and "{log_tag}/ground_truth_imageXXXX.jpg".
@@ -1048,9 +1069,13 @@ class GaussianSplatReconstruction:
         device = self.device
 
         valloader = torch.utils.data.DataLoader(self.validation_dataset, batch_size=1, shuffle=False, num_workers=1)
+        if show_progress:
+            pbar = tqdm.tqdm(enumerate(valloader), total=len(self.validation_dataset), unit="imgs", desc="Evaluating")
+        else:
+            pbar = enumerate(valloader)
         evaluation_time = 0
         metrics = {"psnr": [], "ssim": [], "lpips": []}
-        for i, data in enumerate(valloader):
+        for i, data in pbar:
             world_to_cam_matrices = data["world_to_camera"].to(device)
             projection_matrices = data["projection"].to(device)
             ground_truth_image = data["image"].to(device) / 255.0

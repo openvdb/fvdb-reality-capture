@@ -43,6 +43,9 @@ dependencies = [
     "types-usd",
 ]
 
+[project.scripts]
+frgs = "fvdb_reality_capture.cli:frgs"
+
 [project.urls]
 Homepage = "https://github.com/openvdb/fvdb-reality-capture"
 Issues = "https://github.com/openvdb/fvdb-reality-capture/issues"

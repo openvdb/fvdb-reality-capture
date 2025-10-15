@@ -84,16 +84,25 @@ class GaussianSplatReconstructionWriterConfig:
     Controls what data gets saved to disk, how much buffering to use, and whether to use TensorBoard.
     """
 
-    # Configure what kind of data gets saved to disk
+    # Whether to save images to disk
     save_images: bool = False
+
+    # Whether to save checkpoints to disk
     save_checkpoints: bool = True
+
+    # Whether to save PLY files to disk
     save_plys: bool = True
+
+    # Whether to save metrics to a CSV file
     save_metrics: bool = True
 
     # How much buffering to use for metrics file logging
     metrics_file_buffer_size: int = 8 * 1024 * 1024  # 8 MB
 
+    # Whether to use TensorBoard for logging metrics and images
     use_tensorboard: bool = False
+
+    # Whether to also save images to TensorBoard if use_tensorboard is True
     save_images_to_tensorboard: bool = False
 
 
