@@ -1,7 +1,6 @@
 # Copyright Contributors to the OpenVDB Project
 # SPDX-License-Identifier: Apache-2.0
 #
-
 import logging
 import pathlib
 from dataclasses import dataclass
@@ -10,9 +9,10 @@ from typing import Annotated
 import point_cloud_utils as pcu
 import torch
 import tyro
+from fvdb import GaussianSplat3d
 from tyro.conf import arg
 
-from fvdb_reality_capture.tools import mesh_from_splats
+from fvdb_reality_capture.tools import point_cloud_from_splats
 
 from ._common import (
     BaseCommand,
@@ -24,35 +24,13 @@ from ._common import (
 
 
 @dataclass
-class MeshBasic(BaseCommand):
+class Points(BaseCommand):
     """
-    Extract a triangle mesh from a saved Gaussian splat file with TSDF fusion using depth maps rendered from the Gaussian splat model.
-
-    In short, this algorithm works by rendering images and depth maps from multiple views of the Gaussian splat model,
-    and then integrating these depth maps and images into a sparse `fvdb.Grid` in a narrow band around the surface using a weighted averaging scheme.
-    The algorithm returns this grid along with signed distance values and colors (or other features) at each voxel.
-
-    The algorithm then extracts a mesh using the marching cubes algorithm implemented in `fvdb.marching_cubes.marching_cubes`
-    over the Grid and TSDF values.
-
-    The TSDF fusion algorithm is a method for integrating multiple depth maps into a single volumetric representation of a scene encoding a
-    truncated signed distance field (_i.e._ a signed distance field in a narrow band around the surface). TSDF fusion was first described in the paper
-    "KinectFusion: Real-Time Dense Surface Mapping and Tracking"
-    (https://www.microsoft.com/en-us/research/wp-content/uploads/2016/02/ismar2011.pdf).
-    We use a modified version of this algorithm which only allocates voxels in a narrow band around the surface of the model
-    to reduce memory usage and speed up computation.
+    Extract a point cloud from a Gaussian splat using depth rendering, possibly filtering points
+    using Canny edge detection on the depth images.
     """
 
-    # Path to the input PLY or checkpoint file. Must end in .ply, .pt, or .pth.
     input_path: tyro.conf.Positional[pathlib.Path]
-
-    # Truncation margin for TSDF volume. This is the distance (in world units)
-    # that the TSDF values are truncated to.
-    truncation_margin: tyro.conf.Positional[float]
-
-    # The number of voxels along each axis to include in the TSDF volume.
-    # This defines the resolution of the narrow band around the surface.
-    grid_shell_thickness: Annotated[float, arg(aliases=["-g"])] = 3.0
 
     # Near plane distance for which depth values are considered valid.
     # The units depend on the `near_far_units` parameter.
@@ -68,6 +46,13 @@ class MeshBasic(BaseCommand):
     # usually indicating the background. (default is 0.1).
     alpha_threshold: Annotated[float, arg(aliases=["-at"])] = 0.1
 
+    # Standard deviation for the Gaussian filter applied to the depth image
+    # before Canny edge detection (default is 1.0). Set to 0.0 to disable canny edge filtering.
+    canny_edge_std: Annotated[float, arg(aliases=["-ces"])] = 1.0
+
+    # Dilation size for the Canny edge mask (default is 5).
+    canny_mask_dilation: Annotated[int, arg(aliases=["-cmd"])] = 5
+
     # Factor by which to downsample the rendered images for depth estimation (default is 1, _i.e._ no downsampling).
     image_downsample_factor: Annotated[int, arg(aliases=["-idf"])] = 1
 
@@ -81,15 +66,10 @@ class MeshBasic(BaseCommand):
     near_far_units: Annotated[NearFarUnits, arg(aliases=["-nfu"])] = "median_depth"
 
     # Path to save the extracted mesh (default is "mesh.ply").
-    output_path: Annotated[pathlib.Path, arg(aliases=["-o"])] = pathlib.Path("mesh.ply")
+    output_path: Annotated[pathlib.Path, arg(aliases=["-o"])] = pathlib.Path("points.ply")
 
     # Device to use for computation (default is "cuda").
     device: Annotated[str, arg(aliases=["-d"])] = "cuda"
-
-    """
-    Extract a mesh from a Gaussian Splat reconstruction.
-
-    """
 
     def execute(self) -> None:
         logging.basicConfig(level=logging.INFO, format="%(levelname)s : %(message)s")
@@ -113,25 +93,26 @@ class MeshBasic(BaseCommand):
         model = model.to(self.device)
 
         logger.info(
-            f"Extracting mesh from splats using near/far units {self.near_far_units} and image downsample factor {self.image_downsample_factor}..."
+            f"Extracting point cloud from splats using near/far units {self.near_far_units} and image downsample factor {self.image_downsample_factor}..."
         )
-        v, f, c = mesh_from_splats(
+        positions, colors = point_cloud_from_splats(
             model=model,
             camera_to_world_matrices=camera_to_world_matrices,
             projection_matrices=projection_matrices,
             image_sizes=image_sizes,
-            truncation_margin=self.truncation_margin,
-            grid_shell_thickness=self.grid_shell_thickness,
             near=near,
             far=far,
             alpha_threshold=self.alpha_threshold,
+            canny_edge_std=self.canny_edge_std,
+            canny_mask_dilation=self.canny_mask_dilation,
             image_downsample_factor=self.image_downsample_factor,
             show_progress=True,
         )
 
-        v, f, c = v.to(torch.float32).cpu().numpy(), f.cpu().numpy(), c.to(torch.float32).cpu().numpy()
-        logger.info(f"Extracted mesh with {v.shape[0]} vertices and {f.shape[0]} faces.")
+        logger.info(f"Extracted {positions.shape[0]:,} points with colors.")
+        colors = colors.to(torch.float32) / 255.0
+        positions, colors = positions.to(torch.float32).cpu().numpy(), colors.cpu().numpy()
 
-        logger.info(f"Saving mesh to {self.output_path}")
-        pcu.save_mesh_vfc(str(self.output_path), v, f, c)
-        logger.info("Mesh saved successfully.")
+        logger.info(f"Saving point cloud to {self.output_path}")
+        pcu.save_mesh_vc(str(self.output_path), positions, colors)
+        logger.info("Point cloud saved successfully.")

@@ -10,6 +10,7 @@ from ._download import Download
 from ._evaluate import Evaluate
 from ._mesh_basic import MeshBasic
 from ._mesh_dlnr import MeshDLNR
+from ._points import Points
 from ._reconstruct import Reconstruct
 from ._resume import Resume
 from ._show import Show
@@ -18,6 +19,6 @@ from ._show_data import ShowData
 
 def frgs():
     cmd: BaseCommand = tyro.cli(
-        Download | Reconstruct | Convert | ShowData | Show | Resume | Evaluate | MeshBasic | MeshDLNR
+        Download | Reconstruct | Convert | ShowData | Show | Resume | Evaluate | MeshBasic | MeshDLNR | Points
     )
     cmd.execute()

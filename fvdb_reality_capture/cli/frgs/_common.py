@@ -8,7 +8,7 @@ from typing import Literal
 
 import torch
 from fvdb import GaussianSplat3d
-from fvdb.types import DeviceIdentifier, to_VecNf
+from fvdb.types import DeviceIdentifier, to_Mat33fBatch, to_Mat44fBatch, to_Vec2iBatch
 
 from fvdb_reality_capture.sfm_scene import SfmScene
 from fvdb_reality_capture.tools import export_splats_to_usdz
@@ -160,3 +160,33 @@ def near_far_for_units(
         return torch.tensor([near]), torch.tensor([far])
     else:
         raise ValueError(f"Invalid near_far_units: {near_far_units}")
+
+
+def load_camera_metadata(metadata: dict) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    """
+    Load camera metadata from the given dictionary.
+
+    Args:
+        metadata (dict): Metadata dictionary containing camera information. Must contain the keys
+            'camera_to_world_matrices', 'projection_matrices', and 'image_sizes'.
+
+    Returns:
+        camera_to_world_matrices (torch.Tensor): Tensor of shape (N, 4, 4) containing camera-to-world matrices.
+        projection_matrices (torch.Tensor): Tensor of shape (N, 3, 3) containing projection matrices.
+        image_sizes (torch.Tensor): Tensor of shape (N, 2) containing image sizes.
+    """
+
+    if "camera_to_world_matrices" not in metadata:
+        raise ValueError("Gaussian splats file must contain 'camera_to_world_matrices'")
+
+    if "projection_matrices" not in metadata:
+        raise ValueError("Gaussian splats file must contain 'projection_matrices'")
+
+    if "image_sizes" not in metadata:
+        raise ValueError("Gaussian splats file must contain 'image_sizes'")
+
+    camera_to_world_matrices = to_Mat44fBatch(metadata["camera_to_world_matrices"])
+    projection_matrices = to_Mat33fBatch(metadata["projection_matrices"])
+    image_sizes = to_Vec2iBatch(metadata["image_sizes"])
+
+    return camera_to_world_matrices, projection_matrices, image_sizes
