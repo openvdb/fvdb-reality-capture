@@ -6,7 +6,6 @@ import logging
 import pathlib
 import time
 from dataclasses import dataclass
-from typing import Literal
 
 import numpy as np
 import torch
@@ -94,20 +93,36 @@ class ShowData(BaseCommand):
         sfm_scene = Compose(
             NormalizeScene("pca"),
             PercentileFilterPoints([self.points_percentile_filter] * 3, [100.0 - self.points_percentile_filter] * 3),
-            FilterImagesWithLowPoints(min_num_points=5),
+            FilterImagesWithLowPoints(min_num_points=self.min_points_per_image),
         )(sfm_scene)
 
-        scene_extent = sfm_scene.points.max(0) - sfm_scene.points.min(0)
-        axis_scale = 0.01 * float(np.linalg.norm(scene_extent))
-        logger.info(f"Scene extent: {scene_extent}. Scaling camera view axis by {axis_scale}.")
+        cam_positions = sfm_scene.camera_to_world_matrices[:, 0:3, 3]
+        cam_extent = cam_positions.max(0) - cam_positions.min(0)
+        cam_diagonal = float(np.linalg.norm(cam_extent))
+        points_extent = sfm_scene.points.max(0) - sfm_scene.points.min(0)
+        points_diagnonal = float(np.linalg.norm(points_extent))
+
+        axis_scale = 0.01 * min(cam_diagonal, points_diagnonal)
+
+        # Find a camera whose position is far from the scene centroid and
+        # whose up vector is not aligned with the view direction.
+        cam_eye = cam_positions[0]
+        cam_lookat = cam_positions.mean(0)
+        cam_view_direction = cam_lookat - cam_eye
+        cam_eye += cam_view_direction * 0.5
+        cam_up = np.array([0.0, 0.0, 1.0])
+        if np.allclose(cam_eye - cam_lookat, cam_up):
+            cam_up = np.array([0.0, 1.0, 0.0])
+
+        viewer.set_camera_lookat(eye=cam_eye, center=cam_lookat, up=cam_up)
 
         viewer.add_camera_view(
             name="cameras",
-            cam_to_world_matrices=sfm_scene.camera_to_world_matrices,
+            camera_to_world_matrices=sfm_scene.camera_to_world_matrices,
             projection_matrices=torch.from_numpy(sfm_scene.projection_matrices),
             image_sizes=torch.from_numpy(sfm_scene.image_sizes),
             frustum_line_width=2.0,
-            frustum_scale=1.0 * axis_scale,
+            frustum_scale=3.0 * axis_scale,
             axis_length=2.0 * axis_scale,
             axis_thickness=0.1 * axis_scale,
         )

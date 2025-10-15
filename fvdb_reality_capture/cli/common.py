@@ -9,8 +9,8 @@ import torch
 from fvdb import GaussianSplat3d
 from fvdb.types import DeviceIdentifier
 
-from ..sfm_scene import SfmScene
-from ..training import GaussianSplatReconstruction
+from fvdb_reality_capture.sfm_scene import SfmScene
+from fvdb_reality_capture.training import GaussianSplatReconstruction
 
 DatasetType = Literal["colmap", "simple_directory", "e57"]
 
