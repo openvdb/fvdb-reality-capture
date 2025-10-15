@@ -4,7 +4,14 @@
 import torch
 import tqdm
 from fvdb import GaussianSplat3d, Grid
-from fvdb.types import NumericMaxRank2, NumericMaxRank3
+from fvdb.types import (
+    NumericMaxRank1,
+    NumericMaxRank2,
+    NumericMaxRank3,
+    is_NumericScalar,
+    to_FloatingScalar,
+    to_VecNf,
+)
 
 from ._common import validate_camera_matrices_and_image_sizes
 
@@ -17,8 +24,8 @@ def tsdf_from_splats(
     image_sizes: NumericMaxRank2,
     truncation_margin: float,
     grid_shell_thickness: float = 3.0,
-    near: float = 0.1,
-    far: float = 1e10,
+    near: NumericMaxRank1 = 0.1,
+    far: NumericMaxRank1 = 1e10,
     alpha_threshold: float = 0.1,
     image_downsample_factor: int = 1,
     dtype: torch.dtype = torch.float16,
@@ -54,8 +61,12 @@ def tsdf_from_splats(
         grid_shell_thickness (float): Thickness of the TSDF grid shell in multiples of the truncation margin (default is 3.0).
             _i.e_. if truncation_margin is 0.1 and grid_shell_thickness is 3.0, the TSDF grid will extend 0.3 world units
             from the surface of the model. This value must be greater than 1.0.
-        near (float): Near plane distance below which to ignore depth samples (default is 0.0).
-        far (float): Far plane distance above which to ignore depth samples (default is 1e10).
+        near (NumericMaxRank1): Near plane distance below which to ignore depth samples. Can be a scalar to use a
+            single value across all images or a tensor-like object of shape (C,) to use a different value for each
+            image (default is 0.1).
+        far (NumericMaxRank1): Far plane distance above which to ignore depth samples. Can be a scalar to use a
+            single value across all images or a tensor-like object of shape (C,) to use a different value for each
+            image (default is 1e10).
         alpha_threshold (float): Alpha threshold to mask pixels where the Gaussian splat model
             is transparent, which usually indicates the pixel is part of the background. (default is 0.1).
         image_downsample_factor (int): Factor by which to downsample the rendered images for depth estimation.
@@ -86,16 +97,32 @@ def tsdf_from_splats(
     weights = torch.zeros(accum_grid.num_voxels, device=model.device, dtype=dtype)
     features = torch.zeros((accum_grid.num_voxels, model.num_channels), device=model.device, dtype=feature_dtype)
 
+    num_cameras = len(camera_to_world_matrices)
     enumerator = (
-        tqdm.tqdm(range(len(camera_to_world_matrices)), unit="imgs", desc="Extracting TSDF")
-        if show_progress
-        else range(len(camera_to_world_matrices))
+        tqdm.tqdm(range(num_cameras), unit="imgs", desc="Extracting TSDF") if show_progress else range(num_cameras)
     )
 
     if image_downsample_factor > 1:
         image_sizes = image_sizes // image_downsample_factor
         projection_matrices = projection_matrices.clone()
         projection_matrices[:, :2, :] /= image_downsample_factor
+
+    # You can pass in per-image near and far planes as tensors of shape (C,)
+    # or single scalar values to use the same near and far planes for all images.
+    # We convert these to the appropriate types here (either a tensor of shape (C,) or a tensor with a single value).
+    if is_NumericScalar(near):
+        near = to_FloatingScalar(near)
+        near_is_scalar = True
+    else:
+        near = to_VecNf(near, num_cameras)
+        near_is_scalar = False
+
+    if is_NumericScalar(far):
+        far = to_FloatingScalar(far)
+        far_is_scalar = True
+    else:
+        far = to_VecNf(far, num_cameras)
+        far_is_scalar = False
 
     for i in enumerator:
         cam_to_world_matrix = camera_to_world_matrices[i].to(model.device).to(dtype=torch.float32, device=device)
@@ -123,14 +150,18 @@ def tsdf_from_splats(
         else:
             feature_images = feature_and_depth[..., : model.num_channels].to(feature_dtype)
 
+        # Get the near and far planes for this image.
+        near_i = near.item() if near_is_scalar else near[i]
+        far_i = far.item() if far_is_scalar else far[i]
+
         alpha = alpha[0].clamp(min=1e-10).squeeze(-1)
         feature_images = feature_images.squeeze(0)
         depth_images = (feature_and_depth[0, ..., -1] / alpha).to(dtype)
         if alpha_threshold > 0.0:
             alpha_mask = alpha > alpha_threshold
-            weight_images = ((depth_images > near) & (depth_images < far) & alpha_mask).to(dtype).squeeze(0)
+            weight_images = ((depth_images > near_i) & (depth_images < far_i) & alpha_mask).to(dtype).squeeze(0)
         else:
-            weight_images = ((depth_images > near) & (depth_images < far)).to(dtype).squeeze(0)
+            weight_images = ((depth_images > near_i) & (depth_images < far_i)).to(dtype).squeeze(0)
         accum_grid, tsdf, weights, features = accum_grid.integrate_tsdf_with_features(
             truncation_margin,
             projection_matrix.to(dtype),

@@ -436,6 +436,33 @@ class SfmScene:
         return self._has_point_indices
 
     @property
+    def median_depth_per_image(self) -> np.ndarray:
+        """
+        Return the median depth of the points observed in each image.
+
+        Returns:
+            np.ndarray: An array of shape (M,) where M is the number of images.
+                        Each value represents the median depth of the points observed in the corresponding image.
+                        If an image does not observe any points, its median depth is set to np.nan.
+        """
+        if not self._has_point_indices:
+            return np.full((len(self._images),), np.nan, dtype=np.float32)
+
+        if len(self._images) == 0:
+            return np.zeros((0,), dtype=np.float32)
+
+        median_depths = np.full((len(self._images),), np.nan, dtype=np.float32)
+        for i, img in enumerate(self._images):
+            if img.point_indices is None or len(img.point_indices) == 0:
+                continue
+            points_in_image = self._points[img.point_indices]
+            camera_origin = img.origin.reshape(1, 3)
+            depths = np.linalg.norm(points_in_image - camera_origin, axis=1)
+            if len(depths) > 0:
+                median_depths[i] = np.median(depths)
+        return median_depths
+
+    @property
     def image_centers(self):
         """
         Returns the position where each image was captured in the scene.

@@ -506,6 +506,8 @@ class GaussianSplatReconstruction:
                     reconstruction.
                 - projection_matrices: The projection matrices for the images used during reconstruction.
                 - image_sizes: The sizes of the images used during reconstruction.
+                - median_depths: The median depth values (distance from camera to scene) for each image used
+                    during reconstruction.
                 - scene_scale: The computed scale of the scene.
                 - eps2d: The 2D epsilon value used in rendering.
                 - near_plane: The near plane distance used in rendering.
@@ -517,6 +519,9 @@ class GaussianSplatReconstruction:
         training_camera_to_world_matrices = torch.from_numpy(self._training_dataset.camera_to_world_matrices).to(
             dtype=torch.float32, device=self.device
         )
+        training_median_depths = torch.from_numpy(self._training_dataset.sfm_scene.median_depth_per_image).to(
+            dtype=torch.float32, device=self.device
+        )[self._training_dataset.indices]
         if self.pose_adjust_model is not None:
             training_camera_to_world_matrices = self.pose_adjust_model(
                 training_camera_to_world_matrices, torch.arange(len(self.training_dataset), device=self.device)
@@ -534,6 +539,7 @@ class GaussianSplatReconstruction:
             "camera_to_world_matrices": training_camera_to_world_matrices,
             "projection_matrices": training_projection_matrices,
             "image_sizes": training_image_sizes,
+            "median_depths": training_median_depths,
             "eps2d": self.config.eps_2d,
             "near_plane": self.config.near_plane,
             "far_plane": self.config.far_plane,

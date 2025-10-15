@@ -17,6 +17,15 @@ from fvdb import GaussianSplat3d
 from fvdb.viz import Viewer
 from tyro.conf import Positional, arg
 
+from fvdb_reality_capture.sfm_scene import SfmScene
+from fvdb_reality_capture.tools import export_splats_to_usdz
+from fvdb_reality_capture.training import (
+    GaussianSplatOptimizerConfig,
+    GaussianSplatReconstruction,
+    GaussianSplatReconstructionConfig,
+    GaussianSplatReconstructionWriter,
+    GaussianSplatReconstructionWriterConfig,
+)
 from fvdb_reality_capture.transforms import (
     BaseTransform,
     Compose,
@@ -28,17 +37,7 @@ from fvdb_reality_capture.transforms import (
     PercentileFilterPoints,
 )
 
-from ..sfm_scene import SfmScene
-from ..tools import export_splats_to_usdz
-from ..training import (
-    GaussianSplatOptimizerConfig,
-    GaussianSplatReconstruction,
-    GaussianSplatReconstructionConfig,
-    GaussianSplatReconstructionWriter,
-    GaussianSplatReconstructionWriterConfig,
-)
-from .base_command import BaseCommand
-from .common import DatasetType, load_sfm_scene
+from ._common import BaseCommand, DatasetType, load_sfm_scene
 
 
 @dataclass
@@ -283,7 +282,7 @@ class Reconstruct(BaseCommand):
             viewer (Viewer | None): Viewer to use for visualization. If None, no visualization will
         """
         runner = GaussianSplatReconstruction.from_sfm_scene(
-            self.tx.scene_transform(sfm_scene),
+            sfm_scene,
             config=self.cfg,
             optimizer_config=self.opt,
             writer=writer,

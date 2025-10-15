@@ -10,10 +10,10 @@ from dataclasses import dataclass
 import numpy as np
 import torch
 import tyro
+from fvdb.types import to_Mat33fBatch, to_Mat44fBatch, to_Vec2fBatch
 from fvdb.viz import Viewer
 
-from .base_command import BaseCommand
-from .common import load_splats_from_file
+from ._common import BaseCommand, load_splats_from_file
 
 
 @dataclass
@@ -56,24 +56,28 @@ class Show(BaseCommand):
 
         # Check if the loaded metadata has camera information.
         # If so, we will use it to set the initial camera position and add camera views.
-        has_camera_to_world_matrices = "camera_to_world_matrices" in metadata and isinstance(
-            metadata["camera_to_world_matrices"], torch.Tensor
-        )
-        has_projection_matrices = "projection_matrices" in metadata and isinstance(
-            metadata["projection_matrices"], torch.Tensor
-        )
+
+        cam_to_world_matrices = metadata.get("camera_to_world_matrices", None)
+        if cam_to_world_matrices is not None:
+            cam_to_world_matrices = to_Mat44fBatch(cam_to_world_matrices).cpu()
+
+        projection_matrices = metadata.get("projection_matrices", None)
+        if projection_matrices is not None:
+            projection_matrices = to_Mat33fBatch(projection_matrices).cpu()
+
+        image_sizes = metadata.get("image_sizes", None)
+        if image_sizes is not None:
+            image_sizes = to_Vec2fBatch(image_sizes).cpu()
 
         # If we have camera information, use it to set the initial camera position, looking at the scene centroid
         # and positioned at the position of first camera. # Otherwise, just position at half the scene radius
         # away from the centroid along the (1, 1, 1) diagonal.
         scene_centroid = model.means.mean(dim=0).cpu().numpy()
-        if not has_camera_to_world_matrices:
+        if cam_to_world_matrices is None:
             scene_radius = (model.means.max(dim=0).values - model.means.min(dim=0).values).max().item() / 2.0
-            initial_camera_position = scene_centroid + np.ones(3) * scene_radius * 0.5
+            initial_camera_position = scene_centroid + np.ones(3) * scene_radius
         else:
-            if not isinstance(metadata["camera_to_world_matrices"], (torch.Tensor, np.ndarray)):
-                raise ValueError("camera_to_world_matrices in metadata must be a torch.Tensor or numpy.ndarray")
-            initial_camera_position = metadata["camera_to_world_matrices"][0, :3, 3]
+            initial_camera_position = cam_to_world_matrices[0, :3, 3].cpu().numpy()
 
         logger.info(f"Setting viewer camera to {initial_camera_position} looking at {scene_centroid}")
         viewer.set_camera_lookat(
@@ -82,29 +86,18 @@ class Show(BaseCommand):
             up=[0, 0, -1],
         )
 
-        if has_camera_to_world_matrices and has_projection_matrices:
-            assert isinstance(metadata["camera_to_world_matrices"], (torch.Tensor, np.ndarray))
-            assert isinstance(metadata["projection_matrices"], (torch.Tensor, np.ndarray))
-            image_sizes = metadata.get("image_sizes", None)
-            assert isinstance(image_sizes, (torch.Tensor, np.ndarray))
-            if isinstance(image_sizes, np.ndarray):
-                image_sizes = torch.from_numpy(image_sizes)
-            if isinstance(metadata["camera_to_world_matrices"], np.ndarray):
-                metadata["camera_to_world_matrices"] = torch.from_numpy(metadata["camera_to_world_matrices"])
-            if isinstance(metadata["projection_matrices"], np.ndarray):
-                metadata["projection_matrices"] = torch.from_numpy(metadata["projection_matrices"])
-
+        if cam_to_world_matrices is not None and projection_matrices is not None:
             viewer.add_camera_view(
-                "training cameras",
-                metadata["camera_to_world_matrices"].cpu(),
-                metadata["projection_matrices"].cpu(),
-                image_sizes,
+                name="Cameras",
+                camera_to_world_matrices=cam_to_world_matrices,
+                projection_matrices=projection_matrices,
+                image_sizes=image_sizes,
             )
         else:
             logger.info("No camera information found in metadata, not adding camera views to viewer")
 
         viewer.add_gaussian_splat_3d(
-            "gaussian splats",
+            "Gaussian Splats",
             model,
         )
         logger.info("Viewer running... Ctrl+C to exit.")

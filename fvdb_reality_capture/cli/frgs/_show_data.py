@@ -20,8 +20,7 @@ from fvdb_reality_capture.transforms import (
     PercentileFilterPoints,
 )
 
-from .base_command import BaseCommand
-from .common import DatasetType, load_sfm_scene
+from ._common import BaseCommand, DatasetType, load_sfm_scene
 
 
 def center_and_scale_scene(sfm_scene: fvdb_reality_capture.SfmScene, scale: float) -> fvdb_reality_capture.SfmScene:

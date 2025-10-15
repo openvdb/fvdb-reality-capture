@@ -1,0 +1,20 @@
+# Copyright Contributors to the OpenVDB Project
+# SPDX-License-Identifier: Apache-2.0
+#
+
+import tyro
+
+from ._common import BaseCommand
+from ._convert import Convert
+from ._download import Download
+from ._evaluate import Evaluate
+from ._mesh_basic import MeshBasic
+from ._mesh_dlnr import MeshDLNR
+from ._reconstruct import Reconstruct
+from ._show import Show
+from ._show_data import ShowData
+
+
+def frgs():
+    cmd: BaseCommand = tyro.cli(Download | Reconstruct | Convert | ShowData | Show | Evaluate | MeshBasic | MeshDLNR)
+    cmd.execute()

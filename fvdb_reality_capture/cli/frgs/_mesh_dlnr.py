@@ -11,15 +11,26 @@ import numpy as np
 import point_cloud_utils as pcu
 import torch
 import tyro
+from fvdb.types import to_Mat33fBatch, to_Mat44fBatch, to_Vec2iBatch, to_VecNf
 from tyro.conf import arg
 
-from ..tools import mesh_from_splats_dlnr
-from .base_command import BaseCommand
-from .common import load_splats_from_file
+from fvdb_reality_capture.tools import mesh_from_splats_dlnr
+
+from ._common import BaseCommand, load_splats_from_file
 
 
 @dataclass
-class Mesh(BaseCommand):
+class MeshDLNR(BaseCommand):
+    """
+    Extract a mesh from a saved Gaussian splat file using TSDF fusion and depth maps estimated using the DLNR model.
+
+    The algorithm renders a stereo pair of images from the Gaussian splat model by adding a small baseline to each camera position.
+    (specified by the baseline parameter). It then uses DLNR to estimate depth maps for these stereo pairs which are fed to TSDF fusion.
+
+    The mesh extraction algorithm is based on the paper:
+    "GS2Mesh: Surface Reconstruction from Gaussian Splatting via Novel Stereo Views"
+    (https://arxiv.org/abs/2404.01810)
+    """
 
     # Path to the input PLY or checkpoint file. Must end in .ply, .pt, or .pth.
     input_path: tyro.conf.Positional[pathlib.Path]
@@ -35,7 +46,11 @@ class Mesh(BaseCommand):
     # Baseline distance (as a fraction of the mean depth of each image) used
     # for generating stereo pairs as input to the DLNR model (default is 0.07).
     baseline: Annotated[float, arg(aliases=["-b"])] = 0.07
+
+    # Near plane distance (as a multiple of the baseline) for which depth values are considered valid.
     near: Annotated[float, arg(aliases=["-n"])] = 4.0
+
+    # Far plane distance (as a multiple of the baseline) for which depth values are considered valid.
     far: Annotated[float, arg(aliases=["-f"])] = 20.0
 
     # Alpha threshold to mask pixels where the Gaussian splat model is transparent,
@@ -68,7 +83,7 @@ class Mesh(BaseCommand):
     def execute(self) -> None:
         logging.basicConfig(level=logging.INFO, format="%(levelname)s : %(message)s")
 
-        logger = logging.getLogger("extract_mesh_dlnr")
+        logger = logging.getLogger(__name__)
 
         logger.info(f"Loading Gaussian splats from from {self.input_path}")
 
@@ -76,27 +91,16 @@ class Mesh(BaseCommand):
 
         if "camera_to_world_matrices" not in metadata:
             raise ValueError("Gaussian splats file must contain 'camera_to_world_matrices'")
-        if not isinstance(metadata["camera_to_world_matrices"], (torch.Tensor, np.ndarray)):
-            raise ValueError("camera_to_world_matrices in metadata must be a torch.Tensor or numpy.ndarray")
-        if isinstance(metadata["camera_to_world_matrices"], np.ndarray):
-            metadata["camera_to_world_matrices"] = torch.from_numpy(metadata["camera_to_world_matrices"])
-        camera_to_world_matrices = metadata["camera_to_world_matrices"]
 
         if "projection_matrices" not in metadata:
             raise ValueError("Gaussian splats file must contain 'projection_matrices'")
-        if not isinstance(metadata["projection_matrices"], (torch.Tensor, np.ndarray)):
-            raise ValueError("projection_matrices in metadata must be a torch.Tensor or numpy.ndarray")
-        if isinstance(metadata["projection_matrices"], np.ndarray):
-            metadata["projection_matrices"] = torch.from_numpy(metadata["projection_matrices"])
-        projection_matrices = metadata["projection_matrices"].to(self.device)
 
         if "image_sizes" not in metadata:
             raise ValueError("Gaussian splats file must contain 'image_sizes'")
-        if not isinstance(metadata["image_sizes"], (torch.Tensor, np.ndarray)):
-            raise ValueError("image_sizes in metadata must be a torch.Tensor or numpy.ndarray")
-        if isinstance(metadata["image_sizes"], np.ndarray):
-            metadata["image_sizes"] = torch.from_numpy(metadata["image_sizes"])
-        image_sizes = metadata["image_sizes"]
+
+        camera_to_world_matrices = to_Mat44fBatch(metadata["camera_to_world_matrices"])
+        projection_matrices = to_Mat33fBatch(metadata["projection_matrices"])
+        image_sizes = to_Vec2iBatch(metadata["image_sizes"])
 
         model = model.to(self.device)
 
