@@ -80,7 +80,8 @@ Note: fVDB-Reality-Capture recently moved from early-access to Beta. The API and
    :maxdepth: 1
    :caption: Tutorials and Examples
 
-   tutorials/data_manipulation
+   tutorials/sensor_data_loading_and_manipulation
+   tutorials/radiance_field_and_mesh_reconstruction
 
 .. toctree::
    :maxdepth: 1

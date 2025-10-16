@@ -38,7 +38,9 @@ class GaussianSplatReconstructionTests(unittest.TestCase):
     def setUp(self):
         # Auto-download this dataset if it doesn't exist.
         self.dataset_root = pathlib.Path(__file__).parent.parent.parent / "data"
+        print("datasets root is ", self.dataset_root)
         self.dataset_path = self.dataset_root / "360_v2" / "counter"
+        print("dataset path is ", self.dataset_path)
         if not self.dataset_path.exists():
             frc.tools.download_example_data("mipnerf360", self.dataset_root)
 

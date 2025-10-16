@@ -1,4 +1,4 @@
-# Manipulating 3D Capture Data
+# Loading and Manipulating Sensor Data
 
 At its core, `fvdb_reality_capture` is a library of operators which operate on 3D captures which generally consist of:
  1. Posed images. _i.e._ Images with a world-to-camera transformation specifying from where each image was taken in the scene, and the parameters of the camera that captured them.
@@ -152,7 +152,7 @@ plot_three_images(sfm_scene, "Three images from the SfmScene and the projection 
 
 
 
-![png](data_manipulation_files/data_manipulation_5_0.png)
+![png](sensor_data_loading_and_manipulation_files/sensor_data_loading_and_manipulation_5_0.png)
 
 
 
@@ -184,7 +184,7 @@ print("Original scene has {sfm_scene.points.shape[0]} points and filtered scene 
 
 
 
-![png](data_manipulation_files/data_manipulation_7_0.png)
+![png](sensor_data_loading_and_manipulation_files/sensor_data_loading_and_manipulation_7_0.png)
 
 
 
@@ -210,7 +210,7 @@ print(f"Original scene has {sfm_scene.num_images} images, and filtered scene has
 
 
 
-![png](data_manipulation_files/data_manipulation_9_0.png)
+![png](sensor_data_loading_and_manipulation_files/sensor_data_loading_and_manipulation_9_0.png)
 
 
 
@@ -270,7 +270,7 @@ plt.show()
 
 
 
-![png](data_manipulation_files/data_manipulation_12_2.png)
+![png](sensor_data_loading_and_manipulation_files/sensor_data_loading_and_manipulation_12_2.png)
 
 
 
@@ -306,7 +306,7 @@ plt.show()
 
 
 
-![png](data_manipulation_files/data_manipulation_14_1.png)
+![png](sensor_data_loading_and_manipulation_files/sensor_data_loading_and_manipulation_14_1.png)
 
 
 
@@ -461,7 +461,7 @@ plot_three_images_with_bbox(cropped_scene, "Three images from a cropped SfmScene
 
 
 
-![png](data_manipulation_files/data_manipulation_18_1.png)
+![png](sensor_data_loading_and_manipulation_files/sensor_data_loading_and_manipulation_18_1.png)
 
 
 
@@ -495,7 +495,7 @@ plot_three_images_with_bbox(tx_scene, "Three images from a normalized, downsampl
 
 
 
-![png](data_manipulation_files/data_manipulation_21_1.png)
+![png](sensor_data_loading_and_manipulation_files/sensor_data_loading_and_manipulation_21_1.png)
 
 
 
@@ -528,7 +528,7 @@ plot_three_images_with_bbox(tx_scene, "⚠️ Warning ⚠️ -- Transform order 
 
 
 
-![png](data_manipulation_files/data_manipulation_23_1.png)
+![png](sensor_data_loading_and_manipulation_files/sensor_data_loading_and_manipulation_23_1.png)
 
 
 
@@ -680,7 +680,7 @@ plot_three_images_with_bbox(
 
 
 
-![png](data_manipulation_files/data_manipulation_27_1.png)
+![png](sensor_data_loading_and_manipulation_files/sensor_data_loading_and_manipulation_27_1.png)
 
 
 
@@ -719,7 +719,7 @@ plot_three_images_with_bbox(
 
 
 
-![png](data_manipulation_files/data_manipulation_29_1.png)
+![png](sensor_data_loading_and_manipulation_files/sensor_data_loading_and_manipulation_29_1.png)
 
 
 
