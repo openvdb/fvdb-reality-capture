@@ -125,10 +125,10 @@ class GaussianSplatOptimizerConfig:
     Threshold value on the accumulated norm of projected mean gradients between refinement steps to
     determine whether a Gaussian has high error and is a candidate for duplication or splitting.
 
-    .. note:: If ``insertion_grad_2d_threshold_mode`` is :obj:`InsertionGrad2dThresholdMode.CONSTANT`, then this value
+    .. note:: If :obj:`insertion_grad_2d_threshold_mode` is :obj:`InsertionGrad2dThresholdMode.CONSTANT`, then this value
               is used directly as the threshold, and **must be positive**.
 
-    .. note:: If ``insertion_grad_2d_threshold_mode`` is :obj:`InsertionGrad2dThresholdMode.PERCENTILE_FIRST_ITERATION`
+    .. note:: If :obj:`insertion_grad_2d_threshold_mode` is :obj:`InsertionGrad2dThresholdMode.PERCENTILE_FIRST_ITERATION`
               or :obj:`InsertionGrad2dThresholdMode.PERCENTILE_EVERY_ITERATION`, then this value must be in the
               range ``(0.0, 1.0)`` (exclusive).
     """
