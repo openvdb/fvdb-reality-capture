@@ -557,8 +557,7 @@ class GaussianSplatReconstructionWriter(GaussianSplatReconstructionBaseWriter):
             global_step (int): The global step at which the PLY file is being saved.
             ply_name (str): The name of the PLY file. This will be used as the file name. Must have a ``.ply`` suffix.
             model (GaussianSplat3d): The Gaussian splat model to be saved.
-            metadata (dict[str, Any] | None): Optional metadata to include in the PLY file
-                (e.g. camera parameters, training config, etc.).
+            metadata (dict[str, Any] | None): Optional metadata to include in the PLY file (e.g. camera parameters, training config, etc.).
         """
         if self._config.save_plys and self._ply_path is not None:
             ply_path = self._resolve_saved_file(
