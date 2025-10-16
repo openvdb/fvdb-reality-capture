@@ -40,6 +40,7 @@ permissions:
   issues: read
   # Need ID token write permission to use OIDC
   id-token: write
+  pages: write
 
 jobs:
   ##############################################################################
@@ -134,7 +135,7 @@ jobs:
           path: _docs_build/
 
   # Deployment job
-  deploy:
+  deploy-fvdb-reality-capture-docs:
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
