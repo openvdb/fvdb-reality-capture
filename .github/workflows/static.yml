@@ -43,11 +43,42 @@ jobs:
     name: Build Documentation
     needs: start-build-runner # required to start the main job when the runner is ready
     runs-on: ${{ needs.start-build-runner.outputs.label }} # run the job on the newly created runner
+    container:
+      image: aswf/ci-openvdb:2024-clang17.2
+      env:
+        PYTHONPATH: ""
+        CPM_SOURCE_CACHE: "/__w/cpm_cache"
+      options: --rm
+    defaults:
+      run:
+        shell: bash -el {0}
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-      - name: Install dependencies
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::420032683002:role/openvdb-fvdb-github-actions-role
+          aws-region: us-east-2
+
+      - name: Clone fvdb
         run: |
+          echo "Cloning fvdb"
+          pwd
+          git clone https://github.com/openvdb/fvdb-core.git
+
+      - name: Set up fvdb Conda env
+        uses: mamba-org/setup-micromamba@v2
+        with:
+          cache-environment: false
+          post-cleanup: 'all'
+          environment-name: fvdb
+          environment-file: fvdb-core/env/dev_environment.yml
+          
+      - name: Build fvdb-reality-capture and docs deps
+        run: |
+          echo "Building fvdb-reality-capture"
+          micromamba activate fvdb
           pip install sphinx sphinx_rtd_theme myst_parser commonmark
           pip install -e .
       - name: Sphinx build
