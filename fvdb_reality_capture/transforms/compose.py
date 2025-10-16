@@ -67,6 +67,8 @@ class Compose(BaseTransform):
         """
         Return the state of the :class:`Compose` transform for serialization.
 
+        You can use this state dictionary to recreate the transform using :meth:`from_state_dict`.
+
         Returns:
             state_dict (dict[str, Any]): A dictionary containing information to serialize/deserialize the transform.
         """

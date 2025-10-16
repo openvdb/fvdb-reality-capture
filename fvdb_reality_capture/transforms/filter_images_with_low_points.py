@@ -13,9 +13,32 @@ from .base_transform import BaseTransform, transform
 @transform
 class FilterImagesWithLowPoints(BaseTransform):
     """
-    A transform that filters out images from a SfM scene that have fewer than a specified minimum number of visible points.
+    A :class:`BaseTransform` which filters out posed images from an :class:`SfmScene` that have fewer than a
+    specified minimum number of visible points.
 
-    Any images that have a number of visible points less than or equal to `min_num_points`  will be removed from the scene.
+    Any images that have a number of visible points less than or equal to ``min_num_points``  will
+    be removed from the scene.
+
+    .. note::
+        If the input :class:`SfmScene` does not have point indices for its posed images
+        (i.e. :obj:`SfmScene.has_visible_point_indices` is ``False``), then this transform is a no-op.
+
+    Example usage:
+
+    .. code-block:: python
+
+        # Example usage:
+        from fvdb_reality_capture import transforms
+        from fvdb_reality_capture.sfm_scene import SfmScene
+
+        # Create a transform to filter out images with 50 or fewer visible points.
+        scene_transform = transforms.FilterImagesWithLowPoints(min_num_points=50)
+
+        input_scene: SfmScene = ...  # Load or create an SfmScene
+
+        # The transformed scene will only contain posed images with more than 50 visible points.
+        transformed_scene: SfmScene = scene_transform(input_scene)
+
     """
 
     version = "1.0.0"
@@ -25,11 +48,12 @@ class FilterImagesWithLowPoints(BaseTransform):
         min_num_points: int = 0,
     ):
         """
-        Create a FilterImagesWithLowPoints transform which removes images from the scene which have fewer than or equal to `min_num_points` visible points.
+        Create a new :class:`FilterImagesWithLowPoints` transform which removes posed images from the scene which have
+        fewer than or equal to ``min_num_points`` visible points.
 
         Args:
-            min_num_points (int): The minimum number of visible points required to keep an image in the scene.
-                Images with fewer or equal points will be removed.
+            min_num_points (int): The minimum number of visible points required to keep a posed image in the scene.
+                Posed images with fewer or equal visible points will be removed.
         """
         super().__init__()
         self._min_num_points = min_num_points
@@ -37,18 +61,24 @@ class FilterImagesWithLowPoints(BaseTransform):
 
     def __call__(self, input_scene: SfmScene) -> SfmScene:
         """
-        Perform the filtering on the input scene. If the scene does not have point indices for its images, the scene is returned unmodified.
+        Return a new :class:`SfmScene` containing only posed images which have more than ``min_num_points`` visible points.
+
+        .. note::
+            If the input :class:`SfmScene` does not have point indices for its posed images
+            (i.e. :obj:`SfmScene.has_visible_point_indices` is ``False``), then this transform is a no-op.
+
 
         Args:
             input_scene (SfmScene): The input scene.
 
         Returns:
-            output_scene (SfmScene): A new SfmScene containing only images which have more than `min_num_points` visible points.
-                If the input scene does not have point indices for its images, the input scene is returned unmodified.
+            output_scene (SfmScene): A new SfmScene containing only posed images which have more than ``min_num_points``
+                visible points. If the input scene does not have point indices for its posed images,
+                the input scene is returned unmodified.
         """
         if not input_scene.has_visible_point_indices:
             self._logger.info(
-                "Input scene does not have point indices for its images. Returning the input scene unmodified."
+                "Input scene does not have point indices for its posed images. Returning the input scene unmodified."
             )
             return input_scene
         image_mask = np.array(
@@ -65,26 +95,29 @@ class FilterImagesWithLowPoints(BaseTransform):
     @property
     def min_num_points(self) -> int:
         """
-        Get the minimum number of points required to keep an image in the scene.
+        Get the minimum number of points required to keep a posed image in the scene when applying this transform.
 
         Returns:
-            int: The minimum number of points required to keep an image in the scene.
+            min_num_points (int): The minimum number of points required to keep a posed image in the scene when applying this transform.
         """
         return self._min_num_points
 
     @staticmethod
     def name() -> str:
         """
-        Return the name of the FilterImagesWithLowPoints transform.
+        Return the name of the :class:`FilterImagesWithLowPoints` transform. **i.e.** ``"FilterImagesWithLowPoints"``.
 
         Returns:
-            str: The name of the FilterImagesWithLowPoints transform.
+            str: The name of the :class:`FilterImagesWithLowPoints` transform. **i.e.** ``"FilterImagesWithLowPoints"``.
         """
         return "FilterImagesWithLowPoints"
 
     def state_dict(self) -> dict[str, Any]:
         """
-        Return the state of the FilterImagesWithLowPoints transform for serialization.
+        Return the state of the :class:`FilterImagesWithLowPoints` transform for serialization.
+
+        You can use this state dictionary to recreate the transform using :meth:`from_state_dict`.
+
         Returns:
             state_dict (dict[str, Any]): A dictionary containing information to serialize/deserialize the transform.
         """
@@ -97,13 +130,13 @@ class FilterImagesWithLowPoints(BaseTransform):
     @staticmethod
     def from_state_dict(state_dict: dict[str, Any]) -> "FilterImagesWithLowPoints":
         """
-        Create a FilterImagesWithLowPoints transform from a state dictionary.
+        Create a :class:`FilterImagesWithLowPoints` transform from a state dictionary generated with :meth:`state_dict`.
 
         Args:
-            state_dict (dict[str, Any]): A dictionary containing information to serialize/deserialize the transform.
+            state_dict (dict): The state dictionary for the transform.
 
         Returns:
-            FilterImagesWithLowPoints: An instance of the FilterImagesWithLowPoints transform.
+            transform (FilterImagesWithLowPoints): An instance of the :class:`FilterImagesWithLowPoints` transform.
         """
         if state_dict["name"] != "FilterImagesWithLowPoints":
             raise ValueError(
