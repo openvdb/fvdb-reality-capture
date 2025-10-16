@@ -37,9 +37,10 @@ class MockWriter(radiance_fields.GaussianSplatReconstructionBaseWriter):
 class GaussianSplatReconstructionTests(unittest.TestCase):
     def setUp(self):
         # Auto-download this dataset if it doesn't exist.
-        self.dataset_path = pathlib.Path(__file__).parent.parent.parent / "data" / "360_v2" / "counter"
+        self.dataset_root = pathlib.Path(__file__).parent.parent.parent / "data"
+        self.dataset_path = self.dataset_root / "360_v2" / "counter"
         if not self.dataset_path.exists():
-            frc.tools.download_example_data("mipnerf360", self.dataset_path.parent)
+            frc.tools.download_example_data("mipnerf360", self.dataset_root)
 
         self.sfm_scene = frc.SfmScene.from_colmap(self.dataset_path)
         self.scene_transform = frc.transforms.Compose(
