@@ -15,8 +15,8 @@ class BaseGaussianSplatOptimizer(ABC):
     This class defines the interface for optimizers that optimize the parameters of a `fvdb.GaussianSplat3d` model, and
     provides utilities to refine the model by inserting and deleting Gaussians based on their contribution to the optimization.
 
-    Currently, the only concrete implementation is `GaussianSplatOptimizer`, which implements the algorithm in the original
-    Gaussian Splatting paper (https://arxiv.org/abs/2308.04079).
+    Currently, the only concrete implementation is :class:`GaussianSplatOptimizer`, which implements the algorithm in the
+    `original Gaussian Splatting paper <https://arxiv.org/abs/2308.04079>`_.
     """
 
     @classmethod
