@@ -125,10 +125,6 @@ jobs:
           micromamba activate fvdb
           pip install sphinx sphinx_rtd_theme myst_parser commonmark
           pip install -e .
-
-      - name: Build docs
-        run: |
-          micromamba activate fvdb
           sphinx-build docs _build
 
       - name: Deploy to GitHub Pages
