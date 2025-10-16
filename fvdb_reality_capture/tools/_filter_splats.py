@@ -16,7 +16,7 @@ def filter_splat_means(
         decimate: decimate the number of splats by this factor when calculating the percentile range
 
     Returns:
-        GaussianSplat3d after removal of gaussians outside bounds
+        GaussianSplat3d after removal of gaussians outside percentile bounds
     """
     points = splats.means
 
@@ -57,7 +57,7 @@ def filter_splat_opacities(splats: GaussianSplat3d, percentile=0.98, decimate=4)
         decimate: decimate the number of splats by this factor when calculating the percentile range
 
     Returns:
-        GaussianSplat3d after removal of gaussians outside bounds
+        GaussianSplat3d after removal of gaussians outside opacity percentile range
     """
     lower_bound = torch.quantile(splats.logit_opacities[::decimate], 1.0 - percentile)
     good_inds = splats.logit_opacities > lower_bound
@@ -83,7 +83,7 @@ def filter_splat_large_scales(splats: GaussianSplat3d, prune_scale3d_threshold=0
         prune_scale3d_threshold: drop all spats with scales larger than this threshold (relative to scene scale)
 
     Returns:
-        GaussianSplat3d after removal of gaussians outside bounds
+        GaussianSplat3d after removal of gaussians outside threshold
     """
 
     points = splats.means
