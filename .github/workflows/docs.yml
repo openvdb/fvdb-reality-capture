@@ -1,0 +1,20 @@
+name: Sphinx Documentation
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ahmad88me/sphinx-docs-action@v0.7
+        with:
+          python-version: '3.8'
+          git-username: 'fwilliams'
+          git-email: 'francis@fwilliams.info'
+          project-path: 'src'
+          files-pattern: 'examples/*example*.py'
+          commit-message: 'update docs'
+          github-token: ${{ secrets.GITHUB_TOKEN }}
