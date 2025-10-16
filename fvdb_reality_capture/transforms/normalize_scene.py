@@ -106,12 +106,15 @@ def _camera_similarity_normalization_transform(c2w, strict_scaling=False, center
     t = c2w[:, :3, 3]
     R = c2w[:, :3, :3]
 
-    # (1) Rotate the world so that z+ is the up axis
-    # we estimate the up axis by averaging the camera up axes
+    # Estimate the up vector of the scene as the average up vector of all the camera poses
+    # Note that camera space coordinates are assumed to be x-right, y-down, z-forward.
+    # To compute the up vector in world space, we therefore use the negative y-axis
+    # (i.e. OpenCV convention)
     ups = np.sum(R * np.array([0, -1.0, 0]), axis=-1)
     world_up = np.mean(ups, axis=0)
     world_up /= np.linalg.norm(world_up)
 
+    # 1. Compute a rotation matrix that rotates the estimated world up-vector to align with +z
     up_camspace = np.array([0.0, -1.0, 0.0])
     c = (up_camspace * world_up).sum()
     cross = np.cross(world_up, up_camspace)
@@ -129,29 +132,33 @@ def _camera_similarity_normalization_transform(c2w, strict_scaling=False, center
         # rotate 180-deg about x axis
         R_align = np.array([[-1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]])
 
-    #  R_align = np.eye(3) # DEBUG
+    # Compute new camera pose transformations in the aligned space
     R = R_align @ R
-    fwds = np.sum(R * np.array([0, 0.0, 1.0]), axis=-1)
     t = (R_align @ t[..., None])[..., 0]
 
-    # (2) Recenter the scene.
+    # 2. Compute a centroid for the scene using one of two methods
     if center_method == "focus":
-        # find the closest point to the origin for each camera's center ray
-        nearest = t + (fwds * -t).sum(-1)[:, None] * fwds
+        # Use the "focus" of the scene defined as the closest point to the origin in the new aligned space
+        # along each camera's center ray.
+        lookat_vector = np.sum(R * np.array([0, 0.0, 1.0]), axis=-1)
+        nearest = t + (lookat_vector * -t).sum(-1)[:, None] * lookat_vector
         translate = -np.median(nearest, axis=0)
     elif center_method == "poses":
-        # use center of the camera positions
+        # Use the median value of the camera positions to center the scene
         translate = -np.median(t, axis=0)
     else:
         raise ValueError(f"Unknown center_method {center_method}")
 
+    # 3. Compute a rescaling factor so the scene fits within a unit cube
+    # Use either the median or maximum distance to any camera position
+    # to determine the scale factor
+    scale_fn = np.max if strict_scaling else np.median
+    scale = 1.0 / scale_fn(np.linalg.norm(t + translate, axis=-1))
+
+    # Build the final similarity transform
     transform = np.eye(4)
     transform[:3, 3] = translate
     transform[:3, :3] = R_align
-
-    # (3) Rescale the scene using camera distances
-    scale_fn = np.max if strict_scaling else np.median
-    scale = 1.0 / scale_fn(np.linalg.norm(t + translate, axis=-1))
     transform[:3, :] *= scale
 
     return transform
@@ -160,11 +167,18 @@ def _camera_similarity_normalization_transform(c2w, strict_scaling=False, center
 @transform
 class NormalizeScene(BaseTransform):
     """
-    A transform which normalizes an SfmScene using a variety of approaches:
-    - "pca": Normalizes the scene using PCA, centering and rotating the point cloud to align with principle axes.
-    - "ecef2enu": Converts ECEF coordinates to ENU coordinates, centering the scene around the median point.
-    - "similarity": Applies a similarity transformation to the scene based on camera positions, centering and scaling it.
-    - "none": No normalization is applied, the scene remains unchanged.
+    A :class:`BaseTransform` which normalizes an :class:`SfmScene` using a variety of approaches.
+    This transform applies a rotation/translation/scaling to the entire scene, including both points and camera poses.
+
+    The normalization types available are:
+
+    - ``"pca"``: Normalizes by centering the scene about its median point, and rotating the point cloud to align with its principal axes.
+    - ``"ecef2enu"``: Converts a scene whose points and camera poses are in `Earth-Centered, Earth-Fixed (ECEF) <https://en.wikipedia.org/wiki/Earth-centered,_Earth-fixed_coordinate_system>`_
+        | coordinates to `East-North-Up (ENU) <https://en.wikipedia.org/wiki/Local_tangent_plane_coordinates>`_ coordinates,
+        | centering the scene around the median point.
+    - ``"similarity"``: Rotate the scene so that +z aligns with the average up vector of the cameras, center the scene around the median camera position,
+            and rescale the scene to fit within a unit cube.
+    - ``"none"``: Do not apply any normalization to the scene. Effectively a no-op.
     """
 
     version = "1.0.0"

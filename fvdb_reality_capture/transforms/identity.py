@@ -15,6 +15,7 @@ class Identity(BaseTransform):
     default transform in a processing pipeline.
 
     Example usage:
+
     .. code-block:: python
 
         # Example usage:
@@ -35,6 +36,9 @@ class Identity(BaseTransform):
             else:
                 # Still return a valid transform that is a no-op
                 return transforms.Identity()
+
+        get_transform(False)  # Returns an Identity transform
+        get_transform(True)   # Returns a DownsampleImages transform
     """
 
     version = "1.0.0"
