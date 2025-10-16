@@ -327,13 +327,13 @@ class CropScene(BaseTransform):
     @staticmethod
     def from_state_dict(state_dict: dict) -> "CropScene":
         """
-        Create a CropScene transform from a state dictionary created with :meth:`state_dict`.
+        Create a :class:`CropScene` transform from a state dictionary created with :meth:`state_dict`.
 
         Args:
             state_dict (dict): The state dictionary for the transform.
 
         Returns:
-            transform (CropScene): An instance of the CropScene transform.
+            transform (CropScene): An instance of the :class:`CropScene` transform.
         """
         bbox = state_dict.get("bbox", None)
         if bbox is None:
@@ -347,6 +347,8 @@ class CropScene(BaseTransform):
     def state_dict(self) -> dict:
         """
         Return the state of the :class:`CropScene` transform for serialization.
+
+        You can use this state dictionary to recreate the transform using :meth:`from_state_dict`.
 
         Returns:
             state_dict (dict[str, Any]): A dictionary containing information to serialize/deserialize the transform.
@@ -485,7 +487,8 @@ class CropSceneToPoints(BaseTransform):
             state_dict (dict[str, Any]): A dictionary containing information to serialize/deserialize the transform.
 
         Returns:
-            transform (:class:`CropSceneToPoints`): An instance of the :class:`CropSceneToPoints` transform loaded from the state dictionary.
+            transform (:class:`CropSceneToPoints`): An instance of the :class:`CropSceneToPoints` transform loaded
+                from the state dictionary.
         """
         margin = state_dict.get("margin", None)
         if margin is None:
@@ -511,6 +514,8 @@ class CropSceneToPoints(BaseTransform):
     def state_dict(self) -> dict:
         """
         Return the state of the :class:`CropSceneToPoints` transform for serialization.
+
+        You can use this state dictionary to recreate the transform using :meth:`from_state_dict`.
 
         Returns:
             state_dict (dict[str, Any]): A dictionary containing information to serialize/deserialize the transform.

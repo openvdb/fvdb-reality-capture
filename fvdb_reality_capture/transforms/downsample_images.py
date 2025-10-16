@@ -77,7 +77,8 @@ class DownsampleImages(BaseTransform):
 
     def __call__(self, input_scene: SfmScene) -> SfmScene:
         """
-            Return a new :class:`SfmScene` with images downsampled by the specified factor.
+        Return a new :class:`SfmScene` with images downsampled by the specified factor.
+        *i.e.* images will be resized to ``(width / image_downsample_factor, height / image_downsample_factor)``.
 
         Args:
             input_scene (SfmScene): The input scene with images to be downsampled.
@@ -262,6 +263,8 @@ class DownsampleImages(BaseTransform):
         """
         Return the state of the :class:`DownsampleImages` transform for serialization.
 
+        You can use this state dictionary to recreate the transform using :meth:`from_state_dict`.
+
         Returns:
             state_dict (dict[str, Any]): A dictionary containing information to serialize/deserialize the transform.
         """
@@ -277,7 +280,7 @@ class DownsampleImages(BaseTransform):
     @staticmethod
     def from_state_dict(state_dict: dict[str, Any]) -> "DownsampleImages":
         """
-        Create a :class:`DownsampleImages` transform from a state dictionary.
+        Create a :class:`DownsampleImages` transform from a state dictionary generated with :meth:`state_dict`.
 
         Args:
             state_dict (dict): The state dictionary for the transform.
