@@ -3,6 +3,7 @@
 #
 
 from .gaussian_splat_optimizer import (
+    BaseGaussianSplatOptimizer,
     GaussianSplatOptimizer,
     GaussianSplatOptimizerConfig,
     InsertionGrad2dThresholdMode,
@@ -26,6 +27,7 @@ __all__ = [
     "GaussianSplatReconstruction",
     "GaussianSplatReconstructionConfig",
     "SfmDataset",
+    "BaseGaussianSplatOptimizer",
     "GaussianSplatOptimizer",
     "GaussianSplatOptimizerConfig",
     "InsertionGrad2dThresholdMode",
