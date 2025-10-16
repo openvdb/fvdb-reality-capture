@@ -15,6 +15,5 @@ jobs:
           git-username: 'fwilliams'
           git-email: 'francis@fwilliams.info'
           project-path: 'src'
-          files-pattern: 'examples/*example*.py'
           commit-message: 'update docs'
           github-token: ${{ secrets.GITHUB_TOKEN }}
