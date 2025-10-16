@@ -135,14 +135,14 @@ class GaussianSplatOptimizerConfig:
 
     insertion_scale_3d_threshold: float = 0.01
     """
-    Duplicate high-error (determined by ``insertion_grad_2d_threshold``) Gaussians whose 3d scale is below this value.
+    Duplicate high-error (determined by :obj:`insertion_grad_2d_threshold`) Gaussians whose 3d scale is below this value.
     These Gaussians are too small to capture the detail in the region they cover, so we duplicate them to
     allow them to specialize.
     """
 
     insertion_scale_2d_threshold: float = 0.05
     """
-    Split high-error (determined by ``insertion_grad_2d_threshold``) Gaussians whose maximum projected
+    Split high-error (determined by :obj:`insertion_grad_2d_threshold`) Gaussians whose maximum projected
     size exceeds this value. These Gaussians are too large to capture the detail in the region they cover,
     so we split them to allow them to specialize.
 
@@ -153,7 +153,7 @@ class GaussianSplatOptimizerConfig:
     opacity_updates_use_revised_formulation: bool = False
     """
     When splitting Gaussians, whether to update the opacities of the new Gaussians using the revised formulation from
-    *"Revising Densification in Gaussian Splatting" (https://arxiv.org/abs/2404.06109)*.
+    `*"Revising Densification in Gaussian Splatting"* <https://arxiv.org/abs/2404.06109>`_.
     This removes a bias which weighs newly split Gaussians contribution to the image more heavily than
     older Gaussians.
     """
@@ -177,9 +177,9 @@ class GaussianSplatOptimizerConfig:
     reset_opacities_every_n_refinements: int = 30
     """
     If set to a positive value, then clamp all opacities to be at most twice the value of
-    :obj:`deletion_opacity_threshold` every time :func:`GaussianSplatOptimizer.refine` is called ``reset_opacities_every_n_refinements``
-    times. This prevents Gaussians from becoming completely occluded by denser Gaussians and thus unable to
-    be optimized.
+    :obj:`deletion_opacity_threshold` every time :func:`GaussianSplatOptimizer.refine` is called
+    :obj:`reset_opacities_every_n_refinements` times. This prevents Gaussians from becoming completely occluded by
+    denser Gaussians and thus unable to be optimized.
     """
 
     use_scales_for_deletion_after_n_refinements: int = reset_opacities_every_n_refinements
