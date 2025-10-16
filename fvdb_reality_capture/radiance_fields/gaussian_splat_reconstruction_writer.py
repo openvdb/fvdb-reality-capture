@@ -186,10 +186,10 @@ class GaussianSplatReconstructionWriter(GaussianSplatReconstructionBaseWriter):
         config: GaussianSplatReconstructionWriterConfig = GaussianSplatReconstructionWriterConfig(),
     ) -> None:
         """
-        Create a new :class:`GaussianSplatReconstructionWriter` instance, which can log and save data during training.
+        Create a new :class:`GaussianSplatReconstructionWriter` instance, which can log and save data during reconstruction.
 
         Args:
-            run_name (str | None): Name of this training run. If None, a unique name will be generated.
+            run_name (str | None): Name of this reconstruction run. If None, a unique name will be generated.
             save_path (pathlib.Path | None): Path to the directory where results should be saved.
                 If None, no data will be saved to disk.
             exist_ok (bool): Whether to keep existing data in the save_path/run_name directory if it exists. If ``False``,
@@ -339,7 +339,7 @@ class GaussianSplatReconstructionWriter(GaussianSplatReconstructionBaseWriter):
         Args:
             base_path (pathlib.Path): Base directory where the file should be saved.
             global_step (int): Global step at which the file is being saved. A subdirectory with this name will be created under base_path.
-            file_name (str): Name of the file to be saved. Can include subdirectories (*e.g.* ``"train/image_0001.png"``).
+            file_name (str): Name of the file to be saved. Can include subdirectories (*e.g.* ``"reconstruction/image_0001.png"``).
             file_type (str): Type of the file used for error messages (*e.g.* ``"Image"``, ``"Checkpoint"``).
             allowed_sufixes (tuple[str, ...]): Allowed file suffixes/extensions.
             default_suffix (str): Default file suffix/extension to use if none is provided.
@@ -356,7 +356,7 @@ class GaussianSplatReconstructionWriter(GaussianSplatReconstructionBaseWriter):
             raise ValueError(f"{file_type} name {file_name} results in a path outside of {base_path.name} directory.")
 
         # Create parent directory if it does not exist. If the user passes in a nested path, we need to create it.
-        # e.g. file_name = "train/image_0001.png" will create "images/train/" directory
+        # e.g. file_name = "reconstruction/image_0001.png" will create "images/reconstruction/" directory
         if not step_file_path.parent.exists():
             step_file_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -411,11 +411,11 @@ class GaussianSplatReconstructionWriter(GaussianSplatReconstructionBaseWriter):
     @property
     def run_name(self) -> str | None:
         """
-        Return the name of this training run, or ``None`` if the writer is not saving any data. The name of the run matches
+        Return the name of this reconstruction run, or ``None`` if the writer is not saving any data. The name of the run matches
         the name of the directory where logged results are being saved.
 
         Returns:
-            str | None: The name of this training run, or ``None`` if the writer is not saving any data.
+            str | None: The name of this reconstruction run, or ``None`` if the writer is not saving any data.
         """
         return self._run_name
 
@@ -433,7 +433,7 @@ class GaussianSplatReconstructionWriter(GaussianSplatReconstructionBaseWriter):
     @torch.no_grad()
     def log_metric(self, global_step: int, metric_name: str, metric_value: NumericScalar) -> None:
         """
-        Log a scalar metric value. This function is called during training to log metrics such as loss, PSNR, etc.
+        Log a scalar metric value. This function is called during reconstruction to log metrics such as loss, PSNR, etc.
 
         Args:
             global_step (int): The global step at which the metric is being logged.
@@ -453,7 +453,7 @@ class GaussianSplatReconstructionWriter(GaussianSplatReconstructionBaseWriter):
     @torch.no_grad()
     def save_image(self, global_step: int, image_name: str, image: torch.Tensor, jpeg_quality: int = 98):
         """
-        Save an image to disk and/or TensorBoard. This function is called during training to save
+        Save an image to disk and/or TensorBoard. This function is called during reconstruction to save
         rendered images, error maps, etc.
 
         Args:
@@ -489,7 +489,7 @@ class GaussianSplatReconstructionWriter(GaussianSplatReconstructionBaseWriter):
                 raise ValueError(f"Image name {image_name} results in path outside of images directory.")
 
             # Create parent directory if it does not exist. If the user passes in a nested path, we need to create it.
-            # e.g. image_name = "train/image_0001.png" will create "images/train/" directory
+            # e.g. image_name = "reconstruction/image_0001.png" will create "images/reconstruction/" directory
             if not image_path.parent.exists():
                 image_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -525,7 +525,7 @@ class GaussianSplatReconstructionWriter(GaussianSplatReconstructionBaseWriter):
     @torch.no_grad()
     def save_checkpoint(self, global_step: int, checkpoint_name: str, checkpoint: dict[str, Any]) -> None:
         """
-        Save a training checkpoint to disk. This function is called during training to save model and optimizer state.
+        Save a reconstruction checkpoint to disk. This function is called during reconstruction to save model and optimizer state.
 
         Args:
             global_step (int): The global step at which the checkpoint is being saved.
@@ -550,14 +550,14 @@ class GaussianSplatReconstructionWriter(GaussianSplatReconstructionBaseWriter):
         self, global_step: int, ply_name: str, model: GaussianSplat3d, metadata: dict[str, Any] | None = None
     ) -> None:
         """
-        Save the current Gaussian splat model to a PLY file. This function is called during training to save
+        Save the current Gaussian splat model to a PLY file. This function is called during reconstruction to save
         the reconstructed model at various stages.
 
         Args:
             global_step (int): The global step at which the PLY file is being saved.
             ply_name (str): The name of the PLY file. This will be used as the file name. Must have a ``.ply`` suffix.
             model (GaussianSplat3d): The Gaussian splat model to be saved.
-            metadata (dict[str, Any] | None): Optional metadata to include in the PLY file (e.g. camera parameters, training config, etc.).
+            metadata (dict[str, Any] | None): Optional metadata to include in the PLY file (e.g. camera parameters, reconstruction config, etc.).
         """
         if self._config.save_plys and self._ply_path is not None:
             ply_path = self._resolve_saved_file(
