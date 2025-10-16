@@ -6,7 +6,7 @@ from typing import Literal, NamedTuple
 import torch
 import torchvision
 
-from ..foundation_models.config import get_weights_path_for_model
+from fvdb_reality_capture.foundation_models.config import get_weights_path_for_model
 
 # This file is modified from code in the TorchMetrics library (licensed under Apache v2).
 # The torchmetrics license is included here:

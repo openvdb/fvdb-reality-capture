@@ -18,8 +18,11 @@ from fvdb.utils.metrics import psnr, ssim
 from fvdb.viz import Viewer
 from scipy.spatial import cKDTree  # type: ignore
 
-from ..sfm_scene import SfmScene
-from ..tools import export_splats_to_usdz
+from fvdb_reality_capture.sfm_scene import SfmScene
+from fvdb_reality_capture.tools import export_splats_to_usdz
+
+from ._private.lpips import LPIPSLoss
+from ._private.utils import crop_image_batch
 from .camera_pose_adjust import CameraPoseAdjustment
 from .gaussian_splat_dataset import SfmDataset
 from .gaussian_splat_optimizer import (
@@ -31,8 +34,6 @@ from .gaussian_splat_reconstruction_writer import (
     GaussianSplatReconstructionBaseWriter,
     GaussianSplatReconstructionWriter,
 )
-from .lpips import LPIPSLoss
-from .utils import crop_image_batch
 
 
 @dataclass
