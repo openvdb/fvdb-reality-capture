@@ -21,6 +21,7 @@ from scipy.spatial import cKDTree  # type: ignore
 from ..sfm_scene import SfmScene
 from ..tools import export_splats_to_usdz
 from .camera_pose_adjust import CameraPoseAdjustment
+from .gaussian_splat_dataset import SfmDataset
 from .gaussian_splat_optimizer import (
     BaseGaussianSplatOptimizer,
     GaussianSplatOptimizer,
@@ -31,7 +32,6 @@ from .gaussian_splat_reconstruction_writer import (
     GaussianSplatReconstructionWriter,
 )
 from .lpips import LPIPSLoss
-from .sfm_dataset import SfmDataset
 from .utils import crop_image_batch
 
 

@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 
+from .gaussian_splat_dataset import SfmDataset
 from .gaussian_splat_optimizer import (
     BaseGaussianSplatOptimizer,
     GaussianSplatOptimizer,
@@ -18,7 +19,6 @@ from .gaussian_splat_reconstruction_writer import (
     GaussianSplatReconstructionWriter,
     GaussianSplatReconstructionWriterConfig,
 )
-from .sfm_dataset import SfmDataset
 
 __all__ = [
     "GaussianSplatReconstructionBaseWriter",

@@ -11,7 +11,11 @@ import torch
 import torch.utils.data
 import torchvision
 
-from ..sfm_scene import SfmCameraMetadata, SfmPosedImageMetadata, SfmScene
+from fvdb_reality_capture.sfm_scene import (
+    SfmCameraMetadata,
+    SfmPosedImageMetadata,
+    SfmScene,
+)
 
 
 class SfmDataset(torch.utils.data.Dataset, Iterable):
