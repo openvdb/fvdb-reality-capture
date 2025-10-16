@@ -13,7 +13,7 @@ To do this, data from a cature is stored in an `fvdb_reality_capture.SfmScene` o
 
 Below, we'll look at some examples of how to load a capture from disk, and manipulate it using an `SfmScene`.
 
-Let's first start by downloading some example capture data for this tutorial. 
+Let's first start by downloading some example capture data for this tutorial.
 
 
 ```python
@@ -38,7 +38,7 @@ frc.download_example_data(dataset="mipnerf360", download_path="./data")
 ```
 
     2025-10-15 12:18:15,856 - fvdb_reality_capture.tools._download_example_data.download_example_data - INFO - Downloading dataset mipnerf360 from https://fvdb-data.s3.us-east-2.amazonaws.com/fvdb-reality-capture/360_v2.zip to data/360_v2/360_v2.zip
-    Downloading dataset mipnerf360: 100%|██████████| 12.5G/12.5G [09:37<00:00, 21.7MB/s]  
+    Downloading dataset mipnerf360: 100%|██████████| 12.5G/12.5G [09:37<00:00, 21.7MB/s]
     2025-10-15 12:27:53,751 - fvdb_reality_capture.tools._download_example_data.download_example_data - INFO - Dataset downloaded successfully.
     2025-10-15 12:27:53,751 - fvdb_reality_capture.tools._download_example_data.download_example_data - INFO - Extracting archive 360_v2.zip to data/360_v2.
 
@@ -61,7 +61,7 @@ sfm_scene: frc.SfmScene = frc.SfmScene.from_colmap("data/360_v2/garden")
     100%|██████████| 138766/138766 [00:00<00:00, 246833.00it/s]
 
 
-Here we used the `fvdb_reality_capture.io` module to load data in COLMAP format to an `SfmScene`. 
+Here we used the `fvdb_reality_capture.io` module to load data in COLMAP format to an `SfmScene`.
 
 In brief, an `SfmScene` is an immutable representation of a capture (modifying it will produce a copy). Its most important attributes are:
  1. `SfmScene.cameras`: A dictionary mapping unique camera IDs to `SfmCameraMetadata` objects which camera parameters (e.g. projection matrices, distortion parameters). The size of this dictionary matches the number of cameras used to capture the scene (so if you scanned a scene with a pair of stereo cameras, then `len(SfmScene.cameras)` will be 2).
@@ -151,9 +151,9 @@ plot_three_images(sfm_scene, "Three images from the SfmScene and the projection 
 ```
 
 
-    
+
 ![png](data_manipulation_files/data_manipulation_5_0.png)
-    
+
 
 
 ## Basic `SfmScene` manipulation
@@ -162,7 +162,7 @@ We can do basic manipulations on an `SfmScene` such as filtering out certain ima
 More advanced manipulations can be done using the `fvdb_reality_capture.transforms` module described below.
 
 Let's start with a (somewhat contrived) example where we filter out points in the scene whose X
-coordinate is less than the X coordinate of the mean of all points. 
+coordinate is less than the X coordinate of the mean of all points.
 
 
 ```python
@@ -183,9 +183,9 @@ print("Original scene has {sfm_scene.points.shape[0]} points and filtered scene 
 ```
 
 
-    
+
 ![png](data_manipulation_files/data_manipulation_7_0.png)
-    
+
 
 
     Original scene has {sfm_scene.points.shape[0]} points and filtered scene has {filtered_pts_scene.points.shape[0]} points
@@ -209,9 +209,9 @@ print(f"Original scene has {sfm_scene.num_images} images, and filtered scene has
 ```
 
 
-    
+
 ![png](data_manipulation_files/data_manipulation_9_0.png)
-    
+
 
 
     Original scene has 185 images, and filtered scene has 93 images
@@ -219,9 +219,9 @@ print(f"Original scene has {sfm_scene.num_images} images, and filtered scene has
 
 ## Transforming an `SfmScene` with `fvdb_reality_capture.transforms`
 
-`fvdb_reality_capture` comes equipped with a number of more advanced transformations that can be applied to an `SfmScene`. 
-These include operations to downsample images, normalize the scene, crop the scene, and filter outlier points. 
-You can also define your own custom transformations. 
+`fvdb_reality_capture` comes equipped with a number of more advanced transformations that can be applied to an `SfmScene`.
+These include operations to downsample images, normalize the scene, crop the scene, and filter outlier points.
+You can also define your own custom transformations.
 
 Let's look at some examples of transformations.
 
@@ -269,9 +269,9 @@ plt.show()
 
 
 
-    
+
 ![png](data_manipulation_files/data_manipulation_12_2.png)
-    
+
 
 
 Whew, that took a while 😂! The first time you run this transformation, the Transform will cache all the downsampled images for re-use later. After that, applying the same transformation again will re-use the cached images and will be instantaneous. Let's see an example:
@@ -305,9 +305,9 @@ plt.show()
 
 
 
-    
+
 ![png](data_manipulation_files/data_manipulation_14_1.png)
-    
+
 
 
 ### Normalizing an `SfmScene`
@@ -460,9 +460,9 @@ plot_three_images_with_bbox(cropped_scene, "Three images from a cropped SfmScene
 
 
 
-    
+
 ![png](data_manipulation_files/data_manipulation_18_1.png)
-    
+
 
 
 Note that the masks may look a bit larger than the set of visible points here. This is because they are the computed by taking the convex-hull of the projection of the bounding cube of the cropped points in image space. This leads to pixels being included in some views that don't have any points, which is desirable for Gaussian splatting to capture the background regions outside a bounding box.
@@ -494,13 +494,13 @@ plot_three_images_with_bbox(tx_scene, "Three images from a normalized, downsampl
 
 
 
-    
+
 ![png](data_manipulation_files/data_manipulation_21_1.png)
-    
+
 
 
 **⚠️ Warning about transform oder ⚠️**
-One caveat about composing transforms is that *order matters*. For example, when you crop a scene, the image masks are pre-computed as part of the transformation. If you normalize the scene after cropping, your images and bounding boxes won't match as expected. 
+One caveat about composing transforms is that *order matters*. For example, when you crop a scene, the image masks are pre-computed as part of the transformation. If you normalize the scene after cropping, your images and bounding boxes won't match as expected.
 
 Here we show an example where we crop the scene, which caches image masks, and then normalize the scene. Note how the plotted bounding boxes don't align with the image mask.
 
@@ -527,9 +527,9 @@ plot_three_images_with_bbox(tx_scene, "⚠️ Warning ⚠️ -- Transform order 
 
 
 
-    
+
 ![png](data_manipulation_files/data_manipulation_23_1.png)
-    
+
 
 
 ## Defining custom `SfmScene` transformations
@@ -679,9 +679,9 @@ plot_three_images_with_bbox(
 
 
 
-    
+
 ![png](data_manipulation_files/data_manipulation_27_1.png)
-    
+
 
 
 We can also compose this transform with any other as before. Let's see an example where we normalize the scene, downscale the images, apply our center mask and BGR conversion, and then crop the scene. Note how the plotted images now include the mask from our transform as well as the mask from the scene cropping.
@@ -718,12 +718,12 @@ plot_three_images_with_bbox(
 
 
 
-    
+
 ![png](data_manipulation_files/data_manipulation_29_1.png)
-    
 
 
-### A note about caching 
+
+### A note about caching
 This note is a bit advanced but important to know if you're writing your own transforms.
 
 A transform modifies an input scene in a way that can possibly be expensive to compute. To deal with this, transforms use a chaching mechanism that let's the transform store the outputs of expensive computations for re-use later without requiring the user to manage a lot of files on the file system. The `fvdb_reality_capture.io.SfmCache` class represents a directory on the filesystem where intermediate data gets stored. You can create (or get a refence to) a subdirectory of the current cache directory using the `Cache.make_folder(name: str)` method. This method returns a new `Cache` object for that subdirectory.
@@ -741,20 +741,20 @@ transform = frc.transforms.Compose(
 ```
 
 This transform does four things encoded as four `BaseTransform` objects:
- 1. Normalizes the scene by centering at the median of its points and rotating it to align with the top three principal axes of those points. 
+ 1. Normalizes the scene by centering at the median of its points and rotating it to align with the top three principal axes of those points.
  2. Downsamples every image in the scene by a factor of 8.
  3. Masks out a box in the middle of each image that is 75% of the image size, and converts images to BGR.
  4. Crops points which lie in the box from (0.0, 0.0, 0.0) to (2.0, 2.0, 2.0) and masks out pixels that don't see this box.
 
 
 Here is how this sequence of transforms leverages the cache. Let's say the sfm_scene starts with a cache directory called `cache/`
- - Normalizing does not cache anythng and just transforms the scene. 
+ - Normalizing does not cache anythng and just transforms the scene.
    - The cache directory is `cache/`
- - Downsampling images caches the downsampled images. 
+ - Downsampling images caches the downsampled images.
    - The cache directory is `cache/downsampled_8x_jpg_q100_m3/`.
- - Our custom transform caches masks and converted images. 
+ - Our custom transform caches masks and converted images.
    - The cache directory is `cache/downsampled_8x_jpg_q100_m3/maskrgb2bgr_bf0_75/`.
- - The crop transform caches masks for the bounding cube as well as a file containing the transformation matrix of the scene. If the transformation matrix for the current scene doesn't match the cached one, the cached images are regenerated. 
+ - The crop transform caches masks for the bounding cube as well as a file containing the transformation matrix of the scene. If the transformation matrix for the current scene doesn't match the cached one, the cached images are regenerated.
    - The cache directory is `cache/downsampled_8x_jpg_q100_m3/maskrgb2bgr_bf0_75/Crop_0_0_0_0_0_0_2_0_2_0_2_0_png_True/`.
 
 
@@ -817,8 +817,8 @@ scene_2 = transform_2(sfm_scene)
     2025-10-15 12:31:27,699 - fvdb_reality_capture.transforms.downsample_images.DownsampleImages - INFO - Attempting to load downsampled images from cache.
     2025-10-15 12:31:27,757 - __main__.MaskMiddleAndConvertToBGR - INFO - Applying MaskMiddleAndConvertToBGR with box_fraction=0.75 to SfmScene with 185 images
     2025-10-15 12:31:27,800 - fvdb_reality_capture.transforms.crop_scene.CropScene - INFO - Cropping scene to bounding box: [0. 0. 0. 2. 2. 2.]
-    2025-10-15 12:31:27,901 - root - INFO - 
-    
+    2025-10-15 12:31:27,901 - root - INFO -
+
     2025-10-15 12:31:27,901 - root - INFO - Applying a new transform_2 with a different downsampling factor to see new cache generation
     2025-10-15 12:31:27,901 - root - INFO - -------------------------------
     2025-10-15 12:31:27,902 - fvdb_reality_capture.transforms.normalize_scene.NormalizeScene - INFO - Normalizing SfmScene with normalization type: pca
