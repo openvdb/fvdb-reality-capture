@@ -59,7 +59,7 @@ class GaussianSplatReconstructionConfig:
     """
     The maximum number of optimization epochs, *i.e.*, the number of times each image in the dataset will be visited.
 
-    An epoch is defined as one full pass through the training dataset. If you have a dataset with 100 images and a batch
+    An epoch is defined as one full pass through the dataset. If you have a dataset with 100 images and a batch
     size of 10, then one epoch corresponds to 10 steps.
 
     Default: 200
@@ -107,7 +107,7 @@ class GaussianSplatReconstructionConfig:
 
     crops_per_image: int = 1
     """
-    Number of crops to use per image during training. If you're using very large images, you can set this to a value greater than 1
+    Number of crops to use per image during reconstruction. If you're using very large images, you can set this to a value greater than 1
     to run the forward pass on crops and accumulate gradients. This can help reduce memory usage.
 
     Default: ``1`` (no cropping, use full images).
@@ -125,7 +125,7 @@ class GaussianSplatReconstructionConfig:
     """
     When reconstructing a Gaussian splat radiance field, we start by only optimizing the diffuse (degree 0) spherical harmonics coefficients
     per Gaussian, and progressively increase the degree of spherical harmonics used every :obj:`increase_sh_degree_every_epoch` epochs
-    until we reach :obj:`sh_degree`. This helps stabilize training in the early stages of optimization.
+    until we reach :obj:`sh_degree`. This helps stabilize optimization in the early stages of optimization.
 
     Default: ``5``
     """
@@ -248,7 +248,7 @@ class GaussianSplatReconstructionConfig:
     Weight for regularization of camera pose optimization. This encourages small changes to the initial camera poses.
 
     The pose regularization loss is defined as :math:`L_{pose}` = \\frac{1}{M} \\sum_j ||\\Delta R_j||^2 + ||\\Delta t_j||^2`,
-    *i.e.* the Frobenius norm of the change in rotation and translation for each of the M training camera poses.
+    *i.e.* the Frobenius norm of the change in rotation and translation for each of the ``M`` camera poses in the dataset.
 
     Default: ``1e-6``
     """
@@ -346,13 +346,13 @@ class GaussianSplatReconstruction:
     To create a :class:`GaussianSplatReconstruction` instance, use the :meth:`from_sfm_scene` class method, which initializes the model and optimizer
     from an :class:`~fvdb_reality_capture.sfm_scene.sfm_scene.SfmScene` and a :class:`GaussianSplatReconstructionConfig`.
 
-    You can configure logging and visualization of the training process using an instance of :class:`~fvdb_reality_capture.radiance_fields.GaussianSplatReconstructionBaseWriter`.
+    You can configure logging and checkpointing during optimization process using an instance of :class:`~fvdb_reality_capture.radiance_fields.GaussianSplatReconstructionBaseWriter`.
     By default, this class uses a :class:`~fvdb_reality_capture.radiance_fields.GaussianSplatReconstructionWriter` which logs metrics, images, and checkpoints to a directory.
 
-    You can also visualize the training process using an optional :class:`fvdb.viz.Viewer` instance, which can display
-    the current state of the model and renderings of the training and validation images in a web browser or notebook.
+    You can also visualize the optimization process using an optional :class:`fvdb.viz.Viewer` instance, which can display
+    the current state of the Gaussian splat radiance field interactively in a web browser or notebook.
 
-    The reconstruction process is started by calling the :meth:`train` method, which runs the optimization loop.
+    The reconstruction process is started by calling the :meth:`reconstruct` method, which runs the optimization loop.
 
     To get the reconstructed model, use the :meth:`model` attribute, which is a :class:`fvdb.GaussianSplat3d` instance.
 
@@ -360,7 +360,7 @@ class GaussianSplatReconstruction:
     This metadata is useful for downstream tasks such as extracting meshes or exporting to USDZ.
 
     The state of the reconstruction can be saved and loaded using the :meth:`state_dict` and :meth:`from_state_dict` methods.
-    These methods allow you to save and resume training from checkpoints.
+    These methods allow you to pause and resume reconstructions from checkpoints.
     """
 
     version = "0.1.0"
@@ -394,9 +394,9 @@ class GaussianSplatReconstruction:
         You can also configure logging and checkpointing during the reconstruction process using an instance of
         :class:`~fvdb_reality_capture.radiance_fields.GaussianSplatReconstructionBaseWriter`. By default, this class uses a
         :class:`~fvdb_reality_capture.radiance_fields.GaussianSplatReconstructionWriter` which logs metrics, images, and checkpoints to a directory.
-        You can also visualize the training process using an optional :class:`fvdb.viz.Viewer` instance, which
-        can display the current state of the model and renderings of the training and validation images in a web
-        browser or notebook.
+
+        You can interactively visualize the state of the current reconstruction using an optional :class:`fvdb.viz.Viewer` instance, which
+        can display the current Gaussian splat radiance field in a web browser or notebook.
 
         Args:
             sfm_scene (SfmScene): The Structure-from-Motion scene containing images and camera poses.
@@ -404,12 +404,12 @@ class GaussianSplatReconstruction:
             optimizer_config (GaussianSplatOptimizerConfig): Configuration for the optimizer.
             writer (GaussianSplatReconstructionBaseWriter): Writer instance to handle logging metrics, saving images, checkpoints, PLY, files,
                 and other results.
-            viewer (Viewer | None): Optional :class:`fvdb.viz.Viewer` instance for visualizing training progress. If None,
+            viewer (Viewer | None): Optional :class:`fvdb.viz.Viewer` instance for visualizing optimization progress. If None,
                 no visualization is performed.
             use_every_n_as_val (int): Use every n-th image as a validation image. Default of ``-1``
                 means no validation images are used.
             viewer_update_interval_epochs (float): Interval in epochs at which to update the viewer.
-                An epoch is one full pass through the training dataset.
+                An epoch is one full pass through the dataset.
             log_interval_steps (int): Interval (in steps) to log metrics to the ``writer``.
             device (str | torch.device): Device to run the reconstruction on.
         Returns:
@@ -427,7 +427,7 @@ class GaussianSplatReconstruction:
         val_dataset = SfmDataset(sfm_scene, val_indices)
 
         logger.info(
-            f"Created dataset training and test datasets with {len(train_dataset)} training images and {len(val_dataset)} test images."
+            f"Created training and validation datasets with {len(train_dataset)} training images and {len(val_dataset)} validation images."
         )
 
         # Initialize model
@@ -484,22 +484,22 @@ class GaussianSplatReconstruction:
     ):
         """
         Load a :class:`GaussianSplatReconstruction` instance from a state dictionary (extracted with the :meth:`state_dict` method).
-        This will restore the model, optimizer, and training state.
+        This will restore the model, optimizer, and configuration.
         You can optionally override the :class:`~fvdb_reality_capture.sfm_scene.sfm_scene.SfmScene` and the train/validation split (via the ``override_use_every_n_as_val`` parameter).
-        This is useful for resuming training on a different dataset or with a different train/val split.
+        This is useful for resuming reconstruction on a different dataset or with a different train/validation split.
 
         Args:
-            state_dict (dict): State dictionary containing the model, optimizer, and training state. Generated by
+            state_dict (dict): State dictionary containing the model, optimizer, and configuration state. Generated by
                 the :meth:`state_dict` method.
             override_sfm_scene (SfmScene | None): Optional :class:`~fvdb_reality_capture.sfm_scene.sfm_scene.SfmScene` to use instead of the one in the state_dict.
-            override_use_every_n_as_val (int | None): If specified, will override the train/val split using this value.
-                Default of None means to use the train/val split from the state_dict.
+            override_use_every_n_as_val (int | None): If specified, will override the train/validation split using this value.
+                Default of None means to use the train/validation split from the state_dict.
             writer (GaussianSplatReconstructionBaseWriter): :class:`~fvdb_reality_capture.radiance_fields.GaussianSplatReconstructionBaseWriter` instance to handle
                 logging metrics, saving images, checkpoints, PLY, files, and other results.
-            viewer (Viewer | None): Optional :class:`fvdb.viz.Viewer` instance for visualizing training progress. If ``None``, no
+            viewer (Viewer | None): Optional :class:`fvdb.viz.Viewer` instance for visualizing optimization progress. If ``None``, no
                 visualization is performed.
             viewer_update_interval_epochs (float): Interval in epochs at which to update the viewer. An epoch is one
-                full pass through the training dataset.
+                full pass through the dataset.
             log_interval_steps (int): Interval in steps to log metrics to the ``writer``.
             device (str | torch.device): Device to run the reconstruction on.
         """
@@ -612,7 +612,7 @@ class GaussianSplatReconstruction:
         Note: This constructor should only be called by the `new_run` or `resume_from_checkpoint` methods.
 
         Args:
-            model (GaussianSplat3d): The Gaussian Splatting model to train.
+            model (GaussianSplat3d): The Gaussian Splatting model to optimize.
             sfm_scene (SfmScene): The Structure-from-Motion scene.
             optimizer (GaussianSplatOptimizer | None): The optimizer for the model.
             config (Config): Configuration object containing model parameters.
@@ -624,10 +624,9 @@ class GaussianSplatReconstruction:
                 for camera pose adjustment, if used.
             writer (GaussianSplatReconstructionBaseWriter): Writer instance to handle saving images, ply files,
                 and other results.
-            start_step (int): The step to start training from (useful for resuming training
-                from a checkpoint).
+            start_step (int): The step to start optimization from (useful for resuming optimization from a checkpoint).
             viewer (Viewer | None): The viewer instance to use for this run.
-            log_interval_steps (int): Interval (in steps) at which to log metrics during training.
+            log_interval_steps (int): Interval (in steps) at which to log metrics during optimization.
             viewer_update_interval_epochs (float): Interval (in epochs) at which to update the viewer with new results if a viewer is specified.
             _private (object | None): Private object to ensure this class is only initialized through `new_run` or `resume_from_checkpoint`.
         """
@@ -657,7 +656,7 @@ class GaussianSplatReconstruction:
 
         self._writer = writer
 
-        # Setup viewer for visualizing training progress if a Viewer is provided.
+        # Setup viewer for visualizing reconstruction progress if a Viewer is provided.
         self._viewer = viewer
         if self._viewer is not None:
             with torch.no_grad():
@@ -675,26 +674,26 @@ class GaussianSplatReconstruction:
     @torch.no_grad()
     def state_dict(self) -> dict[str, Any]:
         """
-        Get the state dictionary of the current training state, including model, optimizer, and training parameters.
+        Get the state dictionary of the current optimization state, including model, optimizer, and configuration parameters.
 
-        The state dictionary can be used to save and resume training from checkpoints. Is keys include:
+        The state dictionary can be used to save and resume optimization from checkpoints. Its keys include:
 
         * ``"magic"``: A magic string to identify the checkpoint type.
         * ``"version"``: The version of the checkpoint format.
         * ``"step"``: The current global optimization step.
-        * ``"config"``: The configuration parameters used for training.
+        * ``"config"``: The configuration parameters used for optimization.
         * ``"sfm_scene"``: The state dictionary of the SfM scene.
         * ``"model"``: The state dictionary of the Gaussian Splatting model.
         * ``"optimizer"``: The state dictionary of the optimizer.
-        * ``"train_indices"``: The indices of the training dataset.
-        * ``"val_indices"``: The indices of the validation dataset.
+        * ``"train_indices"``: The indices of the training images in the dataset.
+        * ``"val_indices"``: The indices of the validation images in the dataset.
         * ``"num_training_poses"``: The number of training poses if pose adjustment is used, otherwise None.
         * ``"pose_adjust_model"``: The state dictionary of the camera pose adjustment model if used, otherwise None.
         * ``"pose_adjust_optimizer"``: The state dictionary of the pose adjustment optimizer if used, otherwise None.
         * ``"pose_adjust_scheduler"``: The state dictionary of the pose adjustment scheduler if used, otherwise None.
 
         Returns:
-            state_dict (dict[str, Any]): A dictionary containing the state of the training process.
+            state_dict (dict[str, Any]): A dictionary containing the state of the optimization process.
 
         """
         return {
@@ -788,10 +787,10 @@ class GaussianSplatReconstruction:
     @property
     def config(self) -> GaussianSplatReconstructionConfig:
         """
-        Get the configuration object for the current training run. See :class:`GaussianSplatReconstructionConfig` for details.
+        Get the configuration object for the current reconstruction. See :class:`GaussianSplatReconstructionConfig` for details.
 
         Returns:
-            config (GaussianSplatReconstructionConfig): The configuration object containing all parameters for the training run.
+            config (GaussianSplatReconstructionConfig): The configuration object containing all parameters for the reconstruction.
         """
         return self._cfg
 
@@ -818,7 +817,7 @@ class GaussianSplatReconstruction:
     @property
     def pose_adjust_model(self) -> CameraPoseAdjustment | None:
         """
-        Get the camera pose adjustment model used for optimizing camera poses during training.
+        Get the camera pose adjustment model used for optimizing camera poses during reconstruction.
 
         Returns:
             pose_adjust_model (CameraPoseAdjustment | None): The pose adjustment model instance, or None if not used.
@@ -828,7 +827,7 @@ class GaussianSplatReconstruction:
     @property
     def pose_adjust_optimizer(self) -> torch.optim.Adam | None:
         """
-        Get the optimizer used for adjusting camera poses during training.
+        Get the optimizer used for adjusting camera poses during reconstruction.
 
         Returns:
             pose_adjust_optimizer (torch.optim.Optimizer | None): The pose adjustment optimizer instance, or ``None`` if not used.
@@ -838,7 +837,7 @@ class GaussianSplatReconstruction:
     @property
     def pose_adjust_scheduler(self) -> torch.optim.lr_scheduler.ExponentialLR | None:
         """
-        Get the learning rate scheduler used for adjusting camera poses during training.
+        Get the learning rate scheduler used for adjusting camera poses during reconstruction.
 
         Returns:
             pose_adjust_scheduler (torch.optim.lr_scheduler.ExponentialLR | None): The pose adjustment scheduler instance, or ``None`` if not used.
@@ -872,12 +871,12 @@ class GaussianSplatReconstruction:
         training_dataset: SfmDataset,
     ):
         """
-        Initialize the Gaussian Splatting model with random parameters based on the input training dataset.
+        Initialize the Gaussian Splatting model with random parameters based on the input dataset.
 
         Args:
             config (GaussianSplatReconstructionConfig): Configuration object containing model parameters.
             device (torch.device | str): The device to run the model on (e.g., "cuda" or "cpu").
-            training_dataset (SfmDataset): The dataset used for training, which provides the initial points and RGB values
+            training_dataset (SfmDataset): The dataset used for optimization, which provides the initial points and RGB values
                             for the Gaussians.
         """
 
@@ -981,7 +980,7 @@ class GaussianSplatReconstruction:
 
     def _clip_gaussians_to_scene_bbox(self) -> None:
         """
-        Remove all Gaussians whose means lie outside the scene bounding box defined in the training dataset.
+        Remove all Gaussians whose means lie outside the scene bounding box defined in the dataset.
         """
         bbox_min, bbox_max = self.training_dataset.scene_bbox
         if (
@@ -1009,7 +1008,7 @@ class GaussianSplatReconstruction:
             f"Clipped {num_clipped_gaussians:,} Gaussians outside the crop bounding box min={bbox_min}, max={bbox_max}."
         )
 
-    def train(self, show_progress: bool = True, log_tag: str = "train") -> None:
+    def reconstruct(self, show_progress: bool = True, log_tag: str = "reconstruct") -> None:
         """
         Run the reconstruction optimization loop to optimize reconstruct a Gaussian Splatting radiance field from a set of posed images.
 
@@ -1017,16 +1016,16 @@ class GaussianSplatReconstruction:
         and logs metrics at each step. It also handles scheduling refinement steps at specified intervals.
 
         Args:
-            show_progress (bool): Whether to display a progress bar during training.
+            show_progress (bool): Whether to display a progress bar during reconstruction.
             log_tag (str): Tag to use for logging metrics (e.g., ``"train"``). Data logged will use this tag as a prefix.
                 For metrics, this will be ``"{log_tag}/metric_name"``.
                 For checkpoints, this will be ``"{log_tag}_ckpt.pt"``.
                 For PLY files, this will be ``"{log_tag}_ckpt.ply"``.
 
-        .. note:: When calling evaluation from the training loop, the log_tag for evaluation will be ``log_tag+"_eval"``.
+        .. note:: When calling evaluation from the reconstruction loop, the log_tag for evaluation will be ``log_tag+"_eval"``.
         """
         if self.optimizer is None:
-            raise ValueError("This runner was not created with an optimizer. Cannot run training.")
+            raise ValueError("This runner was not created with an optimizer. Cannot run reconstruction.")
 
         trainloader = torch.utils.data.DataLoader(
             self.training_dataset,
@@ -1052,7 +1051,7 @@ class GaussianSplatReconstruction:
 
         update_viewer_every_step = int(self._viewer_update_interval_epochs * len(self.training_dataset))
 
-        # Progress bar to track training progress
+        # Progress bar to track reconstruction progress
         if self.config.max_steps is not None:
             self._logger.info(
                 f"Using max_steps={self.config.max_steps} (overriding computed {computed_total_steps} steps)"
@@ -1065,7 +1064,7 @@ class GaussianSplatReconstruction:
         # Flag to break out of outer epoch loop when max_steps is reached
         reached_max_steps = False
 
-        # Zero out gradients before training in case we resume training
+        # Zero out gradients before reconstruction in case we resume resume from a checkpoint
         self.optimizer.zero_grad()
         if self.pose_adjust_optimizer is not None:
             self.pose_adjust_optimizer.zero_grad()
@@ -1200,7 +1199,7 @@ class GaussianSplatReconstruction:
                     self.optimizer.refine()
 
                     # If you specified a crop bounding box, clip the Gaussians that are outside the crop
-                    # bounding box. This is useful if you want to train on a subset of the scene
+                    # bounding box. This is useful if you want to reconstruct on a subset of the scene
                     # and don't want to waste resources on Gaussians that are outside the crop.
                     if self.config.remove_gaussians_outside_scene_bbox:
                         self._clip_gaussians_to_scene_bbox()
@@ -1249,7 +1248,7 @@ class GaussianSplatReconstruction:
                 else:
                     self._global_step += batch_size
 
-                # Check if we've reached max_steps and break out of training
+                # Check if we've reached max_steps and break out of the optimization loop
                 if self.config.max_steps is not None and self._global_step >= self.config.max_steps:
                     reached_max_steps = True
                     break

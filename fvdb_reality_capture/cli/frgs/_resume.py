@@ -94,7 +94,7 @@ class Resume(BaseCommand):
             viewer_update_interval_epochs=self.update_viz_every,
         )
 
-        runner.train()
+        runner.reconstruct()
 
         logger.info(f"Saving final model to {self.out_path}")
         save_model_from_runner(self.out_path, runner)
