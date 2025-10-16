@@ -407,7 +407,7 @@ class SfmCameraMetadata:
             return image
 
 
-class SfmImageMetadata:
+class SfmPosedImageMetadata:
     """
     This class encodes metadata about a single posed image in an :class:`SfmScene`.
 
@@ -473,7 +473,7 @@ class SfmImageMetadata:
         cls,
         state_dict: dict[str, Any],
         camera_metadata: dict[int, SfmCameraMetadata],
-    ) -> "SfmImageMetadata":
+    ) -> "SfmPosedImageMetadata":
         """
         Create a new :class:`SfmImageMetadata` object from a state dictionary and camera metadata (see :meth:`state_dict`).
 
@@ -522,7 +522,7 @@ class SfmImageMetadata:
             image_id=image_id,
         )
 
-    def transform(self, transformation_matrix: np.ndarray) -> "SfmImageMetadata":
+    def transform(self, transformation_matrix: np.ndarray) -> "SfmPosedImageMetadata":
         """
         Return a new :class:`SfmImageMetadata` object with the camera pose transformed by the given transformation matrix.
 
@@ -539,7 +539,7 @@ class SfmImageMetadata:
         new_camera_to_world_matrix = transformation_matrix @ self.camera_to_world_matrix
         new_world_to_camera_matrix = np.linalg.inv(new_camera_to_world_matrix)
 
-        return SfmImageMetadata(
+        return SfmPosedImageMetadata(
             world_to_camera_matrix=new_world_to_camera_matrix,
             camera_to_world_matrix=new_camera_to_world_matrix,
             camera_metadata=self.camera_metadata,

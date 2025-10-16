@@ -9,7 +9,7 @@ import numpy as np
 
 from ._load_colmap_scene import load_colmap_scene
 from .sfm_cache import SfmCache
-from .sfm_metadata import SfmCameraMetadata, SfmImageMetadata
+from .sfm_metadata import SfmCameraMetadata, SfmPosedImageMetadata
 
 
 class SfmScene:
@@ -58,7 +58,7 @@ class SfmScene:
     def __init__(
         self,
         cameras: dict[int, SfmCameraMetadata],
-        images: Sequence[SfmImageMetadata],
+        images: Sequence[SfmPosedImageMetadata],
         points: np.ndarray,
         points_err: np.ndarray,
         points_rgb: np.ndarray,
@@ -297,7 +297,7 @@ class SfmScene:
         cache = SfmCache.get_cache(cache_path, name=cache_name, description=cache_description)
 
         cameras = {int(k): SfmCameraMetadata.from_state_dict(v) for k, v in state_dict["cameras"].items()}
-        images = [SfmImageMetadata.from_state_dict(img_dict, cameras) for img_dict in state_dict["images"]]
+        images = [SfmPosedImageMetadata.from_state_dict(img_dict, cameras) for img_dict in state_dict["images"]]
         points = np.array(state_dict["points"], dtype=np.float32)
         points_err = np.array(state_dict["points_err"], dtype=np.float32)
         points_rgb = np.array(state_dict["points_rgb"], dtype=np.uint8)
@@ -334,7 +334,7 @@ class SfmScene:
         visible_point_indices = set(np.argwhere(mask).ravel().tolist())
         remap_indices = np.cumsum(mask, dtype=int)
         filtered_images = []
-        image_meta: SfmImageMetadata
+        image_meta: SfmPosedImageMetadata
         for image_meta in self._images:
             new_point_indices = None
             if image_meta.point_indices is not None:
@@ -342,7 +342,7 @@ class SfmScene:
                 old_visible_points_filtered = old_visible_points.intersection(visible_point_indices)
                 new_point_indices = remap_indices[np.array(list(old_visible_points_filtered), dtype=np.int64)] - 1
             filtered_images.append(
-                SfmImageMetadata(
+                SfmPosedImageMetadata(
                     world_to_camera_matrix=image_meta.world_to_camera_matrix,
                     camera_to_world_matrix=image_meta.camera_to_world_matrix,
                     camera_metadata=image_meta.camera_metadata,
@@ -623,7 +623,7 @@ class SfmScene:
         return self._cameras
 
     @property
-    def images(self) -> list[SfmImageMetadata]:
+    def images(self) -> list[SfmPosedImageMetadata]:
         """
         Get a list of image metadata objects (`SfmImageMetadata`) with information about each image
         in the scene (e.g. it's camera ID, path on the filesystem, etc.).

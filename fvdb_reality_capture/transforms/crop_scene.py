@@ -13,7 +13,7 @@ import tqdm
 from fvdb.types import NumericMaxRank1, to_VecNf
 from scipy.spatial import ConvexHull
 
-from ..sfm_scene import SfmCache, SfmImageMetadata, SfmScene
+from ..sfm_scene import SfmCache, SfmPosedImageMetadata, SfmScene
 from .base_transform import BaseTransform, transform
 
 
@@ -117,7 +117,7 @@ def _crop_scene_to_bbox(
             regenerate_cache = True
             break
         new_image_metadata.append(
-            SfmImageMetadata(
+            SfmPosedImageMetadata(
                 world_to_camera_matrix=image_meta.world_to_camera_matrix,
                 camera_to_world_matrix=image_meta.camera_to_world_matrix,
                 camera_metadata=image_meta.camera_metadata,
@@ -223,7 +223,7 @@ def _crop_scene_to_bbox(
             )
 
             new_image_metadata.append(
-                SfmImageMetadata(
+                SfmPosedImageMetadata(
                     world_to_camera_matrix=image_meta.world_to_camera_matrix,
                     camera_to_world_matrix=image_meta.camera_to_world_matrix,
                     camera_metadata=image_meta.camera_metadata,

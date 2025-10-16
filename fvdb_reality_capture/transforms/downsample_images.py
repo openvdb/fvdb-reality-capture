@@ -8,7 +8,7 @@ from typing import Any, Literal
 import cv2
 import tqdm
 
-from ..sfm_scene import SfmCache, SfmImageMetadata, SfmScene
+from ..sfm_scene import SfmCache, SfmPosedImageMetadata, SfmScene
 from .base_transform import BaseTransform, transform
 
 
@@ -140,7 +140,7 @@ class DownsampleImages(BaseTransform):
                 break
 
             new_image_metadata.append(
-                SfmImageMetadata(
+                SfmPosedImageMetadata(
                     world_to_camera_matrix=image_meta.world_to_camera_matrix,
                     camera_to_world_matrix=image_meta.camera_to_world_matrix,
                     camera_metadata=new_camera_metadata[image_meta.camera_id],
@@ -190,7 +190,7 @@ class DownsampleImages(BaseTransform):
                     },
                 )
                 new_image_metadata.append(
-                    SfmImageMetadata(
+                    SfmPosedImageMetadata(
                         world_to_camera_matrix=image_meta.world_to_camera_matrix,
                         camera_to_world_matrix=image_meta.camera_to_world_matrix,
                         camera_metadata=new_camera_metadata[image_meta.camera_id],

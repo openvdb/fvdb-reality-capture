@@ -11,7 +11,7 @@ import torch
 import torch.utils.data
 import torchvision
 
-from ..sfm_scene import SfmCameraMetadata, SfmImageMetadata, SfmScene
+from ..sfm_scene import SfmCameraMetadata, SfmPosedImageMetadata, SfmScene
 
 
 class SfmDataset(torch.utils.data.Dataset, Iterable):
@@ -166,7 +166,7 @@ class SfmDataset(torch.utils.data.Dataset, Iterable):
             return self._sfm_scene.points
         visible_points = set()
         for idx in self._indices:
-            image_meta: SfmImageMetadata = self._sfm_scene.images[idx]
+            image_meta: SfmPosedImageMetadata = self._sfm_scene.images[idx]
             assert (
                 image_meta.point_indices is not None
             ), "SfmScene.has_visible_point_indices is True but image has no point indices"
@@ -225,7 +225,7 @@ class SfmDataset(torch.utils.data.Dataset, Iterable):
         """
         index = self._indices[item]
 
-        image_meta: SfmImageMetadata = self._sfm_scene.images[index]
+        image_meta: SfmPosedImageMetadata = self._sfm_scene.images[index]
         camera_meta: SfmCameraMetadata = image_meta.camera_metadata
 
         if image_meta.image_path.endswith(".jpg") or image_meta.image_path.endswith(".jpeg"):

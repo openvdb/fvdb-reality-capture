@@ -8,7 +8,7 @@ from .radiance_fields import (
     GaussianSplatReconstruction,
     GaussianSplatReconstructionConfig,
 )
-from .sfm_scene import SfmCache, SfmCameraMetadata, SfmImageMetadata, SfmScene
+from .sfm_scene import SfmCache, SfmCameraMetadata, SfmPosedImageMetadata, SfmScene
 from .tools import download_example_data
 
 __all__ = [
@@ -24,6 +24,6 @@ __all__ = [
     "download_example_data",
     "SfmScene",
     "SfmCameraMetadata",
-    "SfmImageMetadata",
+    "SfmPosedImageMetadata",
     "SfmCache",
 ]
