@@ -47,7 +47,7 @@ class GaussianSplatReconstructionTests(unittest.TestCase):
             frc.transforms.DownsampleImages(4),
         )
         self.sfm_scene = self.scene_transform(self.sfm_scene)
-        self.sfm_scene = self.sfm_scene.filter_images(np.arange(0, len(self.sfm_scene.images), 4))
+        self.sfm_scene = self.sfm_scene.select_images(np.arange(0, len(self.sfm_scene.images), 4))
 
     def test_run_training_with_no_saving(self):
 
