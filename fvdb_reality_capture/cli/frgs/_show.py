@@ -22,6 +22,7 @@ from ._common import load_splats_from_file
 class Show(BaseCommand):
     """
     Visualize a scene in a saved PLY or checkpoint file.
+
     """
 
     # Path to the input PLY or checkpoint file. Must end in .ply, .pt, or .pth.
