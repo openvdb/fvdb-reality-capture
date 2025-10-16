@@ -36,7 +36,7 @@ def load_splats_from_file(path: pathlib.Path, device: DeviceIdentifier) -> tuple
         checkpoint = torch.load(path, map_location=device, weights_only=False)
         runner = GaussianSplatReconstruction.from_state_dict(checkpoint, device=device)
         model = runner.model
-        metadata = runner.optimization_metadata
+        metadata = runner.reconstruction_metadata
     else:
         raise ValueError("Input path must end in .ply, .pt, or .pth")
 

@@ -23,14 +23,14 @@ class BaseGaussianSplatOptimizer(ABC):
     @abstractmethod
     def from_state_dict(cls, model: GaussianSplat3d, state_dict: dict[str, Any]) -> "BaseGaussianSplatOptimizer":
         """
-        Abstract method to create a new `BaseGaussianSplatOptimizer` instance from a model and a state dict (usually obtained from `state_dict()`).
+        Abstract method to create a new :class:`BaseGaussianSplatOptimizer` instance from a model and a state dict (obtained from :meth:`state_dict`).
 
         Args:
             model (GaussianSplat3d): The `GaussianSplat3d` model to optimize.
-            state_dict (dict[str, Any]): A state dict previously obtained from `state_dict()`.
+            state_dict (dict[str, Any]): A state dict previously obtained from :meth:`state_dict`.
 
         Returns:
-            optimizer (BaseGaussianSplatOptimizer): A new `BaseGaussianSplatOptimizer` instance.
+            optimizer (BaseGaussianSplatOptimizer): A new :class:`BaseGaussianSplatOptimizer` instance.
         """
         pass
 
@@ -48,7 +48,7 @@ class BaseGaussianSplatOptimizer(ABC):
     def reset_learning_rates_and_decay(self, batch_size: int, expected_steps: int) -> None:
         """
         Abstract method to set the learning rates and learning rate decay factor based on the batch size and the expected
-        number of optimization steps (times .step() is called).
+        number of optimization steps (times :meth:`step` is called).
 
         This is useful if you want to change the batch size or expected number of steps after creating
         the optimizer.
@@ -72,7 +72,7 @@ class BaseGaussianSplatOptimizer(ABC):
         Abstract method to zero the gradients of all tensors being optimized.
 
         Args:
-            set_to_none (bool): If True, set the gradients to None instead of zeroing them. This can be more memory efficient.
+            set_to_none (bool): If ``True``, set the gradients to None instead of zeroing them. This can be more memory efficient.
         """
         pass
 

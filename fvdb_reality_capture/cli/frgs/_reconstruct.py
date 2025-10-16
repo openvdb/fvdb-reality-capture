@@ -264,7 +264,7 @@ class Reconstruct(BaseCommand):
             merged_splats = GaussianSplat3d.cat(splats)
 
             self.logger.info(f"Saving merged model to {self.out_path}")
-            save_model_from_splats(self.out_path, merged_splats, runner.optimization_metadata)
+            save_model_from_splats(self.out_path, merged_splats, runner.reconstruction_metadata)
 
     def _run_single_reconstruction(
         self,

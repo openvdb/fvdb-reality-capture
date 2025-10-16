@@ -65,7 +65,7 @@ class Convert(BaseCommand):
             checkpoint = torch.load(self.in_path, map_location="cpu", weights_only=False)
             runner = GaussianSplatReconstruction.from_state_dict(checkpoint)
             model = runner.model
-            metadata = runner.optimization_metadata
+            metadata = runner.reconstruction_metadata
             logger.info(f"Loaded Gaussian Splat model with {model.num_gaussians} splats from {self.in_path}")
 
         if out_file_type == ".ply":
