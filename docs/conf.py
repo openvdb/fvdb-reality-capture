@@ -80,6 +80,8 @@ myst_heading_anchors = 3
 
 import commonmark
 
+print("SYS EXECUTABLE", sys.executable)
+print("SYS PATH", sys.path)
 
 def docstring(app, what, name, obj, options, lines):
     md = "\n".join(lines)
