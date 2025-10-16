@@ -1,4 +1,4 @@
-name: documentation
+name: fvdb-reality-capture Documentation
 
 on:
   pull_request_target:
@@ -124,8 +124,10 @@ jobs:
       - name: Install package and docs deps
         run: |
           micromamba activate fvdb
+          which pip
           pip install sphinx sphinx_rtd_theme myst_parser commonmark
           pip install -e .
+          which sphinx-build
           sphinx-build docs/ -E -a _docs_build
 
       - name: Upload static files as artifact
