@@ -96,9 +96,9 @@ def _camera_similarity_normalization_transform(c2w, strict_scaling=False, center
     Args:
         c2w: A set of camera -> world transformations [R|t] (N, 4, 4)
         strict_scaling: If set to true, use the maximum distance to any camera to rescale the scene
-                        which may not be that robust. If false, use the median
+            which may not be that robust. If false, use the median
         center_method: If set to 'focus' use the focus of the scene to center the cameras
-                        If set to 'poses' use the center of the camera positions to center the cameras
+            If set to 'poses' use the center of the camera positions to center the cameras
 
     Returns:
         transform: A 4x4 normalization transform (4,4)
@@ -187,11 +187,12 @@ class NormalizeScene(BaseTransform):
 
     def __init__(self, normalization_type: Literal["pca", "none", "ecef2enu", "similarity"]):
         """
-        Initialize the NormalizeScene transform.
+        Create a new :class:`NormalizeScene` transform which normalizes an :class:`SfmScene` using the specified normalization type.
+
+        Normalization is applied to both the points and camera poses in the scene.
 
         Args:
-            normalization_type (str): The type of normalization to apply.
-                Options are "pca", "none", "ecef2enu", or "similarity".
+            normalization_type (str): The type of normalization to apply. Options are ``"pca"``, ``"none"``, ``"ecef2enu"``, or ``"similarity"``.
         """
         super().__init__()
         if normalization_type not in self.valid_normalization_types:
@@ -205,7 +206,10 @@ class NormalizeScene(BaseTransform):
 
     def __call__(self, input_scene: SfmScene) -> SfmScene:
         """
-        Normalize the SfmScene using the specified normalization type.
+        Return a new :class:`SfmScene` which is the result of applying the normalization transform to the input scene.
+
+        The normalization transform is computed based on the specified normalization type and the contents of the input scene.
+        It is applied to both the points and camera poses in the scene.
 
         Args:
             input_scene (SfmScene): Input SfmScene object containing camera and point data
@@ -224,13 +228,14 @@ class NormalizeScene(BaseTransform):
 
     def _compute_normalization_transform(self, input_scene: SfmScene) -> np.ndarray | None:
         """
-        Compute the normalization transform for the scene.
+        Compute the normalization transformation matrix for the scene based on the specified normalization type.
 
         Args:
             input_scene (SfmScene): The input scene to normalize.
 
         Returns:
-            np.ndarray | None: The normalization transform, or None if the scene lacks points or camera matrices.
+            transformation_matrix (np.ndarray | None): The 4x4 normalization transformation matrix, or ``None``
+                if the scene lacks points or camera matrices.
         """
         if self._normalization_transform is None:
             points = input_scene.points
@@ -259,28 +264,11 @@ class NormalizeScene(BaseTransform):
             self._normalization_transform = normalization_transform
         return self._normalization_transform
 
-    def transform_camera_poses_to_scene_normalized_space(
-        self, input_scene: SfmScene, camera_to_world_matrices: np.ndarray
-    ) -> np.ndarray:
-        """
-        Transform points to the scene normalized space.
-        """
-        normalization_transform = self._compute_normalization_transform(input_scene)
-
-        if normalization_transform is None:
-            self._logger.warning("Returning the input poses unchanged.")
-            return camera_to_world_matrices
-        assert len(camera_to_world_matrices.shape) == 3 and camera_to_world_matrices.shape[1:] == (4, 4)
-
-        new_camera_to_world_matrix = np.einsum("nij, ki -> nkj", camera_to_world_matrices, normalization_transform)
-        scaling = np.linalg.norm(new_camera_to_world_matrix[:, 0, :3], axis=1)
-        new_camera_to_world_matrix[:, :3, :3] = new_camera_to_world_matrix[:, :3, :3] / scaling[:, None, None]
-
-        return new_camera_to_world_matrix
-
     def state_dict(self) -> dict[str, Any]:
         """
-        Return the state of the NormalizeScene transform for serialization.
+        Return the state of the :class:`NormalizeScene` transform for serialization.
+
+        You can use this state dictionary to recreate the transform using :meth:`from_state_dict`.
 
         Returns:
             state_dict (dict[str, Any]): A dictionary containing information to serialize/deserialize the transform.
@@ -290,23 +278,23 @@ class NormalizeScene(BaseTransform):
     @staticmethod
     def name() -> str:
         """
-        Return the name of the NormalizeScene transform.
+        Return the name of the :class:`NormalizeScene` transform. **i.e.** ``"NormalizeScene"``.
 
         Returns:
-            str: The name of the NormalizeScene transform.
+            str: The name of the :class:`NormalizeScene` transform. **i.e.** ``"NormalizeScene"``.
         """
         return "NormalizeScene"
 
     @staticmethod
     def from_state_dict(state_dict: dict[str, Any]) -> "NormalizeScene":
         """
-        Create a NormalizeScene transform from a state dictionary.
+        Create a :class:`NormalizeScene` transform from a state dictionary generated with :meth:`state_dict`.
 
         Args:
-            state_dict (dict[str, Any]): A dictionary containing information to serialize/deserialize the transform.
+            state_dict (dict): The state dictionary for the transform.
 
         Returns:
-            NormalizeScene: An instance of the NormalizeScene transform.
+            transform (NormalizeScene): An instance of the :class:`NormalizeScene` transform.
         """
         if state_dict["name"] != "NormalizeScene":
             raise ValueError(f"Expected state_dict with name 'NormalizeScene', got {state_dict['name']} instead.")
