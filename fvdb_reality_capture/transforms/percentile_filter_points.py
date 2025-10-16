@@ -14,7 +14,7 @@ from .base_transform import BaseTransform, transform
 @transform
 class PercentileFilterPoints(BaseTransform):
     """
-    A transform that filters points in an SfmScene based on percentile bounds for x, y, and z coordinates.
+    A :class:`BaseTransform` that filters points in an SfmScene based on percentile bounds for x, y, and z coordinates.
 
     This transform creates a new SfmScene with points that fall within the specified percentile bounds
     along each axis.
