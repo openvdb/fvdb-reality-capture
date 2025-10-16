@@ -2,10 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 
-import functools
-import multiprocessing
 import pathlib
-import shutil
 import tempfile
 import unittest
 
@@ -117,13 +114,17 @@ class GaussianSplatOptimizerTests(unittest.TestCase):
     def test_serialize_optimizer(self):
         model_1 = self.model
         max_steps = 200 * len(self.training_dataset)
-        config = frc.training.GaussianSplatOptimizerConfig()
-        optimizer_1 = frc.training.GaussianSplatOptimizer.from_model_and_config(
-            model=self.model,
-            config=config,
-            batch_size=1,
-            means_lr_decay_exponent=0.01 ** (1.0 / max_steps),
+        config = frc.training.GaussianSplatOptimizerConfig(
+            use_scales_for_deletion_after_n_refinements=-1,
+            use_screen_space_scales_for_refinement_until=0,
+            spatial_scale_mode=frc.training.SpatialScaleMode.ABSOLUTE_UNITS,
         )
+        optimizer_1 = frc.training.GaussianSplatOptimizer.from_model_and_scene(
+            model=self.model,
+            sfm_scene=self.training_dataset.sfm_scene,
+            config=config,
+        )
+        optimizer_1.reset_learning_rates_and_decay(batch_size=1, expected_steps=max_steps)
 
         with tempfile.NamedTemporaryFile(mode="wb", suffix=".pt", delete=True) as temp_file:
             # Save the state dict of the optimizer and model
@@ -135,7 +136,7 @@ class GaussianSplatOptimizerTests(unittest.TestCase):
             gt_img_1, pred_img_1, _ = self.render_one_image(model_1)
             loss_1 = torch.nn.functional.l1_loss(pred_img_1, gt_img_1)
             loss_1.backward()
-            optimizer_1.refine(True, False)
+            optimizer_1.refine()
             optimizer_1.step()
             optimizer_1.zero_grad()
             num_gaussians_after_refine = model_1.num_gaussians
@@ -158,7 +159,7 @@ class GaussianSplatOptimizerTests(unittest.TestCase):
             loss_3 = torch.nn.functional.l1_loss(pred_img_3, gt_img_3)
             self.assertAlmostEqual(loss_1.item(), loss_3.item(), places=3)
             loss_3.backward()
-            optimizer_2.refine(True, False)
+            optimizer_2.refine()
             optimizer_2.step()
             optimizer_2.zero_grad()
             self.assertEqual(model_2.num_gaussians, num_gaussians_after_refine)
@@ -186,7 +187,6 @@ class GaussianSplatOptimizerRefinementTests(unittest.TestCase):
 
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
         self.model = _init_model(self.device, self.training_dataset)
-        self.scene_scale = _compute_scene_scale(scene)
 
         self.optimizer_config = frc.training.GaussianSplatOptimizerConfig(
             max_gaussians=-1,
@@ -206,14 +206,15 @@ class GaussianSplatOptimizerRefinementTests(unittest.TestCase):
             logit_opacities_lr=5e-2,
             sh0_lr=2.5e-3,
             shN_lr=2.5e-3 / 20,
+            spatial_scale_mode=frc.training.SpatialScaleMode.ABSOLUTE_UNITS,
         )
         max_steps = 200 * len(self.training_dataset)
-        self.optimizer = frc.training.GaussianSplatOptimizer.from_model_and_config(
+        self.optimizer = frc.training.GaussianSplatOptimizer.from_model_and_scene(
             model=self.model,
+            sfm_scene=self.training_dataset.sfm_scene,
             config=self.optimizer_config,
-            batch_size=1,
-            means_lr_decay_exponent=0.01 ** (1.0 / max_steps),
         )
+        self.optimizer.reset_learning_rates_and_decay(batch_size=1, expected_steps=max_steps)
 
         initial_num_gaussians = self.model.num_gaussians
         print(f"Initial number of Gaussians: {initial_num_gaussians}")
@@ -249,9 +250,12 @@ class GaussianSplatOptimizerRefinementTests(unittest.TestCase):
 
         self._setup_no_refinement()
 
-        num_duplicated, num_split, num_deleted = optimizer.refine(
-            use_scales_for_deletion=False, use_screen_space_scales=False, zero_gradients=True
-        )
+        optimizer._config.use_scales_for_deletion_after_n_refinements = 100000
+        optimizer._config.use_screen_space_scales_for_refinement_until = 0
+        refine_stats = optimizer.refine(zero_gradients=True)
+        num_duplicated = refine_stats["num_duplicated"]
+        num_split = refine_stats["num_split"]
+        num_deleted = refine_stats["num_deleted"]
         print(
             f"Refinement results: duplicated {num_duplicated}, split {num_split}, deleted {num_deleted}, total {model.num_gaussians}"
         )
@@ -274,9 +278,10 @@ class GaussianSplatOptimizerRefinementTests(unittest.TestCase):
         rand_indices = torch.randperm(model.num_gaussians)[: max(1, model.num_gaussians // 5)]
         expected_num_splits, expected_num_duplicates = self._setup_gaussians_for_insertion(rand_indices)
 
-        num_duplicated, num_split, num_deleted = optimizer.refine(
-            use_scales_for_deletion=False, use_screen_space_scales=False, zero_gradients=True
-        )
+        refine_stats = optimizer.refine(zero_gradients=True)
+        num_duplicated = refine_stats["num_duplicated"]
+        num_split = refine_stats["num_split"]
+        num_deleted = refine_stats["num_deleted"]
         print(
             f"Refinement results: duplicated {num_duplicated}, split {num_split}, deleted {num_deleted}, total {model.num_gaussians}"
         )
@@ -298,9 +303,13 @@ class GaussianSplatOptimizerRefinementTests(unittest.TestCase):
         rand_indices = torch.randperm(model.num_gaussians)[: max(1, model.num_gaussians // 5)]
         expected_num_deletions = self._setup_gaussians_for_deletion(rand_indices)
 
-        num_duplicated, num_split, num_deleted = optimizer.refine(
-            use_scales_for_deletion=False, use_screen_space_scales=False, zero_gradients=True
-        )
+        optimizer._config.use_scales_for_deletion_after_n_refinements = 100000
+        optimizer._config.use_screen_space_scales_for_refinement_until = 0
+        refine_stats = optimizer.refine(zero_gradients=True)
+        num_duplicated = refine_stats["num_duplicated"]
+        num_split = refine_stats["num_split"]
+        num_deleted = refine_stats["num_deleted"]
+
         print(
             f"Refinement results: duplicated {num_duplicated}, split {num_split}, deleted {num_deleted}, total {model.num_gaussians}"
         )
@@ -337,9 +346,12 @@ class GaussianSplatOptimizerRefinementTests(unittest.TestCase):
         self._setup_gaussians_for_deletion(delete_low_opacity_indices, delete_large_indices)
 
         print("Expected deletions:", expected_num_deletions)
-        num_duplicated, num_split, num_deleted = optimizer.refine(
-            use_scales_for_deletion=True, use_screen_space_scales=False, zero_gradients=True
-        )
+        optimizer._config.use_scales_for_deletion_after_n_refinements = -1
+        optimizer._config.use_screen_space_scales_for_refinement_until = 0
+        refine_stats = optimizer.refine(zero_gradients=True)
+        num_duplicated = refine_stats["num_duplicated"]
+        num_split = refine_stats["num_split"]
+        num_deleted = refine_stats["num_deleted"]
         print(
             f"Refinement results: duplicated {num_duplicated}, split {num_split}, deleted {num_deleted}, total {model.num_gaussians}"
         )
@@ -408,9 +420,13 @@ class GaussianSplatOptimizerRefinementTests(unittest.TestCase):
             expected_num_duplicates,
             expected_num_deletions,
         )
-        num_duplicated, num_split, num_deleted = optimizer.refine(
-            use_scales_for_deletion=True, use_screen_space_scales=False, zero_gradients=True
-        )
+
+        optimizer._config.use_scales_for_deletion_after_n_refinements = -1
+        optimizer._config.use_screen_space_scales_for_refinement_until = 0
+        refine_stats = optimizer.refine(zero_gradients=True)
+        num_duplicated = refine_stats["num_duplicated"]
+        num_split = refine_stats["num_split"]
+        num_deleted = refine_stats["num_deleted"]
         print(
             f"Refinement results: duplicated {num_duplicated}, split {num_split}, deleted {num_deleted}, total {model.num_gaussians}"
         )
@@ -441,9 +457,12 @@ class GaussianSplatOptimizerRefinementTests(unittest.TestCase):
         expected_num_splits, expected_num_duplicates = self._setup_gaussians_for_insertion(insert_indices)
         expected_num_deletions = self._setup_gaussians_for_deletion(delete_indices)
 
-        num_duplicated, num_split, num_deleted = optimizer.refine(
-            use_scales_for_deletion=False, use_screen_space_scales=False, zero_gradients=True
-        )
+        optimizer._config.use_scales_for_deletion_after_n_refinements = -100000
+        optimizer._config.use_screen_space_scales_for_refinement_until = 0
+        refine_stats = optimizer.refine(zero_gradients=True)
+        num_duplicated = refine_stats["num_duplicated"]
+        num_split = refine_stats["num_split"]
+        num_deleted = refine_stats["num_deleted"]
         print(
             f"Refinement results: duplicated {num_duplicated}, split {num_split}, deleted {num_deleted}, total {model.num_gaussians}"
         )
@@ -498,9 +517,12 @@ class GaussianSplatOptimizerRefinementTests(unittest.TestCase):
             expected_num_duplicates,
             expected_num_deletions,
         )
-        num_duplicated, num_split, num_deleted = optimizer.refine(
-            use_scales_for_deletion=False, use_screen_space_scales=False, zero_gradients=True
-        )
+        optimizer._config.use_scales_for_deletion_after_n_refinements = -100000
+        optimizer._config.use_screen_space_scales_for_refinement_until = 0
+        refine_stats = optimizer.refine(zero_gradients=True)
+        num_duplicated = refine_stats["num_duplicated"]
+        num_split = refine_stats["num_split"]
+        num_deleted = refine_stats["num_deleted"]
         print(
             f"Refinement results: duplicated {num_duplicated}, split {num_split}, deleted {num_deleted}, total {model.num_gaussians}"
         )

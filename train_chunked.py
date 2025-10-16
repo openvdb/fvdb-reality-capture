@@ -4,180 +4,79 @@
 import itertools
 import logging
 import pathlib
-import time
-from functools import partial
-from multiprocessing import Pool
-from typing import Literal, Sequence
+import tempfile
+from dataclasses import dataclass
+from typing import Literal
 
 import numpy as np
 import torch
 import tqdm
 import tyro
 from fvdb import GaussianSplat3d
+from fvdb.viz import Viewer
 
 from fvdb_reality_capture.sfm_scene import SfmScene
-from fvdb_reality_capture.training import Config, SceneOptimizationRunner, SfmDataset
+from fvdb_reality_capture.training import (
+    GaussianSplatOptimizerConfig,
+    GaussianSplatReconstruction,
+    GaussianSplatReconstructionConfig,
+    GaussianSplatReconstructionWriter,
+    GaussianSplatReconstructionWriterConfig,
+)
 from fvdb_reality_capture.transforms import (
     Compose,
+    CropScene,
+    CropSceneToPoints,
     DownsampleImages,
+    FilterImagesWithLowPoints,
     NormalizeScene,
     PercentileFilterPoints,
 )
-from fvdb_reality_capture.viewer import Viewer
 
 
-def _make_unique_name_directory_based_on_time(results_base_path: pathlib.Path, prefix: str) -> tuple[str, pathlib.Path]:
+@dataclass
+class SceneTransformConfig:
     """
-    Generate a unique name and directory based on the current time.
-
-    The run directory will be created under `results_base_path` with a name in the format
-    `prefix_YYYY-MM-DD-HH-MM-SS`. If a directory with the same name already exists,
-    it will attempt to create a new one by appending an incremented number to
-
-    Returns:
-        run_name: A unique run name in the format "run_YYYY-MM-DD-HH-MM-SS".
-        run_path: A pathlib.Path object pointing to the created directory.
-    """
-    attempts = 0
-    max_attempts = 50
-    run_name = f"{prefix}_{time.strftime('%Y-%m-%d-%H-%M-%S')}"
-    logger = logging.getLogger(__name__)
-    while attempts < 50:
-        results_path = results_base_path / run_name
-        try:
-            results_path.mkdir(exist_ok=False, parents=True)
-            break
-        except FileExistsError:
-            attempts += 1
-            logger.debug(f"Directory {results_path} already exists. Attempting to create a new one.")
-            # Generate a new run name with an incremented attempt number
-            run_name = f"{prefix}_{time.strftime('%Y-%m-%d-%H-%M-%S')}_{attempts+1:02d}"
-            continue
-    if attempts >= max_attempts:
-        raise FileExistsError(f"Failed to generate a unique results directory name after {max_attempts} attempts.")
-
-    logger.info(f"Creating unique directory with name {run_name} after {attempts} attempts.")
-
-    return run_name, results_path
-
-
-def _run_on_chunk(
-    chunk_id: int,
-    chunk_bboxes: Sequence[tuple[float, float, float, float, float, float]],
-    dataset_path: pathlib.Path,
-    cfg: Config,
-    chunk_run_name_prefix: str,
-    image_downsample_factor: int,
-    points_percentile_filter: float,
-    normalization_type: Literal["none", "pca", "ecef2enu", "similarity"],
-    results_path: pathlib.Path,
-    device: str | torch.device,
-    use_every_n_as_val: int,
-    log_tensorboard_every: int,
-    log_images_to_tensorboard: bool,
-    save_results: bool,
-    save_eval_images: bool,
-):
-    """
-    Train a 3D Gaussian Splatting model on a specific chunk of the dataset.
-    This function initializes a SceneOptimizationRunner for the specified chunk,
-    sets up the training configuration, and starts the training process.
-
-    Args:
-        chunk_id (int): The ordinal of the chunk to train on in [0, len(chunk_bboxes) - 1].
-        chunk_bboxes (Sequence[tuple[float, float, float, float, float, float]]): A sequence of bounding boxes for each chunk.
-            Each bounding box is defined as a tuple of the form (xmin, ymin, zmin, xmax, ymax, zmax).
-        dataset_path (pathlib.Path): Path to the dataset directory containing the SFM data.
-        cfg (Config): Configuration for the training process.
-        chunk_run_name_prefix (str): Prefix for the run name of the chunk.
-        image_downsample_factor (int): Factor by which to downsample images for training.
-        points_percentile_filter (float): Percentile filter to apply to the points in the scene.
-        normalization_type (Literal["none", "pca", "ecef2enu", "similarity"]): Type of normalization to apply to the scene.
-            Options are "none", "pca", "ecef2enu", or "similarity".
-        results_path (pathlib.Path): Path to save the results of the training.
-        device (str | torch.device): Device to run the training on, e.g., "cuda" or "cpu".
-        use_every_n_as_val (int): Use every n-th image as validation data.
-        log_tensorboard_every (int): Log to TensorBoard every n iterations.
-        log_images_to_tensorboard (bool): Whether to log images to TensorBoard.
-        save_results (bool): Whether to save the results of the training.
-        save_eval_images (bool): Whether to save evaluation images during training.
-    """
-    runner = SceneOptimizationRunner.new_run(
-        config=cfg,
-        dataset_path=dataset_path,
-        run_name=chunk_run_name_prefix + f"_chunk_{chunk_id:04d}",
-        image_downsample_factor=image_downsample_factor,
-        points_percentile_filter=points_percentile_filter,
-        normalization_type=normalization_type,
-        crop_bbox=chunk_bboxes[chunk_id],
-        results_path=results_path,
-        device=device,
-        use_every_n_as_val=use_every_n_as_val,
-        disable_viewer=False,
-        log_tensorboard_every=log_tensorboard_every,
-        log_images_to_tensorboard=log_images_to_tensorboard,
-        save_results=save_results,
-        save_eval_images=save_eval_images,
-    )
-
-    runner.train()
-
-
-def plot_chunk_bboxes(
-    chunk_bboxes: Sequence[tuple[float, float, float, float, float, float]],
-    scene_points: np.ndarray,
-    full_train_dataset: SfmDataset,
-):
-    """
-    Debug utility to visualize the chunk bounding boxes and scene points in a viewer.
-    This function will open a viewer and display the scene points and chunk bounding boxes.
-
-    Args:
-        chunk_bboxes: A sequence of bounding boxes for each chunk of the form
-            (xmin, ymin, zmin, xmax, ymax, zmax).
-        scene_points: The points in the scene to visualize.
-        full_train_dataset: The full training dataset containing the points and their RGB colors.
+    Configuration for the transforms to apply to the SfmScene before training.
     """
 
-    logger = logging.getLogger("train_chunked")
+    # Downsample images by this factor
+    image_downsample_factor: int = 4
+    # JPEG quality to use when resaving images after downsampling
+    rescale_jpeg_quality: int = 95
+    # Percentile of points to filter out based on their distance from the median point
+    points_percentile_filter: float = 0.0
+    # Type of normalization to apply to the scene
+    normalization_type: Literal["none", "pca", "ecef2enu", "similarity"] = "pca"
+    # Optional bounding box (in the normalized space) to crop the scene to (xmin, xmax, ymin, ymax, zmin, zmax)
+    crop_bbox: tuple[float, float, float, float, float, float] | None = None
+    # Whether to crop the scene to the bounding box or not
+    crop_to_points: bool = False
+    # Minimum number of 3D points that must be visible in an image for it to be included in training
+    min_points_per_image: int = 5
+    # Bounding box to which we crop the scene (in the original space) (xmin, xmax, ymin, ymax, zmin, zmax)
+    crop_bbox: tuple[float, float, float, float, float, float] | None = None
 
-    viewer = Viewer()
-    server = viewer.viser_server
-
-    scene_points = full_train_dataset.points
-    scene_points_rgb = full_train_dataset.points_rgb
-
-    xmin, ymin, zmin = scene_points.min(axis=0)
-    xmax, ymax, zmax = scene_points.max(axis=0)
-
-    points = server.scene.add_point_cloud("scene points", points=scene_points, colors=scene_points_rgb)
-    points.point_size = 0.001
-    box_origin = np.array([xmin, ymin, zmin])
-    box_size = np.array([xmax - xmin, ymax - ymin, zmax - zmin])
-    box_center = box_origin + 0.5 * box_size
-    box = server.scene.add_box(
-        f"bbox",
-        position=box_center,
-        dimensions=box_size,
-        color=(1.0, 0.0, 0.0),
-    )
-    box.wireframe = True
-
-    for i, chunk_bbox in enumerate(chunk_bboxes):
-        crop_origin = np.array(chunk_bbox[:3])
-        crop_size = np.array(chunk_bbox[3:]) - np.array(chunk_bbox[:3])
-        crop_center = crop_origin + 0.5 * crop_size
-        color = np.random.rand(3) / 2.0 + 0.5
-        crop_box = server.scene.add_box(
-            f"chunk_{i}",
-            position=crop_center,
-            dimensions=crop_size,
-            color=color,
-        )
-        crop_box.wireframe = True
-
-    logger.info("Viewer is running. Press Ctrl+C to exit.")
-    time.sleep(10000000)  # Keep the viewer open for a while
+    @property
+    def scene_transform(self):
+        # Dataset transform
+        transforms = [
+            NormalizeScene(normalization_type=self.normalization_type),
+            PercentileFilterPoints(
+                percentile_min=np.full((3,), self.points_percentile_filter),
+                percentile_max=np.full((3,), 100.0 - self.points_percentile_filter),
+            ),
+            DownsampleImages(
+                image_downsample_factor=self.image_downsample_factor,
+                rescaled_jpeg_quality=self.rescale_jpeg_quality,
+            ),
+            FilterImagesWithLowPoints(min_num_points=self.min_points_per_image),
+        ]
+        if self.crop_bbox is not None:
+            transforms.append(CropScene(self.crop_bbox))
+        if self.crop_to_points:
+            transforms.append(CropSceneToPoints(margin=0.0))
+        return Compose(*transforms)
 
 
 def main(
@@ -186,18 +85,21 @@ def main(
     ny: int = 1,
     nz: int = 1,
     overlap_percent: float = 0.1,
-    cfg: Config = Config(remove_gaussians_outside_scene_bbox=True),
+    cfg: GaussianSplatReconstructionConfig = GaussianSplatReconstructionConfig(
+        remove_gaussians_outside_scene_bbox=True
+    ),
+    tx: SceneTransformConfig = SceneTransformConfig(),
+    opt: GaussianSplatOptimizerConfig = GaussianSplatOptimizerConfig(),
+    io: GaussianSplatReconstructionWriterConfig = GaussianSplatReconstructionWriterConfig(),
+    dataset_type: Literal["colmap", "simple_directory", "e57"] = "colmap",
     run_name: str | None = None,
-    image_downsample_factor: int = 4,
-    points_percentile_filter: float = 0.0,
-    normalization_type: Literal["none", "pca", "ecef2enu", "similarity"] = "pca",
-    results_path: pathlib.Path = pathlib.Path("results"),
-    device: str | torch.device = "cuda",
+    log_path: pathlib.Path | None = pathlib.Path("fvdb_gslogs"),
     use_every_n_as_val: int = 8,
-    log_tensorboard_every: int = 100,
-    log_images_to_tensorboard: bool = False,
-    save_results: bool = True,
-    save_eval_images: bool = False,
+    device: str | torch.device = "cuda",
+    log_every: int = 10,
+    visualize_every: int = -1,
+    verbose: bool = False,
+    out_file_name: str = "chunked.ply",
 ):
     """
     Train a 3D Gaussian Splatting model on a dataset in chunks.
@@ -210,60 +112,60 @@ def main(
     The chunks are subsequently merged into a single model checkpoint.
 
     Args:
-        dataset_path (pathlib.Path): Path to the dataset directory containing the SFM data.
-        nx (int): Number of divisions along the x-axis.
-        ny (int): Number of divisions along the y-axis.
-        nz (int): Number of divisions along the z-axis.
+        dataset_path (pathlib.Path): Path to the dataset.
+        nx (int): Number of chunks along the x-axis (after normalization).
+        ny (int): Number of chunks along the y-axis (after normalization).
+        nz (int): Number of chunks along the z-axis (after normalization).
         overlap_percent (float): Percentage of overlap between chunks in [0, 1].
-        cfg (Config): Configuration for the training process.
-        run_name (str | None): Name of the run. If None, a unique name will be generated based on the current time.
-        image_downsample_factor (int): Factor by which to downsample images for training.
-        points_percentile_filter (float): Percentile filter to apply to the points in the scene.
-        normalization_type (Literal["none", "pca", "ecef2enu", "similarity"]): Type of normalization to apply to the scene.
-            Options are "none", "pca", "ecef2enu", or "similarity".
-        results_path (pathlib.Path): Path to save the results of the training.
-        device (str | torch.device): Device to run the training on, e.g., "cuda" or "cpu".
-        use_every_n_as_val (int): Use every n-th image as validation data.
-        log_tensorboard_every (int): Log to TensorBoard every n iterations.
-        log_images_to_tensorboard (bool): Whether to log images to TensorBoard.
-        save_results (bool): Whether to save the results of the training.
-        save_eval_images (bool): Whether to save evaluation images during training.
+        cfg (GaussianSplatReconstructionConfig): Configuration for the Gaussian Splat Reconstruction.
+        tx (SceneTransformConfig): Configuration for the scene transforms.
+        opt (GaussianSplatOptimizerConfig): Configuration for the optimizer.
+        io (GaussianSplatReconstructionWriterConfig): Configuration for saving metrics and checkpoints.
+        dataset_type (Literal["colmap", "simple_directory", "e57"]): Type of dataset.
+        run_name (str | None): Name of the training run.
+        log_path (pathlib.Path | None): Path to log metrics, and checkpoints. If None, no metrics or
+            checkpoints will be saved. Default is "fvdb_gslogs".
+        use_every_n_as_val (int): Use every n-th image as a validation image.
+        device (str | torch.device): Device to use for training.
+        log_every (int): Log training metrics every n steps.
+        visualize_every (int): Update the viewer every n epochs. If -1, do not visualize.
+        verbose (bool): Whether to log debug messages.
+        out_file_name (str): Name of the output PLY file to save the merged model. Default is "chunked.ply".
     """
     logging.basicConfig(level=logging.INFO, format="%(levelname)s : %(message)s")
 
-    logger = logging.getLogger("train_chunked")
+    log_level = logging.DEBUG if verbose else logging.INFO
+    logging.basicConfig(level=log_level, format="%(levelname)s : %(message)s")
 
-    transform = Compose(
-        NormalizeScene(normalization_type=normalization_type),
-        PercentileFilterPoints(
-            percentile_min=np.full((3,), points_percentile_filter),
-            percentile_max=np.full((3,), 100.0 - points_percentile_filter),
-        ),
-        DownsampleImages(
-            image_downsample_factor=image_downsample_factor,
-        ),
-    )
+    logger = logging.getLogger(__name__)
 
-    sfm_scene: SfmScene = transform(SfmScene.from_colmap(dataset_path))
+    if dataset_type == "colmap":
+        sfm_scene = SfmScene.from_colmap(dataset_path)
+    elif dataset_type == "simple_directory":
+        sfm_scene = SfmScene.from_simple_directory(dataset_path)
+    elif dataset_type == "e57":
+        sfm_scene = SfmScene.from_e57(dataset_path)
+    else:
+        raise ValueError(f"Unsupported dataset_type {dataset_type}")
 
-    indices = np.arange(sfm_scene.num_images)
-    mask = np.ones(len(indices), dtype=bool)
-    mask[::use_every_n_as_val] = False
-    train_indices = indices[mask]
+    transform = tx.scene_transform
+    sfm_scene: SfmScene = transform(sfm_scene)
 
-    full_train_dataset = SfmDataset(sfm_scene, train_indices)
+    if visualize_every > 0:
+        viewer = Viewer()
+    else:
+        viewer = None
 
-    scene_points = full_train_dataset.points
+    scene_points = sfm_scene.points
 
+    # Compute a list of crop bounding boxes for each chunk
+    # Each bounding box is a tuple of the form (xmin, ymin, zmin, xmax, ymax, zmax)
+    crops_bboxes = []
     xmin, ymin, zmin = scene_points.min(axis=0)
     xmax, ymax, zmax = scene_points.max(axis=0)
-
-    crops_bboxes = []
-
     chunk_size_x = (xmax - xmin) / nx
     chunk_size_y = (ymax - ymin) / ny
     chunk_size_z = (zmax - zmin) / nz
-
     for i, j, k in itertools.product(range(nx), range(ny), range(nz)):
         # Calculate the bounding box for the current chunk
         # with overlap based on the specified percentage
@@ -280,77 +182,50 @@ def main(
     num_chunks = len(crops_bboxes)
     logger.info(f"Total number of chunks: {num_chunks}")
 
-    if run_name is None:
-        chunk_run_name, chunk_results_path = _make_unique_name_directory_based_on_time(
-            results_path, prefix=run_name or "chunked_run"
-        )
-    else:
-        chunk_run_name = run_name
-        chunk_results_path = results_path / run_name
-        if chunk_results_path.exists():
-            raise FileExistsError(
-                f"Results path {chunk_results_path} already exists. Please choose a different run name."
+    writer = GaussianSplatReconstructionWriter(run_name=run_name, save_path=log_path, config=io, exist_ok=False)
+
+    with tempfile.TemporaryDirectory(delete=True) as ply_temp_dir:
+        # TODO: Stripe accross GPUs
+        chunk_ply_paths: list[pathlib.Path] = []
+        for i, bbox in enumerate(crops_bboxes):
+            logger.info(f"Optimizing chunk {i+1}/{num_chunks}: bbox {bbox}")
+            chunk_transform = CropScene(bbox=bbox)
+
+            scene_chunk = chunk_transform(sfm_scene)
+
+            runner = GaussianSplatReconstruction.from_sfm_scene(
+                sfm_scene=scene_chunk,
+                config=cfg,
+                optimizer_config=opt,
+                writer=writer,
+                viewer=viewer,
+                use_every_n_as_val=use_every_n_as_val,
+                log_interval_steps=log_every,
+                viewer_update_interval_epochs=visualize_every,
+                device=device,
             )
+            runner.train(True, f"train_chunk_{i:04d}")
 
-    # TODO: Stripe accross GPUs
-    # ngpus = len(devices)
-    # dev_cycle = itertools.cycle(devices)
-    # devices_per_cluster = [next(dev_cycle) for _ in range(num_clusters)]
-    #  pool = Pool(ngpus)
-    # for _ in pool.imap_unordered(partial_function, clusters):
-    #    pass
+            if runner.model.num_gaussians == 0:
+                logger.warning(
+                    f"Chunk {i} resulted in a model with 0 gaussians. This chunk will be skipped during merging."
+                )
+            chunk_ply_path = pathlib.Path(ply_temp_dir) / f"chunk_{i:04d}.ply"
+            runner.model.save_ply(chunk_ply_path, {})
+            chunk_ply_paths.append(chunk_ply_path)
 
-    chunk_runner_partial = partial(
-        _run_on_chunk,
-        chunk_bboxes=crops_bboxes,
-        dataset_path=dataset_path,
-        cfg=cfg,
-        chunk_run_name_prefix=chunk_run_name,
-        image_downsample_factor=image_downsample_factor,
-        points_percentile_filter=points_percentile_filter,
-        normalization_type=normalization_type,
-        results_path=chunk_results_path,
-        device=device,
-        use_every_n_as_val=use_every_n_as_val,
-        log_tensorboard_every=log_tensorboard_every,
-        log_images_to_tensorboard=log_images_to_tensorboard,
-        save_results=save_results,
-        save_eval_images=save_eval_images,
-    )
+        logger.info("All chunks have been processed. Merging splats...")
 
-    for chunk_id in range(num_chunks):
-        logger.info(f"Starting training for chunk {chunk_id + 1}/{num_chunks}")
-        chunk_runner_partial(chunk_id)
-        logger.info(f"Finished training for chunk {chunk_id + 1}/{num_chunks}")
+        splats = []
+        for ply_path in tqdm.tqdm(chunk_ply_paths):
+            splat_chunk, _ = GaussianSplat3d.from_ply(ply_path, device=device)
+            splats.append(splat_chunk)
 
-    logger.info("All chunks have been processed. Merging splats...")
-    run_names = [f"{chunk_run_name}_chunk_{i:04d}" for i in range(num_chunks)]
-    splats = []
-    for chunk_id in tqdm.tqdm(range(num_chunks)):
-        ply_path = chunk_results_path / run_names[chunk_id] / "checkpoints" / "ckpt_final.ply"
-        if not ply_path.exists():
-            raise FileNotFoundError(f"PLY file {ply_path} does not exist.")
-        logger.info(f"Loading PLY for chunk {chunk_id + 1}/{num_chunks} from {ply_path}")
-        splat_chunk, _ = GaussianSplat3d.from_ply(ply_path, device=device)
-        splats.append(splat_chunk)
+        logger.info("All PLY files loaded. Merging...")
+        merged_splats = GaussianSplat3d.cat(splats)
+        logger.info(f"Merging completed. Saving merged checkpoint to file {out_file_name}.")
 
-    logger.info("All PLY files loaded. Merging...")
-    merged_splats = GaussianSplat3d.cat(splats)
-    logger.info(f"Merging completed. Saving merged checkpoint to {chunk_results_path / 'merged.ply'}")
-
-    out_ply_path = chunk_results_path / "merged.ply"
-    normalization_transform = torch.from_numpy(full_train_dataset.sfm_scene.transformation_matrix).to(torch.float32)
-    training_camera_to_world_matrices = torch.from_numpy(full_train_dataset.camera_to_world_matrices).to(torch.float32)
-    training_projection_matrices = torch.from_numpy(full_train_dataset.projection_matrices).to(torch.float32)
-    image_sizes = torch.from_numpy(full_train_dataset.image_sizes).to(torch.int32)
-
-    training_metadata = {
-        "normalization_transform": normalization_transform,
-        "camera_to_world_matrices": training_camera_to_world_matrices,
-        "projection_matrices": training_projection_matrices,
-        "image_sizes": image_sizes,
-    }
-    merged_splats.save_ply(out_ply_path, training_metadata)
+        merged_splats.save_ply(out_file_name, runner.optimization_metadata)
 
 
 if __name__ == "__main__":

@@ -5,6 +5,7 @@ import logging
 from typing import Any, Sequence
 
 import numpy as np
+from fvdb.types import NumericMaxRank1, to_Vec3f
 
 from ..sfm_scene import SfmCache, SfmScene
 from .base_transform import BaseTransform, transform
@@ -29,9 +30,7 @@ class PercentileFilterPoints(BaseTransform):
 
     version = "1.0.0"
 
-    def __init__(
-        self, percentile_min: Sequence[float | int] | np.ndarray, percentile_max: Sequence[float | int] | np.ndarray
-    ):
+    def __init__(self, percentile_min: NumericMaxRank1, percentile_max: NumericMaxRank1):
         """
         Initialize the PercentileFilterPoints transform.
 
@@ -42,10 +41,14 @@ class PercentileFilterPoints(BaseTransform):
                 or None to use (100, 100, 100) (default: None)
         """
         super().__init__()
-        if len(percentile_min) != 3:
-            raise ValueError(f"percentile_min must be a sequence of length 3. Got {percentile_min} instead.")
-        if len(percentile_max) != 3:
-            raise ValueError(f"percentile_max must be a sequence of length 3. Got {percentile_max} instead.")
+        percentile_min = to_Vec3f(percentile_min).numpy()
+        percentile_max = to_Vec3f(percentile_max).numpy()
+
+        if np.any(percentile_min < 0) or np.any(percentile_min > 100):
+            raise ValueError(f"percentile_min must be between 0 and 100. Got {percentile_min} instead.")
+        if np.any(percentile_max < 0) or np.any(percentile_max > 100):
+            raise ValueError(f"percentile_max must be between 0 and 100. Got {percentile_max} instead.")
+
         self._logger = logging.getLogger(f"{self.__class__.__module__}.{self.__class__.__name__}")
         self._percentile_min = np.asarray(percentile_min).astype(np.float32)
         self._percentile_max = np.asarray(percentile_max).astype(np.float32)

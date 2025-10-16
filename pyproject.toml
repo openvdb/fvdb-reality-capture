@@ -38,6 +38,9 @@ dependencies = [
     "tqdm",
     "tyro",
     "viser",
+    "usd-core",
+    "msgpack",
+    "types-usd",
 ]
 
 [project.urls]

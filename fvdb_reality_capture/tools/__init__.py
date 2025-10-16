@@ -8,6 +8,7 @@ from ._filter_splats import (
     filter_splat_means,
     filter_splat_opacities,
 )
+from ._export_splats_to_usdz import export_splats_to_usdz
 from ._mesh_from_splats import mesh_from_splats
 from ._mesh_from_splats_dlnr import mesh_from_splats_dlnr
 from ._point_cloud_from_splats import point_cloud_from_splats
@@ -24,4 +25,5 @@ __all__ = [
     "filter_splat_means",
     "filter_splat_opacities",
     "filter_splat_large_scales",
+    "export_splats_to_usdz",
 ]

@@ -70,3 +70,5 @@ tests/data/
 *.pth
 *.log
 *.nsys-rep
+*.usdz
+**/fvdb_gslogs/

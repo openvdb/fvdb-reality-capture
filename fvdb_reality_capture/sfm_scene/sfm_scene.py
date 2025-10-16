@@ -197,6 +197,86 @@ class SfmScene:
             cache=cache,
         )
 
+    def state_dict(self) -> dict:
+        """
+        Get a state dictionary representing the SfmScene.
+
+        Returns:
+            dict: A dictionary containing the state of the SfmScene.
+        """
+        return {
+            "cameras": {k: v.state_dict() for k, v in self._cameras.items()},
+            "images": [img.state_dict() for img in self._images],
+            "points": self._points,
+            "points_err": self._points_err,
+            "points_rgb": self._points_rgb,
+            "scene_bbox": self._scene_bbox.tolist() if self._scene_bbox is not None else None,
+            "transformation_matrix": (
+                self._transformation_matrix.tolist() if self._transformation_matrix is not None else None
+            ),
+            "cache_path": self._cache.cache_root_path.absolute().as_posix(),
+            "cache_name": self._cache.cache_name,
+            "cache_description": self._cache.cache_description,
+        }
+
+    @classmethod
+    def from_state_dict(cls, state_dict: dict) -> "SfmScene":
+        if "images" not in state_dict:
+            raise KeyError("State dictionary is missing 'images' key.")
+        if "cameras" not in state_dict:
+            raise KeyError("State dictionary is missing 'cameras' key.")
+        if "points" not in state_dict:
+            raise KeyError("State dictionary is missing 'points' key.")
+        if "points_err" not in state_dict:
+            raise KeyError("State dictionary is missing 'points_err' key.")
+        if "points_rgb" not in state_dict:
+            raise KeyError("State dictionary is missing 'points_rgb' key.")
+        if "scene_bbox" not in state_dict:
+            raise KeyError("State dictionary is missing 'scene_bbox' key.")
+        if "transformation_matrix" not in state_dict:
+            raise KeyError("State dictionary is missing 'transformation_matrix' key.")
+        if "cache_path" not in state_dict:
+            raise KeyError("State dictionary is missing 'cache_path' key.")
+        if "cache_name" not in state_dict:
+            raise KeyError("State dictionary is missing 'cache_name' key.")
+        if "cache_description" not in state_dict:
+            raise KeyError("State dictionary is missing 'cache_description' key.")
+
+        cache_path = pathlib.Path(state_dict["cache_path"])
+        if not cache_path.exists():
+            raise ValueError(f"Cache path {cache_path} does not exist.")
+        cache_name = state_dict["cache_name"]
+        cache_description = state_dict["cache_description"]
+        if not isinstance(cache_name, str):
+            raise ValueError("Cache name must be a string.")
+        if not isinstance(cache_description, str):
+            raise ValueError("Cache description must be a string.")
+        cache = SfmCache.get_cache(cache_path, name=cache_name, description=cache_description)
+
+        cameras = {int(k): SfmCameraMetadata.from_state_dict(v) for k, v in state_dict["cameras"].items()}
+        images = [SfmImageMetadata.from_state_dict(img_dict, cameras) for img_dict in state_dict["images"]]
+        points = np.array(state_dict["points"], dtype=np.float32)
+        points_err = np.array(state_dict["points_err"], dtype=np.float32)
+        points_rgb = np.array(state_dict["points_rgb"], dtype=np.uint8)
+        scene_bbox = (
+            np.array(state_dict["scene_bbox"], dtype=np.float32) if state_dict["scene_bbox"] is not None else None
+        )
+        transformation_matrix = (
+            np.array(state_dict["transformation_matrix"], dtype=np.float32)
+            if state_dict["transformation_matrix"] is not None
+            else None
+        )
+        return cls(
+            cameras,
+            images,
+            points,
+            points_err,
+            points_rgb,
+            scene_bbox,
+            transformation_matrix,
+            cache,
+        )
+
     def filter_points(self, mask: np.ndarray | Sequence[bool]) -> "SfmScene":
         """
         Filter the points in the scene based on a boolean mask.

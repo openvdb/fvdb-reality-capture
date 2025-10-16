@@ -67,6 +67,9 @@ def download_example_data(dataset="all", download_path: str | pathlib.Path = pat
         download_path = pathlib.Path(download_path)
     download_path.mkdir(parents=True, exist_ok=True)
 
+    if dataset not in dataset_urls.keys() and dataset != "all":
+        raise ValueError(f"Unknown dataset {dataset}. Supported datasets are {list(dataset_urls.keys())} and 'all'.")
+
     if dataset == "all":
         for dataset_name in dataset_urls:
             dataset_download_path = download_path / dataset_directories[dataset_name]

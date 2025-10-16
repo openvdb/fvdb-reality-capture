@@ -88,6 +88,74 @@ class SfmCameraMetadata:
         self._camera_type = camera_type
         self._distortion_parameters = distortion_parameters
 
+    def state_dict(self) -> dict:
+        """
+        Return a state dictionary representing the camera metadata.
+
+        This dictionary can be used to serialize and deserialize the camera metadata.
+
+        Returns:
+            dict: A dictionary containing the camera metadata.
+        """
+        return {
+            "img_width": self.width,
+            "img_height": self.height,
+            "fx": self.fx,
+            "fy": self.fy,
+            "cx": self.cx,
+            "cy": self.cy,
+            "camera_type": self.camera_type.value,
+            "distortion_parameters": self.distortion_parameters.tolist(),
+        }
+
+    @classmethod
+    def from_state_dict(cls, state_dict: dict) -> "SfmCameraMetadata":
+        """
+        Create a new `SfmCameraMetadata` object from a state dictionary.
+
+        Args:
+            state_dict (dict): A dictionary containing the camera metadata.
+
+        Returns:
+            SfmCameraMetadata: A new `SfmCameraMetadata` object.
+        """
+        if "img_width" not in state_dict:
+            raise KeyError("img_width is missing from state_dict")
+        if "img_height" not in state_dict:
+            raise KeyError("img_height is missing from state_dict")
+        if "fx" not in state_dict:
+            raise KeyError("fx is missing from state_dict")
+        if "fy" not in state_dict:
+            raise KeyError("fy is missing from state_dict")
+        if "cx" not in state_dict:
+            raise KeyError("cx is missing from state_dict")
+        if "cy" not in state_dict:
+            raise KeyError("cy is missing from state_dict")
+        if "camera_type" not in state_dict:
+            raise KeyError("camera_type is missing from state_dict")
+        if "distortion_parameters" not in state_dict:
+            raise KeyError("distortion_parameters is missing from state_dict")
+
+        img_width = int(state_dict["img_width"])
+        img_height = int(state_dict["img_height"])
+        fx = float(state_dict["fx"])
+        fy = float(state_dict["fy"])
+        cx = float(state_dict["cx"])
+        cy = float(state_dict["cy"])
+        camera_type = SfmCameraType(state_dict["camera_type"])
+        distortion_parameters = np.array(state_dict["distortion_parameters"])
+
+        return cls(
+            img_width=img_width,
+            img_height=img_height,
+            fx=fx,
+            fy=fy,
+            cx=cx,
+            cy=cy,
+            camera_type=camera_type,
+            distortion_parameters=distortion_parameters,
+        )
+
     @property
     def projection_matrix(self) -> np.ndarray:
         """
@@ -318,6 +386,80 @@ class SfmImageMetadata:
         self._point_indices = point_indices
         self._camera_metadata = camera_metadata
         self._image_id = image_id
+
+    def state_dict(self) -> dict:
+        """
+        Return a state dictionary representing the image metadata.
+
+        This dictionary can be used to serialize and deserialize the image metadata.
+
+        Returns:
+            dict: A dictionary containing the image metadata.
+        """
+        return {
+            "world_to_camera_matrix": self.world_to_camera_matrix.tolist(),
+            "camera_to_world_matrix": self.camera_to_world_matrix.tolist(),
+            "camera_id": self.camera_id,
+            "image_path": self.image_path,
+            "mask_path": self.mask_path,
+            "point_indices": self.point_indices.tolist() if self.point_indices is not None else None,
+            "image_id": self.image_id,
+        }
+
+    @classmethod
+    def from_state_dict(
+        cls,
+        state_dict: dict,
+        camera_metadata: dict[int, SfmCameraMetadata],
+    ) -> "SfmImageMetadata":
+        """
+        Create a new `SfmImageMetadata` object from a state dictionary and camera metadata.
+
+        Args:
+            state_dict (dict): A dictionary containing the image metadata.
+            camera_metadata (dict[int, SfmCameraMetadata]): A dictionary mapping camera IDs to `SfmCameraMetadata` objects.
+
+        Returns:
+            SfmImageMetadata: A new `SfmImageMetadata` object.
+        """
+        if "world_to_camera_matrix" not in state_dict:
+            raise KeyError("world_to_camera_matrix is missing from state_dict")
+        if "camera_to_world_matrix" not in state_dict:
+            raise KeyError("camera_to_world_matrix is missing from state_dict")
+        if "camera_id" not in state_dict:
+            raise KeyError("camera_id is missing from state_dict")
+        if "image_path" not in state_dict:
+            raise KeyError("image_path is missing from state_dict")
+        if "mask_path" not in state_dict:
+            raise KeyError("mask_path is missing from state_dict")
+        if "image_id" not in state_dict:
+            raise KeyError("image_id is missing from state_dict")
+
+        world_to_camera_matrix = np.array(state_dict["world_to_camera_matrix"])
+        camera_to_world_matrix = np.array(state_dict["camera_to_world_matrix"])
+        camera_id = int(state_dict["camera_id"])
+        image_path = str(state_dict["image_path"])
+        mask_path = str(state_dict["mask_path"])
+        point_indices = (
+            np.array(state_dict["point_indices"])
+            if "point_indices" in state_dict and state_dict["point_indices"] is not None
+            else None
+        )
+        image_id = int(state_dict["image_id"])
+
+        if camera_id not in camera_metadata:
+            raise KeyError(f"Camera ID {camera_id} not found in camera_metadata")
+
+        return cls(
+            world_to_camera_matrix=world_to_camera_matrix,
+            camera_to_world_matrix=camera_to_world_matrix,
+            camera_metadata=camera_metadata[camera_id],
+            camera_id=camera_id,
+            image_path=image_path,
+            mask_path=mask_path,
+            point_indices=point_indices,
+            image_id=image_id,
+        )
 
     def transform(self, transformation_matrix: np.ndarray) -> "SfmImageMetadata":
         """

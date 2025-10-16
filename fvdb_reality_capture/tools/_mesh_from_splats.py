@@ -3,30 +3,45 @@
 #
 import torch
 from fvdb import GaussianSplat3d
+from fvdb.types import NumericMaxRank2, NumericMaxRank3
 
+from ._common import validate_camera_matrices_and_image_sizes
 from ._tsdf_from_splats import tsdf_from_splats
 
 
 @torch.no_grad()
 def mesh_from_splats(
     model: GaussianSplat3d,
-    camera_to_world_matrices: torch.Tensor,
-    projection_matrices: torch.Tensor,
-    image_sizes: torch.Tensor,
+    camera_to_world_matrices: NumericMaxRank3,
+    projection_matrices: NumericMaxRank3,
+    image_sizes: NumericMaxRank2,
     truncation_margin: float,
     grid_shell_thickness: float = 3.0,
     near: float = 0.1,
     far: float = 1e10,
+    alpha_threshold: float = 0.1,
+    image_downsample_factor: int = 1,
     dtype: torch.dtype = torch.float16,
     feature_dtype: torch.dtype = torch.uint8,
     show_progress: bool = True,
 ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     """
-    Extract a mesh from a Gaussian splat using Truncated Signed Distance Field (TSDF) fusion and marching cubes.
+    Extract a triangle mesh from a `fvdb.GaussianSplat3d` using TSDF fusion
+    from depth maps rendered from the Gaussian splat model.
 
-    The TSDF fusion algorithm is based on the paper:
+    In short, this algorithm works by rendering images and depth maps from multiple views of the Gaussian splat model,
+    and then integrating these depth maps and images into a sparse `fvdb.Grid` in a narrow band around the surface using a weighted averaging scheme.
+    The algorithm returns this grid along with signed distance values and colors (or other features) at each voxel.
+
+    The algorithm then extracts a mesh using the marching cubes algorithm implemented in `fvdb.marching_cubes.marching_cubes`
+    over the Grid and TSDF values.
+
+    The TSDF fusion algorithm is a method for integrating multiple depth maps into a single volumetric representation of a scene encoding a
+    truncated signed distance field (_i.e._ a signed distance field in a narrow band around the surface). TSDF fusion was first described in the paper
     "KinectFusion: Real-Time Dense Surface Mapping and Tracking"
-    (https://www.microsoft.com/en-us/research/publication/kinectfusion-real-time-3d-reconstruction-and-interaction-using-a-moving-depth-camera/)
+    (https://www.microsoft.com/en-us/research/wp-content/uploads/2016/02/ismar2011.pdf).
+    We use a modified version of this algorithm which only allocates voxels in a narrow band around the surface of the model
+    to reduce memory usage and speed up computation.
 
     Args:
         model (GaussianSplat3d): The Gaussian splat model to extract a mesh from
@@ -42,6 +57,9 @@ def mesh_from_splats(
             from the surface of the model.
         near (float): Near plane distance below which to ignore depth samples (default is 0.1).
         far (float): Far plane distance above which to ignore depth samples (default is 1e10).
+        alpha_threshold (float): Alpha threshold to mask pixels where the Gaussian splat model is transparent
+            (usually indicating the background). Default is 0.1.
+        image_downsample_factor (int): Factor by which to downsample the rendered images for depth estimation (default is 1, i.e. no downsampling).
         dtype: Data type for the TSDF and weights. Default is torch.float16.
         feature_dtype: Data type for the features (default is torch.uint8 which is good for RGB colors).
         show_progress (bool): Whether to show a progress bar (default is True).
@@ -52,6 +70,10 @@ def mesh_from_splats(
         mesh_colors (torch.Tensor): Colors of the extracted mesh vertices.
     """
 
+    camera_to_world_matrices, projection_matrices, image_sizes = validate_camera_matrices_and_image_sizes(
+        camera_to_world_matrices, projection_matrices, image_sizes
+    )
+
     accum_grid, tsdf, colors = tsdf_from_splats(
         model,
         camera_to_world_matrices,
@@ -61,6 +83,8 @@ def mesh_from_splats(
         grid_shell_thickness=grid_shell_thickness,
         near=near,
         far=far,
+        alpha_threshold=alpha_threshold,
+        image_downsample_factor=image_downsample_factor,
         dtype=dtype,
         feature_dtype=feature_dtype,
         show_progress=show_progress,

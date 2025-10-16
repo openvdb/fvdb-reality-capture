@@ -20,6 +20,8 @@ from fvdb_reality_capture.transforms import (
     PercentileFilterPoints,
 )
 
+from .common import remove_point_indices_from_scene
+
 
 class BasicSfmSceneTransformTest(unittest.TestCase):
     def setUp(self):
@@ -82,36 +84,6 @@ class BasicSfmSceneTransformTest(unittest.TestCase):
             self.assertTrue(
                 np.all(camera_metadata.distortion_parameters == scene1.cameras[camera_id].distortion_parameters)
             )
-
-    @staticmethod
-    def _remove_point_indices_from_scene(scene: SfmScene) -> SfmScene:
-        """
-        Returns a copy of the scene with point indices removed from all images.
-        """
-        images_no_points = []
-        for img_meta in scene.images:
-            img_meta_no_points = SfmImageMetadata(
-                world_to_camera_matrix=img_meta.world_to_camera_matrix,
-                camera_to_world_matrix=img_meta.camera_to_world_matrix,
-                camera_id=img_meta.camera_id,
-                camera_metadata=img_meta.camera_metadata,
-                image_path=img_meta.image_path,
-                mask_path=img_meta.mask_path,
-                point_indices=None,  # Remove point indices
-                image_id=img_meta.image_id,
-            )
-            images_no_points.append(img_meta_no_points)
-        ret = SfmScene(
-            cameras=scene.cameras,
-            images=images_no_points,
-            points=scene.points,
-            points_err=scene.points_err,
-            points_rgb=scene.points_rgb,
-            scene_bbox=scene.scene_bbox,
-            transformation_matrix=scene.transformation_matrix,
-            cache=scene.cache,
-        )
-        return ret
 
     def test_normalize_scene_pca(self):
         transform = NormalizeScene(normalization_type="pca")
@@ -225,7 +197,7 @@ class BasicSfmSceneTransformTest(unittest.TestCase):
         scene: SfmScene = SfmScene.from_colmap(self.dataset_path)
 
         # Remove point indices from all images
-        scene_no_points = self._remove_point_indices_from_scene(scene)
+        scene_no_points = remove_point_indices_from_scene(scene)
 
         transformed_scene = transform(scene)
         transformed_scene_no_points = transform(scene_no_points)
@@ -377,7 +349,7 @@ class BasicSfmSceneTransformTest(unittest.TestCase):
         crop_transform = CropScene(self.crop_bounds)
 
         scene = SfmScene.from_colmap(self.dataset_path)
-        scene_no_points = self._remove_point_indices_from_scene(scene)
+        scene_no_points = remove_point_indices_from_scene(scene)
 
         scene_1 = crop_transform(dowsample_transform(normalize_transform(scene_no_points)))
         scene_2 = Compose(

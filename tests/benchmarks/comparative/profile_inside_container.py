@@ -22,12 +22,12 @@ import os
 sys.path.insert(0, "/workspace/openvdb/fvdb/projects/3d_gaussian_splatting")
 os.chdir("/workspace/openvdb/fvdb/projects/3d_gaussian_splatting")
 
-from training.scene_optimization_runner import SceneOptimizationRunner, Config
+from training.scene_optimization_runner import GaussianSplatReconstruction, SceneOptimizationConfig
 import pathlib
 import torch
 
 # Create minimal config for profiling training - limit to exactly 10 steps
-config = Config(
+config = SceneOptimizationConfig(
     max_epochs=1,  # Just one epoch (will be overridden by max_steps)
     max_steps=10,  # Exactly 10 training steps
     batch_size=1,
@@ -37,7 +37,7 @@ config = Config(
 
 print("Creating FVDB runner...")
 # Use the counter scene as requested - manually limit to 10 steps
-runner = SceneOptimizationRunner.new_run(
+runner = GaussianSplatReconstruction.new_run(
     dataset_path=pathlib.Path("/workspace/data/360_v2/counter"),
     config=config,
     image_downsample_factor=4,

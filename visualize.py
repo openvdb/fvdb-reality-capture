@@ -23,7 +23,7 @@ def main(
 
     Args:
         ply_path (pathlib.Path): Path to a PLY file containing the Gaussian splat model.
-        viewer_port (int): The port to expose the viewer server on
+        viewer_port (int): The port to expose the viewer server on.
         verbose (bool): If True, then the viewer will log verbosely.
         device (str | torch.device): Device to use for computation (default is "cuda").
     """
@@ -56,20 +56,26 @@ def main(
 
     logger.info(f"Setting viewer camera to {initial_camera_position} looking at {scene_centroid}")
     viewer.set_camera_lookat(
-        camera_origin=initial_camera_position,
-        lookat_point=scene_centroid,
-        up_direction=[0, 0, 1],
+        eye=initial_camera_position,
+        center=scene_centroid,
+        up=[0, 0, -1],
     )
 
     if has_camera_to_world_matrices and has_projection_matrices:
         assert isinstance(metadata["camera_to_world_matrices"], torch.Tensor)
         assert isinstance(metadata["projection_matrices"], torch.Tensor)
+        image_sizes = metadata.get("image_sizes", None)
+        assert isinstance(image_sizes, torch.Tensor)
         viewer.add_camera_view(
-            "training cameras", metadata["camera_to_world_matrices"].cpu(), metadata["projection_matrices"].cpu()
+            "training cameras",
+            metadata["camera_to_world_matrices"].cpu(),
+            metadata["projection_matrices"].cpu(),
+            image_sizes,
         )
     else:
         logger.info("No camera information found in PLY metadata, not adding camera views to viewer")
     logger.info("Viewer running... Ctrl+C to exit.")
+    viewer.show()
     time.sleep(1000000)
 
 

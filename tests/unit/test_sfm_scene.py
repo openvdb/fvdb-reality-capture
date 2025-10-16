@@ -11,6 +11,14 @@ from scipy.spatial.transform import Rotation as R
 
 from fvdb_reality_capture.sfm_scene import SfmCameraMetadata, SfmImageMetadata, SfmScene
 from fvdb_reality_capture.tools import download_example_data
+from fvdb_reality_capture.transforms import (
+    Compose,
+    CropScene,
+    DownsampleImages,
+    NormalizeScene,
+)
+
+from .common import remove_point_indices_from_scene, sfm_scenes_match
 
 
 class BasicSfmSceneTest(unittest.TestCase):
@@ -29,6 +37,17 @@ class BasicSfmSceneTest(unittest.TestCase):
             4: (10630, 14180),
             5: (10628, 14177),
         }
+
+        # These bounds were determined by looking at the point cloud in a 3D viewer
+        # and finding a reasonable bounding box that would crop out some points
+        # but still leave a good number of points.
+        # NOTE: These bounds are specific to this dataset and won't work for other datasets.
+        # The format is [min_x, min_y, min_z, max_x, max_y, max_z]
+        # NOTE: The dataset is in EPSG:26917 (UTM zone 17N) so the bounds are in meters
+        # and are quite large.
+        min_bound = [1075540.25, -4780800.5, 4043418.775]
+        max_bound = [1090150.75, -4772843.5, 4058591.925]
+        self.crop_bounds = min_bound + max_bound
 
     def test_dataset_exists(self):
         self.assertTrue(self.dataset_path.exists(), "Dataset path does not exist.")
@@ -183,6 +202,7 @@ class BasicSfmSceneTest(unittest.TestCase):
         self.assertLessEqual(len(filtered_scene.points_rgb), every_other_mask.sum())
         self.assertLessEqual(len(filtered_scene.points_err), every_other_mask.sum())
         for image in filtered_scene.images:
+            assert image.point_indices is not None
             self.assertTrue(np.all(image.point_indices >= 0))
             self.assertTrue(np.all(image.point_indices < filtered_scene.points.shape[0]))
 
@@ -207,6 +227,28 @@ class BasicSfmSceneTest(unittest.TestCase):
                 assert img is not None
                 self.assertTrue(img.shape[0] == image_metadata.camera_metadata.height)
                 self.assertTrue(img.shape[1] == image_metadata.camera_metadata.width)
+
+    def test_save_load_basic(self):
+        scene: SfmScene = SfmScene.from_colmap(self.dataset_path)
+        state_dict = scene.state_dict()
+        loaded_scene = SfmScene.from_state_dict(state_dict)
+        self.assertTrue(sfm_scenes_match(scene, loaded_scene))
+
+    def test_save_load_after_transform(self):
+        scene: SfmScene = SfmScene.from_colmap(self.dataset_path)
+        scene = Compose(
+            NormalizeScene(normalization_type="similarity"), DownsampleImages(16), CropScene(self.crop_bounds)
+        )(scene)
+        state_dict = scene.state_dict()
+        loaded_scene = SfmScene.from_state_dict(state_dict)
+        self.assertTrue(sfm_scenes_match(scene, loaded_scene))
+
+    def test_save_load_basic_no_point_indices(self):
+        scene: SfmScene = SfmScene.from_colmap(self.dataset_path)
+        scene_no_points = remove_point_indices_from_scene(scene)
+        state_dict = scene_no_points.state_dict()
+        loaded_scene = SfmScene.from_state_dict(state_dict)
+        self.assertTrue(sfm_scenes_match(scene_no_points, loaded_scene))
 
 
 if __name__ == "__main__":
