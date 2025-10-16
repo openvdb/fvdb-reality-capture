@@ -261,7 +261,6 @@ class CropScene(BaseTransform):
         pixels outside the cropped region are properly masked. This can be disabled by setting
         ``composite_with_existing_masks`` to ``False``.
 
-
     Example usage:
 
     .. code-block:: python
@@ -414,6 +413,7 @@ class CropSceneToPoints(BaseTransform):
         bounding box by 10% (5% in all directions). So if the scene's bounding box is ``(0, 0, 0)`` to ``(1, 1, 1)``, a margin of ``0.1``
         will result in a bounding box of ``(-0.05, -0.05, -0.05)`` to ``(1.05, 1.05, 1.05)``. The margin can also be negative to shrink the
         bounding box.
+
     Example usage:
 
     .. code-block:: python
