@@ -291,7 +291,7 @@ class CropScene(BaseTransform):
         composite_with_existing_masks: bool = True,
     ):
         """
-        Initialize the :class:`CropScene` transform with a bounding box.
+        Create a new :class:`CropScene` transform with a bounding box.
 
         Args:
             bbox (NumericMaxRank1): A bounding box in the format ``(min_x, min_y, min_z, max_x, max_y, max_z)``.
@@ -333,7 +333,7 @@ class CropScene(BaseTransform):
             state_dict (dict): The state dictionary for the transform.
 
         Returns:
-            CropScene: An instance of the CropScene transform.
+            transform (CropScene): An instance of the CropScene transform.
         """
         bbox = state_dict.get("bbox", None)
         if bbox is None:
@@ -443,7 +443,7 @@ class CropSceneToPoints(BaseTransform):
         composite_with_existing_masks: bool = True,
     ):
         """
-        Initialize the :class:`CropSceneToPoints` transform with the given margin.
+        Create a new :class:`CropSceneToPoints` transform with the given margin.
 
         Args:
             margin (float): The margin factor to apply around the bounding box of the points.
