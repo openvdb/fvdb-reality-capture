@@ -89,6 +89,7 @@ Note: fVDB-Reality-Capture recently moved from early-access to Beta. The API and
    api/radiance_fields
    api/sfm_scene
    api/tools
+   api/transforms
 
 .. raw:: html
 
