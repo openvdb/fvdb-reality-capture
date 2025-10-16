@@ -161,7 +161,7 @@ class GaussianSplatOptimizerConfig:
     insertion_split_factor: int = 2
     """
     When splitting Gaussians during insertion, this value specifies the total number of new Gaussians that will
-    replace each selected source Gaussian. The original is removed and replaced by ``insertion_split_factor`` new
+    replace each selected source Gaussian. The original is removed and replaced by :obj:`insertion_split_factor` new
     Gaussians. *e.g.* if this value is 2, each split Gaussian is replaced by 2 new smaller Gaussians
     (the original is removed). This value must be >= 2.
     """
