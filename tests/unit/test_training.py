@@ -63,7 +63,7 @@ class GaussianSplatReconstructionTests(unittest.TestCase):
             use_every_n_as_val=2,
         )
 
-        runner.reconstruct()
+        runner.optimize()
 
         self.assertEqual(runner.model.num_gaussians, self.sfm_scene.points.shape[0])
 
@@ -93,7 +93,7 @@ class GaussianSplatReconstructionTests(unittest.TestCase):
         self.assertEqual(len(writer.ply_log), 0)
         self.assertEqual(len(writer.image_log), 0)
 
-        runner.reconstruct()
+        runner.optimize()
 
         self.assertGreater(len(writer.metric_log), 0)
         self.assertEqual(len(writer.checkpoint_log), 1)  # One per save
@@ -129,7 +129,7 @@ class GaussianSplatReconstructionTests(unittest.TestCase):
         self.assertEqual(len(writer.ply_log), 0)
         self.assertEqual(len(writer.image_log), 0)
 
-        runner.reconstruct()
+        runner.optimize()
 
         num_metric_logs = len(writer.metric_log)
         print(writer.metric_log)
@@ -151,7 +151,7 @@ class GaussianSplatReconstructionTests(unittest.TestCase):
 
         # This should pick up from where we left off (50% through 2 epochs is epoch 1)
         # and save and evalute at 100% again
-        runner2.reconstruct()
+        runner2.optimize()
 
         print(writer.metric_log)
         self.assertEqual(len(writer.metric_log), num_metric_logs + num_metric_logs // 2)

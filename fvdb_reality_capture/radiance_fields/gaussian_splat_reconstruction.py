@@ -1008,7 +1008,7 @@ class GaussianSplatReconstruction:
             f"Clipped {num_clipped_gaussians:,} Gaussians outside the crop bounding box min={bbox_min}, max={bbox_max}."
         )
 
-    def reconstruct(self, show_progress: bool = True, log_tag: str = "reconstruct") -> None:
+    def optimize(self, show_progress: bool = True, log_tag: str = "reconstruct") -> None:
         """
         Run the reconstruction optimization loop to optimize reconstruct a Gaussian Splatting radiance field from a set of posed images.
 

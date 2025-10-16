@@ -242,7 +242,7 @@ class Reconstruct(BaseCommand):
                     viewer_update_interval_epochs=self.update_viz_every,
                     device=self.device,
                 )
-                runner.reconstruct(True, f"train_chunk_{i:04d}")
+                runner.optimize(True, f"train_chunk_{i:04d}")
 
                 if runner.model.num_gaussians == 0:
                     self.logger.warning(
@@ -292,7 +292,7 @@ class Reconstruct(BaseCommand):
             device=self.device,
         )
 
-        runner.reconstruct()
+        runner.optimize()
 
         self.logger.info(f"Saving final model to {self.out_path}")
         save_model_from_runner(self.out_path, runner)
