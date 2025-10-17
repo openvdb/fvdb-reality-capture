@@ -38,8 +38,9 @@ class BaseTransform(ABC):
     """
     Base class for all transforms.
 
-    Transforms are used to modify an :class:`SfmScene` before it is used for reconstruction or other processing.
-    They can be used to filter images, adjust camera parameters, or perform other modifications to the scene.
+    Transforms are used to modify an :class:`~fvdb_reality_capture.sfm_scene.SfmScene` before it is used for
+    reconstruction or other processing. They can be used to filter images, adjust camera parameters, or perform other
+    modifications to the scene.
 
     Subclasses of :class:`BaseTransform` must implement the following methods:
     """
@@ -88,7 +89,7 @@ class BaseTransform(ABC):
             state_dict (dict[str, Any]): A dictionary containing information to serialize/deserialize the transform.
 
         Returns:
-            BaseTransform: An instance of the transform.
+            transform (BaseTransform): An instance of the transform.
         """
         StateDictType = REGISTERED_TRANSFORMS.get(state_dict["name"], None)
         if StateDictType is None:
