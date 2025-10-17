@@ -35,37 +35,49 @@ def point_cloud_from_splats(
     show_progress: bool = True,
 ) -> tuple[torch.Tensor, torch.Tensor]:
     """
-    Extract a point cloud from a Gaussian splat using depth rendering, possibly filtering points
-    using Canny edge detection on the depth images.
+    Extract a point cloud with colors/features from a Gaussian splat radiance field by unprojecting depth images rendered from it.
+
+    This algorithm can optionally filter out points near depth discontinuities using the following heurstic:
+
+    1. Apply a small Gaussian filter to the depth images to reduce noise.
+    2. Run a `Canny edge detector <https://en.wikipedia.org/wiki/Canny_edge_detector>`_ on the depth immage to find
+       depth discontinuities. The result is an image mask where pixels near depth edges are marked.
+    3. Dilate the edge mask to remove depth samples near edges.
+    4. Remove points from the point cloud where the corresponding depth pixel is marked in the dilated edge mask.
 
     Args:
-        model (GaussianSplat3d): The Gaussian splat model to extract a mesh from
-        camera_to_world_matrices (torch.Tensor): A (C, 4, 4)-shaped Tensor containing the camera to world
-            matrices to render depth images from for mesh extraction where C is the number of camera views.
-        projection_matrices (torch.Tensor): A (C, 3, 3)-shaped Tensor containing the perspective projection matrices
-            used to render images for mesh extraction where C is the number of camera views.
-        image_sizes (torch.Tensor): A (C, 2)-shaped Tensor containing the width and height of each image to extract
-            from the Gaussian splat where C is the number of camera views.
-        near (float): Near plane distance below which to ignore depth samples (default is 0.1).
-        far (float): Far plane distance above which to ignore depth samples (default is 1e10).
-        alpha_threshold (float): Alpha threshold to mask pixels where the Gaussian splat model
-            is transparent, which usually indicates the pixel is part of the background.
-            These pixels will not produce points (default is 0.1).
+        model (GaussianSplat3d): The Gaussian splat radiance field to extract a mesh from.
+        camera_to_world_matrices (NumericMaxRank3): A ``(C, 4, 4)``-shaped Tensor containing the camera to world
+            matrices to render depth images from for mesh extraction where ``C`` is the number of camera views.
+        projection_matrices (NumericMaxRank3): A ``(C, 3, 3)``-shaped Tensor containing the perspective projection matrices
+            used to render images for mesh extraction where ``C`` is the number of camera views.
+        image_sizes (NumericMaxRank2): A ``(C, 2)``-shaped Tensor containing the height and width of each image to extract
+            from the Gaussian splat where ``C`` is the number of camera views. *i.e.*, ``image_sizes[c] = (height_c, width_c)``.
+        near (NumericMaxRank1): Near plane distance below which to ignore depth samples. Can be a scalar to use a
+            single value for all images or a tensor-like object of shape ``(C,)`` to use a different value for each
+            image. Default is 0.1.
+        far (NumericMaxRank1): Far plane distance above which to ignore depth samples. Can be a scalar to use a
+            single value for all images or a tensor-like object of shape ``(C,)`` to use a different value for each
+            image. Default is 1e10.
+        alpha_threshold (float): Alpha threshold to mask pixels rendered by the Gaussian splat model that are transparent
+            (usually indicating the background). Default is 0.1.
         image_downsample_factor (int): Factor by which to downsample the rendered images before extracting points
-            (default is 1, no downsampling). This is useful to reduce the number of points extracted from the point cloud
+            This is useful to reduce the number of points extracted from the point cloud
             and speed up the extraction process. A value of 2 will downsample the rendered images by a factor of 2 in both dimensions,
             resulting in a point cloud with approximately 1/4 the number of points compared to the original rendered images.
-        quantization (float): Quantization step for the point cloud (default is 0.0, no quantization).
-        canny_edge_std (float): Standard deviation for the Gaussian filter applied to the depth image
-            before Canny edge detection (default is 1.0). Set to 0.0 to disable canny edge filtering.
-        canny_mask_dilation (int): Dilation size for the Canny edge mask (default is 5).
-        dtype (torch.dtype): Data type for the point cloud and colors (default is torch.float16).
-        feature_dtype: Data type for the features (default is torch.uint8 which is good for RGB colors).
-        show_progress (bool): Whether to show a progress bar (default is True).
+        canny_edge_std (float): Standard deviation (in pixel units) for the Gaussian filter applied to the depth image
+            before Canny edge detection. Set to 0.0 to disable canny edge filtering.
+            Default is 1.0.
+        canny_mask_dilation (int): Dilation size (in pixels) for the Canny edge mask. Default is 5.
+        dtype (torch.dtype): Data type to store the point cloud positions. Default is ``torch.float16``.
+        feature_dtype (torch.dtype): Data type to store per-point colors/features.
+            Default is ``torch.uint8`` which is good for RGB colors.
+        show_progress (bool): Whether to show a progress bar. Default is ``True``.
 
     Returns:
-        points (torch.Tensor): A [num_points, 3] shaped tensor of points in camera space.
-        colors (torch.Tensor): A [num_points, 3] shaped tensor of RGB colors for the points.
+        points (torch.Tensor): A ``(num_points, 3)``-shaped tensor of point positions in world space.
+        colors (torch.Tensor): A ``(num_points, D)``-shaped tensor of colors/features per point where
+            ``D`` is the number of channels encoded by the Gaussian Splat model (usually 3 for RGB colors).
     """
 
     device = model.device
