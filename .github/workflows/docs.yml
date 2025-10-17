@@ -101,11 +101,18 @@ jobs:
           environment-name: fvdb
           environment-file: fvdb-core/env/dev_environment.yml
 
+      - name: Build fvdb
+        run: |
+          echo "Building fvdb"
+          pushd fvdb-core
+          micromamba activate fvdb_build
+          ./build.sh install verbose
+          popd
+          
       - name: Install reality-capture package and docs deps
         run: |
           micromamba activate fvdb
           which pip
-          pip install commonmark
           pip install -e .
           which sphinx-build
           sphinx-build docs/ -E -a _docs_build
