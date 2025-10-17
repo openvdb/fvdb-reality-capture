@@ -11,7 +11,7 @@ from .base_transform import REGISTERED_TRANSFORMS, BaseTransform, transform
 @transform
 class Compose(BaseTransform):
     """
-    A :class:`BaseTransform` that composes multiple transforms together in sequence.
+    A :class:`~base_transform.BaseTransform` that composes multiple transforms together in sequence.
     This is useful for encoding a sequence of transforms into a single object.
 
     The transforms are applied in the order they are provided, allowing for complex data processing pipelines.
@@ -40,7 +40,8 @@ class Compose(BaseTransform):
         Initialize the Compose transform with a sequence of transforms.
 
         Args:
-            *transforms (tuple[BaseTransform...]): A tuple of :class:`BaseTransform` instances to compose.
+            *transforms (tuple[BaseTransform...]): A tuple of :class:`~base_transform.BaseTransform` instances
+                to compose.
 
         """
         super().__init__()
@@ -51,13 +52,15 @@ class Compose(BaseTransform):
 
     def __call__(self, input_scene: SfmScene) -> SfmScene:
         """
-        Return a new :class:`SfmScene` which is the result of applying the composed transforms sequentially to the input scene.
+        Return a new :class:`~fvdb_reality_capture.sfm_scene.SfmScene` which is the result of applying the composed
+        transforms sequentially to the input scene.
 
         Args:
-            input_scene (SfmScene): The input :class:`SfmScene` to transform.
+            input_scene (SfmScene): The input :class:`~fvdb_reality_capture.sfm_scene.SfmScene` to transform.
 
         Returns:
-            output_scene (SfmScene): A new :class:`SfmScene` that has been transformed by all the composed transforms.
+            output_scene (SfmScene): A new :class:`~fvdb_reality_capture.sfm_scene.SfmScene` that has been transformed
+                by all the composed transforms.
 
         """
         for transform in self.transforms:
