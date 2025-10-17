@@ -82,21 +82,7 @@ Note: fVDB-Reality-Capture recently moved from early-access to Beta. The API and
 
    tutorials/sensor_data_loading_and_manipulation
    tutorials/radiance_field_and_mesh_reconstruction
-
-.. toctree::
-   :maxdepth: 1
-   :caption: CLI
-
-   cli/frgs/convert
-   cli/frgs/download
-   cli/frgs/evaluate
-   cli/frgs/mesh_basic
-   cli/frgs/mesh_dlnr
-   cli/frgs/points
-   cli/frgs/reconstruct
-   cli/frgs/resume
-   cli/frgs/show-data
-   cli/frgs/show
+   tutorials/frgs
 
 .. toctree::
    :maxdepth: 1
@@ -106,6 +92,7 @@ Note: fVDB-Reality-Capture recently moved from early-access to Beta. The API and
    api/sfm_scene
    api/tools
    api/transforms
+   api/frgs
 
 .. raw:: html
 

@@ -63,7 +63,7 @@ class ShowData(BaseCommand):
         - images/ A directory of images (jpg, png, etc).
         - An optional "masks/" folder with the same layout as images containing masks of which pixels are valid.
         - A cameras.json file containing camera intrinsics and extrinsics for each image. It should be a list of objects
-            with the following format:{
+            with the following format:
                 "camera_name": "camera_0000",
                 "width": 2048,
                 "height": 2048,
@@ -81,6 +81,10 @@ class ShowData(BaseCommand):
 
         # Visualize a simple directory dataset in the folder ./simple_directory_dataset
         frgs show-data ./simple_directory_dataset --dataset-type simple_directory
+
+        # Flip the up axis of the scene from -Z to +Z
+        # It's -fu because that's what you say when your scene is backwards.
+        frgs show-data ./colmap_dataset -fu
     """
 
     # Path to the dataset folder.
@@ -102,6 +106,24 @@ class ShowData(BaseCommand):
     # Type of dataset to load.
     dataset_type: Annotated[DatasetType, arg(aliases=["-dt"])] = "colmap"
 
+    # The length (in world units) of the axes drawn at each camera and at the origin.
+    axis_length: Annotated[float, arg(aliases=["-al"])] = 1.0
+
+    # Frustum length from the origin to the view plane in world units.
+    frustum_length: Annotated[float, arg(aliases=["-fl"])] = 1.0
+
+    # Scren space line width of the camera frustums.
+    frustum_line_width: Annotated[float, arg(aliases=["-flw"])] = 2.0
+
+    # Screen space line width of the axes.
+    axis_line_width: Annotated[float, arg(aliases=["-alw"])] = 1.0
+
+    # If true, flip the up axis of the scene from -Z to +Z
+    flip_up_axis: Annotated[bool, arg(aliases=["-fu"])] = False
+
+    # Size of the points in screen space.
+    point_size: Annotated[float, arg(aliases=["-ps"])] = 1.0
+
     @torch.no_grad()
     def execute(self) -> None:
 
@@ -118,20 +140,14 @@ class ShowData(BaseCommand):
         )(sfm_scene)
 
         cam_positions = sfm_scene.camera_to_world_matrices[:, 0:3, 3]
-        cam_extent = cam_positions.max(0) - cam_positions.min(0)
-        cam_diagonal = float(np.linalg.norm(cam_extent))
-        points_extent = sfm_scene.points.max(0) - sfm_scene.points.min(0)
-        points_diagnonal = float(np.linalg.norm(points_extent))
-
-        axis_scale = 0.01 * min(cam_diagonal, points_diagnonal)
 
         # Find a camera whose position is far from the scene centroid and
         # whose up vector is not aligned with the view direction.
         cam_eye = cam_positions[0]
-        cam_lookat = cam_positions.mean(0)
-        cam_view_direction = cam_lookat - cam_eye
-        cam_eye += cam_view_direction * 0.5
-        cam_up = np.array([0.0, 0.0, 1.0])
+        cam_lookat = sfm_scene.points.mean(0)
+        cam_up = np.array([0.0, 0.0, -1.0])
+        if self.flip_up_axis:
+            cam_up = -cam_up
         if np.allclose(cam_eye - cam_lookat, cam_up):
             cam_up = np.array([0.0, 1.0, 0.0])
 
@@ -142,19 +158,18 @@ class ShowData(BaseCommand):
             camera_to_world_matrices=sfm_scene.camera_to_world_matrices,
             projection_matrices=torch.from_numpy(sfm_scene.projection_matrices),
             image_sizes=torch.from_numpy(sfm_scene.image_sizes),
-            frustum_line_width=2.0,
-            frustum_scale=3.0 * axis_scale,
-            axis_length=2.0 * axis_scale,
-            axis_thickness=0.1 * axis_scale,
+            frustum_line_width=self.frustum_line_width,
+            frustum_scale=self.frustum_length,
+            axis_length=self.axis_length,
+            axis_thickness=self.axis_line_width,
         )
 
         viewer.add_point_cloud(
-            name="points",
+            "points",
             points=sfm_scene.points,
             colors=sfm_scene.points_rgb.astype(np.float32) / 255.0,
-            point_sizes=1.0,
+            point_size=self.point_size,
         )
-
         viewer.show()
 
         logger.info("Viewer running... Ctrl+C to exit.")
