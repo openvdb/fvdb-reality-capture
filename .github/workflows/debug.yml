@@ -15,7 +15,7 @@ permissions:
   issues: read
   # Need ID token write permission to use OIDC
   id-token: write
-  
+
 jobs:
   make-artifact:
     name: Make an artifact with the commit hash
@@ -26,6 +26,7 @@ jobs:
           fetch-depth: 0 # Fetch all history for all branches
 
       - name: Clone fvdb-core
+        id: clone_fvdb_core
         run: | 
           echo "Cloning fVDB"
           pwd
@@ -38,7 +39,7 @@ jobs:
       - name: Upload fvdb-core wheel
         uses: actions/upload-artifact@v4
         with:
-          name: fvdb-wheel-${{ steps.set_variable_step.outputs.my_variable }}
+          name: fvdb-wheel-${{ steps.clone_fvdb_core.outputs.fvdb_core_commit_hash }}
           path: fvdb-core/build.sh
           retention-days: 2
           

@@ -123,20 +123,38 @@ jobs:
       #     git merge --no-ff $CURRENT_COMMIT --message "CI: Simulating merge of $CURRENT_COMMIT into $TARGET_BRANCH"
 
       # TODO: DRY this up with an anchor
-      - name: Clone fvdb
+      - name: Clone fvdb-core
+        id: clone_fvdb_core
         run: |
-          echo "Cloning fvdb"
+          echo "Cloning fvdb-core"
           pwd
           git clone https://github.com/openvdb/fvdb-core.git
+          pushd fvdb-core
+          FVDB_CORE_COMMIT_HASH=$(git rev-parse HEAD)
+          echo "fvdb_core_commit_hash=$FVDB_CORE_COMMIT_HASH" >> "$GITHUB_OUTPUT"
+          popd
+          
+      - name: Check if fvdb-core whl exists
+        uses: softwareforgood/check-artifact-v4-existence@v0
+        id: check_fvdb_core_wheel_artifact
+        with:
+          name: fvdb-wheel-${{ steps.clone_fvdb_core.outputs.fvdb_core_commit_hash }} # Replace with the actual name of your artifact
 
-      - name: Set up fvdb Conda env
+      - name: Log if fvdb-core wheel already exists
+        if: steps.check_fvdb_core_wheel_artifact.outputs.exists == 'true'
+        run: echo "Artifact 'fvdb-wheel-${{ steps.clone_fvdb_core.outputs.fvdb_core_commit_hash }}' exists. No need to rebuild."
+        # Add further steps here that depend on the artifact's existence
+        
+      - name: Set up fvdb-core conda env
+        if: steps.check_fvdb_core_wheel_artifact.outputs.exists == 'false'
         uses: mamba-org/setup-micromamba@v2
         with:
           post-cleanup: 'all'
           environment-name: fvdb_build
           environment-file: fvdb-core/env/build_environment.yml
 
-      - name: Build fvdb
+      - name: Build fvdb-core
+        if: steps.check_fvdb_core_wheel_artifact.outputs.exists == 'false'
         run: |
           echo "Building fvdb"
           cd fvdb-core
@@ -144,9 +162,10 @@ jobs:
           ./build.sh wheel verbose --cuda-arch-list '8.9+PTX'
 
       - name: Upload fvdb wheel
+        if: steps.check_fvdb_core_wheel_artifact.outputs.exists == 'false'
         uses: actions/upload-artifact@v4
         with:
-          name: fvdb-wheel
+          name: fvdb-wheel-${{ steps.clone_fvdb_core.outputs.fvdb_core_commit_hash }}
           path: fvdb-core/dist/*.whl
           retention-days: 2
 
@@ -224,11 +243,14 @@ jobs:
           role-to-assume: arn:aws:iam::420032683002:role/openvdb-fvdb-github-actions-role
           aws-region: us-east-2
 
-      - name: Clone fvdb
+      - name: Clone fvdb-core
+        id: clone_fvdb_core
         run: |
           echo "Cloning fvdb"
           pwd
           git clone https://github.com/openvdb/fvdb-core.git
+          FVDB_CORE_COMMIT_HASH=$(git rev-parse HEAD)
+          echo "fvdb_core_commit_hash=$FVDB_CORE_COMMIT_HASH" >> "$GITHUB_OUTPUT"
 
       - name: Set up fvdb Conda env
         uses: mamba-org/setup-micromamba@v2
@@ -238,10 +260,10 @@ jobs:
           environment-name: fvdb
           environment-file: fvdb-core/env/dev_environment.yml
 
-      - name: Download fvdb wheel
+      - name: Download fvdb-core wheel
         uses: actions/download-artifact@v4
         with:
-          name: fvdb-wheel
+          name: fvdb-wheel-${{ steps.clone_fvdb_core.outputs.fvdb_core_commit_hash }}
           path: ./dist
 
       - name: Install wheels
