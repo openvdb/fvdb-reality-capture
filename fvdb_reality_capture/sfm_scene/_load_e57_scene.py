@@ -215,7 +215,7 @@ def _load_e57_scan(
 
         cache_file_metadata = cache.get_file_metadata(image_filename)
         assert cache_file_metadata is not None
-        image_path = cache_file_metadata["path"]
+        image_path = str(cache_file_metadata["path"])
 
         pose_node = image_node["pose"]
         if not pose_node.isDefined("rotation"):
