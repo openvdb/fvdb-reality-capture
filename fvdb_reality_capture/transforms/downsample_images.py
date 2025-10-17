@@ -16,8 +16,9 @@ from .base_transform import BaseTransform, transform
 @transform
 class DownsampleImages(BaseTransform):
     """
-    A :class:`BaseTransform` which downsamples all images in an :class:`SfmScene` by a specified factor
-    and caches the downsampled images for future use.
+    A :class:`~base_transform.BaseTransform` which downsamples all images in an
+    :class:`~fvdb_reality_capture.sfm_scene.SfmScene` by a specified factor and caches the downsampled images
+    for future use.
 
     You can specify the cached downsampled image type (e.g., ``"jpg"`` or ``"png"``),
     the mode for downsampling (e.g., ``cv2.INTER_AREA``), and the rescaled JPEG quality (if using JPEG).
@@ -78,7 +79,7 @@ class DownsampleImages(BaseTransform):
 
     def __call__(self, input_scene: SfmScene) -> SfmScene:
         """
-        Return a new :class:`SfmScene` with images downsampled by the specified factor.
+        Return a new :class:`~fvdb_reality_capture.sfm_scene.SfmScene` with images downsampled by the specified factor.
         *i.e.* images will be resized to ``(width / image_downsample_factor, height / image_downsample_factor)``.
 
         Args:
