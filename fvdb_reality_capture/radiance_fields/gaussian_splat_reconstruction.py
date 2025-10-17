@@ -609,7 +609,9 @@ class GaussianSplatReconstruction:
         """
         Initialize the Runner with the provided configuration, model, optimizer, datasets, and paths.
 
-        Note: This constructor should only be called by the `new_run` or `resume_from_checkpoint` methods.
+        .. note::
+
+            This constructor should only be called by the :meth:`from_sfm_scene` or :meth:`from_state_dict` methods.
 
         Args:
             model (GaussianSplat3d): The Gaussian Splatting model to optimize.
@@ -628,10 +630,10 @@ class GaussianSplatReconstruction:
             viewer (Viewer | None): The viewer instance to use for this run.
             log_interval_steps (int): Interval (in steps) at which to log metrics during optimization.
             viewer_update_interval_epochs (float): Interval (in epochs) at which to update the viewer with new results if a viewer is specified.
-            _private (object | None): Private object to ensure this class is only initialized through `new_run` or `resume_from_checkpoint`.
+            _private (object | None): Private object to ensure this class is only initialized through :meth:`from_sfm_scene` or :meth:`from_state_dict`.
         """
         if _private is not GaussianSplatReconstruction.__PRIVATE__:
-            raise ValueError("Runner should only be initialized through `new_run` or `resume_from_checkpoint`.")
+            raise ValueError("Runner should only be initialized through `from_sfm_scene` or `from_state_dict`.")
 
         self._logger = logging.getLogger(f"{self.__class__.__module__}.{self.__class__.__name__}")
 
@@ -982,7 +984,8 @@ class GaussianSplatReconstruction:
         """
         Remove all Gaussians whose means lie outside the scene bounding box defined in the dataset.
         """
-        bbox_min, bbox_max = self.training_dataset.scene_bbox
+        bbox = self.training_dataset.scene_bbox
+        bbox_min, bbox_max = bbox[:3], bbox[3:]
         if (
             np.any(np.isinf(bbox_min))
             or np.any(np.isinf(bbox_max))
