@@ -4,7 +4,7 @@
 from abc import ABC, abstractmethod
 from typing import Any, TypeVar
 
-from ..sfm_scene import SfmScene
+from fvdb_reality_capture.sfm_scene import SfmScene
 
 # Keeps track of names of registered transforms and their classes.
 REGISTERED_TRANSFORMS = {}

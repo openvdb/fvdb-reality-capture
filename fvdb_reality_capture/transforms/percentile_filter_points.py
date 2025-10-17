@@ -2,42 +2,60 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 import logging
-from typing import Any, Sequence
+from typing import Any
 
 import numpy as np
 from fvdb.types import NumericMaxRank1, to_Vec3f
 
-from ..sfm_scene import SfmCache, SfmScene
+from fvdb_reality_capture.sfm_scene import SfmScene
+
 from .base_transform import BaseTransform, transform
 
 
 @transform
 class PercentileFilterPoints(BaseTransform):
     """
-    A transform that filters points in an SfmScene based on percentile bounds for x, y, and z coordinates.
+    A :class:`BaseTransform` that filters points in an :class:`~fvdb_reality_capture.sfm_scene.SfmScene` based on
+    percentile bounds for x, y, and z coordinates.
 
-    This transform creates a new SfmScene with points that fall within the specified percentile bounds
-    along each axis.
+    When applied to an input scene, this transform returns a new :class:`~fvdb_reality_capture.sfm_scene.SfmScene`
+    with points that fall within the specified percentile bounds of the input scene's points along each axis.
 
-    _e.g._ if percentile_min is (0, 0, 0) and percentile_max is (100, 100, 100),
-        all points will be included in the output scene.
+    *e.g.* If percentile_min is ``(0, 0, 0)`` and percentile_max is ``(100, 100, 100)``,
+    all points will be included in the output scene.
 
-    _e.g._ if percentile_min is (10, 20, 30) and percentile_max is (90, 80, 70),
-        only points with x-coordinates in the 10th to 90th percentile,
-        y-coordinates in the 20th to 80th percentile, and z-coordinates
-        in the 30th to 70th percentile will be included in the output scene.
+    *e.g.* If percentile_min is ``(10, 20, 30)`` and percentile_max is ``(90, 80, 70)``,
+    only points with x-coordinates in the 10th to 90th percentile,
+    y-coordinates in the 20th to 80th percentile, and z-coordinates
+    in the 30th to 70th percentile will be included in the output scene.
+
+    Example usage:
+
+    .. code-block:: python
+
+        from fvdb_reality_capture.transforms import PercentileFilterPoints
+        from fvdb_reality_capture.sfm_scene import SfmScene
+
+        # Create a PercentileFilterPoints transform to filter points between the 10th and 90th percentiles
+        transform = PercentileFilterPoints(percentile_min=(10, 10, 10), percentile_max=(90, 90, 90))
+
+        # Apply the transform to an SfmScene
+        input_scene: SfmScene = ...
+        output_scene: SfmScene = transform(input_scene)
+
     """
 
     version = "1.0.0"
 
     def __init__(self, percentile_min: NumericMaxRank1, percentile_max: NumericMaxRank1):
         """
-        Initialize the PercentileFilterPoints transform.
+        Create a new :class:`PercentileFilterPoints` transform which filters points in an
+        :class:`~fvdb_reality_capture.sfm_scene.SfmScene` based on percentile bounds for x, y, and z coordinates.
 
         Args:
-            percentile_min (Sequence[float | int] | np.ndarray): Tuple of minimum percentiles (from 0 to 100) for x, y, z coordinates
+            percentile_min (NumericMaxRank1): Tuple of minimum percentiles (from 0 to 100) for x, y, z coordinates
                 or None to use (0, 0, 0) (default: None)
-            percentile_max (Sequence[float | int] | np.ndarray): Tuple of maximum percentiles (from 0 to 100) for x, y, z coordinates
+            percentile_max (NumericMaxRank1): Tuple of maximum percentiles (from 0 to 100) for x, y, z coordinates
                 or None to use (100, 100, 100) (default: None)
         """
         super().__init__()
@@ -55,13 +73,16 @@ class PercentileFilterPoints(BaseTransform):
 
     def __call__(self, input_scene: SfmScene) -> SfmScene:
         """
-        Apply the percentile filtering transform to the input scene and cache.
+        Return a new :class:`~fvdb_reality_capture.sfm_scene.SfmScene` with points filtered based on the specified
+        percentile bounds.
 
         Args:
-            input_scene (SfmScene): The input scene containing points to be filtered.
+            input_scene (SfmScene): The input :class:`~fvdb_reality_capture.sfm_scene.SfmScene` containing points
+                to be filtered.
 
         Returns:
-            output_scene (SfmScene): A new SfmScene with points filtered based on the specified percentile bounds.
+            output_scene (SfmScene): A new :class:`~fvdb_reality_capture.sfm_scene.SfmScene` with points filtered
+                based on the specified percentile bounds.
         """
         self._logger.info(
             f"Filtering points based on percentiles: min={self._percentile_min}, max={self._percentile_max}"

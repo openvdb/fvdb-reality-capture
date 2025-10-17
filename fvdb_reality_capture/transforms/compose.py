@@ -3,7 +3,8 @@
 #
 from typing import Any
 
-from ..sfm_scene import SfmScene
+from fvdb_reality_capture.sfm_scene import SfmScene
+
 from .base_transform import REGISTERED_TRANSFORMS, BaseTransform, transform
 
 

@@ -14,7 +14,8 @@ import torch.optim
 from fvdb import GaussianSplat3d
 from scipy.special import logit
 
-from ..sfm_scene import SfmScene
+from fvdb_reality_capture.sfm_scene import SfmScene
+
 from .base_gaussian_splat_optimizer import BaseGaussianSplatOptimizer
 
 

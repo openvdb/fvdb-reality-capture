@@ -6,22 +6,25 @@ from typing import Any
 
 import numpy as np
 
-from ..sfm_scene import SfmScene
+from fvdb_reality_capture.sfm_scene import SfmScene
+
 from .base_transform import BaseTransform, transform
 
 
 @transform
 class FilterImagesWithLowPoints(BaseTransform):
     """
-    A :class:`BaseTransform` which filters out posed images from an :class:`SfmScene` that have fewer than a
-    specified minimum number of visible points.
+    A :class:`~base_transform.BaseTransform` which filters out posed images from
+    an :class:`~fvdb_reality_capture.sfm_scene.SfmScene` that have fewer than a specified minimum number
+    of visible points.
 
     Any images that have a number of visible points less than or equal to ``min_num_points``  will
     be removed from the scene.
 
     .. note::
-        If the input :class:`SfmScene` does not have point indices for its posed images
-        (i.e. :obj:`SfmScene.has_visible_point_indices` is ``False``), then this transform is a no-op.
+        If the input :class:`~fvdb_reality_capture.sfm_scene.SfmScene` does not have point indices for its posed images
+        (i.e. it has :obj:`~fvdb_reality_capture.sfm_scene.SfmScene.has_visible_point_indices` set to ``False``), then
+        this transform is a no-op.
 
     Example usage:
 
@@ -61,11 +64,13 @@ class FilterImagesWithLowPoints(BaseTransform):
 
     def __call__(self, input_scene: SfmScene) -> SfmScene:
         """
-        Return a new :class:`SfmScene` containing only posed images which have more than ``min_num_points`` visible points.
+        Return a new :class:`~fvdb_reality_capture.sfm_scene.SfmScene` containing only posed images which have more
+        than ``min_num_points`` visible points.
 
         .. note::
-            If the input :class:`SfmScene` does not have point indices for its posed images
-            (i.e. :obj:`SfmScene.has_visible_point_indices` is ``False``), then this transform is a no-op.
+            If the input :class:`~fvdb_reality_capture.sfm_scene.SfmScene` does not have point indices for its
+            posed images (i.e. :obj:`fvdb_reality_capture.sfm_scene.SfmScene.has_visible_point_indices` is ``False``),
+            then this transform is a no-op.
 
 
         Args:
@@ -98,7 +103,8 @@ class FilterImagesWithLowPoints(BaseTransform):
         Get the minimum number of points required to keep a posed image in the scene when applying this transform.
 
         Returns:
-            min_num_points (int): The minimum number of points required to keep a posed image in the scene when applying this transform.
+            min_num_points (int): The minimum number of points required to keep a posed image in the scene when applying
+                this transform.
         """
         return self._min_num_points
 

@@ -7,7 +7,8 @@ from typing import Any, Literal
 import numpy as np
 import pyproj
 
-from ..sfm_scene import SfmScene
+from fvdb_reality_capture.sfm_scene import SfmScene
+
 from .base_transform import BaseTransform, transform
 
 
@@ -172,13 +173,33 @@ class NormalizeScene(BaseTransform):
 
     The normalization types available are:
 
-    - ``"pca"``: Normalizes by centering the scene about its median point, and rotating the point cloud to align with its principal axes.
-    - ``"ecef2enu"``: Converts a scene whose points and camera poses are in `Earth-Centered, Earth-Fixed (ECEF) <https://en.wikipedia.org/wiki/Earth-centered,_Earth-fixed_coordinate_system>`_
-        | coordinates to `East-North-Up (ENU) <https://en.wikipedia.org/wiki/Local_tangent_plane_coordinates>`_ coordinates,
-        | centering the scene around the median point.
-    - ``"similarity"``: Rotate the scene so that +z aligns with the average up vector of the cameras, center the scene around the median camera position,
-            and rescale the scene to fit within a unit cube.
-    - ``"none"``: Do not apply any normalization to the scene. Effectively a no-op.
+    * ``"pca"``: Normalizes by centering the scene about its median point, and rotating the point cloud to align with
+      its principal axes.
+
+    * ``"ecef2enu"``: Converts a scene whose points and camera poses are in
+      `Earth-Centered, Earth-Fixed (ECEF) <https://en.wikipedia.org/wiki/Earth-centered,_Earth-fixed_coordinate_system>`_
+      coordinates to `East-North-Up (ENU) <https://en.wikipedia.org/wiki/Local_tangent_plane_coordinates>`_ coordinates,
+      centering the scene around the median point.
+
+    * ``"similarity"``: Rotate the scene so that +z aligns with the average up vector of the cameras, center the scene
+      around the median camera position, and rescale the scene to fit within a unit cube.
+
+    * ``"none"``: Do not apply any normalization to the scene. Effectively a no-op.
+
+    Example usage:
+
+    .. code-block:: python
+
+        from fvdb_reality_capture import transforms
+        from fvdb_reality_capture.sfm_scene import SfmScene
+
+        # Create a NormalizeScene transform to normalize the scene using PCA
+        transform = transforms.NormalizeScene(normalization_type="pca")
+
+        # Apply the transform to an SfmScene
+        input_scene: SfmScene = ...
+        output_scene: SfmScene = transform(input_scene)
+
     """
 
     version = "1.0.0"

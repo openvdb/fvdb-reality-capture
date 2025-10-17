@@ -8,7 +8,8 @@ from typing import Any, Literal
 import cv2
 import tqdm
 
-from ..sfm_scene import SfmCache, SfmPosedImageMetadata, SfmScene
+from fvdb_reality_capture.sfm_scene import SfmCache, SfmPosedImageMetadata, SfmScene
+
 from .base_transform import BaseTransform, transform
 
 
