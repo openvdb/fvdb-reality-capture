@@ -83,6 +83,7 @@ import commonmark
 print("SYS EXECUTABLE", sys.executable)
 print("SYS PATH", sys.path)
 
+
 def docstring(app, what, name, obj, options, lines):
     md = "\n".join(lines)
     ast = commonmark.Parser().parse(md)
