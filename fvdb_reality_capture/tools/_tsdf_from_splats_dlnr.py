@@ -10,8 +10,9 @@ import tqdm
 from fvdb import GaussianSplat3d, Grid
 from fvdb.types import NumericMaxRank2, NumericMaxRank3
 
-from ..foundation_models.dlnr import DLNRModel
-from ..sfm_scene import SfmCache
+from fvdb_reality_capture.foundation_models.dlnr import DLNRModel
+from fvdb_reality_capture.sfm_scene import SfmCache
+
 from ._common import validate_camera_matrices_and_image_sizes
 
 

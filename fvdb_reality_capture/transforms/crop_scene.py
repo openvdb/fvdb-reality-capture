@@ -4,7 +4,7 @@
 
 import logging
 import os
-from typing import Literal, Sequence
+from typing import Literal
 
 import cv2
 import numpy as np
@@ -13,7 +13,8 @@ import tqdm
 from fvdb.types import NumericMaxRank1, to_VecNf
 from scipy.spatial import ConvexHull
 
-from ..sfm_scene import SfmCache, SfmImageMetadata, SfmScene
+from fvdb_reality_capture.sfm_scene import SfmCache, SfmPosedImageMetadata, SfmScene
+
 from .base_transform import BaseTransform, transform
 
 
@@ -117,7 +118,7 @@ def _crop_scene_to_bbox(
             regenerate_cache = True
             break
         new_image_metadata.append(
-            SfmImageMetadata(
+            SfmPosedImageMetadata(
                 world_to_camera_matrix=image_meta.world_to_camera_matrix,
                 camera_to_world_matrix=image_meta.camera_to_world_matrix,
                 camera_metadata=image_meta.camera_metadata,
@@ -223,7 +224,7 @@ def _crop_scene_to_bbox(
             )
 
             new_image_metadata.append(
-                SfmImageMetadata(
+                SfmPosedImageMetadata(
                     world_to_camera_matrix=image_meta.world_to_camera_matrix,
                     camera_to_world_matrix=image_meta.camera_to_world_matrix,
                     camera_metadata=image_meta.camera_metadata,
@@ -252,8 +253,35 @@ def _crop_scene_to_bbox(
 @transform
 class CropScene(BaseTransform):
     """
-    Crop the scene points to a specified bounding box and update masks to nullify
-    pixels corresponding to regions outside the cropped scene.
+    A :class:`~base_transform.BaseTransform` which crops the input
+    :class:`~fvdb_reality_capture.sfm_scene.SfmScene` points to lie within a specified bounding box.
+    This transform additionally and updates the scene's masks to nullify pixels whose rays do not intersect
+    the bounding box.
+
+    .. note::
+
+        If the input scene already has masks, these new masks will be composited with the existing masks to ensure that
+        pixels outside the cropped region are properly masked. This can be disabled by setting
+        ``composite_with_existing_masks`` to ``False``.
+
+    Example usage:
+
+    .. code-block:: python
+
+        # Example usage:
+        from fvdb_reality_capture import transforms
+        from fvdb_reality_capture.sfm_scene import SfmScene
+        import numpy as np
+
+        # Bounding box in the format (min_x, min_y, min_z, max_x, max_y, max_z)
+        scene_transform = transforms.CropScene(bbox=np.array([-1.0, -1.0, -1.0, 1.0, 1.0, 1.0]))
+
+        input_scene: SfmScene = ...  # Load or create an SfmScene
+
+        # The transformed scene will have points only within the bounding box, and posed images will have
+        # masks updated to nullify pixels corresponding to regions outside the cropped scene.
+        transformed_scene: SfmScene = scene_transform(input_scene)
+
     """
 
     version = "1.0.0"
@@ -265,14 +293,15 @@ class CropScene(BaseTransform):
         composite_with_existing_masks: bool = True,
     ):
         """
-        Initialize the Crop transform with a bounding box.
+        Create a new :class:`CropScene` transform with a bounding box.
 
         Args:
-            bbox (NumericMaxRank1): A bounding box in the format (min_x, min_y, min_z, max_x, max_y, max_z).
+            bbox (NumericMaxRank1): A bounding box in the format ``(min_x, min_y, min_z, max_x, max_y, max_z)``.
             mask_format (Literal["png", "jpg", "npy"]): The format to save the masks in. Defaults to "png".
             composite_with_existing_masks (bool): Whether to composite the masks generated into existing masks for
-                pixels corresponding to regions outside the cropped scene. If set to True, existing masks
-                will be loaded and composited with the new mask. Defaults to True.
+                pixels corresponding to regions outside the cropped scene. If set to ``True``, existing masks
+                will be loaded and composited with the new mask. Defaults to ``True``. The resulting composited
+                mask will allow a pixel to be valid if it is valid in both the existing and new mask.
         """
         super().__init__()
         bbox = to_VecNf(bbox, 6, dtype=torch.float64).numpy()
@@ -290,23 +319,23 @@ class CropScene(BaseTransform):
     @staticmethod
     def name() -> str:
         """
-        Return the name of the transform.
+        Return the name of the :class:`CropScene` transform. **i.e.** ``"CropScene"``.
 
         Returns:
-            str: The name of the transform.
+            str: The name of the :class:`CropScene` transform. **i.e.** ``"CropScene"``.
         """
         return "CropScene"
 
     @staticmethod
     def from_state_dict(state_dict: dict) -> "CropScene":
         """
-        Create a CropScene transform from a state dictionary.
+        Create a :class:`CropScene` transform from a state dictionary created with :meth:`state_dict`.
 
         Args:
-            state (dict): The state dictionary containing the bounding box.
+            state_dict (dict): The state dictionary for the transform.
 
         Returns:
-            CropScene: An instance of the CropScene transform.
+            transform (CropScene): An instance of the :class:`CropScene` transform.
         """
         bbox = state_dict.get("bbox", None)
         if bbox is None:
@@ -319,10 +348,12 @@ class CropScene(BaseTransform):
 
     def state_dict(self) -> dict:
         """
-        Return the state dictionary of the Crop transform.
+        Return the state of the :class:`CropScene` transform for serialization.
+
+        You can use this state dictionary to recreate the transform using :meth:`from_state_dict`.
 
         Returns:
-            dict: A dictionary containing the bounding box.
+            state_dict (dict[str, Any]): A dictionary containing information to serialize/deserialize the transform.
         """
         return {
             "name": self.name(),
@@ -334,13 +365,15 @@ class CropScene(BaseTransform):
 
     def __call__(self, input_scene: SfmScene) -> SfmScene:
         """
-        Apply the cropping transform to the scene.
+        Return a new :class:`~fvdb_reality_capture.sfm_scene.SfmScene` with points cropped to lie within the bounding
+        box specified at initialization, and with masks updated to nullify pixels whose rays do not intersect the
+        bounding box.
 
         Args:
-            scene (SfmScene): The scene to be cropped.
+            input_scene (SfmScene): The scene to be cropped.
 
         Returns:
-            SfmScene: The cropped scene.
+            output_scene (SfmScene): The cropped scene.
         """
         # Ensure the bounding box is a numpy array of length 6
         bbox = np.asarray(self._bbox, dtype=np.float32)
@@ -362,8 +395,50 @@ class CropScene(BaseTransform):
 @transform
 class CropSceneToPoints(BaseTransform):
     """
-    Crop the scene points the bounding box around its points plus a padding margin, and update masks to nullify
-    pixels corresponding to regions outside the cropped scene.
+    A :class:`~base_transform.BaseTransform` which crops the input
+    :class:`~fvdb_reality_capture.sfm_scene.SfmScene` points to lie within the bounding box around its points plus
+    or minus a padding margin. This transform additionally and updates the scene's masks to nullify pixels whose rays
+    do not intersect the bounding box.
+
+    .. note::
+
+        If the input scene already has masks, these new masks will be composited with the existing masks to ensure that
+        pixels outside the cropped region are properly masked. This can be disabled by setting
+        ``composite_with_existing_masks`` to ``False``.
+
+    .. note::
+
+        You may want to use this over :class:`CropScene` if you want the bounding box to depend on the input scene
+        points rather than being fixed (*e.g.* if you don't know the bounding box ahead of time). This transform
+        is also useful if you just want to apply conservative masking to the input scene based on its points.
+
+    .. note::
+
+        The margin is specified as a fraction of the bounding box size. For example, a margin of 0.1 will expand the
+        bounding box by 10% (5% in all directions). So if the scene's bounding box is ``(0, 0, 0)`` to ``(1, 1, 1)``,
+        a margin of ``0.1`` will result in a bounding box of ``(-0.05, -0.05, -0.05)`` to ``(1.05, 1.05, 1.05)``.
+        The margin can also be negative to shrink the bounding box.
+
+    Example usage:
+
+    .. code-block:: python
+
+        # Example usage:
+        from fvdb_reality_capture import transforms
+        from fvdb_reality_capture.sfm_scene import SfmScene
+        import numpy as np
+
+        # Crop the scene to be 0.1 times smaller than the bounding box around its points
+        # (i.e. a margin of -0.1)
+        scene_transform = transforms.CropSceneToPoints(margin=-0.1)
+
+        input_scene: SfmScene = ...  # Load or create an SfmScene
+
+        # The transformed scene will have points only within the bounding box of its points
+        # minus a factor of 0.1 times the size. (i.e. a margin of -0.1).
+        # Posed images will have masks updated to nullify pixels corresponding to regions outside the cropped scene.
+        transformed_scene: SfmScene = scene_transform(input_scene)
+
     """
 
     version = "1.0.0"
@@ -375,10 +450,14 @@ class CropSceneToPoints(BaseTransform):
         composite_with_existing_masks: bool = True,
     ):
         """
-        Initialize the Crop transform with a bounding box.
+        Create a new :class:`CropSceneToPoints` transform with the given margin.
 
         Args:
-            bbox (tuple): A tuple defining the bounding box in the format (min_x, min_y, min_z, max_x, max_y, max_z).
+            margin (float): The margin factor to apply around the bounding box of the points.
+                Can be negative to shrink the bounding box. This is a fraction of the bounding box size.
+                For example, a margin of ``0.1`` will expand the bounding box by 10% (5% in all directions),
+                while a margin of ``-0.1`` will shrink the bounding box by 10% (-5% in all directions).
+                Defaults to ``0.0``.
             mask_format (Literal["png", "jpg", "npy"]): The format to save the masks in. Defaults to "png".
             composite_with_existing_masks (bool): Whether to composite the masks generated into existing masks for
                 pixels corresponding to regions outside the cropped scene. If set to True, existing masks
@@ -386,8 +465,6 @@ class CropSceneToPoints(BaseTransform):
         """
         super().__init__()
         self._logger = logging.getLogger(f"{self.__class__.__module__}.{self.__class__.__name__}")
-        if margin < 0.0:
-            raise ValueError("Margin must be non-negative.")
         self._margin = margin
 
         self._mask_format = mask_format
@@ -400,23 +477,24 @@ class CropSceneToPoints(BaseTransform):
     @staticmethod
     def name() -> str:
         """
-        Return the name of the transform.
+        Return the name of the :class:`CropSceneToPoints` transform. *i.e.* ``"CropSceneToPoints"``.
 
         Returns:
-            str: The name of the transform.
+            str: The name of the :class:`CropSceneToPoints` transform. *i.e.* ``"CropSceneToPoints"``.
         """
         return "CropSceneToPoints"
 
     @staticmethod
     def from_state_dict(state_dict: dict) -> "CropSceneToPoints":
         """
-        Create a CropSceneToPoints transform from a state dictionary.
+        Create a :class:`CropSceneToPoints` transform from a state dictionary generated with :meth:`state_dict`.
 
         Args:
-            state (dict): The state dictionary containing the bounding box.
+            state_dict (dict[str, Any]): A dictionary containing information to serialize/deserialize the transform.
 
         Returns:
-            CropSceneToPoints: An instance of the Crop transform.
+            transform (:class:`CropSceneToPoints`): An instance of the :class:`CropSceneToPoints` transform loaded
+                from the state dictionary.
         """
         margin = state_dict.get("margin", None)
         if margin is None:
@@ -441,10 +519,12 @@ class CropSceneToPoints(BaseTransform):
 
     def state_dict(self) -> dict:
         """
-        Return the state dictionary of the Crop transform.
+        Return the state of the :class:`CropSceneToPoints` transform for serialization.
+
+        You can use this state dictionary to recreate the transform using :meth:`from_state_dict`.
 
         Returns:
-            dict: A dictionary containing the bounding box.
+            state_dict (dict[str, Any]): A dictionary containing information to serialize/deserialize the transform.
         """
         return {
             "name": self.name(),
@@ -456,13 +536,15 @@ class CropSceneToPoints(BaseTransform):
 
     def __call__(self, input_scene: SfmScene) -> SfmScene:
         """
-        Apply the cropping transform to the scene.
+        Return a new :class:`~fvdb_reality_capture.sfm_scene.SfmScene` with points cropped to lie within the
+        bounding box of the input scene's points plus or minus the margin specified at initialization,
+        and with masks updated to nullify pixels whose rays do not intersect the bounding box.
 
         Args:
-            scene (SfmScene): The scene to be cropped.
+            input_scene (SfmScene): The scene to be cropped.
 
         Returns:
-            SfmScene: The cropped scene.
+            output_scene (SfmScene): The cropped scene.
         """
         points_min = input_scene.points.min(axis=0)
         points_max = input_scene.points.max(axis=0)

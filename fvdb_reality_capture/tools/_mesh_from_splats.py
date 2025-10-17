@@ -3,7 +3,7 @@
 #
 import torch
 from fvdb import GaussianSplat3d
-from fvdb.types import NumericMaxRank2, NumericMaxRank3
+from fvdb.types import NumericMaxRank1, NumericMaxRank2, NumericMaxRank3
 
 from ._common import validate_camera_matrices_and_image_sizes
 from ._tsdf_from_splats import tsdf_from_splats
@@ -17,8 +17,8 @@ def mesh_from_splats(
     image_sizes: NumericMaxRank2,
     truncation_margin: float,
     grid_shell_thickness: float = 3.0,
-    near: float = 0.1,
-    far: float = 1e10,
+    near: NumericMaxRank1 = 0.1,
+    far: NumericMaxRank1 = 1e10,
     alpha_threshold: float = 0.1,
     image_downsample_factor: int = 1,
     dtype: torch.dtype = torch.float16,
@@ -55,8 +55,12 @@ def mesh_from_splats(
         grid_shell_thickness (float): Thickness of the TSDF grid shell in multiples of the truncation margin (default is 3.0).
             _i.e_. if truncation_margin is 0.1 and grid_shell_thickness is 3.0, the TSDF grid will extend 0.3 world units
             from the surface of the model.
-        near (float): Near plane distance below which to ignore depth samples (default is 0.1).
-        far (float): Far plane distance above which to ignore depth samples (default is 1e10).
+        near (NumericMaxRank1): Near plane distance below which to ignore depth samples. Can be a scalar to use a
+            single value across all images or a tensor-like object of shape (C,) to use a different value for each
+            image (default is 0.1).
+        far (NumericMaxRank1): Far plane distance above which to ignore depth samples. Can be a scalar to use a
+            single value across all images or a tensor-like object of shape (C,) to use a different value for each
+            image (default is 1e10).
         alpha_threshold (float): Alpha threshold to mask pixels where the Gaussian splat model is transparent
             (usually indicating the background). Default is 0.1.
         image_downsample_factor (int): Factor by which to downsample the rendered images for depth estimation (default is 1, i.e. no downsampling).

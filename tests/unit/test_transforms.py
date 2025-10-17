@@ -8,7 +8,7 @@ import unittest
 import cv2
 import numpy as np
 
-from fvdb_reality_capture import SfmCameraMetadata, SfmImageMetadata, SfmScene
+from fvdb_reality_capture import SfmCameraMetadata, SfmPosedImageMetadata, SfmScene
 from fvdb_reality_capture.tools import download_example_data
 from fvdb_reality_capture.transforms import (
     Compose,
@@ -56,7 +56,7 @@ class BasicSfmSceneTransformTest(unittest.TestCase):
         self.assertTrue(np.all(scene2.points_err == scene1.points_err))
         self.assertEqual(len(scene2.images), len(scene1.images))
         for i, image_metadata in enumerate(scene2.images):
-            self.assertIsInstance(image_metadata, SfmImageMetadata)
+            self.assertIsInstance(image_metadata, SfmPosedImageMetadata)
             if not allow_different_point_indices:
                 self.assertTrue(np.all(image_metadata.point_indices == scene1.images[i].point_indices))
             self.assertTrue(np.all(image_metadata.camera_to_world_matrix == scene1.images[i].camera_to_world_matrix))
@@ -98,7 +98,7 @@ class BasicSfmSceneTransformTest(unittest.TestCase):
         self.assertTrue(np.allclose(normalized_cov, np.eye(3)))
 
         for i, image_metadata in enumerate(transformed_scene.images):
-            self.assertIsInstance(image_metadata, SfmImageMetadata)
+            self.assertIsInstance(image_metadata, SfmPosedImageMetadata)
             expected_c2w = transformed_scene.transformation_matrix @ scene.camera_to_world_matrices[i]
             self.assertTrue(np.allclose(image_metadata.camera_to_world_matrix, expected_c2w))
 
@@ -110,7 +110,7 @@ class BasicSfmSceneTransformTest(unittest.TestCase):
         transformed_scene = transform(scene)
 
         for i, image_metadata in enumerate(transformed_scene.images):
-            self.assertIsInstance(image_metadata, SfmImageMetadata)
+            self.assertIsInstance(image_metadata, SfmPosedImageMetadata)
             expected_c2w = transformed_scene.transformation_matrix @ scene.camera_to_world_matrices[i]
             self.assertTrue(np.allclose(image_metadata.camera_to_world_matrix, expected_c2w))
 
@@ -122,7 +122,7 @@ class BasicSfmSceneTransformTest(unittest.TestCase):
         transformed_scene = transform(scene)
 
         for i, image_metadata in enumerate(transformed_scene.images):
-            self.assertIsInstance(image_metadata, SfmImageMetadata)
+            self.assertIsInstance(image_metadata, SfmPosedImageMetadata)
             expected_c2w = transformed_scene.transformation_matrix @ scene.camera_to_world_matrices[i]
             self.assertTrue(np.allclose(image_metadata.camera_to_world_matrix, expected_c2w))
 
@@ -136,7 +136,7 @@ class BasicSfmSceneTransformTest(unittest.TestCase):
         self.assertTrue(np.all(transformed_scene.points == scene.points))
 
         for i, image_metadata in enumerate(transformed_scene.images):
-            self.assertIsInstance(image_metadata, SfmImageMetadata)
+            self.assertIsInstance(image_metadata, SfmPosedImageMetadata)
             expected_c2w = scene.camera_to_world_matrices[i]
             self.assertTrue(np.allclose(image_metadata.camera_to_world_matrix, expected_c2w))
 
@@ -167,7 +167,7 @@ class BasicSfmSceneTransformTest(unittest.TestCase):
             self.assertEqual(camera_metadata.width, expected_w)
 
         for i, image_metadata in enumerate(transformed_scene.images):
-            self.assertIsInstance(image_metadata, SfmImageMetadata)
+            self.assertIsInstance(image_metadata, SfmPosedImageMetadata)
             # These are big images so only test a few of them
             if i % 20 == 0:
                 img = cv2.imread(image_metadata.image_path)
@@ -186,7 +186,7 @@ class BasicSfmSceneTransformTest(unittest.TestCase):
         self.assertLess(transformed_scene.num_images, scene.num_images)
 
         for i, image_metadata in enumerate(transformed_scene.images):
-            self.assertIsInstance(image_metadata, SfmImageMetadata)
+            self.assertIsInstance(image_metadata, SfmPosedImageMetadata)
             assert image_metadata.point_indices is not None
             self.assertTrue(image_metadata.point_indices.shape[0] > min_num_points)
 
@@ -218,7 +218,7 @@ class BasicSfmSceneTransformTest(unittest.TestCase):
         self.assertIsInstance(transformed_scene, SfmScene)
         self.assertEqual(len(transformed_scene.images), 0)
         for i, image_metadata in enumerate(transformed_scene.images):
-            self.assertIsInstance(image_metadata, SfmImageMetadata)
+            self.assertIsInstance(image_metadata, SfmPosedImageMetadata)
             assert image_metadata.point_indices is not None
             self.assertTrue(image_metadata.point_indices.shape[0] > min_num_points)
 
@@ -233,7 +233,7 @@ class BasicSfmSceneTransformTest(unittest.TestCase):
         self.assertIsInstance(transformed_scene, SfmScene)
         self.assertEqual(len(transformed_scene.images), len(scene.images))
         for i, image_metadata in enumerate(transformed_scene.images):
-            self.assertIsInstance(image_metadata, SfmImageMetadata)
+            self.assertIsInstance(image_metadata, SfmPosedImageMetadata)
             assert image_metadata.point_indices is not None
             self.assertTrue(image_metadata.point_indices.shape[0] > min_num_points)
 
@@ -259,7 +259,7 @@ class BasicSfmSceneTransformTest(unittest.TestCase):
         self.assertTrue(transformed_scene.points.shape[0] > 0)
         self.assertTrue(transformed_scene.points_err.shape[0] == transformed_scene.points.shape[0])
         for i, image_metadata in enumerate(transformed_scene.images):
-            self.assertIsInstance(image_metadata, SfmImageMetadata)
+            self.assertIsInstance(image_metadata, SfmPosedImageMetadata)
             assert image_metadata.point_indices is not None
             self.assertTrue(np.all(image_metadata.point_indices >= 0))
             self.assertTrue(np.all(image_metadata.point_indices < transformed_scene.points.shape[0]))
@@ -288,7 +288,7 @@ class BasicSfmSceneTransformTest(unittest.TestCase):
         self.assertTrue(transformed_scene.points.shape[0] == scene.points.shape[0])
         self.assertTrue(transformed_scene.points_err.shape[0] == scene.points_err.shape[0])
         for i, image_metadata in enumerate(transformed_scene.images):
-            self.assertIsInstance(image_metadata, SfmImageMetadata)
+            self.assertIsInstance(image_metadata, SfmPosedImageMetadata)
             assert image_metadata.point_indices is not None
             self.assertTrue(np.all(image_metadata.point_indices >= 0))
             self.assertTrue(np.all(image_metadata.point_indices < transformed_scene.points.shape[0]))
@@ -320,7 +320,7 @@ class BasicSfmSceneTransformTest(unittest.TestCase):
         self.assertTrue(transformed_scene.points.shape[0] > 0)
         self.assertTrue(transformed_scene.points_err.shape[0] == transformed_scene.points.shape[0])
         for i, image_metadata in enumerate(transformed_scene.images):
-            self.assertIsInstance(image_metadata, SfmImageMetadata)
+            self.assertIsInstance(image_metadata, SfmPosedImageMetadata)
             self.assertEqual(scene.images[i].image_id, image_metadata.image_id)
             self.assertEqual(scene.images[i].mask_path, "")
             self.assertTrue(len(image_metadata.mask_path) > 0)

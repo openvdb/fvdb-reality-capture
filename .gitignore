@@ -72,3 +72,6 @@ tests/data/
 *.nsys-rep
 *.usdz
 **/fvdb_gslogs/
+**/frgs_logs/
+*.h264
+*.mp4

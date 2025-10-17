@@ -9,7 +9,11 @@ import cv2
 import numpy as np
 from scipy.spatial.transform import Rotation as R
 
-from fvdb_reality_capture.sfm_scene import SfmCameraMetadata, SfmImageMetadata, SfmScene
+from fvdb_reality_capture.sfm_scene import (
+    SfmCameraMetadata,
+    SfmPosedImageMetadata,
+    SfmScene,
+)
 from fvdb_reality_capture.tools import download_example_data
 from fvdb_reality_capture.transforms import (
     Compose,
@@ -220,7 +224,7 @@ class BasicSfmSceneTest(unittest.TestCase):
             self.assertEqual(camera_metadata.width, expected_w)
 
         for i, image_metadata in enumerate(scene.images):
-            self.assertIsInstance(image_metadata, SfmImageMetadata)
+            self.assertIsInstance(image_metadata, SfmPosedImageMetadata)
             # These are big images so only test a few of them
             if i % 20 == 0:
                 img = cv2.imread(image_metadata.image_path)

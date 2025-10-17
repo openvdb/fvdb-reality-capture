@@ -16,7 +16,7 @@ from typing import Dict, List
 import yaml
 
 sys.path.insert(0, str(pathlib.Path(__file__).parent.parent.parent.resolve()))
-from fvdb_reality_capture.training import (
+from fvdb_reality_capture.radiance_fields import (
     GaussianSplatReconstruction,
     GaussianSplatReconstructionConfig,
 )

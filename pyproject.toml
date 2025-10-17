@@ -37,11 +37,14 @@ dependencies = [
     "torchvision",
     "tqdm",
     "tyro",
-    "viser",
     "usd-core",
     "msgpack",
     "types-usd",
 ]
+
+[project.scripts]
+frgs = "fvdb_reality_capture.cli.frgs:frgs"
+frdev = "fvdb_reality_capture.cli.frdev:frdev"
 
 [project.urls]
 Homepage = "https://github.com/openvdb/fvdb-reality-capture"

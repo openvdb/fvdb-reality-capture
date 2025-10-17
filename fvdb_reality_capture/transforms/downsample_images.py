@@ -8,20 +8,37 @@ from typing import Any, Literal
 import cv2
 import tqdm
 
-from ..sfm_scene import SfmCache, SfmImageMetadata, SfmScene
+from fvdb_reality_capture.sfm_scene import SfmCache, SfmPosedImageMetadata, SfmScene
+
 from .base_transform import BaseTransform, transform
 
 
 @transform
 class DownsampleImages(BaseTransform):
     """
-    A transform which dowsamples an image by a given factor, caching the results.
+    A :class:`~base_transform.BaseTransform` which downsamples all images in an
+    :class:`~fvdb_reality_capture.sfm_scene.SfmScene` by a specified factor and caches the downsampled images
+    for future use.
 
-    You can specify the cached downsampled image type (e.g., "jpg" or "png"),
-    the rescale sampling mode (e.g., `cv2.INTER_AREA`), and the rescaled JPEG quality.
-    The downsampled images are saved in the cache with a prefix that includes the downsample factor,
-    image type, sampling mode, and quality.
-    If the downsampled images already exist in the cache, they will be reused instead of being recomputed.
+    You can specify the cached downsampled image type (e.g., ``"jpg"`` or ``"png"``),
+    the mode for downsampling (e.g., ``cv2.INTER_AREA``), and the rescaled JPEG quality (if using JPEG).
+
+    If the downsampled images already exist in the scene's cache with the correct parameters,
+    they will be loaded from the cache instead of being regenerated.
+
+    Example usage:
+
+    .. code-block:: python
+
+        # Example usage:
+        from fvdb_reality_capture import transforms
+        from fvdb_reality_capture.sfm_scene import SfmScene
+
+        scene_transform = transforms.DownsampleImages(4)
+        input_scene: SfmScene = ...  # Load or create an SfmScene
+
+        # The returned scene will have paths pointing to downsampled images by a factor of 4.
+        transformed_scene: SfmScene = scene_transform(input_scene)
     """
 
     version = "1.0.0"
@@ -34,13 +51,23 @@ class DownsampleImages(BaseTransform):
         rescaled_jpeg_quality: int = 98,
     ):
         """
-        Create a new DownsampleImages transform instance with the specified downsampling factor
+        Create a new :class:`DownsampleImages` transform with the specified downsampling factor
         and image caching parameters (image type, downsampling mode, and quality).
+
+        .. note::
+            We use enums from `OpenCV <https://opencv.org/>`_ for the ``rescale_sampling_mode`` parameter,
+            e.g., ``cv2.INTER_AREA``, ``cv2.INTER_LINEAR``, ``cv2.INTER_CUBIC``, etc.
+            This means if you want to change the resampling mode, you will need to ``import cv2```
+            and pass in the appropriate enum value.
+            See the `OpenCV documentation <https://docs.opencv.org/3.4/da/d54/group__imgproc__transform.html#ga5bb5a1fea74ea38e1a5445ca803ff121>`
+            for more details on valid enum values.
 
         Args:
             image_downsample_factor (int): The factor by which to downsample the images.
             image_type (str): The type of the cached downsampled images, either "jpg" or "png".
-            rescale_sampling_mode (int): The OpenCV interpolation method to use for rescaling images.
+            rescale_sampling_mode (int): The interpolation method to use for rescaling images.
+                Note that we use enums from `OpenCV <https://opencv.org/>`_ for this parameter,
+                e.g., ``cv2.INTER_AREA``, ``cv2.INTER_LINEAR``, ``cv2.INTER_CUBIC``, etc.
             rescaled_jpeg_quality (int): The quality of the JPEG images when saving them to the cache (1-100).
         """
         super().__init__()
@@ -52,13 +79,14 @@ class DownsampleImages(BaseTransform):
 
     def __call__(self, input_scene: SfmScene) -> SfmScene:
         """
-        Perform the downsampling transform on the input scene and cache.
+        Return a new :class:`~fvdb_reality_capture.sfm_scene.SfmScene` with images downsampled by the specified factor.
+        *i.e.* images will be resized to ``(width / image_downsample_factor, height / image_downsample_factor)``.
 
         Args:
-            input_scene (SfmScene): The input scene containing images to be downsampled.
+            input_scene (SfmScene): The input scene with images to be downsampled.
 
         Returns:
-            output_scene (SfmScene): A new SfmScene with paths to downsampled images.
+            output_scene (SfmScene): The scene with downsampled images.
         """
         if self._image_downsample_factor == 1:
             self._logger.info("Image downsample factor is 1, skipping downsampling.")
@@ -140,7 +168,7 @@ class DownsampleImages(BaseTransform):
                 break
 
             new_image_metadata.append(
-                SfmImageMetadata(
+                SfmPosedImageMetadata(
                     world_to_camera_matrix=image_meta.world_to_camera_matrix,
                     camera_to_world_matrix=image_meta.camera_to_world_matrix,
                     camera_metadata=new_camera_metadata[image_meta.camera_id],
@@ -190,7 +218,7 @@ class DownsampleImages(BaseTransform):
                     },
                 )
                 new_image_metadata.append(
-                    SfmImageMetadata(
+                    SfmPosedImageMetadata(
                         world_to_camera_matrix=image_meta.world_to_camera_matrix,
                         camera_to_world_matrix=image_meta.camera_to_world_matrix,
                         camera_metadata=new_camera_metadata[image_meta.camera_id],
@@ -226,16 +254,19 @@ class DownsampleImages(BaseTransform):
     @staticmethod
     def name() -> str:
         """
-        Return the name of the DownsampleImages transform.
+        Return the name of the :class:`DownsampleImages` transform. **i.e.** ``"DownsampleImages"``.
 
         Returns:
-            str: The name of the DownsampleImages transform.
+            str: The name of the :class:`DownsampleImages` transform. **i.e.** ``"DownsampleImages"``.
         """
         return "DownsampleImages"
 
     def state_dict(self) -> dict[str, Any]:
         """
-        Return the state of the DownsampleImages transform for serialization.
+        Return the state of the :class:`DownsampleImages` transform for serialization.
+
+        You can use this state dictionary to recreate the transform using :meth:`from_state_dict`.
+
         Returns:
             state_dict (dict[str, Any]): A dictionary containing information to serialize/deserialize the transform.
         """
@@ -251,13 +282,13 @@ class DownsampleImages(BaseTransform):
     @staticmethod
     def from_state_dict(state_dict: dict[str, Any]) -> "DownsampleImages":
         """
-        Create a DownsampleImages transform from a state dictionary.
+        Create a :class:`DownsampleImages` transform from a state dictionary generated with :meth:`state_dict`.
 
         Args:
-            state_dict (dict[str, Any]): A dictionary containing information to serialize/deserialize the transform.
+            state_dict (dict): The state dictionary for the transform.
 
         Returns:
-            DownsampleImages: An instance of the DownsampleImages transform.
+            transform (DownsampleImages): An instance of the :class:`DownsampleImages` transform.
         """
         if state_dict["name"] != "DownsampleImages":
             raise ValueError(f"Expected state_dict with name 'DownsampleImages', got {state_dict['name']} instead.")

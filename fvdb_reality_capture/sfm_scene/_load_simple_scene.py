@@ -10,7 +10,7 @@ import point_cloud_utils as pcu
 import tqdm
 
 from .sfm_cache import SfmCache
-from .sfm_metadata import SfmCameraMetadata, SfmCameraType, SfmImageMetadata
+from .sfm_metadata import SfmCameraMetadata, SfmCameraType, SfmPosedImageMetadata
 
 
 def load_simple_scene(data_path: pathlib.Path):
@@ -87,7 +87,7 @@ def load_simple_scene(data_path: pathlib.Path):
         camera_to_world_matrix = np.linalg.inv(world_to_camera_matrix)
         image_path = str(im_path)
         image_metadata.append(
-            SfmImageMetadata(
+            SfmPosedImageMetadata(
                 world_to_camera_matrix=world_to_camera_matrix,
                 camera_to_world_matrix=camera_to_world_matrix,
                 camera_id=camera_id,

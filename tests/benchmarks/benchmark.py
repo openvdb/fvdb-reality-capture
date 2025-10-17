@@ -12,12 +12,12 @@ import torch.nn.functional as F
 import torch.utils.data
 import yaml
 
-from fvdb_reality_capture.sfm_scene import SfmScene
-from fvdb_reality_capture.training import (
+from fvdb_reality_capture.radiance_fields import (
     GaussianSplatReconstruction,
     GaussianSplatReconstructionConfig,
     SfmDataset,
 )
+from fvdb_reality_capture.sfm_scene import SfmScene
 
 logger = logging.getLogger("Benchmark 3dgs")
 

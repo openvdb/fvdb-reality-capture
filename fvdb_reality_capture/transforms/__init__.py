@@ -14,11 +14,11 @@ __all__ = [
     "BaseTransform",
     "Compose",
     "CropScene",
+    "CropSceneToPoints",
     "DownsampleImages",
     "FilterImagesWithLowPoints",
     "NormalizeScene",
     "PercentileFilterPoints",
     "Identity",
-    "CropSceneToPoints",
     "transform",
 ]

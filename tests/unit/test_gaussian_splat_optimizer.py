@@ -30,7 +30,7 @@ def _compute_scene_scale(sfm_scene: frc.SfmScene) -> float:
 
 def _init_model(
     device: torch.device | str,
-    training_dataset: frc.training.SfmDataset,
+    training_dataset: frc.radiance_fields.SfmDataset,
 ):
     """
     Initialize a Gaussian Splatting model with random parameters based on the training dataset.
@@ -89,7 +89,7 @@ class GaussianSplatOptimizerTests(unittest.TestCase):
             frc.transforms.NormalizeScene("pca"),
             frc.transforms.DownsampleImages(4),
         )
-        self.training_dataset = frc.training.SfmDataset(transform(scene))
+        self.training_dataset = frc.radiance_fields.SfmDataset(transform(scene))
 
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
         self.model = _init_model(self.device, self.training_dataset)
@@ -114,12 +114,12 @@ class GaussianSplatOptimizerTests(unittest.TestCase):
     def test_serialize_optimizer(self):
         model_1 = self.model
         max_steps = 200 * len(self.training_dataset)
-        config = frc.training.GaussianSplatOptimizerConfig(
+        config = frc.radiance_fields.GaussianSplatOptimizerConfig(
             use_scales_for_deletion_after_n_refinements=-1,
             use_screen_space_scales_for_refinement_until=0,
-            spatial_scale_mode=frc.training.SpatialScaleMode.ABSOLUTE_UNITS,
+            spatial_scale_mode=frc.radiance_fields.SpatialScaleMode.ABSOLUTE_UNITS,
         )
-        optimizer_1 = frc.training.GaussianSplatOptimizer.from_model_and_scene(
+        optimizer_1 = frc.radiance_fields.GaussianSplatOptimizer.from_model_and_scene(
             model=self.model,
             sfm_scene=self.training_dataset.sfm_scene,
             config=config,
@@ -149,7 +149,7 @@ class GaussianSplatOptimizerTests(unittest.TestCase):
             # Load the original model and optimizer from the saved state dict
             model_2 = GaussianSplat3d.from_state_dict(torch.load(temp_file.name + ".model", map_location=self.device))
             loaded_state_dict = torch.load(temp_file.name, map_location=self.device, weights_only=False)
-            optimizer_2 = frc.training.GaussianSplatOptimizer.from_state_dict(model_2, loaded_state_dict)
+            optimizer_2 = frc.radiance_fields.GaussianSplatOptimizer.from_state_dict(model_2, loaded_state_dict)
 
             # Run one step of of optimization and refinement with the loaded optimizer and model
             # and check that the results match the previous results
@@ -183,14 +183,14 @@ class GaussianSplatOptimizerRefinementTests(unittest.TestCase):
             frc.transforms.NormalizeScene("pca"),
             frc.transforms.DownsampleImages(4),
         )
-        self.training_dataset = frc.training.SfmDataset(transform(scene))
+        self.training_dataset = frc.radiance_fields.SfmDataset(transform(scene))
 
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
         self.model = _init_model(self.device, self.training_dataset)
 
-        self.optimizer_config = frc.training.GaussianSplatOptimizerConfig(
+        self.optimizer_config = frc.radiance_fields.GaussianSplatOptimizerConfig(
             max_gaussians=-1,
-            insertion_grad_2d_threshold_mode=frc.training.InsertionGrad2dThresholdMode.CONSTANT,
+            insertion_grad_2d_threshold_mode=frc.radiance_fields.InsertionGrad2dThresholdMode.CONSTANT,
             deletion_opacity_threshold=0.005,
             deletion_scale_3d_threshold=0.1,
             deletion_scale_2d_threshold=0.15,
@@ -206,10 +206,10 @@ class GaussianSplatOptimizerRefinementTests(unittest.TestCase):
             logit_opacities_lr=5e-2,
             sh0_lr=2.5e-3,
             shN_lr=2.5e-3 / 20,
-            spatial_scale_mode=frc.training.SpatialScaleMode.ABSOLUTE_UNITS,
+            spatial_scale_mode=frc.radiance_fields.SpatialScaleMode.ABSOLUTE_UNITS,
         )
         max_steps = 200 * len(self.training_dataset)
-        self.optimizer = frc.training.GaussianSplatOptimizer.from_model_and_scene(
+        self.optimizer = frc.radiance_fields.GaussianSplatOptimizer.from_model_and_scene(
             model=self.model,
             sfm_scene=self.training_dataset.sfm_scene,
             config=self.optimizer_config,
