@@ -168,8 +168,9 @@ def _camera_similarity_normalization_transform(c2w, strict_scaling=False, center
 @transform
 class NormalizeScene(BaseTransform):
     """
-    A :class:`BaseTransform` which normalizes an :class:`SfmScene` using a variety of approaches.
-    This transform applies a rotation/translation/scaling to the entire scene, including both points and camera poses.
+    A :class:`~base_transform.BaseTransform` which normalizes an :class:`~fvdb_reality_capture.sfm_scene.SfmScene`
+    using a variety of approaches. This transform applies a rotation/translation/scaling to the entire scene, including
+    both points and camera poses.
 
     The normalization types available are:
 
@@ -208,12 +209,14 @@ class NormalizeScene(BaseTransform):
 
     def __init__(self, normalization_type: Literal["pca", "none", "ecef2enu", "similarity"]):
         """
-        Create a new :class:`NormalizeScene` transform which normalizes an :class:`SfmScene` using the specified normalization type.
+        Create a new :class:`NormalizeScene` transform which normalizes an
+        :class:`~fvdb_reality_capture.sfm_scene.SfmScene` using the specified normalization type.
 
         Normalization is applied to both the points and camera poses in the scene.
 
         Args:
-            normalization_type (str): The type of normalization to apply. Options are ``"pca"``, ``"none"``, ``"ecef2enu"``, or ``"similarity"``.
+            normalization_type (str): The type of normalization to apply. Options are ``"pca"``,
+                ``"none"``, ``"ecef2enu"``, or ``"similarity"``.
         """
         super().__init__()
         if normalization_type not in self.valid_normalization_types:
@@ -227,16 +230,19 @@ class NormalizeScene(BaseTransform):
 
     def __call__(self, input_scene: SfmScene) -> SfmScene:
         """
-        Return a new :class:`SfmScene` which is the result of applying the normalization transform to the input scene.
+        Return a new :class:`~fvdb_reality_capture.sfm_scene.SfmScene` which is the result of applying the
+        normalization transform to the input scene.
 
-        The normalization transform is computed based on the specified normalization type and the contents of the input scene.
-        It is applied to both the points and camera poses in the scene.
+        The normalization transform is computed based on the specified normalization type and the contents of
+        the input scene. It is applied to both the points and camera poses in the scene.
 
         Args:
-            input_scene (SfmScene): Input SfmScene object containing camera and point data
+            input_scene (SfmScene): Input :class:`~fvdb_reality_capture.sfm_scene.SfmScene` object containing
+                camera and point data
 
         Returns:
-            output_scene (SfmScene): A new SfmScene after applying the normalization transform.
+            output_scene (SfmScene): A new :class:`~fvdb_reality_capture.sfm_scene.SfmScene` after applying
+                the normalization transform.
         """
         self._logger.info(f"Normalizing SfmScene with normalization type: {self._normalization_type}")
 

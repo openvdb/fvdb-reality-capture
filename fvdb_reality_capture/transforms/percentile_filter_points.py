@@ -15,8 +15,8 @@ from .base_transform import BaseTransform, transform
 @transform
 class PercentileFilterPoints(BaseTransform):
     """
-    A :class:`BaseTransform` that filters points in an :class:`~fvdb_reality_capture.sfm_scene.SfmScene` based on
-    percentile bounds for x, y, and z coordinates.
+    A :class:`~base_transform.BaseTransform` that filters points in an
+    :class:`~fvdb_reality_capture.sfm_scene.SfmScene` based on percentile bounds for x, y, and z coordinates.
 
     When applied to an input scene, this transform returns a new :class:`~fvdb_reality_capture.sfm_scene.SfmScene`
     with points that fall within the specified percentile bounds of the input scene's points along each axis.
@@ -129,7 +129,9 @@ class PercentileFilterPoints(BaseTransform):
 
     def state_dict(self) -> dict[str, Any]:
         """
-        Return the state of the PercentileFilterPoints transform for serialization.
+        Return the state of the :class:`PercentileFilterPoints` transform for serialization.
+
+        You can use this state dictionary to recreate the transform using :meth:`from_state_dict`.
 
         Returns:
             state_dict (dict[str, Any]): A dictionary containing information to serialize/deserialize the transform.
@@ -144,23 +146,23 @@ class PercentileFilterPoints(BaseTransform):
     @staticmethod
     def name() -> str:
         """
-        Return the name of the PercentileFilterPoints transform.
+        Return the name of the :class:`PercentileFilterPoints` transform. **i.e.** ``"PercentileFilterPoints"``.
 
         Returns:
-            str: The name of the PercentileFilterPoints transform.
+            str: The name of the :class:`PercentileFilterPoints` transform. **i.e.** ``"PercentileFilterPoints"``.
         """
         return "PercentileFilterPoints"
 
     @staticmethod
     def from_state_dict(state_dict: dict[str, Any]) -> "PercentileFilterPoints":
         """
-        Create a PercentileFilterPoints transform from a state dictionary.
+        Create a :class:`PercentileFilterPoints` transform from a state dictionary generated with :meth:`state_dict`.
 
         Args:
-            state_dict (dict[str, Any]): A dictionary containing information to serialize/deserialize the transform.
+            state_dict (dict): The state dictionary for the transform.
 
         Returns:
-            PercentileFilterPoints: An instance of the PercentileFilterPoints transform.
+            transform (PercentileFilterPoints): An instance of the :class:`PercentileFilterPoints` transform.
         """
         if state_dict["name"] != "PercentileFilterPoints":
             raise ValueError(
