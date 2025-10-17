@@ -8,7 +8,11 @@ import unittest
 import cv2
 import numpy as np
 
-from fvdb_reality_capture import SfmCameraMetadata, SfmPosedImageMetadata, SfmScene
+from fvdb_reality_capture.sfm_scene import (
+    SfmCameraMetadata,
+    SfmPosedImageMetadata,
+    SfmScene,
+)
 from fvdb_reality_capture.tools import download_example_data
 from fvdb_reality_capture.transforms import (
     Compose,

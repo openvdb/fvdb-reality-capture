@@ -24,12 +24,14 @@ from fvdb_reality_capture.transforms import (
 from ._common import DatasetType, load_sfm_scene
 
 
-def center_and_scale_scene(sfm_scene: fvdb_reality_capture.SfmScene, scale: float) -> fvdb_reality_capture.SfmScene:
+def center_and_scale_scene(
+    sfm_scene: fvdb_reality_capture.sfm_scene.SfmScene, scale: float
+) -> fvdb_reality_capture.sfm_scene.SfmScene:
     """
     Center and scale the scene by the given scale factor so that the median of the points is at the origin.
 
     Args:
-        sfm_scene (fvdb_reality_capture.SfmScene): The input SfM scene
+        sfm_scene (SfmScene): The input SfM scene
         scale (float): The scale factor to apply to the scene
     """
     centroid = np.median(sfm_scene.points, axis=0)
