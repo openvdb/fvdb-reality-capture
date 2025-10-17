@@ -177,7 +177,7 @@ The method for reconstructing a Gaussian Splat from an SfmScene is as follows. W
 The procedure follows something like the figure below.
 
 <div>
-<img src="https://fvdb-data.s3.us-east-2.amazonaws.com/fvdb-reality-capture/doc_figures/fvdb_gs_opt.jpg" width="75%"/>
+<img src="https://fvdb-data.s3.us-east-2.amazonaws.com/fvdb-reality-capture/doc_figures/fvdb_gs_opt.jpg" width="100%"/>
 </div>
 
 The core API for Gaussian Splat reconstruction is the `fvdb_reality_capture.GaussianSplatReconstruction` class. It accepts an input `SfmScene` and optional config parameters, and produces an `fvdb.GaussianSplat3d` reconstructing the scene. We use it below to reconstruct a Gaussian splat radiance field from our cleaned up scene.
@@ -393,7 +393,7 @@ Note how the final voxel count for tsdf fusion was over 140 million! The sparse 
 If you open the saved mesh in your favorite editor you get something like this:
 
 <div>
-<img src="https://fvdb-data.s3.us-east-2.amazonaws.com/fvdb-reality-capture/doc_figures/worse_mesh_recon.png" width="50%"/>
+<img src="https://fvdb-data.s3.us-east-2.amazonaws.com/fvdb-reality-capture/doc_figures/worse_mesh_recon.png" width="100%"/>
 </div>
 This looks good from far, but is far from good. The depth maps produced by Gaussian splats are generally pretty noisy. The result is that the TSDF fusion algorithm produces a bumpy surface like the one in the image above. Fortunately, we can do better, by estimating better depth maps from our splats.
 
@@ -440,7 +440,7 @@ If you open the saved mesh in your favorite editor, you'll see something like th
 Details are preserved, and there isn't much noise in the reconstruction. In general, if you can afford the weight, you should stick to `fvdb_reality_capture.tools.mesh_from_splats_dlnr` for high quality mesh reconstructions.
 
 <div>
-<img src="https://fvdb-data.s3.us-east-2.amazonaws.com/fvdb-reality-capture/doc_figures/better_mesh_recon.png" width="50%"/>
+<img src="https://fvdb-data.s3.us-east-2.amazonaws.com/fvdb-reality-capture/doc_figures/better_mesh_recon.png" width="100%"/>
 </div>
 
 ## References
