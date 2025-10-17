@@ -18,13 +18,21 @@ from fvdb_reality_capture.tools import export_splats_to_usdz
 @dataclass
 class Convert(BaseCommand):
     """
-    Convert a Gaussian Splat in one format to another.
+    Convert a Gaussian Splat in one format to another. Currently the following conversions are supported:
+        - PLY to USDZ
+        - Checkpoint to USDZ
+        - PLY to PLY (copy)
+        - Checkpoint to PLY (export)
 
-    Currently the following conversions are supported:
-    - PLY to USDZ
-    - Checkpoint to USDZ
-    - PLY to PLY (copy)
-    - Checkpoint to PLY (export)
+
+    Example usage:
+
+        # Convert a PLY file to a USDZ file
+        frgs frgs convert input.ply output.usdz
+
+        # Convert a Checkpoint file to a USDZ file
+        frgs frgs convert input.pt output.usdz
+
     """
 
     # Path to the input file. Must be a .ply file or Checkpoint (.pt or .pth) file.

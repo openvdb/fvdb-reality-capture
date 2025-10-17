@@ -28,19 +28,30 @@ class MeshBasic(BaseCommand):
     """
     Extract a triangle mesh from a saved Gaussian splat file with TSDF fusion using depth maps rendered from the Gaussian splat model.
 
-    In short, this algorithm works by rendering images and depth maps from multiple views of the Gaussian splat model,
-    and then integrating these depth maps and images into a sparse `fvdb.Grid` in a narrow band around the surface using a weighted averaging scheme.
-    The algorithm returns this grid along with signed distance values and colors (or other features) at each voxel.
+    The algorithm proceeds in three steps:
 
-    The algorithm then extracts a mesh using the marching cubes algorithm implemented in `fvdb.marching_cubes.marching_cubes`
-    over the Grid and TSDF values.
+    1. First, it renders depth and color/feature images from the Gaussian splat radiance field at each of the specified
+       camera views.
 
-    The TSDF fusion algorithm is a method for integrating multiple depth maps into a single volumetric representation of a scene encoding a
-    truncated signed distance field (_i.e._ a signed distance field in a narrow band around the surface). TSDF fusion was first described in the paper
-    "KinectFusion: Real-Time Dense Surface Mapping and Tracking"
-    (https://www.microsoft.com/en-us/research/wp-content/uploads/2016/02/ismar2011.pdf).
-    We use a modified version of this algorithm which only allocates voxels in a narrow band around the surface of the model
-    to reduce memory usage and speed up computation.
+    2. Second, it integrates the depths and colors/features into a sparse fvdb.Grid in a narrow band
+       around the surface using sparse truncated signed distance field (TSDF) fusion.
+       The result is a sparse voxel grid representation of the scene where each voxel stores a signed distance
+       value and color (or other features).
+
+    3. Third, it extracts a mesh using the sparse marching cubes algorithm implemented in fvdb.Grid.marching_cubes
+       over the Grid and TSDF values. This step produces a triangle mesh with vertex colors sampled from the
+       colors/features stored in the Grid.
+
+
+    Example usage:
+
+        # Extract a mesh from a Gaussian splat model saved in `model.pt` with a truncation margin of 0.05
+        frgs mesh-basic model.pt 0.05 --output-path mesh.ply
+
+        # Extract a mesh from a Gaussian splat model saved in `model.ply` with a truncation margin of 0.1
+        # with a grid shell thickness of 5 voxels, near plane at 0.1x median depth, far plane at 2.0x median depth
+        # of each images.
+        frgs mesh-basic model.ply 0.1 --output-path mesh.ply --grid-shell-thickness 5.0 --near 0.1 --far 2.0
     """
 
     # Path to the input PLY or checkpoint file. Must end in .ply, .pt, or .pth.

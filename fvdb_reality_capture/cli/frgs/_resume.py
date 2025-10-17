@@ -38,12 +38,17 @@ class WriterConfig(GaussianSplatReconstructionWriterConfig):
 @dataclass
 class Resume(BaseCommand):
     """
-    Resume reconstructing a 3D Gaussian Splatting model from a checkpoint. This command loads a model
+    Resume reconstructing a 3D Gaussian Splat radiance field from a checkpoint. This command loads a model
     checkpoint and continues reconstruction from that point. The dataset used to create the checkpoint
     must be at the same path as when the checkpoint was created.
+
+    Example usage:
+
+        # Resume reconstruction from a checkpoint and save the final model to out_resumed.ply
+        frgs resume checkpoint.pt -o out_resumed.ply
     """
 
-    # Path to the checkpoint file containing the Gaussian Splat model.
+    # Path to the checkpoint file containing the Gaussian Splat radiance field.
     checkpoint_path: tyro.conf.Positional[pathlib.Path]
 
     # Configure saving and logging metrics, images, and checkpoints.
@@ -53,7 +58,7 @@ class Resume(BaseCommand):
     run_name: Annotated[str | None, arg(aliases=["-n"])] = None
 
     # How frequently (in epochs) to update the viewer during reconstruction.
-    # An epoch is one full pass through the training images. If -1, do not visualize.
+    # An epoch is one full pass through the dataset. If -1, do not visualize.
     update_viz_every: Annotated[float, arg(aliases=["-uv"])] = -1.0
 
     # Which device to use for reconstruction. Must be a cuda device. You can pass in a specific device index via

@@ -6,11 +6,13 @@ import logging
 import pathlib
 import time
 from dataclasses import dataclass
+from typing import Annotated
 
 import numpy as np
 import torch
 import tyro
 from fvdb.viz import Viewer
+from tyro.conf import arg
 
 import fvdb_reality_capture
 from fvdb_reality_capture.cli import BaseCommand
@@ -43,45 +45,62 @@ def center_and_scale_scene(
 @dataclass
 class ShowData(BaseCommand):
     """
-    Visualize a scene in a dataset folder.
+    Visualize a scene in a dataset folder. This will plot the scene's cameras and point cloud in an interactive viewer
+    shown in a browser window.
 
-    The dataset folder should contain either a Colmap or E57 dataset.
+    The dataset folder should either contain a colmap dataset, a set of e57 files, a simple_directory dataset:
 
-    For Colmap, the folder should contain the following files:
+    COLMAP Data format: A folder should containining:
         - cameras.txt
         - images.txt
         - points3D.txt
         - A folder named "images" containing the image files.
+        - An optional "masks" folder with the same layout as images containing masks of which pixels are valid.
 
-    For E57, the folder should contain one or more .e57 files.
+    E57 format: A folder containing one or more .e57 files.
 
-    The viewer will display the point cloud and camera frustums.
+    Simple Directory format: A folder containing:
+        - images/ A directory of images (jpg, png, etc).
+        - An optional "masks/" folder with the same layout as images containing masks of which pixels are valid.
+        - A cameras.json file containing camera intrinsics and extrinsics for each image. It should be a list of objects
+            with the following format:{
+                "camera_name": "camera_0000",
+                "width": 2048,
+                "height": 2048,
+                "camera_intrinsics": [], # 3x3 matrix in row-major order
+                "world_to_camera": [], # 4x4 matrix in row-major order
+                "image_path": "name_of_image_file_relative_to_images_folder"
+
+    Example usage:
+
+        # Visualize a Colmap dataset in the folder ./colmap_dataset
+        frgs show-data ./colmap_dataset
+
+        # Visualize an e57 dataset in the folder ./e57_dataset
+        frgs show-data ./e57_dataset --dataset-type e57
+
+        # Visualize a simple directory dataset in the folder ./simple_directory_dataset
+        frgs show-data ./simple_directory_dataset --dataset-type simple_directory
     """
 
     # Path to the dataset folder.
     dataset_path: tyro.conf.Positional[pathlib.Path]
 
     # The port to expose the viewer server on.
-    viewer_port: int = 8888
+    viewer_port: Annotated[int, arg(aliases=["-p"])] = 8888
 
     # If True, then the viewer will log verbosely.
-    verbose: bool = False
-
-    # Downsample factor for images. Images will be downsampled by this factor before being sent to the viewer.
-    image_downsample_factor: int = 8
-
-    # If True, show images in the viewer.
-    show_images: bool = True
+    verbose: Annotated[bool, arg(aliases=["-v"])] = False
 
     # Percentile filter for points. Points with any coordinate below this percentile or above (100 - this percentile)
     # will be removed from the point cloud. This can help remove outliers. Set to 0.0 to disable.
-    points_percentile_filter: float = 0.0
+    points_percentile_filter: Annotated[float, arg(aliases=["-ppf"])] = 0.0
 
     # Minimum number of points a camera must observe to be included in the viewer.
-    min_points_per_image: int = 5
+    min_points_per_image: Annotated[int, arg(aliases=["-mpi"])] = 5
 
-    # Type of dataset. Either "colmap" or "e57".
-    dataset_type: DatasetType = "colmap"
+    # Type of dataset to load.
+    dataset_type: Annotated[DatasetType, arg(aliases=["-dt"])] = "colmap"
 
     @torch.no_grad()
     def execute(self) -> None:
@@ -127,6 +146,13 @@ class ShowData(BaseCommand):
             frustum_scale=3.0 * axis_scale,
             axis_length=2.0 * axis_scale,
             axis_thickness=0.1 * axis_scale,
+        )
+
+        viewer.add_point_cloud(
+            name="points",
+            points=sfm_scene.points,
+            colors=sfm_scene.points_rgb.astype(np.float32) / 255.0,
+            point_sizes=1.0,
         )
 
         viewer.show()

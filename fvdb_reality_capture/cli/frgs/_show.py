@@ -21,7 +21,16 @@ from ._common import load_splats_from_file
 @dataclass
 class Show(BaseCommand):
     """
-    Visualize a scene in a saved PLY or checkpoint file.
+    Visualize a Gaussian splat radiance field in a saved PLY or checkpoint file. This will plot the splats in an interactive viewer
+    shown in a browser window.
+
+    # Example usage:
+
+        # Visualize a Gaussian splat model saved in `model.ply`
+        frgs show model.ply --viewer-port 8888
+
+        # Visualize a Gaussian splat model saved in `model.pt`
+        frgs show model.pt --viewer-port 8888
 
     """
 
@@ -51,7 +60,7 @@ class Show(BaseCommand):
         logger.info(f"Loading Gaussian Splats from {self.input_path}")
 
         # Load a PLY or a checkpoint file and metadata.
-        # The metadata may contain camera information (if it was a PLY saved during training).
+        # The metadata may contain camera information (if it was a PLY saved during optimization with fvdb-reality-capture).
         # If so, we will add the camera views to the viewer.
         model, metadata = load_splats_from_file(self.input_path, self.device)
 

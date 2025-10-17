@@ -25,8 +25,23 @@ from ._common import (
 @dataclass
 class Points(BaseCommand):
     """
-    Extract a point cloud from a Gaussian splat using depth rendering, possibly filtering points
-    using Canny edge detection on the depth images.
+    Extract a point cloud with colors/features from a Gaussian splat file by unprojecting depth images rendered from it.
+
+    This algorithm can optionally filter out points near depth discontinuities using the following heurstic:
+        1. Apply a small Gaussian filter to the depth images to reduce noise.
+        2. Run a Canny edge detector on the depth immage to find
+        depth discontinuities. The result is an image mask where pixels near depth edges are marked.
+        3. Dilate the edge mask to remove depth samples near edges.
+        4. Remove points from the point cloud where the corresponding depth pixel is marked in the dilated edge mask.
+
+
+    Example usage:
+
+        # Extract a point cloud from a Gaussian splat model saved in `model.pt`
+        frgs points model.pt --output-path points.ply
+
+        # Extract a point cloud from a Gaussian splat model saved in `model.ply`
+        frgs points model.ply --output-path points.ply
     """
 
     input_path: tyro.conf.Positional[pathlib.Path]
