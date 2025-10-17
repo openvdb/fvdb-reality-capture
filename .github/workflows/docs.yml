@@ -105,11 +105,11 @@ jobs:
         run: |
           micromamba activate fvdb
           which pip
-          pip install sphinx sphinx_rtd_theme myst_parser commonmark
+          pip install commonmark
           pip install -e .
           which sphinx-build
           sphinx-build docs/ -E -a _docs_build
-      
+
       # - name: Install reality-capture package and docs deps
       #   run: |
       #     micromamba activate fvdb
