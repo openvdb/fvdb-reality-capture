@@ -78,18 +78,8 @@ myst_heading_anchors = 3
 
 # -- Custom hooks ------------------------------------------------------------
 
-import commonmark
-
 print("SYS EXECUTABLE", sys.executable)
 print("SYS PATH", sys.path)
-
-
-def docstring(app, what, name, obj, options, lines):
-    md = "\n".join(lines)
-    ast = commonmark.Parser().parse(md)
-    rst = commonmark.ReStructuredTextRenderer().render(ast)
-    lines.clear()
-    lines += rst.splitlines()
 
 
 def process_signature(app, what, name, obj, options, signature, return_annotation):
