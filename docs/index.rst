@@ -85,6 +85,21 @@ Note: fVDB-Reality-Capture recently moved from early-access to Beta. The API and
 
 .. toctree::
    :maxdepth: 1
+   :caption: CLI
+
+   cli/frgs/convert
+   cli/frgs/download
+   cli/frgs/evaluate
+   cli/frgs/mesh_basic
+   cli/frgs/mesh_dlnr
+   cli/frgs/points
+   cli/frgs/reconstruct
+   cli/frgs/resume
+   cli/frgs/show-data
+   cli/frgs/show
+
+.. toctree::
+   :maxdepth: 1
    :caption: API References
 
    api/radiance_fields
