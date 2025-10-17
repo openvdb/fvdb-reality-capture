@@ -133,7 +133,7 @@ jobs:
           FVDB_CORE_COMMIT_HASH=$(git rev-parse HEAD)
           echo "fvdb_core_commit_hash=$FVDB_CORE_COMMIT_HASH" >> "$GITHUB_OUTPUT"
           popd
-          
+
       - name: Check if fvdb-core whl exists
         uses: softwareforgood/check-artifact-v4-existence@v0
         id: check_fvdb_core_wheel_artifact
@@ -144,7 +144,7 @@ jobs:
         if: steps.check_fvdb_core_wheel_artifact.outputs.exists == 'true'
         run: echo "Artifact 'fvdb-wheel-${{ steps.clone_fvdb_core.outputs.fvdb_core_commit_hash }}' exists. No need to rebuild."
         # Add further steps here that depend on the artifact's existence
-        
+
       - name: Set up fvdb-core conda env
         if: steps.check_fvdb_core_wheel_artifact.outputs.exists == 'false'
         uses: mamba-org/setup-micromamba@v2

@@ -27,7 +27,7 @@ jobs:
 
       - name: Clone fvdb-core
         id: clone_fvdb_core
-        run: | 
+        run: |
           echo "Cloning fVDB"
           pwd
           git clone https://github.com/openvdb/fvdb-core.git
@@ -42,4 +42,4 @@ jobs:
           name: fvdb-wheel-${{ steps.clone_fvdb_core.outputs.fvdb_core_commit_hash }}
           path: fvdb-core/build.sh
           retention-days: 2
-          
+
