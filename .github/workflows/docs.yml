@@ -1,26 +1,6 @@
 name: fvdb-reality-capture Documentation
 
 on:
-  pull_request_target:
-    branches:
-      - '**'
-    paths-ignore:
-        - 'CODEOWNERS'
-        - '**.md'
-        - 'debug/**'
-        - 'examples/**'
-        - 'notebooks/**'
-        - 'scripts/**'
-  push:
-    branches:
-      - main
-    paths-ignore:
-        - 'CODEOWNERS'
-        - '**.md'
-        - 'debug/**'
-        - 'examples/**'
-        - 'notebooks/**'
-        - 'scripts/**'
   workflow_dispatch:
     inputs:
       branch:
@@ -121,7 +101,15 @@ jobs:
           environment-name: fvdb
           environment-file: fvdb-core/env/dev_environment.yml
 
-      - name: Install package and docs deps
+      - name: Build fvdb
+        run: |
+          echo "Building fvdb"
+          pushd fvdb-core
+          micromamba activate fvdb
+          ./build.sh wheel verbose --cuda-arch-list '8.9+PTX'
+          popd
+
+      - name: Install reality-capture package and docs deps
         run: |
           micromamba activate fvdb
           which pip
