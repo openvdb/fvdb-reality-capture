@@ -1,0 +1,44 @@
+name: Github Actions Debug
+
+on:
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: "Branch to build"
+        required: true
+        default: "main"
+
+permissions:
+  contents: read
+  deployments: read
+  pull-requests: read
+  issues: read
+  # Need ID token write permission to use OIDC
+  id-token: write
+  
+jobs:
+  make-artifact:
+    name: Make an artifact with the commit hash
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # Fetch all history for all branches
+
+      - name: Clone fvdb-core
+        run: | 
+          echo "Cloning fVDB"
+          pwd
+          git clone https://github.com/openvdb/fvdb-core.git
+          pushd fvdb-core
+          FVDB_CORE_COMMIT_HASH=$(git rev-parse HEAD)
+          echo "fvdb_core_commit_hash=$FVDB_CORE_COMMIT_HASH" >> "$GITHUB_OUTPUT"
+          popd
+
+      - name: Upload fvdb-core wheel
+        uses: actions/upload-artifact@v4
+        with:
+          name: fvdb-wheel-${{ steps.set_variable_step.outputs.my_variable }}
+          path: fvdb-core/build.sh
+          retention-days: 2
+          
