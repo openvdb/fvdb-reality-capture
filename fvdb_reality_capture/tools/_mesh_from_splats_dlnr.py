@@ -31,9 +31,9 @@ def mesh_from_splats_dlnr(
     num_workers: int = 8,
 ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     """
-    Extract a triangle mesh from a `fvdb.GaussianSplat3d` using TSDF fusion from depth maps predicted from the Gaussian splat radiance field and the
+    Extract a triangle mesh from a :class:`fvdb.GaussianSplat3d` using TSDF fusion from depth maps predicted from the Gaussian splat radiance field and the
     `DLNR foundation model <https://openaccess.thecvf.com/content/CVPR2023/papers/Zhao_High-Frequency_Stereo_Matching_Network_CVPR_2023_paper.pdf>`_.
-    DLNR is a high-frequency stereo matching network that computes optical flow and disparity maps between two images.
+    DLNR is a high-frequency stereo matching network that computes optical flow and disparity maps between two images, which can be used to compute depth.
 
     This algorithm proceeds in three steps:
 
@@ -49,6 +49,17 @@ def mesh_from_splats_dlnr(
     3. Third, it extracts a mesh using the sparse marching cubes algorithm implemented in :class:`fvdb.Grid.marching_cubes`
        over the Grid and TSDF values. This step produces a triangle mesh with vertex colors sampled from the
        colors/features stored in the Grid.
+
+    .. note::
+
+        If you want to extract the TSDF grid and colors/features without extracting a mesh,
+        you can use :func:`fvdb_reality_capture.tools.tsdf_from_splats_dlnr` directly.
+
+    .. note::
+
+        If you want to extract a point cloud from a Gaussian splat model instead of a mesh,
+        consider using :func:`fvdb_reality_capture.tools.point_cloud_from_splats` which
+        extracts a point cloud directly from depth images rendered from the Gaussian splat model.
 
     .. note::
 

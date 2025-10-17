@@ -26,10 +26,10 @@ def mesh_from_splats(
     show_progress: bool = True,
 ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     """
-    Extract a triangle mesh from a `fvdb.GaussianSplat3d` using TSDF fusion from depth maps rendered from the
+    Extract a triangle mesh from a :class:`fvdb.GaussianSplat3d` using TSDF fusion from depth maps rendered from the
     Gaussian splat radiance field.
 
-    The algorithm proceeds in threw steps:
+    The algorithm proceeds in three steps:
 
     1. First, it renders depth and color/feature images from the Gaussian splat radiance field at each of the specified
        camera views.
@@ -43,6 +43,22 @@ def mesh_from_splats(
        over the Grid and TSDF values. This step produces a triangle mesh with vertex colors sampled from the
        colors/features stored in the Grid.
 
+
+    .. note::
+        For higher quality meshes, consider using :func:`fvdb_reality_capture.tools.mesh_from_splats_dlnr`
+        which uses depth maps estimated using a deep learning-based depth estimation approach instead of the raw
+        depth maps rendered from the Gaussian splat model.
+
+    .. note::
+
+        If you want to extract the TSDF grid and colors/features without extracting a mesh,
+        you can use :func:`fvdb_reality_capture.tools.tsdf_from_splats_dlnr` directly.
+
+    .. note::
+
+        If you want to extract a point cloud from a Gaussian splat model instead of a mesh,
+        consider using :func:`fvdb_reality_capture.tools.point_cloud_from_splats` which
+        extracts a point cloud directly from depth images rendered from the Gaussian splat model.
 
     .. note::
 
