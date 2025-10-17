@@ -11,9 +11,9 @@ from .base_transform import BaseTransform, transform
 @transform
 class Identity(BaseTransform):
     """
-    A :class:`BaseTransform` that performs the identity transform on an :class:`SfmScene`.
-    This transform returns the input scene unchanged. It can be useful as a placeholder or
-    default transform in a processing pipeline.
+    A :class:`~base_transform.BaseTransform` that performs the identity transform on an
+    :class:`~fvdb_reality_capture.sfm_scene.SfmScene`. This transform returns the input scene unchanged.
+    It can be useful as a placeholder or default transform in a processing pipeline.
 
     Example usage:
 
@@ -54,7 +54,7 @@ class Identity(BaseTransform):
 
     def __call__(self, input_scene: SfmScene) -> SfmScene:
         """
-        Return the input :class:`SfmScene` unchanged.
+        Return the input  :class:`~fvdb_reality_capture.sfm_scene.SfmScene` unchanged.
 
         Args:
             input_scene (SfmScene): The input scene.
