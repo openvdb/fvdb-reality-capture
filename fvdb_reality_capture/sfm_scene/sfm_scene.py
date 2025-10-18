@@ -86,7 +86,7 @@ class SfmScene:
                 (i.e. all of :math:`\\mathbb{R}^3`)
             transformation_matrix (np.ndarray | None): A 4x4 transformation matrix encoding the transformation from a reference
                 coordinate system to the scene's coordinate system. Note that this is not applied to the scene but simply
-                stored to track transformations applied to the scene (e.g. via apply_transformation_matrix).
+                stored to track transformations applied to the scene (e.g. via :meth:`apply_transformation_matrix`).
                 If ``None`` is passed in, it will default to the identity matrix.
         """
         self._logger = logging.getLogger(f"{self.__class__.__module__}.{self.__class__.__name__}")
