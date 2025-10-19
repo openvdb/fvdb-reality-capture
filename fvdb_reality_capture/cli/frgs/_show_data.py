@@ -8,10 +8,10 @@ import time
 from dataclasses import dataclass
 from typing import Annotated
 
+import fvdb.viz as fviz
 import numpy as np
 import torch
 import tyro
-from fvdb.viz import Viewer
 from tyro.conf import arg
 
 import fvdb_reality_capture
@@ -91,7 +91,10 @@ class ShowData(BaseCommand):
     dataset_path: tyro.conf.Positional[pathlib.Path]
 
     # The port to expose the viewer server on.
-    viewer_port: Annotated[int, arg(aliases=["-p"])] = 8888
+    viewer_port: Annotated[int, arg(aliases=["-p"])] = 8080
+
+    # The port to expose the viewer server on.
+    viewer_ip_address: Annotated[str, arg(aliases=["-ip"])] = "127.0.0.1"
 
     # If True, then the viewer will log verbosely.
     verbose: Annotated[bool, arg(aliases=["-v"])] = False
@@ -134,7 +137,9 @@ class ShowData(BaseCommand):
         logging.basicConfig(level=logging.INFO, format="%(levelname)s : %(message)s")
         logger = logging.getLogger(__name__)
 
-        viewer = Viewer(port=self.viewer_port, verbose=self.verbose)
+        logger.info(f"Starting viewer server on {self.viewer_ip_address}:{self.viewer_port}")
+        fviz.init(port=self.viewer_port, verbose=self.verbose)
+        viz_scene = fviz.get_scene("Dataset Visualization")
 
         sfm_scene = load_sfm_scene(self.dataset_path, self.dataset_type)
         sfm_scene = Compose(
@@ -155,9 +160,9 @@ class ShowData(BaseCommand):
         if np.allclose(cam_eye - cam_lookat, cam_up):
             cam_up = np.array([0.0, 1.0, 0.0])
 
-        viewer.set_camera_lookat(eye=cam_eye, center=cam_lookat, up=cam_up)
+        viz_scene.set_camera_lookat(eye=cam_eye, center=cam_lookat, up=cam_up)
 
-        viewer.add_camera_view(
+        viz_scene.add_cameras(
             name="cameras",
             camera_to_world_matrices=sfm_scene.camera_to_world_matrices,
             projection_matrices=torch.from_numpy(sfm_scene.projection_matrices),
@@ -174,13 +179,13 @@ class ShowData(BaseCommand):
             colors = np.array([self.points_color] * sfm_scene.points.shape[0], dtype=np.float32)
         else:
             colors = sfm_scene.points_rgb.astype(np.float32) / 255.0
-        viewer.add_point_cloud(
+        viz_scene.add_point_cloud(
             "points",
             points=sfm_scene.points,
             colors=colors,
             point_size=self.point_size,
         )
-        viewer.show()
+        fviz.show()
 
         logger.info("Viewer running... Ctrl+C to exit.")
         time.sleep(1000000)
