@@ -1063,7 +1063,7 @@ class GaussianSplatReconstruction:
                 f"Using max_steps={self.config.max_steps} (overriding computed {computed_total_steps} steps)"
             )
         if show_progress:
-            pbar = tqdm.tqdm(range(0, total_steps), unit="imgs", desc="Training")
+            pbar = tqdm.tqdm(range(0, total_steps), unit="steps", desc="Gaussian Splat Reconstruction")
         else:
             pbar = None
 
@@ -1077,7 +1077,6 @@ class GaussianSplatReconstruction:
 
         for epoch in range(self.config.max_epochs):
             for minibatch in trainloader:
-                batch_size = minibatch["image"].shape[0]
 
                 # Skip steps before the start step
                 if self._global_step < self._start_step:
