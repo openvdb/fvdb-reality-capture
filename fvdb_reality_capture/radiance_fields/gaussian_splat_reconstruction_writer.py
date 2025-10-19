@@ -511,7 +511,7 @@ class GaussianSplatReconstructionWriter(GaussianSplatReconstructionBaseWriter):
                     cv2.imwrite(str(image_batch_path), image_np)
                 elif image_batch_path.suffix.lower() == ".jpg" or image_batch_path.suffix.lower() == ".jpeg":
                     # Save as JPEG
-                    image_np = (image[b].cpu().numpy() * 255.0).clip(0, 255).astype(np.uint8)
+                    image_np = image[b].cpu().numpy()
                     if num_channels == 1:
                         image_np = image_np[:, :, 0]  # Remove channel dimension for grayscale
                     cv2.imwrite(str(image_batch_path), image_np, [int(cv2.IMWRITE_JPEG_QUALITY), jpeg_quality])

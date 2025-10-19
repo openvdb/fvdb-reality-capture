@@ -124,6 +124,10 @@ class ShowData(BaseCommand):
     # Size of the points in screen space.
     point_size: Annotated[float, arg(aliases=["-ps"])] = 1.0
 
+    # If set to a color tuple, use this color for all points instead of their RGB values.
+    # Color values must be in the range [0.0, 1.0].
+    points_color: Annotated[tuple[float, float, float] | None, arg(aliases=["-pc"])] = None
+
     @torch.no_grad()
     def execute(self) -> None:
 
@@ -164,10 +168,16 @@ class ShowData(BaseCommand):
             axis_thickness=self.axis_line_width,
         )
 
+        if self.points_color is not None:
+            if any(c < 0.0 or c > 1.0 for c in self.points_color):
+                raise ValueError("points_color values must be in the range [0.0, 1.0]")
+            colors = np.array([self.points_color] * sfm_scene.points.shape[0], dtype=np.float32)
+        else:
+            colors = sfm_scene.points_rgb.astype(np.float32) / 255.0
         viewer.add_point_cloud(
             "points",
             points=sfm_scene.points,
-            colors=sfm_scene.points_rgb.astype(np.float32) / 255.0,
+            colors=colors,
             point_size=self.point_size,
         )
         viewer.show()

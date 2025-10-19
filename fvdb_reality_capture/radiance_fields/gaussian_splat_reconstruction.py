@@ -1039,20 +1039,23 @@ class GaussianSplatReconstruction:
             pin_memory=True,
         )
 
+        if self.config.batch_size > 1:
+            num_steps_per_epoch: int = np.ceil(len(self.training_dataset) / self.config.batch_size).astype(int)
+        else:
+            num_steps_per_epoch: int = len(self.training_dataset)
+
         # Calculate total steps, allowing max_steps to override the computed value
-        computed_total_steps: int = int(self.config.max_epochs * len(self.training_dataset))
+        computed_total_steps: int = int(self.config.max_epochs * num_steps_per_epoch)
         total_steps: int = self.config.max_steps if self.config.max_steps is not None else computed_total_steps
 
-        refine_start_step: int = int(self.config.refine_start_epoch * len(self.training_dataset))
-        refine_stop_step: int = int(self.config.refine_stop_epoch * len(self.training_dataset))
-        refine_every_step: int = int(self.config.refine_every_epoch * len(self.training_dataset))
-        increase_sh_degree_every_step: int = int(
-            self.config.increase_sh_degree_every_epoch * len(self.training_dataset)
-        )
-        pose_opt_start_step: int = int(self.config.pose_opt_start_epoch * len(self.training_dataset))
-        pose_opt_stop_step: int = int(self.config.pose_opt_stop_epoch * len(self.training_dataset))
+        refine_start_step: int = int(self.config.refine_start_epoch * num_steps_per_epoch)
+        refine_stop_step: int = int(self.config.refine_stop_epoch * num_steps_per_epoch)
+        refine_every_step: int = int(self.config.refine_every_epoch * num_steps_per_epoch)
+        increase_sh_degree_every_step: int = int(self.config.increase_sh_degree_every_epoch * num_steps_per_epoch)
+        pose_opt_start_step: int = int(self.config.pose_opt_start_epoch * num_steps_per_epoch)
+        pose_opt_stop_step: int = int(self.config.pose_opt_stop_epoch * num_steps_per_epoch)
 
-        update_viewer_every_step = int(self._viewer_update_interval_epochs * len(self.training_dataset))
+        update_viewer_every_step = int(self._viewer_update_interval_epochs * num_steps_per_epoch)
 
         # Progress bar to track reconstruction progress
         if self.config.max_steps is not None:
@@ -1082,10 +1085,10 @@ class GaussianSplatReconstruction:
                         pbar.set_description(
                             f"Skipping step {self._global_step:,} (before start step {self._start_step:,})"
                         )
-                        pbar.update(batch_size)
+                        pbar.update(1)
                         self._global_step = pbar.n
                     else:
-                        self._global_step += batch_size
+                        self._global_step += 1
                     continue
 
                 cam_to_world_mats: torch.Tensor = minibatch["camera_to_world"].to(self.device)  # [B, 4, 4]
@@ -1246,10 +1249,10 @@ class GaussianSplatReconstruction:
 
                 # Update the progress bar and global step
                 if pbar is not None:
-                    pbar.update(batch_size)
+                    pbar.update(1)
                     self._global_step = pbar.n
                 else:
-                    self._global_step += batch_size
+                    self._global_step += 1
 
                 # Check if we've reached max_steps and break out of the optimization loop
                 if self.config.max_steps is not None and self._global_step >= self.config.max_steps:
