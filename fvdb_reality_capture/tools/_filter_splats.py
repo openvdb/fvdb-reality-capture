@@ -35,17 +35,30 @@ def filter_splat_means(
     good_inds = torch.logical_and(good_inds, points[:, 2] > lower_boundz)
     good_inds = torch.logical_and(good_inds, points[:, 2] < upper_boundz)
 
-    splats.means = splats.means[good_inds, :]
-    splats.logit_opacities = splats.logit_opacities[good_inds]
-    splats.quats = splats.quats[good_inds, :]
-    splats.log_scales = splats.log_scales[good_inds, :]
-    splats.sh0 = splats.sh0[good_inds, :]
-    splats.shN = splats.shN[good_inds, :]
-    splats.accumulated_gradient_step_counts_for_grad = splats.accumulated_gradient_step_counts_for_grad[good_inds]
-    splats.accumulated_mean_2d_gradient_norms_for_grad = splats.accumulated_mean_2d_gradient_norms_for_grad[good_inds]
-    splats.accumulated_max_2d_radii = splats.accumulated_max_2d_radii[good_inds]
+    new_splats = GaussianSplat3d(
+        means=splats.means[good_inds, :],
+        logit_opacities=splats.logit_opacities[good_inds],
+        quats=splats.quats[good_inds, :],
+        log_scales=splats.log_scales[good_inds, :],
+        sh0=splats.sh0[good_inds, :],
+        shN=splats.shN[good_inds, :],
+        accumulate_mean_2d_gradients=splats.accumulate_mean_2d_gradients,
+        accumulate_max_2d_radii=splats.accumulate_max_2d_radii,
+    )
 
-    return splats
+    if new_splats.accumulate_mean_2d_gradients:
+        new_splats.accumulated_mean_2d_gradient_norms_for_grad = splats.accumulated_mean_2d_gradient_norms_for_grad[
+            good_inds
+        ]
+    if new_splats.accumulate_max_2d_radii:
+        new_splats.accumulated_max_2d_radii = splats.accumulated_max_2d_radii[good_inds]
+
+    if new_splats.accumulate_mean_2d_gradients or new_splats.accumulate_max_2d_radii:
+        new_splats.accumulated_gradient_step_counts_for_grad = splats.accumulated_gradient_step_counts_for_grad[
+            good_inds
+        ]
+
+    return new_splats
 
 
 def filter_splat_opacities(splats: GaussianSplat3d, percentile=0.98, decimate=4) -> GaussianSplat3d:
@@ -62,17 +75,30 @@ def filter_splat_opacities(splats: GaussianSplat3d, percentile=0.98, decimate=4)
     lower_bound = torch.quantile(splats.logit_opacities[::decimate], 1.0 - percentile)
     good_inds = splats.logit_opacities > lower_bound
 
-    splats.means = splats.means[good_inds, :]
-    splats.logit_opacities = splats.logit_opacities[good_inds]
-    splats.quats = splats.quats[good_inds, :]
-    splats.log_scales = splats.log_scales[good_inds, :]
-    splats.sh0 = splats.sh0[good_inds, :]
-    splats.shN = splats.shN[good_inds, :]
-    splats.accumulated_gradient_step_counts_for_grad = splats.accumulated_gradient_step_counts_for_grad[good_inds]
-    splats.accumulated_mean_2d_gradient_norms_for_grad = splats.accumulated_mean_2d_gradient_norms_for_grad[good_inds]
-    splats.accumulated_max_2d_radii = splats.accumulated_max_2d_radii[good_inds]
+    new_splats = GaussianSplat3d(
+        means=splats.means[good_inds, :],
+        logit_opacities=splats.logit_opacities[good_inds],
+        quats=splats.quats[good_inds, :],
+        log_scales=splats.log_scales[good_inds, :],
+        sh0=splats.sh0[good_inds, :],
+        shN=splats.shN[good_inds, :],
+        accumulate_mean_2d_gradients=splats.accumulate_mean_2d_gradients,
+        accumulate_max_2d_radii=splats.accumulate_max_2d_radii,
+    )
 
-    return splats
+    if new_splats.accumulate_mean_2d_gradients:
+        new_splats.accumulated_mean_2d_gradient_norms_for_grad = splats.accumulated_mean_2d_gradient_norms_for_grad[
+            good_inds
+        ]
+    if new_splats.accumulate_max_2d_radii:
+        new_splats.accumulated_max_2d_radii = splats.accumulated_max_2d_radii[good_inds]
+
+    if new_splats.accumulate_mean_2d_gradients or new_splats.accumulate_max_2d_radii:
+        new_splats.accumulated_gradient_step_counts_for_grad = splats.accumulated_gradient_step_counts_for_grad[
+            good_inds
+        ]
+
+    return new_splats
 
 
 def filter_splat_large_scales(splats: GaussianSplat3d, prune_scale3d_threshold=0.05) -> GaussianSplat3d:
@@ -92,14 +118,27 @@ def filter_splat_large_scales(splats: GaussianSplat3d, prune_scale3d_threshold=0
     scene_scale = torch.max(dists) * 1.1
     good_inds = torch.exp(splats.log_scales).max(dim=-1).values < prune_scale3d_threshold * scene_scale
 
-    splats.means = splats.means[good_inds, :]
-    splats.logit_opacities = splats.logit_opacities[good_inds]
-    splats.quats = splats.quats[good_inds, :]
-    splats.log_scales = splats.log_scales[good_inds, :]
-    splats.sh0 = splats.sh0[good_inds, :]
-    splats.shN = splats.shN[good_inds, :]
-    splats.accumulated_gradient_step_counts_for_grad = splats.accumulated_gradient_step_counts_for_grad[good_inds]
-    splats.accumulated_mean_2d_gradient_norms_for_grad = splats.accumulated_mean_2d_gradient_norms_for_grad[good_inds]
-    splats.accumulated_max_2d_radii = splats.accumulated_max_2d_radii[good_inds]
+    new_splats = GaussianSplat3d(
+        means=splats.means[good_inds, :],
+        logit_opacities=splats.logit_opacities[good_inds],
+        quats=splats.quats[good_inds, :],
+        log_scales=splats.log_scales[good_inds, :],
+        sh0=splats.sh0[good_inds, :],
+        shN=splats.shN[good_inds, :],
+        accumulate_mean_2d_gradients=splats.accumulate_mean_2d_gradients,
+        accumulate_max_2d_radii=splats.accumulate_max_2d_radii,
+    )
 
-    return splats
+    if new_splats.accumulate_mean_2d_gradients:
+        new_splats.accumulated_mean_2d_gradient_norms_for_grad = splats.accumulated_mean_2d_gradient_norms_for_grad[
+            good_inds
+        ]
+    if new_splats.accumulate_max_2d_radii:
+        new_splats.accumulated_max_2d_radii = splats.accumulated_max_2d_radii[good_inds]
+
+    if new_splats.accumulate_mean_2d_gradients or new_splats.accumulate_max_2d_radii:
+        new_splats.accumulated_gradient_step_counts_for_grad = splats.accumulated_gradient_step_counts_for_grad[
+            good_inds
+        ]
+
+    return new_splats
