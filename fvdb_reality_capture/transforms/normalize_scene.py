@@ -73,6 +73,7 @@ def _pca_normalization_transform(point_cloud):
     # is the principal axis with the smallest eigenvalue.
     sort_indices = eigenvalues.argsort()[::-1]
     eigenvectors = eigenvectors[:, sort_indices]
+    eigenvectors *= -1.0  # Flip to right-handed coordinate system
 
     # Check orientation of eigenvectors. If the determinant of the eigenvectors is
     # negative, then we need to flip the sign of one of the eigenvectors.
