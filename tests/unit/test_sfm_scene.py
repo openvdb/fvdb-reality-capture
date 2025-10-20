@@ -85,7 +85,7 @@ class BasicSfmSceneTest(unittest.TestCase):
         self.assertTrue(np.allclose(transformed_scene.projection_matrices, scene.projection_matrices))
 
         expected_positions = expected_c2w[:, :3, 3]
-        self.assertTrue(np.allclose(transformed_scene.image_centers, expected_positions))
+        self.assertTrue(np.allclose(transformed_scene.image_camera_positions, expected_positions))
 
         expected_points = (transform_matrix[:3, :3] @ scene.points.T + transform_matrix[:3, 3][:, None]).T
         self.assertTrue(np.allclose(transformed_scene.points, expected_points))
@@ -101,7 +101,7 @@ class BasicSfmSceneTest(unittest.TestCase):
         self.assertTrue(np.all(scene.transformation_matrix == selected_scene.transformation_matrix))
         self.assertEqual(selected_scene.num_images, len(select_every_other))
         self.assertEqual(len(selected_scene.projection_matrices), len(select_every_other))
-        self.assertEqual(len(selected_scene.image_centers), len(select_every_other))
+        self.assertEqual(len(selected_scene.image_camera_positions), len(select_every_other))
         self.assertEqual(len(selected_scene.image_sizes), len(select_every_other))
         self.assertEqual(len(selected_scene.images), len(select_every_other))
         self.assertEqual(len(selected_scene.world_to_camera_matrices), len(select_every_other))
@@ -124,7 +124,7 @@ class BasicSfmSceneTest(unittest.TestCase):
         self.assertTrue(np.all(scene.transformation_matrix == selected_scene.transformation_matrix))
         self.assertEqual(selected_scene.num_images, len(select_duplicated))
         self.assertEqual(len(selected_scene.projection_matrices), len(select_duplicated))
-        self.assertEqual(len(selected_scene.image_centers), len(select_duplicated))
+        self.assertEqual(len(selected_scene.image_camera_positions), len(select_duplicated))
         self.assertEqual(len(selected_scene.image_sizes), len(select_duplicated))
         self.assertEqual(len(selected_scene.images), len(select_duplicated))
         self.assertEqual(len(selected_scene.world_to_camera_matrices), len(select_duplicated))
@@ -156,7 +156,7 @@ class BasicSfmSceneTest(unittest.TestCase):
         self.assertTrue(np.all(scene.transformation_matrix == filtered_scene.transformation_matrix))
         self.assertEqual(filtered_scene.num_images, every_other_mask.sum())
         self.assertEqual(len(filtered_scene.projection_matrices), every_other_mask.sum())
-        self.assertEqual(len(filtered_scene.image_centers), every_other_mask.sum())
+        self.assertEqual(len(filtered_scene.image_camera_positions), every_other_mask.sum())
         self.assertEqual(len(filtered_scene.image_sizes), every_other_mask.sum())
         self.assertEqual(len(filtered_scene.images), every_other_mask.sum())
         self.assertEqual(len(filtered_scene.world_to_camera_matrices), every_other_mask.sum())
@@ -178,7 +178,7 @@ class BasicSfmSceneTest(unittest.TestCase):
         self.assertTrue(np.all(scene.transformation_matrix == filtered_scene.transformation_matrix))
         self.assertEqual(filtered_scene.num_images, empty_mask.sum())
         self.assertEqual(len(filtered_scene.projection_matrices), empty_mask.sum())
-        self.assertEqual(len(filtered_scene.image_centers), empty_mask.sum())
+        self.assertEqual(len(filtered_scene.image_camera_positions), empty_mask.sum())
         self.assertEqual(len(filtered_scene.image_sizes), empty_mask.sum())
         self.assertEqual(len(filtered_scene.images), empty_mask.sum())
         self.assertEqual(len(filtered_scene.world_to_camera_matrices), empty_mask.sum())

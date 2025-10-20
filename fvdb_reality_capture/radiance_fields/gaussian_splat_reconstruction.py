@@ -672,7 +672,7 @@ class GaussianSplatReconstruction:
                     antialias=self._cfg.antialias,
                     sh_degree_to_use=0,
                 )
-                camera_eye = self._sfm_scene.image_centers[0]
+                camera_eye = self._sfm_scene.image_camera_positions[0]
                 camera_lookat = np.median(self._sfm_scene.points, axis=0)
                 camera_up = (0, 0, 1)
                 self._viz_scene.set_camera_lookat(eye=camera_eye, center=camera_lookat, up=camera_up)
