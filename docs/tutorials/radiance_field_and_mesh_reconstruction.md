@@ -1,4 +1,4 @@
-# Reconstructing a Gaussian Splat Radiance Field and High Quality Mesh from a Capture 
+# Reconstructing a Gaussian Splat Radiance Field and High Quality Mesh from a Capture
 ----
 In this notebook, we'll walk through how to reconstruct a Gaussian Splat radiance field, and high quality triangle mesh from an input drone capture. The capture consists of a collection of posed images along with sparse points.  We'll show how you can visualize this radiance field interactively in a notebook or browser, how to save the radiance field to common formats like PLY and USDZ, and how to use the radiance field to construct a high quality triangle mesh. Along the way, we'll get a tour of the basic components of the `fvdb_reality_capture` library.
 
@@ -13,9 +13,9 @@ Before we get started, let's import the pacakges we need. Here's an overview of 
 
 * `logging`
     - We'll use the built-in Python `logging` module, and call `logging.basicConfig()` which will cause functions within `fvdb_reality_capture` to log to stdout. You don't have to enable this, but it's useful to see what's happening under the hood.
-* `fvdb` 
+* `fvdb`
     - We use `fvdb` for the underlying Gaussian splat data structure (`fvdb.GaussianSplat3d`) which provides fast and scalable rendering, and for interactive visualization (using the `fvdb.viz`) module.
-* `fvdb_reality_capture` 
+* `fvdb_reality_capture`
     - We use this for core algorithms that reconstruct scenes from sensors help us read and process capture data (Duh!)
 
 
@@ -66,15 +66,15 @@ frc.tools.download_example_data(dataset="safety_park", download_path="./data")
 
 ## Load our dataset into an `SfmScene` for reconstruction
 
-Reality capture is the process of creating digital 3D representations of real-world scenes from sensor data, like images and LiDAR. To represent captured sensor data, `fvdb_reality_capture`  makes use of the `SfmScene` class, which is a lightweight handle to sensor data stored on disk. `SfmScene` offers a wide range of features for efficiently transforming large-scale datasets, some of which we'll see below. For a detailed tutorial, see the [Loading and Manipulating Sensor Data](https://openvdb.github.io/fvdb-reality-capture/tutorials/sensor_data_loading_and_manipulation.html) tutorial. 
+Reality capture is the process of creating digital 3D representations of real-world scenes from sensor data, like images and LiDAR. To represent captured sensor data, `fvdb_reality_capture`  makes use of the `SfmScene` class, which is a lightweight handle to sensor data stored on disk. `SfmScene` offers a wide range of features for efficiently transforming large-scale datasets, some of which we'll see below. For a detailed tutorial, see the [Loading and Manipulating Sensor Data](https://openvdb.github.io/fvdb-reality-capture/tutorials/sensor_data_loading_and_manipulation.html) tutorial.
 
 An `SfmScene` consists of the following parts representing a scene captured with sensors:
- 1. A list of **Posed images**. 
+ 1. A list of **Posed images**.
     - Images with camera-to-world/world-to-camera transformations specifying where each image was taken in the scene, and the identifier of the camera that captured them.
  2. A set of **Camera sensors**.
-    - Information such as camera intrinsics and distortion parameters for each camera used to capture the scene. 
+    - Information such as camera intrinsics and distortion parameters for each camera used to capture the scene.
     - *Note the number of cameras is not the same as the number of posed images. If you captured 1000 images with a robot that had two cameras, there will be two cameras and 1000 posed images*
- 2. A  set of **Scanned 3D points** 
+ 2. A  set of **Scanned 3D points**
     - These are points for which we have high confidence lie on a surface in the scene.
  3. An (optional) **Point visibility map**
     - These define the set of points visible within each posed image.
@@ -179,21 +179,16 @@ fvdb.viz.show()
 
 
 
-    
+
 ![png](radiance_field_and_mesh_reconstruction_files/radiance_field_and_mesh_reconstruction_6_1.png)
-    
 
 
 
 
-<iframe
-    width="100%"
-    height="600px"
-    src="http://127.0.0.1:8080"
-    frameborder="0"
-    allowfullscreen
 
-></iframe>
+<video autoplay loop controls muted width="100%">
+    <source src="https://fvdb-data.s3.us-east-2.amazonaws.com/fvdb-reality-capture/view_sfm_scene.mp4" type="video/mp4" />
+</video>
 
 
 
@@ -201,12 +196,12 @@ You may have noticed the scene in the viewer is rotated with respect to the cano
 This is because the structure-from-motion algorithm which produced this data had a lot of noisy predictions, and predicted points and cameras in a rotated coordinate frame.
 Before we reconstruct a Gaussian Splat radiance field, let's clean up our input data a bit. We'll apply the following steps:
 
- 1. Downsample the images by a factor of 4 to speed up Gaussian Splat optimization (loading big images can be time consuming), 
+ 1. Downsample the images by a factor of 4 to speed up Gaussian Splat optimization (loading big images can be time consuming),
  2. Normalize the scene to a canonical coordinte space by rotating it to align with the principle axes of the point cloud (thus correcting the up-axis).
  3. Remove outlier points below the bottom 3rd and above top 97th percentiles along the X, Y, and Z, axis.
  4. Remove any images with fewer than 50 visible points (these images are likely to have bad pose estimates)
 
-`fvdb_reality_capture` makes this kind of cleanup easy, efficient, and seamless using the `transforms` module. 
+`fvdb_reality_capture` makes this kind of cleanup easy, efficient, and seamless using the `transforms` module.
 Transforms are classes which define a transformation of an `SfmScene`. They inherit from `fvdb_reality_capture.BaseTransform`, and their `__call__` operator accepts an `SfmScene` as input and produces a new `SfmScene` as output. Let's look at some code and visualizations and then dive into how this works.
 
 
@@ -247,6 +242,9 @@ visualize_sfm_scene(cleaned_sfm_scene, "Cleaned SfmScene", center_scene=False)
     Original scene had 199702 points and 124 images
     Cleaned scene has 168661 points and 124 images
 
+  <video autoplay loop controls muted width="100%">
+     <source src="https://fvdb-data.s3.us-east-2.amazonaws.com/fvdb-reality-capture/view_sfm_scene_cleaned.mp4" type="video/mp4" />
+  </video>
 
 Note how the cleaned up scene has fewer noisy points and is aligned with the coordinate axes of the viewer.
 
@@ -260,7 +258,7 @@ In the code above, we defined our cleanup operation as a sequence of transformat
 **Note:** `fvdb_reality_capture` provides more transforms and also lets you define your own transforms. See the API reference for `fvdb_reality_capture.transforms` and the the [Loading and Manipulating Sensor Data](https://openvdb.github.io/fvdb-reality-capture/tutorials/sensor_data_loading_and_manipulation.html) tutorial for more details.
 
 **Note:** The `fvdb_reality_capture.transforms` module does not modify the underlying dataset that you pass in or store transformed data in memory.
-Instead, it uses a cache which lets each transform cache intermediate results. This keeps `SfmScene`s lightweight and immutable, and 
+Instead, it uses a cache which lets each transform cache intermediate results. This keeps `SfmScene`s lightweight and immutable, and
 lets you transform your data in a clean and non-destructive way.
 To see the caching in action, remark how the first transformation took a while. If we run the process again, it's almost instantaneous due to caching.
 
@@ -353,19 +351,14 @@ fvdb.viz.show()
 
 
 
-<iframe
-    width="100%"
-    height="600px"
-    src="http://127.0.0.1:8080"
-    frameborder="0"
-    allowfullscreen
-
-></iframe>
+  <video autoplay loop controls muted width="100%">
+     <source src="https://fvdb-data.s3.us-east-2.amazonaws.com/fvdb-reality-capture/view_splats.mp4" type="video/mp4" />
+  </video>
 
 
 
 ## Plot images and depth maps from a Gaussian Splat radiance field
-The `GaussianSplatReconstruction` class produces an `fvdb.GaussianSplat3d` object which encodes the radiance field. The `fvdb.GaussianSplat3d` class encodes a Gaussian splat radiance field and supports standard operations such as rendering images, depth maps, exporting to PLY, etc. 
+The `GaussianSplatReconstruction` class produces an `fvdb.GaussianSplat3d` object which encodes the radiance field. The `fvdb.GaussianSplat3d` class encodes a Gaussian splat radiance field and supports standard operations such as rendering images, depth maps, exporting to PLY, etc.
 
 Let's see how to use this class directly to plot some re-rendered images from the optimed Gaussian splat and compare them to their ground truth counterparts. We'll also plot depth maps to visually inspect if the geometry of our reconstructed radiance field makes sense.
 
@@ -427,15 +420,15 @@ plot_reconstruction_results(model, cleaned_sfm_scene, image_id=16)
 
 
 
-    
+
 ![png](radiance_field_and_mesh_reconstruction_files/radiance_field_and_mesh_reconstruction_16_1.png)
-    
 
 
 
-    
+
+
 ![png](radiance_field_and_mesh_reconstruction_files/radiance_field_and_mesh_reconstruction_16_2.png)
-    
+
 
 
 ## Export a Gaussian Splat radiance field to PLY and USDZ
@@ -461,7 +454,7 @@ export_splats_to_usdz(model, out_path="reconstructed_model.usdz")
 
 ## Reconstruct a mesh from a Gaussian Splat radiance field
 
-Our Gaussian splat model is capable of producing images and depths from novel views. A natural way to reconstruct a mesh from a Gaussian scene is by rendering depth maps from the camera poses used to reconstruct the model and fuse them into a truncated signed distance field (TSDF) using the TSDF fusion algorithm<sup>[\[2\]](#references)</sup>. 
+Our Gaussian splat model is capable of producing images and depths from novel views. A natural way to reconstruct a mesh from a Gaussian scene is by rendering depth maps from the camera poses used to reconstruct the model and fuse them into a truncated signed distance field (TSDF) using the TSDF fusion algorithm<sup>[\[2\]](#references)</sup>.
 
 TSDF fusion accumulates noisy depth maps into a voxel grid, to approximate a signed distance field near the surface of the object. `fvdb_reality_capture` makes use of `fvdb-core` to provide a high performance implementation of TSDF integration on sparse voxels. This allows us to generate meshes from Gaussian splats at very high resolutions on the GPU while using minimal memory.
 
@@ -506,7 +499,7 @@ If you open the saved mesh in your favorite editor you get something like this:
 </div>
 This looks good from far, but is far from good. The depth maps produced by Gaussian splats are generally pretty noisy. The result is that the TSDF fusion algorithm produces a bumpy surface like the one in the image above. Fortunately, we can do better, by estimating better depth maps from our splats.
 
-`fvdb_reality_capture.tools` provides a `mesh_from_splats_dlnr` which will use a foundation model to compute high quality depth maps from images rendered from our Gaussian splat. 
+`fvdb_reality_capture.tools` provides a `mesh_from_splats_dlnr` which will use a foundation model to compute high quality depth maps from images rendered from our Gaussian splat.
 The method works by rendering stereo pairs from the splat scene, and uses the DLNR foundation model<sup>[\[4\]](#references)</sup> to perform stereo depth estimation. The DLNR model is a high-frequency stereo matching network that computes optical flow and disparity maps between two images
 This method is generally slower to run since you have to evaluate a big neural network to estimate depth for each image, but produces much cleaner results.
 
@@ -545,7 +538,7 @@ print(f"Reconstructed mesh with {v.shape[0]:,} vertices and {f.shape[0]:,} faces
     Reconstructed mesh with 8,444,464 vertices and 14,809,696 faces
 
 
-If you open the saved mesh in your favorite editor, you'll see something like this. Much better! 
+If you open the saved mesh in your favorite editor, you'll see something like this. Much better!
 Details are preserved, and there isn't much noise in the reconstruction. In general, if you can afford the weight, you should stick to `fvdb_reality_capture.tools.mesh_from_splats_dlnr` for high quality mesh reconstructions.
 
 <div>
