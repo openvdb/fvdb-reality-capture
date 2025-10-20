@@ -520,7 +520,7 @@ class GaussianSplatReconstructionWriter(GaussianSplatReconstructionBaseWriter):
 
         if self._config.use_tensorboard and self._config.save_images_to_tensorboard and hasattr(self, "_tb_writer"):
             if hasattr(self, "_tb_writer") and self._tb_writer is not None:
-                self._tb_writer.add_images(image_name, image, global_step)
+                self._tb_writer.add_images(image_name, image.permute(0, 3, 1, 2).contiguous(), global_step)
 
     @torch.no_grad()
     def save_checkpoint(self, global_step: int, checkpoint_name: str, checkpoint: dict[str, Any]) -> None:
