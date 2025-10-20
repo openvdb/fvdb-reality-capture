@@ -15,7 +15,7 @@ import torch.utils.data
 import tqdm
 from fvdb import GaussianSplat3d
 from fvdb.utils.metrics import psnr, ssim
-from fvdb.viz import Viewer
+from fvdb.viz import Scene
 from scipy.spatial import cKDTree  # type: ignore
 
 from fvdb_reality_capture.sfm_scene import SfmScene
@@ -349,7 +349,7 @@ class GaussianSplatReconstruction:
     You can configure logging and checkpointing during optimization process using an instance of :class:`~fvdb_reality_capture.radiance_fields.GaussianSplatReconstructionBaseWriter`.
     By default, this class uses a :class:`~fvdb_reality_capture.radiance_fields.GaussianSplatReconstructionWriter` which logs metrics, images, and checkpoints to a directory.
 
-    You can also visualize the optimization process using an optional :class:`fvdb.viz.Viewer` instance, which can display
+    You can also visualize the optimization process using an optional :class:`fvdb.viz.Scene` instance, which can display
     the current state of the Gaussian splat radiance field interactively in a web browser or notebook.
 
     The reconstruction process is started by calling the :meth:`reconstruct` method, which runs the optimization loop.
@@ -376,11 +376,11 @@ class GaussianSplatReconstruction:
         writer: GaussianSplatReconstructionBaseWriter = GaussianSplatReconstructionWriter(
             run_name=None, save_path=None
         ),
-        viewer: Viewer | None = None,
+        viz_scene: Scene | None = None,
         config: GaussianSplatReconstructionConfig = GaussianSplatReconstructionConfig(),
         optimizer_config: GaussianSplatOptimizerConfig = GaussianSplatOptimizerConfig(),
         use_every_n_as_val: int = -1,
-        viewer_update_interval_epochs: float = 10,
+        viz_update_interval_epochs: float = 10,
         log_interval_steps: int = 10,
         device: str | torch.device = "cuda",
     ):
@@ -395,7 +395,7 @@ class GaussianSplatReconstruction:
         :class:`~fvdb_reality_capture.radiance_fields.GaussianSplatReconstructionBaseWriter`. By default, this class uses a
         :class:`~fvdb_reality_capture.radiance_fields.GaussianSplatReconstructionWriter` which logs metrics, images, and checkpoints to a directory.
 
-        You can interactively visualize the state of the current reconstruction using an optional :class:`fvdb.viz.Viewer` instance, which
+        You can interactively visualize the state of the current reconstruction using an optional :class:`fvdb.viz.Scene` instance, which
         can display the current Gaussian splat radiance field in a web browser or notebook.
 
         Args:
@@ -404,11 +404,11 @@ class GaussianSplatReconstruction:
             optimizer_config (GaussianSplatOptimizerConfig): Configuration for the optimizer.
             writer (GaussianSplatReconstructionBaseWriter): Writer instance to handle logging metrics, saving images, checkpoints, PLY, files,
                 and other results.
-            viewer (Viewer | None): Optional :class:`fvdb.viz.Viewer` instance for visualizing optimization progress. If None,
+            viz_scene (Scene | None): Optional :class:`fvdb.viz.Scene` instance for visualizing optimization progress. If None,
                 no visualization is performed.
             use_every_n_as_val (int): Use every n-th image as a validation image. Default of ``-1``
                 means no validation images are used.
-            viewer_update_interval_epochs (float): Interval in epochs at which to update the viewer.
+            viz_update_interval_epochs (float): Interval in epochs at which to update the visualization if ``viz_scene`` is not None.
                 An epoch is one full pass through the dataset.
             log_interval_steps (int): Interval (in steps) to log metrics to the ``writer``.
             device (str | torch.device): Device to run the reconstruction on.
@@ -462,9 +462,9 @@ class GaussianSplatReconstruction:
             pose_adjust_scheduler=pose_adjust_scheduler,
             writer=writer,
             start_step=0,
-            viewer=viewer,
+            viz_scene=viz_scene,
             log_interval_steps=log_interval_steps,
-            viewer_update_interval_epochs=viewer_update_interval_epochs,
+            viz_update_interval_epochs=viz_update_interval_epochs,
             _private=GaussianSplatReconstruction.__PRIVATE__,
         )
 
@@ -477,8 +477,8 @@ class GaussianSplatReconstruction:
         writer: GaussianSplatReconstructionBaseWriter = GaussianSplatReconstructionWriter(
             run_name=None, save_path=None
         ),
-        viewer: Viewer | None = None,
-        viewer_update_interval_epochs: float = 1.0,
+        viz_scene: Scene | None = None,
+        viz_update_interval_epochs: float = 1.0,
         log_interval_steps: int = 10,
         device: str | torch.device = "cuda",
     ):
@@ -496,10 +496,10 @@ class GaussianSplatReconstruction:
                 Default of None means to use the train/validation split from the state_dict.
             writer (GaussianSplatReconstructionBaseWriter): :class:`~fvdb_reality_capture.radiance_fields.GaussianSplatReconstructionBaseWriter` instance to handle
                 logging metrics, saving images, checkpoints, PLY, files, and other results.
-            viewer (Viewer | None): Optional :class:`fvdb.viz.Viewer` instance for visualizing optimization progress. If ``None``, no
+            viz_scene (Scene | None): Optional :class:`fvdb.viz.Scene` instance for visualizing optimization progress. If ``None``, no
                 visualization is performed.
-            viewer_update_interval_epochs (float): Interval in epochs at which to update the viewer. An epoch is one
-                full pass through the dataset.
+            viz_update_interval_epochs (float): Interval in epochs at which to update the visualization if ``viz_scene`` is not None.
+                An epoch is one full pass through the dataset.
             log_interval_steps (int): Interval in steps to log metrics to the ``writer``.
             device (str | torch.device): Device to run the reconstruction on.
         """
@@ -582,9 +582,9 @@ class GaussianSplatReconstruction:
             pose_adjust_scheduler=pose_adjust_scheduler,
             writer=writer,
             start_step=global_step,
-            viewer=viewer,
+            viz_scene=viz_scene,
             log_interval_steps=log_interval_steps,
-            viewer_update_interval_epochs=viewer_update_interval_epochs,
+            viz_update_interval_epochs=viz_update_interval_epochs,
             _private=GaussianSplatReconstruction.__PRIVATE__,
         )
 
@@ -601,15 +601,17 @@ class GaussianSplatReconstruction:
         pose_adjust_scheduler: torch.optim.lr_scheduler.ExponentialLR | None,
         writer: GaussianSplatReconstructionBaseWriter,
         start_step: int,
-        viewer: Viewer | None,
+        viz_scene: Scene | None,
         log_interval_steps: int,
-        viewer_update_interval_epochs: float,
+        viz_update_interval_epochs: float,
         _private: object | None = None,
     ) -> None:
         """
         Initialize the Runner with the provided configuration, model, optimizer, datasets, and paths.
 
-        Note: This constructor should only be called by the `new_run` or `resume_from_checkpoint` methods.
+        .. note::
+
+            This constructor should only be called by the :meth:`from_sfm_scene` or :meth:`from_state_dict` methods.
 
         Args:
             model (GaussianSplat3d): The Gaussian Splatting model to optimize.
@@ -625,13 +627,13 @@ class GaussianSplatReconstruction:
             writer (GaussianSplatReconstructionBaseWriter): Writer instance to handle saving images, ply files,
                 and other results.
             start_step (int): The step to start optimization from (useful for resuming optimization from a checkpoint).
-            viewer (Viewer | None): The viewer instance to use for this run.
+            viz_scene (Scene | None): The :class:`fvdb.viz.Scene` instance to use for this run.
             log_interval_steps (int): Interval (in steps) at which to log metrics during optimization.
-            viewer_update_interval_epochs (float): Interval (in epochs) at which to update the viewer with new results if a viewer is specified.
-            _private (object | None): Private object to ensure this class is only initialized through `new_run` or `resume_from_checkpoint`.
+            viz_update_interval_epochs (float): Interval (in epochs) at which to update the :class:`fvdb.viz.Scene` with new results if a ``viz_scene`` is provided.
+            _private (object | None): Private object to ensure this class is only initialized through :meth:`from_sfm_scene` or :meth:`from_state_dict`.
         """
         if _private is not GaussianSplatReconstruction.__PRIVATE__:
-            raise ValueError("Runner should only be initialized through `new_run` or `resume_from_checkpoint`.")
+            raise ValueError("Runner should only be initialized through `from_sfm_scene` or `from_state_dict`.")
 
         self._logger = logging.getLogger(f"{self.__class__.__module__}.{self.__class__.__name__}")
 
@@ -642,7 +644,7 @@ class GaussianSplatReconstruction:
         self._pose_adjust_optimizer = pose_adjust_optimizer
         self._pose_adjust_scheduler = pose_adjust_scheduler
         self._start_step = start_step
-        self._viewer_update_interval_epochs = viewer_update_interval_epochs
+        self._viz_update_interval_epochs = viz_update_interval_epochs
 
         self._sfm_scene = sfm_scene
         self._training_dataset = SfmDataset(sfm_scene=sfm_scene, dataset_indices=train_indices)
@@ -656,11 +658,24 @@ class GaussianSplatReconstruction:
 
         self._writer = writer
 
-        # Setup viewer for visualizing reconstruction progress if a Viewer is provided.
-        self._viewer = viewer
-        if self._viewer is not None:
+        # Add Gaussians to the fvdb.viz.Scene if provided.
+        self._viz_scene = viz_scene
+        self._viz_scene_name = "Gaussian Splat Reconstruction"
+        if self._viz_scene is not None:
             with torch.no_grad():
-                self._viewer.add_gaussian_splat_3d(f"Gaussian Scene", self.model)
+                self._viz_scene.add_gaussian_splat_3d(
+                    self._viz_scene_name,
+                    self._model,
+                    tile_size=self._cfg.tile_size,
+                    min_radius_2d=self._cfg.min_radius_2d,
+                    eps_2d=self._cfg.eps_2d,
+                    antialias=self._cfg.antialias,
+                    sh_degree_to_use=0,
+                )
+                camera_eye = self._sfm_scene.image_centers[0]
+                camera_lookat = np.median(self._sfm_scene.points, axis=0)
+                camera_up = (0, 0, 1)
+                self._viz_scene.set_camera_lookat(eye=camera_eye, center=camera_lookat, up=camera_up)
 
         # Losses & Metrics.
         if self.config.lpips_net == "alex":
@@ -982,7 +997,8 @@ class GaussianSplatReconstruction:
         """
         Remove all Gaussians whose means lie outside the scene bounding box defined in the dataset.
         """
-        bbox_min, bbox_max = self.training_dataset.scene_bbox
+        bbox = self.training_dataset.scene_bbox
+        bbox_min, bbox_max = bbox[:3], bbox[3:]
         if (
             np.any(np.isinf(bbox_min))
             or np.any(np.isinf(bbox_max))
@@ -1036,20 +1052,23 @@ class GaussianSplatReconstruction:
             pin_memory=True,
         )
 
+        if self.config.batch_size > 1:
+            num_steps_per_epoch: int = np.ceil(len(self.training_dataset) / self.config.batch_size).astype(int)
+        else:
+            num_steps_per_epoch: int = len(self.training_dataset)
+
         # Calculate total steps, allowing max_steps to override the computed value
-        computed_total_steps: int = int(self.config.max_epochs * len(self.training_dataset))
+        computed_total_steps: int = int(self.config.max_epochs * num_steps_per_epoch)
         total_steps: int = self.config.max_steps if self.config.max_steps is not None else computed_total_steps
 
-        refine_start_step: int = int(self.config.refine_start_epoch * len(self.training_dataset))
-        refine_stop_step: int = int(self.config.refine_stop_epoch * len(self.training_dataset))
-        refine_every_step: int = int(self.config.refine_every_epoch * len(self.training_dataset))
-        increase_sh_degree_every_step: int = int(
-            self.config.increase_sh_degree_every_epoch * len(self.training_dataset)
-        )
-        pose_opt_start_step: int = int(self.config.pose_opt_start_epoch * len(self.training_dataset))
-        pose_opt_stop_step: int = int(self.config.pose_opt_stop_epoch * len(self.training_dataset))
+        refine_start_step: int = int(self.config.refine_start_epoch * num_steps_per_epoch)
+        refine_stop_step: int = int(self.config.refine_stop_epoch * num_steps_per_epoch)
+        refine_every_step: int = int(self.config.refine_every_epoch * num_steps_per_epoch)
+        increase_sh_degree_every_step: int = int(self.config.increase_sh_degree_every_epoch * num_steps_per_epoch)
+        pose_opt_start_step: int = int(self.config.pose_opt_start_epoch * num_steps_per_epoch)
+        pose_opt_stop_step: int = int(self.config.pose_opt_stop_epoch * num_steps_per_epoch)
 
-        update_viewer_every_step = int(self._viewer_update_interval_epochs * len(self.training_dataset))
+        update_viz_every_step = int(self._viz_update_interval_epochs * num_steps_per_epoch)
 
         # Progress bar to track reconstruction progress
         if self.config.max_steps is not None:
@@ -1057,7 +1076,7 @@ class GaussianSplatReconstruction:
                 f"Using max_steps={self.config.max_steps} (overriding computed {computed_total_steps} steps)"
             )
         if show_progress:
-            pbar = tqdm.tqdm(range(0, total_steps), unit="imgs", desc="Training")
+            pbar = tqdm.tqdm(range(0, total_steps), unit="steps", desc="Gaussian Splat Reconstruction")
         else:
             pbar = None
 
@@ -1071,7 +1090,6 @@ class GaussianSplatReconstruction:
 
         for epoch in range(self.config.max_epochs):
             for minibatch in trainloader:
-                batch_size = minibatch["image"].shape[0]
 
                 # Skip steps before the start step
                 if self._global_step < self._start_step:
@@ -1079,10 +1097,10 @@ class GaussianSplatReconstruction:
                         pbar.set_description(
                             f"Skipping step {self._global_step:,} (before start step {self._start_step:,})"
                         )
-                        pbar.update(batch_size)
+                        pbar.update(1)
                         self._global_step = pbar.n
                     else:
-                        self._global_step += batch_size
+                        self._global_step += 1
                     continue
 
                 cam_to_world_mats: torch.Tensor = minibatch["camera_to_world"].to(self.device)  # [B, 4, 4]
@@ -1156,7 +1174,7 @@ class GaussianSplatReconstruction:
                         colors.permute(0, 3, 1, 2).contiguous(),
                         pixels.permute(0, 3, 1, 2).contiguous(),
                     )
-                    loss = torch.lerp(l1loss, ssimloss, torch.Tensor([self.config.ssim_lambda]).to(ssimloss))
+                    loss = torch.lerp(l1loss, ssimloss, self.config.ssim_lambda)  # type: ignore
 
                     # Rgularize opacity to ensure Gaussian's don't become too opaque
                     if self.config.opacity_reg > 0.0:
@@ -1235,18 +1253,26 @@ class GaussianSplatReconstruction:
                     if pose_reg is not None:
                         self._writer.log_metric(self._global_step, f"{log_tag}/pose_reg_loss", pose_reg.item())
 
-                # Update the viewer
-                if self._viewer is not None and self._global_step % update_viewer_every_step == 0:
+                # Update the visualization if provided
+                if self._viz_scene is not None and self._global_step % update_viz_every_step == 0:
                     with torch.no_grad():
-                        self._logger.info(f"Updating viewer at step {self._global_step:,}")
-                        self._viewer.add_gaussian_splat_3d("Gaussian Scene", self.model)
+                        self._logger.info(f"Updating visualization at step {self._global_step:,}")
+                        self._viz_scene.add_gaussian_splat_3d(
+                            self._viz_scene_name,
+                            self.model,
+                            tile_size=self._cfg.tile_size,
+                            min_radius_2d=self._cfg.min_radius_2d,
+                            eps_2d=self._cfg.eps_2d,
+                            antialias=self._cfg.antialias,
+                            sh_degree_to_use=sh_degree_to_use,
+                        )
 
                 # Update the progress bar and global step
                 if pbar is not None:
-                    pbar.update(batch_size)
+                    pbar.update(1)
                     self._global_step = pbar.n
                 else:
-                    self._global_step += batch_size
+                    self._global_step += 1
 
                 # Check if we've reached max_steps and break out of the optimization loop
                 if self.config.max_steps is not None and self._global_step >= self.config.max_steps:
@@ -1370,8 +1396,3 @@ class GaussianSplatReconstruction:
         self._writer.log_metric(self._global_step, f"{log_tag}/lpips", lpips_mean.item())
         self._writer.log_metric(self._global_step, f"{log_tag}/evaluation_time", evaluation_time)
         self._writer.log_metric(self._global_step, f"{log_tag}/num_gaussians", self.model.num_gaussians)
-
-        # Update the viewer with evaluation results
-        if self._viewer is not None:
-            self._logger.info(f"Updating viewer after evaluation at step {self._global_step:,}")
-            self._viewer.add_gaussian_splat_3d("Gaussian Scene", self.model)

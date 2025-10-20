@@ -512,14 +512,14 @@ def fill_3dgut_template(
 def export_splats_to_usdz(
     model: GaussianSplat3d,
     out_path: str | Path,
-):
+) -> None:
     """
-    Export a GaussianSplat3d model to a USDZ file.
+    Export an :class:`fvdb.GaussianSplat3d` model to a USDZ file.
 
     Args:
         model (fvdb.GaussianSplat3d): The Gaussian Splat model to save to a usdz file
-        out_path (str | Path): The output path for the usdz file. If the file extension is not .usdz,
-            it will be added. _e.g._ "./scene" will save to "./scene.usdz".
+        out_path (str | Path): The output path for the usdz file. If the file extension is not ``.usdz``,
+            it will be added. *e.g.*, ``./scene`` will save to ``./scene.usdz``.
     """
 
     if isinstance(out_path, str):

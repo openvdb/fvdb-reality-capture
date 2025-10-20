@@ -503,17 +503,17 @@ class GaussianSplatReconstructionWriter(GaussianSplatReconstructionBaseWriter):
                     else image_path
                 )
 
+                image_np = image[b].cpu().numpy()
+                if num_channels == 1:
+                    image_np = image_np[:, :, 0]  # Remove channel dimension for grayscale
+                if num_channels == 3:
+                    image_np = cv2.cvtColor(image_np, cv2.COLOR_RGB2BGR)  # Convert RGB to BGR for OpenCV
+
                 if image_batch_path.suffix.lower() == ".png":
                     # Save as PNG
-                    image_np = image[b].cpu().numpy()
-                    if num_channels == 1:
-                        image_np = image_np[:, :, 0]  # Remove channel dimension for grayscale
                     cv2.imwrite(str(image_batch_path), image_np)
                 elif image_batch_path.suffix.lower() == ".jpg" or image_batch_path.suffix.lower() == ".jpeg":
                     # Save as JPEG
-                    image_np = (image[b].cpu().numpy() * 255.0).clip(0, 255).astype(np.uint8)
-                    if num_channels == 1:
-                        image_np = image_np[:, :, 0]  # Remove channel dimension for grayscale
                     cv2.imwrite(str(image_batch_path), image_np, [int(cv2.IMWRITE_JPEG_QUALITY), jpeg_quality])
                 else:
                     raise ValueError(f"Unsupported image format {image_batch_path.suffix} for saving. Use .png or .jpg")

@@ -14,7 +14,7 @@ from scipy.spatial import cKDTree  # type: ignore
 import fvdb_reality_capture as frc
 
 
-def _compute_scene_scale(sfm_scene: frc.SfmScene) -> float:
+def _compute_scene_scale(sfm_scene: frc.sfm_scene.SfmScene) -> float:
     median_depth_per_camera = []
     for image_meta in sfm_scene.images:
         # Don't use cameras that don't see any points in the estimate
@@ -84,7 +84,7 @@ class GaussianSplatOptimizerTests(unittest.TestCase):
         if not self.dataset_path.exists():
             frc.tools.download_example_data("gettysburg", self.dataset_path.parent)
 
-        scene = frc.SfmScene.from_colmap(self.dataset_path)
+        scene = frc.sfm_scene.SfmScene.from_colmap(self.dataset_path)
         transform = frc.transforms.Compose(
             frc.transforms.NormalizeScene("pca"),
             frc.transforms.DownsampleImages(4),
@@ -178,7 +178,7 @@ class GaussianSplatOptimizerRefinementTests(unittest.TestCase):
         if not self.dataset_path.exists():
             frc.tools.download_example_data("gettysburg", self.dataset_path.parent)
 
-        scene = frc.SfmScene.from_colmap(self.dataset_path)
+        scene = frc.sfm_scene.SfmScene.from_colmap(self.dataset_path)
         transform = frc.transforms.Compose(
             frc.transforms.NormalizeScene("pca"),
             frc.transforms.DownsampleImages(4),

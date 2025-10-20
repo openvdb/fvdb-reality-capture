@@ -25,12 +25,28 @@ class MeshDLNR(BaseCommand):
     """
     Extract a mesh from a saved Gaussian splat file using TSDF fusion and depth maps estimated using the DLNR model.
 
-    The algorithm renders a stereo pair of images from the Gaussian splat model by adding a small baseline to each camera position.
-    (specified by the baseline parameter). It then uses DLNR to estimate depth maps for these stereo pairs which are fed to TSDF fusion.
+    1. First, it renders stereo pairs of images from the Gaussian splat radiance field, and uses
+       DLNR to compute depth maps from these stereo pairs in the frame of the first image in the pair.
+       The result is a set of depth maps aligned with the rendered images.
 
-    The mesh extraction algorithm is based on the paper:
-    "GS2Mesh: Surface Reconstruction from Gaussian Splatting via Novel Stereo Views"
-    (https://arxiv.org/abs/2404.01810)
+    2. Second, it integrates the depths and colors/features into a sparse fvdb.Grid in a narrow band
+       around the surface using sparse truncated signed distance field (TSDF) fusion.
+       The result is a sparse voxel grid representation of the scene where each voxel stores a signed distance
+       value and color (or other features).
+
+    3. Third, it extracts a mesh using the sparse marching cubes algorithm implemented in fvdb.Grid.marching_cubes
+       over the Grid and TSDF values. This step produces a triangle mesh with vertex colors sampled from the
+       colors/features stored in the Grid.
+
+
+    Example usage:
+
+        # Extract a mesh from a Gaussian splat model saved in `model.pt` with a truncation margin of 0.05
+        frgs mesh-dlnr model.pt 0.05 --output-path mesh.ply
+
+        # Extract a mesh from a Gaussian splat model saved in `model.ply` with a truncation margin of 0.1
+        # with a grid shell thickness of 5 voxels
+        frgs mesh-dlnr model.ply 0.1 --output-path mesh.ply --grid-shell-thickness 5.0
     """
 
     # Path to the input PLY or checkpoint file. Must end in .ply, .pt, or .pth.

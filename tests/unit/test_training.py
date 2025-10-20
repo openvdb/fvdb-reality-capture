@@ -44,7 +44,7 @@ class GaussianSplatReconstructionTests(unittest.TestCase):
         if not self.dataset_path.exists():
             frc.tools.download_example_data("mipnerf360", self.dataset_root)
 
-        self.sfm_scene = frc.SfmScene.from_colmap(self.dataset_path)
+        self.sfm_scene = frc.sfm_scene.SfmScene.from_colmap(self.dataset_path)
         self.scene_transform = frc.transforms.Compose(
             frc.transforms.NormalizeScene("pca"),
             frc.transforms.DownsampleImages(4),
@@ -60,7 +60,7 @@ class GaussianSplatReconstructionTests(unittest.TestCase):
             eval_at_percent=[],
         )
 
-        runner = frc.GaussianSplatReconstruction.from_sfm_scene(
+        runner = frc.radiance_fields.GaussianSplatReconstruction.from_sfm_scene(
             self.sfm_scene,
             config=short_config,
             use_every_n_as_val=2,
@@ -80,7 +80,7 @@ class GaussianSplatReconstructionTests(unittest.TestCase):
 
         writer = MockWriter()
 
-        runner = frc.GaussianSplatReconstruction.from_sfm_scene(
+        runner = frc.radiance_fields.GaussianSplatReconstruction.from_sfm_scene(
             self.sfm_scene,
             config=short_config,
             use_every_n_as_val=2,
@@ -116,7 +116,7 @@ class GaussianSplatReconstructionTests(unittest.TestCase):
 
         writer = MockWriter()
 
-        runner = frc.GaussianSplatReconstruction.from_sfm_scene(
+        runner = frc.radiance_fields.GaussianSplatReconstruction.from_sfm_scene(
             self.sfm_scene,
             config=short_config,
             use_every_n_as_val=2,
@@ -147,7 +147,9 @@ class GaussianSplatReconstructionTests(unittest.TestCase):
         ckpt_step, ckpt_name, ckpt_dict = writer.checkpoint_log[0]
 
         # We'll create a runner from this checkpoint, but use the same writer so things get appended
-        runner2 = frc.GaussianSplatReconstruction.from_state_dict(ckpt_dict, device=runner.model.device, writer=writer)
+        runner2 = frc.radiance_fields.GaussianSplatReconstruction.from_state_dict(
+            ckpt_dict, device=runner.model.device, writer=writer
+        )
 
         self.assertEqual(len(runner2.training_dataset), num_train)
         self.assertEqual(len(runner2.validation_dataset), num_val)

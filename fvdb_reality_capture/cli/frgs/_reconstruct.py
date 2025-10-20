@@ -10,11 +10,11 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Annotated, Literal
 
+import fvdb.viz as fviz
 import numpy as np
 import torch
 import tqdm
 from fvdb import GaussianSplat3d
-from fvdb.viz import Viewer
 from tyro.conf import Positional, arg
 
 from fvdb_reality_capture.cli import BaseCommand
@@ -63,7 +63,7 @@ class SceneTransformConfig:
     crop_bbox: tuple[float, float, float, float, float, float] | None = None
     # Whether to crop the scene to the bounding box or not
     crop_to_points: bool = False
-    # Minimum number of 3D points that must be visible in an image for it to be included in training
+    # Minimum number of 3D points that must be visible in an image for it to be included in the optimization
     min_points_per_image: int = 5
     # Bounding box to which we crop the scene (in the original space) (xmin, xmax, ymin, ymax, zmin, zmax)
     crop_bbox: tuple[float, float, float, float, float, float] | None = None
@@ -107,7 +107,16 @@ class WriterConfig(GaussianSplatReconstructionWriterConfig):
 @dataclass
 class Reconstruct(BaseCommand):
     """
-    Optimize a Gaussian splat radiance field from a set of images and camera poses.
+    Reconstruct a Gaussian Splat Radiance Field from a dataset of posed images, and save the result as a PLY or USDZ file.
+
+
+    Example usage:
+
+        # Reconstruct a Gaussian splat radiance field from a Colmap dataset
+        frgs reconstruct ./colmap_dataset -o ./output.ply
+
+        # Reconstruct a Gaussian splat radiance field from a dataset of e57 files
+        frgs reconstruct ./simple_directory_dataset --dataset-type e57 --out-path ./output.usdz
     """
 
     # Path to the dataset. For "colmap" datasets, this should be the
@@ -124,14 +133,20 @@ class Reconstruct(BaseCommand):
     run_name: Annotated[str | None, arg(aliases=["-n"])] = None
 
     # Type of dataset to load.
-    dataset_type: Annotated[DatasetType, arg(aliases=["-t"])] = "colmap"
+    dataset_type: Annotated[DatasetType, arg(aliases=["-dt"])] = "colmap"
 
     # Use every n-th image as a validation image. If -1, do not use a validation set.
     use_every_n_as_val: Annotated[int, arg(aliases=["-vn"])] = -1
 
     # How frequently (in epochs) to update the viewer during reconstruction.
-    # An epoch is one full pass through the training images. If -1, do not visualize.
+    # An epoch is one full pass through the dataset. If -1, do not visualize.
     update_viz_every: Annotated[float, arg(aliases=["-uv"])] = -1.0
+
+    # The port to expose the viewer server on if update_viz_every > 0.
+    viewer_port: Annotated[int, arg(aliases=["-p"])] = 8080
+
+    # The IP address to expose the viewer server on if update_viz_every > 0.
+    viewer_ip_address: Annotated[str, arg(aliases=["-ip"])] = "127.0.0.1"
 
     # Which device to use for reconstruction. Must be a cuda device. You can pass in a specific device index via
     # cuda:N where N is the device index, or "cuda" to use the default cuda device.
@@ -144,7 +159,7 @@ class Reconstruct(BaseCommand):
     # Configuration parameters for the Gaussian splat reconstruction.
     cfg: GaussianSplatReconstructionConfig = field(default_factory=GaussianSplatReconstructionConfig)
 
-    # Configuration for the transforms to apply to the scene before training.
+    # Configuration for the transforms to apply to the scene before reconstruction.
     tx: SceneTransformConfig = field(default_factory=SceneTransformConfig)
 
     # Configuration for the optimizer used to reconstruct the Gaussian splat radiance field.
@@ -203,7 +218,7 @@ class Reconstruct(BaseCommand):
         self,
         sfm_scene: SfmScene,
         writer: GaussianSplatReconstructionWriter,
-        viewer: Viewer | None,
+        viz_scene: fviz.Scene | None,
     ):
         """
         Reconstruct the scene in chunks and merge the results.
@@ -213,7 +228,7 @@ class Reconstruct(BaseCommand):
         Args:
             sfm_scene (SfmScene): The SfM scene to reconstruct.
             writer (GaussianSplatReconstructionWriter): Writer to use for logging and saving metrics.
-            viewer (Viewer | None): Viewer to use for visualization. If None, no visualization will be done.
+            viz_scene (fviz.Scene | None): :class:`fviz.Scene` to use for visualization. If ``None``, no visualization will be done.
 
         """
         crop_bboxes = self.get_crop_bboxes(sfm_scene)
@@ -236,13 +251,13 @@ class Reconstruct(BaseCommand):
                     config=self.cfg,
                     optimizer_config=self.opt,
                     writer=writer,
-                    viewer=viewer,
+                    viz_scene=viz_scene,
                     use_every_n_as_val=self.use_every_n_as_val,
                     log_interval_steps=self.io.log_every,
-                    viewer_update_interval_epochs=self.update_viz_every,
+                    viz_update_interval_epochs=self.update_viz_every,
                     device=self.device,
                 )
-                runner.optimize(True, f"train_chunk_{i:04d}")
+                runner.optimize(True, f"recon_chunk_{i:04d}")
 
                 if runner.model.num_gaussians == 0:
                     self.logger.warning(
@@ -270,7 +285,7 @@ class Reconstruct(BaseCommand):
         self,
         sfm_scene: SfmScene,
         writer: GaussianSplatReconstructionWriter,
-        viewer: Viewer | None,
+        viz_scene: fviz.Scene | None,
     ):
         """
         Reconstruct a single scene and save as a PLY or USDZ file.
@@ -278,17 +293,17 @@ class Reconstruct(BaseCommand):
         Args:
             sfm_scene (SfmScene): The SfM scene to reconstruct.
             writer (GaussianSplatReconstructionWriter): Writer to use for logging and saving metrics.
-            viewer (Viewer | None): Viewer to use for visualization. If None, no visualization will
+            viz_scene (fviz.Scene | None): :class:`fviz.Scene` to use for visualization. If ``None``, no visualization will be done.
         """
         runner = GaussianSplatReconstruction.from_sfm_scene(
             sfm_scene,
             config=self.cfg,
             optimizer_config=self.opt,
             writer=writer,
-            viewer=viewer,
+            viz_scene=viz_scene,
             use_every_n_as_val=self.use_every_n_as_val,
             log_interval_steps=self.io.log_every,
-            viewer_update_interval_epochs=self.update_viz_every,
+            viz_update_interval_epochs=self.update_viz_every,
             device=self.device,
         )
 
@@ -311,9 +326,11 @@ class Reconstruct(BaseCommand):
         sfm_scene = load_sfm_scene(self.dataset_path, self.dataset_type)
 
         if self.update_viz_every > 0:
-            viewer = Viewer()
+            self.logger.info(f"Starting viewer server on {self.viewer_ip_address}:{self.viewer_port}")
+            fviz.init(port=self.viewer_port, verbose=self.verbose)
+            viz_scene = fviz.get_scene("Gaussian Splat Reconstruction Visualization")
         else:
-            viewer = None
+            viz_scene = None
 
         scene_transform: BaseTransform = self.tx.scene_transform
         sfm_scene: SfmScene = scene_transform(sfm_scene)
@@ -331,6 +348,6 @@ class Reconstruct(BaseCommand):
             raise ValueError("chunk_overlap_pct must be in the range [0, 1)")
 
         if self.nchunks == (1, 1, 1):
-            self._run_single_reconstruction(sfm_scene, writer, viewer)
+            self._run_single_reconstruction(sfm_scene, writer, viz_scene)
         else:
-            self._run_chunked_reconstruction(sfm_scene, writer, viewer)
+            self._run_chunked_reconstruction(sfm_scene, writer, viz_scene)

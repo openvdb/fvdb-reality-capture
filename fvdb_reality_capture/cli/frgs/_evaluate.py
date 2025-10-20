@@ -32,6 +32,23 @@ class Evaluate(BaseCommand):
 
     This will render each image in the validation set, compute statistics (PSNR, SSIM, LPIPS),
     and save the rendered images and ground truth validation images to disk.
+
+    By default results will be saved to a directory named "eval" in the same directory as the checkpoint.
+
+    Example usage:
+
+        # Evaluate a checkpoint and save results to the default log path
+        frgs evaluate checkpoint.pt
+
+        # Evaluate a checkpoint on a new dataset split
+        frgs evaluate checkpoint.pt --use-every-n-as-val 10
+
+        # Evaluate a checkpoint and save results to a custom log path
+        frgs evaluate checkpoint.pt --log-path ./eval_results
+
+        # Evaluate a checkpoint but don't write out rendered images
+        frgs evaluate checkpoint.pt --save-images False
+
     """
 
     # Path to the checkpoint file containing the Gaussian Splat model.

@@ -31,10 +31,8 @@ A common reality capture pipeline typically resembles the figure below:
 
   <img src="https://fvdb-data.s3.us-east-2.amazonaws.com/fvdb-reality-capture/meshing_med.gif"
        alt="Reality Capture Pipeline"
-       style="display: block; margin-left: auto; margin-right: auto; width: 100%; margin-top: -4em; margin-bottom: -2em" />
+       style="display: block; margin-left: auto; margin-right: auto; width: 100%;" />
 
-.. .. image:: https://fvdb-data.s3.us-east-2.amazonaws.com/fvdb-reality-capture/meshing_med.gif
-..    :align: center
 
 
 
@@ -82,6 +80,7 @@ Note: fVDB-Reality-Capture recently moved from early-access to Beta. The API and
 
    tutorials/sensor_data_loading_and_manipulation
    tutorials/radiance_field_and_mesh_reconstruction
+   tutorials/frgs
 
 .. toctree::
    :maxdepth: 1
@@ -91,6 +90,7 @@ Note: fVDB-Reality-Capture recently moved from early-access to Beta. The API and
    api/sfm_scene
    api/tools
    api/transforms
+   api/frgs
 
 .. raw:: html
 

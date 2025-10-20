@@ -1,11 +1,17 @@
 ``fvdb_reality_capture.radiance_fields``
 ==========================================
 
+Gaussian Splat Radiance Field Reconstruction
+----------------------------------------------
 .. autoclass:: fvdb_reality_capture.radiance_fields.GaussianSplatReconstructionConfig
     :members:
 
 .. autoclass:: fvdb_reality_capture.radiance_fields.GaussianSplatReconstruction
     :members:
+
+
+Gaussian Splat Optimizers
+----------------------------------------------
 
 .. autoclass:: fvdb_reality_capture.radiance_fields.BaseGaussianSplatOptimizer
     :members:
@@ -21,6 +27,10 @@
 
 .. autoclass:: fvdb_reality_capture.radiance_fields.GaussianSplatOptimizer
     :members:
+
+
+Gaussian Splat Logging and Checkpointing
+----------------------------------------------
 
 .. autoclass:: fvdb_reality_capture.radiance_fields.GaussianSplatReconstructionBaseWriter
     :members:

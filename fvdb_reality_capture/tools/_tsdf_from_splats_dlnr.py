@@ -465,64 +465,91 @@ def tsdf_from_splats_dlnr(
     num_workers: int = 8,
 ) -> tuple[Grid, torch.Tensor, torch.Tensor]:
     """
-    Extract a Truncated Signed Distance Field (TSDF) from a `fvdb.GaussianSplat3d` using TSDF fusion
-    from depth maps predicted from the Gaussian splat model and the DLNR foundation model. DLNR is a
-    high-frequency stereo matching network that computes optical flow and disparity maps between two images.
+    Extract a Truncated Signed Distance Field (TSDF) from a `fvdb.GaussianSplat3d` using TSDF fusion from depth maps
+    predicted from the Gaussian splat radiance field and the
+    `DLNR foundation model <https://openaccess.thecvf.com/content/CVPR2023/papers/Zhao_High-Frequency_Stereo_Matching_Network_CVPR_2023_paper.pdf>`_.
+    DLNR is a high-frequency stereo matching network that computes optical flow and disparity maps between two images, which can be used to compute depth.
 
-    In short, this algorithm works by rendering stereo pairs of images from multiple views of the Gaussian splat model, and
-    using DLNR to compute depth maps from these stereo pairs.
-    The depth maps and images are then integrated into a sparse `fvdb.Grid` in a narrow band around the surface using a weighted averaging scheme.
-    The algorithm returns this grid along with signed distance values and colors (or other features) at each voxel.
+    This algorithm proceeds in two steps:
 
-    A mesh can be extracted from the TSDF using the marching cubes algorithm implemented in `fvdb.marching_cubes.marching_cubes`.
+    1. First, it renders stereo pairs of images from the Gaussian splat radiance field, and uses
+       DLNR to compute depth maps from these stereo pairs in the frame of the first image in the pair.
+       The result is a set of depth maps aligned with the rendered images.
 
-    The TSDF extraction algorithm is based on the paper
-    "GS2Mesh: Surface Reconstruction from Gaussian Splatting via Novel Stereo Views"
-    (https://arxiv.org/abs/2404.01810). We make key improvements to the method by using a more robust
-    stereo baseline estimation method and by using a more efficient TSDF fusion implementation.
+    2. Second, it integrates the depths and colors/features into a sparse :class:`fvdb.Grid` in a narrow band
+       around the surface using sparse truncated signed distance field (TSDF) fusion.
+       The result is a sparse voxel grid representation of the scene where each voxel stores a signed distance
+       value and color (or other features).
 
-    The TSDF fusion algorithm is a method for integrating multiple depth maps into a single volumetric representation of a scene encoding a
-    truncated signed distance field (_i.e._ a signed distance field in a narrow band around the surface). TSDF fusion was first described in the paper
-    "KinectFusion: Real-Time Dense Surface Mapping and Tracking"
-    (https://www.microsoft.com/en-us/research/publication/kinectfusion-real-time-3d-reconstruction-and-interaction-using-a-moving-depth-camera/).
-    We use a modified version of this algorithm which only allocates voxels in a narrow band around the surface of the model
-    to reduce memory usage and speed up computation.
 
-    The DLNR model is a high-frequency stereo matching network that computes optical flow and disparity maps
-    between two images. The DLNR model is described in the paper "High-Frequency Stereo Matching Network"
-    (https://openaccess.thecvf.com/content/CVPR2023/papers/Zhao_High-Frequency_Stereo_Matching_Network_CVPR_2023_paper.pdf).
+    .. note::
+        You can extract a mesh from the TSDF using the marching cubes algorithm implemented in
+        :class:`fvdb.Grid.marching_cubes`. If your goal is to extract a mesh from a Gaussian splat model,
+        consider using :func:`fvdb_reality_capture.tools.mesh_from_splats_dlnr` which combines this function
+        with marching cubes to directly extract a mesh.
+
+    .. note::
+
+        This algorithm implemented is based on the paper
+        `"GS2Mesh: Surface Reconstruction from Gaussian Splatting via Novel Stereo Views" <https://arxiv.org/abs/2404.01810>`_.
+        We make key improvements to the method by using a more robust stereo baseline estimation method and by using a much
+        more efficient sparse TSDF fusion implementation built on `fVDB <https://openvdb.github.io/fvdb>`_.
+
+    .. note::
+
+        The TSDF fusion algorithm is a method for integrating multiple depth maps into a single volumetric representation of a scene encoded a
+        truncated signed distance field (*i.e.* a signed distance field in a narrow band around the surface).
+        TSDF fusion was first described in the paper
+        `"KinectFusion: Real-Time Dense Surface Mapping and Tracking" <https://www.microsoft.com/en-us/research/publication/kinectfusion-real-time-3d-reconstruction-and-interaction-using-a-moving-depth-camera/>`_.
+        We use a modified version of this algorithm which only allocates voxels in a narrow band around the surface of the model
+        to reduce memory usage and speed up computation.
+
+    .. note::
+
+        The DLNR model is a high-frequency stereo matching network that computes optical flow and disparity maps
+        between two images. The DLNR model is described in the paper
+        `"High-Frequency Stereo Matching Network" <https://openaccess.thecvf.com/content/CVPR2023/papers/Zhao_High-Frequency_Stereo_Matching_Network_CVPR_2023_paper.pdf>`_.
+
 
     Args:
-        model (GaussianSplat3d): The Gaussian splat model to extract a mesh from
-        camera_to_world_matrices (torch.Tensor): A (C, 4, 4)-shaped Tensor containing the camera to world
-            matrices to render depth images from for mesh extraction where C is the number of camera views.
-        projection_matrices (torch.Tensor): A (C, 3, 3)-shaped Tensor containing the perspective projection matrices
-            used to render images for mesh extraction where C is the number of camera views.
-        image_sizes (torch.Tensor): A (C, 2)-shaped Tensor containing the width and height of each image to extract
-            from the Gaussian splat where C is the number of camera views.
-        truncation_margin (float): Margin for truncating the TSDF, in world units.
-        grid_shell_thickness (float): Thickness of the TSDF grid shell in multiples of the truncation margin (default is 3.0).
-            _i.e_. if truncation_margin is 0.1 and grid_shell_thickness is 3.0, the TSDF grid will extend 0.3 world units
-            from the surface of the model. This value must be greater than 1.0.
+        model (GaussianSplat3d): The Gaussian splat radiance field to extract a mesh from.
+        camera_to_world_matrices (NumericMaxRank3): A ``(C, 4, 4)``-shaped Tensor containing the camera to world
+            matrices to render depth images from for mesh extraction where ``C`` is the number of camera views.
+        projection_matrices (NumericMaxRank3): A ``(C, 3, 3)``-shaped Tensor containing the perspective projection matrices
+            used to render images for mesh extraction where ``C`` is the number of camera views.
+        image_sizes (NumericMaxRank2): A ``(C, 2)``-shaped Tensor containing the height and width of each image to extract
+            from the Gaussian splat where ``C`` is the number of camera views. *i.e.*, ``image_sizes[c] = (height_c, width_c)``.
+        truncation_margin (float): Margin for truncating the TSDF, in world units. This defines the half-width of the band around the surface
+            where the TSDF is defined in world units.
+        grid_shell_thickness (float): The number of voxels along each axis to include in the TSDF volume.
+            This defines the resolution of the Grid around narrow band around the surface.
+            Default is 3.0.
         baseline (float): Baseline distance for stereo depth estimation.
-            If use_absolute_baseline is False, this is interpreted as a fraction of the mean depth of each image (default is 0.07).
-            Otherwise, it is interpreted as an absolute distance in world units.
+            If ``use_absolute_baseline`` is ``False``, this is interpreted as a fraction of
+            the mean depth of each image. Otherwise, it is interpreted as an absolute distance in world units.
+            Default is 0.07.
         near (float): Near plane distance below which to ignore depth samples, as a multiple of the baseline.
         far (float): Far plane distance above which to ignore depth samples, as a multiple of the baseline.
-        disparity_reprojection_threshold (float): Reprojection error threshold for occlusion masking in pixels (default is 3.0).
-        alpha_threshold (float): Alpha threshold to mask pixels where the Gaussian splat model is transparent (usually indicating the background) (default is 0.1).
-        image_downsample_factor (int): Factor by which to downsample the rendered images for depth estimation (default is 1, i.e. no downsampling).
-        dtype (torch.dtype): Data type for the TSDF grid (default is torch.float16).
-        feature_dtype (torch.dtype): Data type for the color features (default is torch.uint8).
-        dlnr_backbone (str): Backbone to use for the DLNR model, either "middleburry" or "sceneflow".
-        use_absolute_baseline (bool): If True, use the provided baseline as an absolute distance in world units (default is False).
-        show_progress (bool): Whether to show a progress bar (default is True).
-        num_workers (int): Number of workers to use for loading data generated by DLNR (default is 8).
+        disparity_reprojection_threshold (float): Reprojection error threshold for occlusion
+            masking (in pixels units). Default is 3.0.
+        alpha_threshold (float): Alpha threshold to mask pixels where the Gaussian splat model is transparent
+            (usually indicating the background). Default is 0.1.
+        image_downsample_factor (int): Factor by which to downsample the rendered images for depth estimation.
+            Default is 1, *i.e.* no downsampling.
+        dtype (torch.dtype): Data type for the TSDF grid values. Default is ``torch.float16``.
+        feature_dtype (torch.dtype): Data type for the color features. Default is ``torch.uint8``.
+        dlnr_backbone (str): Backbone to use for the DLNR model, either ``"middleburry"`` or ``"sceneflow"``.
+            Default is ``"middleburry"``.
+        use_absolute_baseline (bool): If ``True``, treat the provided baseline as an absolute distance in world units.
+            If ``False``, treat the baseline as a fraction of the mean depth of each image estimated using the
+            Gaussian splat radiance field. Default is ``False``.
+        show_progress (bool): Whether to show a progress bar during processing. Default is ``True``.
+        num_workers (int): Number of workers to use for loading data generated by DLNR. Default is 8.
 
     Returns:
-        accum_grid (Grid): The accumulated grid containing the TSDF.
-        tsdf (torch.Tensor): The TSDF values in the grid.
-        colors (torch.Tensor): The color features in the grid.
+        accum_grid (Grid): The accumulated :class:`fvdb.Grid` representing the voxels in the TSDF volume.
+        tsdf (torch.Tensor): The TSDF values for each voxel in the grid.
+        colors (torch.Tensor): The colors/features for each voxel in the grid.
     """
 
     if model.num_channels != 3:
