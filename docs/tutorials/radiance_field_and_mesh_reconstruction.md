@@ -1,5 +1,5 @@
 # Reconstructing a Gaussian Splat Radiance Field and High Quality Mesh from a Capture
-----
+
 In this notebook, we'll walk through how to reconstruct a Gaussian Splat radiance field, and high quality triangle mesh from an input drone capture. The capture consists of a collection of posed images along with sparse points.  We'll show how you can visualize this radiance field interactively in a notebook or browser, how to save the radiance field to common formats like PLY and USDZ, and how to use the radiance field to construct a high quality triangle mesh. Along the way, we'll get a tour of the basic components of the `fvdb_reality_capture` library.
 
 The notebook walks through a common reality capture pipeline like in the figure below:
