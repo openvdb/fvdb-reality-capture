@@ -1200,14 +1200,6 @@ class GaussianSplatReconstruction:
                     # for every crop but the last one
                     loss.backward(retain_graph=not is_last)
 
-                # Update the log in the progress bar
-                if pbar is not None:
-                    pbar.set_description(
-                        f"loss={loss.item():.3f}| "
-                        f"sh degree={sh_degree_to_use}| "
-                        f"num gaussians={self.model.num_gaussians:,}"
-                    )
-
                 # Refine the gaussians via splitting/duplication/pruning
                 if (
                     self._global_step > refine_start_step
@@ -1238,6 +1230,14 @@ class GaussianSplatReconstruction:
                     self.pose_adjust_optimizer.step()
                     self.pose_adjust_scheduler.step()
                     self.pose_adjust_optimizer.zero_grad(set_to_none=True)
+
+                # Update the log in the progress bar
+                if pbar is not None:
+                    pbar.set_description(
+                        f"loss={loss.item():.3f}| "
+                        f"sh degree={sh_degree_to_use}| "
+                        f"num gaussians={self.model.num_gaussians:,}"
+                    )
 
                 # Log metrics
                 if self._global_step % self._log_interval_steps == 0:
