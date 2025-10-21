@@ -7,22 +7,22 @@ paths:
 
 datasets:
 - name: garden
-  path: data/360_v2/garden
+  path: 360_v2/garden
 - name: bicycle
-  path: data/360_v2/bicycle
+  path: 360_v2/bicycle
 - name: bonsai
-  path: data/360_v2/bonsai
+  path: 360_v2/bonsai
 - name: counter
-  path: data/360_v2/counter
+  path: 360_v2/counter
 - name: kitchen
-  path: data/360_v2/kitchen
+  path: 360_v2/kitchen
 - name: room
-  path: data/360_v2/room
+  path: 360_v2/room
 - name: stump
-  path: data/360_v2/stump
+  path: 360_v2/stump
 - name: safety_park
-  path: data/safety_park
+  path: safety_park
 - name: gettysburg
-  path: data/gettysburg
+  path: gettysburg
 results:
   base_path: results/benchmark

@@ -31,11 +31,14 @@ def count_dataset_images(data_dir: str) -> int:
         ]
         if env
     ] + [
-        Path("/workspace/fvdb-reality-capture"),
+        Path("/workspace/openvdb/fvdb-reality-capture"),
         Path("/workspace/openvdb/fvdb"),
         Path("/workspace/fvdb"),
         (Path(__file__).resolve().parents[3] if len(Path(__file__).resolve().parents) >= 4 else None),
     ]
+    # print all candidates
+    logger.info(f"Candidates: {candidates}")
+
     repo_root = None
     for c in candidates:
         if c and c.exists():
@@ -63,28 +66,13 @@ def count_dataset_images(data_dir: str) -> int:
     return num_images
 
 
-def extract_training_params(config_path: str, scene: str) -> dict:
+def extract_training_params(config: dict, scene: str) -> dict:
     """Extract training parameters from benchmark config."""
-    with open(config_path, "r") as f:
-        config = yaml.safe_load(f)
 
-    # Find the dataset config for the specified scene
-    dataset_config = None
-    available_scenes = []
-    for dataset in config.get("datasets", []):
-        available_scenes.append(dataset.get("name"))
-        if dataset.get("name") == scene:
-            dataset_config = dataset
-            break
+    logger.info(f"Processing config for scene: {scene}")
 
-    if not dataset_config:
-        logger.error(f"Scene '{scene}' not found in config. Available scenes: {available_scenes}")
-        raise ValueError(f"Scene '{scene}' not found in config")
-
-    logger.info(f"Processing scene: {scene}")
-
-    training_config = config.get("training", {}).get("config", {})
-    training_params = config.get("training_params", {})
+    training_config = config.get("optimization_config", {}).get("training", {}).get("config", {})
+    training_params = config.get("optimization_config", {}).get("training_params", {})
 
     # Extract key parameters
     params = {
@@ -118,8 +106,14 @@ def extract_training_params(config_path: str, scene: str) -> dict:
 
     # Use the data path from config, with fallback for different environments
     data_base = config.get("paths", {}).get("data_base", "/workspace/data")
-    data_dir = f"{data_base}/360_v2/{scene}"
-    total_images = count_dataset_images(data_dir)
+    # find the path of the scene in the datasets list
+    scene_path = next((dataset["path"] for dataset in config.get("datasets", []) if dataset["name"] == scene), None)
+    if scene_path is None:
+        raise ValueError(f"Scene {scene} not found in config")
+    logger.info(f"Scene path: {scene_path}")
+    scene_path = Path(data_base) / scene_path
+    logger.info(f"Scene path: {scene_path}")
+    total_images = count_dataset_images(scene_path)
 
     # Get use_every_n_as_val from training_params
     use_every_n_as_val = training_params.get("use_every_n_as_val", 8)

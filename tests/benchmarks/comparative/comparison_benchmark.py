@@ -380,8 +380,12 @@ def main():
                 training_results[config_name] = fvdb_results
 
             elif framework == "gsplat":
-                raise NotImplementedError("GSplat training not implemented in this script")
-                # gsplat_results = run_gsplat_training(scene_name, result_dir, opt_config)
+                gsplat_results = run_gsplat_training(
+                    scene_name, results_path, pathlib.Path(args.benchmark_config), pathlib.Path(opt_config_path)
+                )
+                training_results[config_name] = gsplat_results
+            else:
+                raise ValueError(f"Invalid framework: {framework}")
 
         # Generate summary report for each optimization config that was run
         if training_results:

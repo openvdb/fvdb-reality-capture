@@ -73,7 +73,7 @@ def run_fvdb_training(
     # Run from fvdb-reality-capture repo root (contains tests/benchmarks/generate_benchmark_checkpoints.py)
     repo_root = None
     for candidate in [
-        (pathlib.Path(__file__).resolve().parents[4] if len(pathlib.Path(__file__).resolve().parents) >= 4 else None),
+        (pathlib.Path(__file__).resolve().parents[3] if len(pathlib.Path(__file__).resolve().parents) >= 4 else None),
         pathlib.Path("/workspace/openvdb/fvdb-reality-capture"),
         pathlib.Path("/workspace/benchmark").parent,  # if running from /workspace/benchmark
     ]:

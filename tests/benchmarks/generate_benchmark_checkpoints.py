@@ -85,6 +85,9 @@ def main(
     # Load configuration
     config = load_config(config_path)
 
+    # data base path
+    data_base_path = config["paths"]["data_base"]
+
     # Get the current git commit hash of the repository
     commit_hash = subprocess.check_output(["git", "rev-parse", "HEAD"]).decode("utf-8").strip()
     logger.info(f"Current git commit hash: {commit_hash}")
@@ -116,7 +119,7 @@ def main(
 
     for dataset_config in datasets:
         dataset_name = dataset_config["name"]
-        dataset_path = pathlib.Path(dataset_config["path"])
+        dataset_path = pathlib.Path(data_base_path) / dataset_config["path"]
 
         logger.info(f"Processing dataset: {dataset_name}")
         logger.info(f"Dataset path: {dataset_path}")
