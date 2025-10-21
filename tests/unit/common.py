@@ -156,7 +156,7 @@ def sfm_scenes_match(scene1: SfmScene, scene2: SfmScene) -> bool:
         return False
     if not np.allclose(scene1.projection_matrices, scene2.projection_matrices):
         return False
-    if not np.allclose(scene1.image_centers, scene2.image_centers):
+    if not np.allclose(scene1.image_camera_positions, scene2.image_camera_positions):
         return False
     if not np.allclose(scene1.image_sizes, scene2.image_sizes):
         return False
