@@ -3,8 +3,8 @@ Welcome to fVDB-Reality-Capture!
 
 .. raw:: html
 
-  <video autoplay loop controls muted width="100%">
-     <source src="https://fvdb-data.s3.us-east-2.amazonaws.com/fvdb-reality-capture/large_world_480p.mp4" type="video/mp4" />
+  <video autoplay loop controls muted width="90%" style="display: block; margin: 0 auto;">
+     <source src="https://fvdb-data.s3.us-east-2.amazonaws.com/fvdb-reality-capture/rc_intro_480p.mp4" type="video/mp4" />
   </video>
 
 |
@@ -18,7 +18,7 @@ of complex scenes using fVDB-Reality-Capture.
 
    <p style="text-align: center; font-weight: bold; font-style: italic; text-decoration: underline; font-size: medium; text-decoration-skip-ink: none; margin-bottom: 0.5em;">
    100 million 3D Gaussians reconstructed from 400 high-resolution images, rendered in a browser</p>
-  <video autoplay loop controls muted width="80%"  style="display: block; margin: 0 auto;">
+  <video autoplay loop controls muted width="90%"  style="display: block; margin: 0 auto;">
      <source src="https://fvdb-data.s3.us-east-2.amazonaws.com/fvdb-reality-capture/large_recon_480p.mp4" type="video/mp4" />
   </video>
 
@@ -28,7 +28,7 @@ of complex scenes using fVDB-Reality-Capture.
 
    <p style="text-align: center; font-weight: bold; font-style: italic; text-decoration: underline; font-size: medium; text-decoration-skip-ink: none; margin-bottom: 0.5em;">
    Reconstructing a high quality Gaussian splat radiance field and mesh from 177 images</p>
-  <video autoplay loop controls muted width="80%" style="display: block; margin: 0 auto;">
+  <video autoplay loop controls muted width="90%" style="display: block; margin: 0 auto;">
      <source src="https://fvdb-data.s3.us-east-2.amazonaws.com/fvdb-reality-capture/airport_viz_480p.mp4" type="video/mp4" />
   </video>
 
