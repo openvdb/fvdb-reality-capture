@@ -16,10 +16,7 @@ from typing import Dict, List
 import yaml
 
 sys.path.insert(0, str(pathlib.Path(__file__).parent.parent.parent.resolve()))
-from fvdb_reality_capture.radiance_fields import (
-    GaussianSplatReconstruction,
-    GaussianSplatReconstructionConfig,
-)
+import fvdb_reality_capture as frc
 
 logger = logging.getLogger("train benchmark checkpoints")
 
@@ -98,7 +95,7 @@ def main(
     training_params = config["optimization_config"]["training_arguments"]
 
     # Create base Config object
-    base_config = GaussianSplatReconstructionConfig()
+    base_config = frc.radiance_fields.GaussianSplatReconstructionConfig()
 
     # Override config with values from YAML
     for key, value in config["optimization_config"]["optimization_config"].items():
@@ -133,32 +130,24 @@ def main(
         if train:
             run_name = get_run_name(dataset_results_path)
 
+            sfm_scene = frc.sfm_scene.SfmScene.from_colmap(dataset_path)
+            sfm_scene = frc.transforms.DownsampleImages(
+                image_downsample_factor=training_params["image_downsample_factor"]
+            )(sfm_scene)
+
             # Create the runner (this sets up datasets/transforms/cache) without including it in training time
             logger.info(f"Preparing training run for {dataset_name} (initializing datasets/transforms/cache)...")
-            runner = GaussianSplatReconstruction.new_run(
+            runner = frc.radiance_fields.GaussianSplatReconstruction.from_sfm_scene(
+                sfm_scene=sfm_scene,
                 config=base_config,
-                dataset_path=dataset_path,
-                run_name=run_name,
-                image_downsample_factor=training_params["image_downsample_factor"],
-                points_percentile_filter=training_params["points_percentile_filter"],
-                normalization_type=training_params["normalization_type"],
-                crop_bbox=training_params["crop_bbox"],
-                # crop_to_points=training_params["crop_to_points"],
-                min_points_per_image=training_params["min_points_per_image"],
-                results_path=dataset_results_path,
-                device=training_params["device"],
+                viz_scene=None,
                 use_every_n_as_val=training_params["use_every_n_as_val"],
-                disable_viewer=training_params["disable_viewer"],
-                log_tensorboard_every=training_params["log_tensorboard_every"],
-                log_images_to_tensorboard=training_params["log_images_to_tensorboard"],
-                save_results=training_params["save_results"],
-                save_eval_images=training_params["save_eval_images"],
             )
 
             # Start training-only timer
             logger.info(f"Starting training for {dataset_name}...")
             start_time = time.time()
-            runner.train()
+            runner.optimize()
             training_time = time.time() - start_time
             logger.info(f"Training completed for {dataset_name} in {training_time:.2f} seconds")
         else:

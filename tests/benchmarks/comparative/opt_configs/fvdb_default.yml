@@ -35,7 +35,7 @@ optimization_config:
   remove_gaussians_outside_scene_bbox: false
 
   # Pose optimization
-  optimize_camera_poses: true
+  optimize_camera_poses: false
   pose_opt_lr: 1.0e-05
   pose_opt_reg: 1.0e-06
   pose_opt_lr_decay: 1.0
