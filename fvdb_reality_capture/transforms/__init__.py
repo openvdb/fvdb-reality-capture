@@ -9,6 +9,7 @@ from .filter_images_with_low_points import FilterImagesWithLowPoints
 from .identity import Identity
 from .normalize_scene import NormalizeScene
 from .percentile_filter_points import PercentileFilterPoints
+from .transform_scene import TransformScene
 
 __all__ = [
     "BaseTransform",
@@ -20,5 +21,6 @@ __all__ = [
     "NormalizeScene",
     "PercentileFilterPoints",
     "Identity",
+    "TransformScene",
     "transform",
 ]
