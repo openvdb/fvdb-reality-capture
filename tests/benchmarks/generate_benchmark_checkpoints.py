@@ -134,8 +134,9 @@ def main(
             run_name = get_run_name(dataset_results_path)
 
             sfm_scene = frc.sfm_scene.SfmScene.from_colmap(dataset_path)
-            sfm_scene = frc.transforms.DownsampleImages(
-                image_downsample_factor=training_params["image_downsample_factor"]
+            sfm_scene = frc.transforms.Compose(
+                frc.transforms.NormalizeScene("pca"),
+                frc.transforms.DownsampleImages(training_params["image_downsample_factor"]),
             )(sfm_scene)
 
             # Create the runner (this sets up datasets/transforms/cache) without including it in training time
@@ -143,7 +144,6 @@ def main(
             runner = frc.radiance_fields.GaussianSplatReconstruction.from_sfm_scene(
                 sfm_scene=sfm_scene,
                 config=base_config,
-                viz_scene=None,
                 use_every_n_as_val=training_params["use_every_n_as_val"],
             )
 
