@@ -72,6 +72,7 @@ html_theme = "sphinx_rtd_theme"
 html_static_path = [
     "tutorials/radiance_field_and_mesh_reconstruction_files",
     "tutorials/sensor_data_loading_and_manipulation_files",
+    "CNAME",
 ]
 
 myst_heading_anchors = 3

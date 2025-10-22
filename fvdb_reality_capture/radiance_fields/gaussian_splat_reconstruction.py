@@ -672,7 +672,7 @@ class GaussianSplatReconstruction:
                     antialias=self._cfg.antialias,
                     sh_degree_to_use=0,
                 )
-                camera_eye = self._sfm_scene.image_centers[0]
+                camera_eye = self._sfm_scene.image_camera_positions[0]
                 camera_lookat = np.median(self._sfm_scene.points, axis=0)
                 camera_up = (0, 0, 1)
                 self._viz_scene.set_camera_lookat(eye=camera_eye, center=camera_lookat, up=camera_up)
@@ -1200,14 +1200,6 @@ class GaussianSplatReconstruction:
                     # for every crop but the last one
                     loss.backward(retain_graph=not is_last)
 
-                # Update the log in the progress bar
-                if pbar is not None:
-                    pbar.set_description(
-                        f"loss={loss.item():.3f}| "
-                        f"sh degree={sh_degree_to_use}| "
-                        f"num gaussians={self.model.num_gaussians:,}"
-                    )
-
                 # Refine the gaussians via splitting/duplication/pruning
                 if (
                     self._global_step > refine_start_step
@@ -1238,6 +1230,14 @@ class GaussianSplatReconstruction:
                     self.pose_adjust_optimizer.step()
                     self.pose_adjust_scheduler.step()
                     self.pose_adjust_optimizer.zero_grad(set_to_none=True)
+
+                # Update the log in the progress bar
+                if pbar is not None:
+                    pbar.set_description(
+                        f"loss={loss.item():.3f}| "
+                        f"sh degree={sh_degree_to_use}| "
+                        f"num gaussians={self.model.num_gaussians:,}"
+                    )
 
                 # Log metrics
                 if self._global_step % self._log_interval_steps == 0:
