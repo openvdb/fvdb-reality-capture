@@ -37,7 +37,7 @@ RUN conda env create -f /tmp/benchmark_environment.yml
 RUN conda run -n benchmark conda install -c conda-forge scikit-build-core cmake -y
 
 # Patch pycolmap after installation
-RUN sed -i 's/INVALID_POINT3D = np.uint64(-1)/INVALID_POINT3D = np.uint64(2**64-1)/' /opt/conda/envs/benchmark/lib/python3.11/site-packages/pycolmap/scene_manager.py
+RUN conda run -n benchmark sed -i 's/INVALID_POINT3D = np.uint64(-1)/INVALID_POINT3D = np.uint64(2**64-1)/' $(conda run -n benchmark python -c 'import site; print(site.getsitepackages()[0])')/pycolmap/scene_manager.py
 
 # Initialize conda
 RUN conda init
