@@ -2,7 +2,7 @@
 # at every refinement step.
 # This matches the default behavior of gsplat.
 framework: fvdb
-name: fvdb_fixed_grad2d
+name: fvdb_default
 
 optimization_config:
   max_epochs: 200
