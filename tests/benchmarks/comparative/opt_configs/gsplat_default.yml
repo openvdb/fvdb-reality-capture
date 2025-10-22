@@ -35,7 +35,7 @@ training:
     eval_at_percent:
       - 100
   save_at_percent:
-  - 100
+    - 100
 training_params:
   crop_bbox: null
   device: cuda
