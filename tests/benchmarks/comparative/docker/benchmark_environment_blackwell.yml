@@ -6,7 +6,7 @@ dependencies:
   - blas=*=mkl
   - ca-certificates
   - certifi
-  - cuda-version=12.8
+  - cuda-version=12.9
   - cuda-command-line-tools
   - cuda-compiler
   - cuda-cudart-dev
@@ -39,7 +39,7 @@ dependencies:
   - polyscope
   # - py-opencv=4.10[build=headless*]
   - pytest-benchmark
-  - python=3.11
+  - python=3.12
   # pytorch-gpu will be installed via pip from PyTorch's official index
   - rich
   - scikit-learn
