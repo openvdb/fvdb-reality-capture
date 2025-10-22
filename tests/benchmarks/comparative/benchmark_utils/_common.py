@@ -142,6 +142,7 @@ def extract_training_metrics(output: str, total_time: float) -> dict[str, Any]:
         r"num gaussians=([\d,]+)",  # new FVDB
         r"Num Gaussians: ([\d,]+) \(before:",  # old FVDB
         r"Now having (\d+) GSs",  # GSplat
+        r"Number of GS: (\d+)",  # GSplat
     ]
     for _pat in gaussian_patterns:
         _matches = re.findall(_pat, output)
