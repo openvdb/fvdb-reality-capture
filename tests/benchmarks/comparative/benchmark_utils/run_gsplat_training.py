@@ -9,6 +9,8 @@ from typing import Any
 
 import yaml
 
+import fvdb_reality_capture as frc
+
 from ._common import extract_training_metrics, run_command
 
 
@@ -77,7 +79,16 @@ def run_gsplat_training(
     logging.info(f"  Training images: {training_images}")
     logging.info(f"  Total images: {params.get('total_images', 'N/A')}")
 
-    logging.info(f"Run config: {run_config}")
+    data_base_path = run_config.get("paths", {}).get("data_base", "/workspace/data")
+    scene_path = pathlib.Path(data_base_path) / scene_path
+
+    rescaled_images_path = scene_path / f"images_{params.get('image_downsample_factor', 4)}"
+    if not rescaled_images_path.exists():
+        rescaled_images_path.symlink_to(scene_path / "images")
+        logging.info(f"Created symlink to {rescaled_images_path} from {scene_path / 'images'}")
+    else:
+        logging.info(f"Rescaled images path already exists: {rescaled_images_path}")
+        logging.info(f"Skipping symlink creation")
 
     # Build GSplat command with computed parameters
     cmd = [
@@ -93,12 +104,12 @@ def run_gsplat_training(
         "--render_traj_path",
         "ellipse",
         "--data_dir",
-        f"{run_config.get('paths', {}).get('data_base', '/workspace/data')}/{scene_path}/",
+        str(scene_path),
         "--result_dir",
         str(gsplat_result_dir),
         "--max_steps",
         str(max_steps),  # Full training
-        # Add densification parameters to match FVDB using tyro nested syntax
+        # densification parameters to match FVDB
         "--strategy.refine_start_iter",
         str(refine_start_steps),
         "--strategy.refine_stop_iter",
@@ -108,10 +119,10 @@ def run_gsplat_training(
         "--strategy.reset_every",
         str(reset_every_steps),
         "--strategy.pause_refine_after_reset",
-        "0",  # Don't pause refinement after reset
+        "0",
         "--strategy.verbose",  # Enable verbose output to see refinement info
         "--global_scale",
-        "0.909",  # Compensate for GSplat's 1.1x scene scale multiplier to match FVDB
+        "1.0",
         "--strategy.refine_scale2d_stop_iter",
         "1",  # Disable 2D scale-based splitting to match FVDB behavior
     ]
