@@ -60,9 +60,8 @@ training_arguments:
   min_points_per_image: 5
 
   device: cuda
-  use_every_n_as_val: 100
+  use_every_n_as_val: 10
 
-  disable_viewer: true
   log_tensorboard_every: -1
   log_images_to_tensorboard: false
   save_results: true
