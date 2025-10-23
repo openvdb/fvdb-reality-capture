@@ -274,6 +274,7 @@ def main():
         --result-dir       Directory to store results (default: results/benchmark).
         --log-level        Logging level (default: INFO).
         --list-scenes      List available scenes from config and exit.
+        --plot-only        Only plot the results from previous run and exit.
 
     The script sets up signal handling for graceful interruption, parses arguments,
     loads configuration, and processes each scene as specified.
