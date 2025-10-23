@@ -69,7 +69,7 @@ def _init_model(
 
     sh_n = torch.zeros((num_gaussians, (sh_degree + 1) ** 2 - 1, 3), device=device)  # [N, K-1, 3]
 
-    model = GaussianSplat3d(means, quats, log_scales, logit_opacities, sh_0, sh_n, True)
+    model = GaussianSplat3d.from_tensors(means, quats, log_scales, logit_opacities, sh_0, sh_n, True)
     model.requires_grad = True
 
     model.accumulate_max_2d_radii = False

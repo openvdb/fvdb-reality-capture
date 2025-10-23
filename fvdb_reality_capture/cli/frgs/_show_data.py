@@ -138,7 +138,7 @@ class ShowData(BaseCommand):
         logger = logging.getLogger(__name__)
 
         logger.info(f"Starting viewer server on {self.viewer_ip_address}:{self.viewer_port}")
-        fviz.init(port=self.viewer_port, verbose=self.verbose)
+        fviz.init(ip_address=self.viewer_ip_address, port=self.viewer_port, verbose=self.verbose)
         viz_scene = fviz.get_scene("Dataset Visualization")
 
         sfm_scene = load_sfm_scene(self.dataset_path, self.dataset_type)
