@@ -187,6 +187,7 @@ def save_summary_report(scenes: list[str], result_path: pathlib.Path, colors: di
         # Make the xtick labels diagonal for better readability
         ax.set_xticklabels(scenes, rotation=45, ha="right")
         ax.margins(y=0.15)
+        ax.grid(axis="x", visible=False)
 
     handles, labels = ax.get_legend_handles_labels()
     fig.legend(handles, labels, loc="upper center")
