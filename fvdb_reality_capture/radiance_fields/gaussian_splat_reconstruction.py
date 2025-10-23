@@ -13,7 +13,7 @@ import torch
 import torch.nn.functional as nnf
 import torch.utils.data
 import tqdm
-from fvdb import GaussianSplat3d
+from fvdb import GaussianSplat3d, ProjectionType
 from fvdb.utils.metrics import psnr, ssim
 from fvdb.viz import Scene
 from scipy.spatial import cKDTree  # type: ignore
@@ -919,7 +919,7 @@ class GaussianSplatReconstruction:
 
         sh_n = torch.zeros((num_gaussians, (config.sh_degree + 1) ** 2 - 1, 3), device=device)  # [N, K-1, 3]
 
-        model = GaussianSplat3d(means, quats, log_scales, logit_opacities, sh_0, sh_n, True)
+        model = GaussianSplat3d.from_tensors(means, quats, log_scales, logit_opacities, sh_0, sh_n, True)
         model.requires_grad = True
 
         return model
@@ -1134,7 +1134,7 @@ class GaussianSplatReconstruction:
                     image_height,
                     self.config.near_plane,
                     self.config.far_plane,
-                    GaussianSplat3d.ProjectionType.PERSPECTIVE,
+                    ProjectionType.PERSPECTIVE,
                     sh_degree_to_use,
                     self.config.min_radius_2d,
                     self.config.eps_2d,
@@ -1352,7 +1352,7 @@ class GaussianSplatReconstruction:
                 height,
                 self.config.near_plane,
                 self.config.far_plane,
-                GaussianSplat3d.ProjectionType.PERSPECTIVE,
+                ProjectionType.PERSPECTIVE,
                 self.config.sh_degree,
                 self.config.tile_size,
                 self.config.min_radius_2d,
