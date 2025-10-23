@@ -21,6 +21,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 from benchmark_utils import load_config, run_fvdb_training, run_gsplat_training
 
+default_colors = ["#76B900", "#767676"]
+
 
 def save_report_for_run(scene_name: str, training_results: dict[str, Any], output_directory: pathlib.Path) -> None:
     """
@@ -79,7 +81,7 @@ def save_report_for_run(scene_name: str, training_results: dict[str, Any], outpu
     logging.info(f"Detailed report saved to: {report_file_path}")
 
 
-def save_summary_report(scenes: list[str], result_path: pathlib.Path) -> None:
+def save_summary_report(scenes: list[str], result_path: pathlib.Path, colors: dict[str, str]) -> None:
     """
     Generate a summary report comparing different runs across multiple scenes.
 
@@ -158,28 +160,38 @@ def save_summary_report(scenes: list[str], result_path: pathlib.Path) -> None:
 
     num_metrics = len(plot_dict)
     fig, axs = plt.subplots(num_metrics, figsize=(7, 6 * num_metrics))
+
     # For each metric, create a grouped bar chart
     for i, (metric, metric_data) in enumerate(plot_dict.items()):
         ax = axs[i]
         ax.grid(True)
         x = np.arange(len(scenes))  # the label locations
-        width = 0.25  # the width of the bars
+        gap = 0.2
+        width = (1 - gap) / len(metric_data)  # the width of the bars
         multiplier = 0  # Used to offset bars within a group
+
         # For each optimizer config, we plot a bar for each scene (one bar per group)
         for i, (opt_config_name, measurement) in enumerate(metric_data.items()):
             offset = width * multiplier
             assert isinstance(measurement, list)
-            rects = ax.bar(x + offset, measurement, width, label=opt_config_name)
-            ax.bar_label(rects, padding=3)
+            rects = ax.bar(x + offset, measurement, width, label=opt_config_name, color=colors[opt_config_name])
+            if metric in ["num_gaussians"]:
+                ax.bar_label(rects, rotation=45, padding=3, fmt="%d")
+            else:
+                ax.bar_label(rects, rotation=45, padding=3, fmt="%.2f")
             multiplier += 1
         # Add some text for labels, title and custom x-axis tick labels, etc.
         ax.set_ylabel(f"{metric}")
         ax.set_title(f"{metric.replace('_', ' ').title()}")
         ax.set_xticks(x + width, scenes)
+        # Make the xtick labels diagonal for better readability
+        ax.set_xticklabels(scenes, rotation=45, ha="right")
+        ax.margins(y=0.15)
 
     handles, labels = ax.get_legend_handles_labels()
     fig.legend(handles, labels, loc="upper center")
     plt.tight_layout(pad=3.0)
+    # add space above heighest bars to avoid cutting off the labels
     plt.savefig(summary_dir / f"summary_comparison.png", dpi=300, bbox_inches="tight", pad_inches=0.5)
     plt.close()
 
@@ -298,6 +310,7 @@ def main():
     parser.add_argument("--result-dir", default="results/benchmark", help="Results directory")
     parser.add_argument("--log-level", default="INFO", help="Logging level")
     parser.add_argument("--list-scenes", action="store_true", help="List available scenes from config and exit")
+    parser.add_argument("--plot-only", action="store_true", help="Only plot the results from previous run and exit")
 
     args = parser.parse_args()
 
@@ -340,6 +353,7 @@ def main():
         logging.info(f"Using all scenes from config: {', '.join(scenes)}")
 
     # Process each scene
+    all_config_colors = dict()
     for scene_name in scenes:
         logging.info(f"Processing scene: {scene_name}")
 
@@ -351,7 +365,7 @@ def main():
 
         # Validate that all optimization configs have unique names
         all_config_names = dict()
-        for opt_config_path in args.opt_configs:
+        for i, opt_config_path in enumerate(args.opt_configs):
             opt_config = load_config(opt_config_path)
             if "framework" not in opt_config:
                 raise RuntimeError(f"Framework not specified in opt config: {opt_config_path}")
@@ -363,42 +377,44 @@ def main():
                     f"Duplicate config name detected: {config_name} in files {all_config_names[config_name]} and {opt_config_path}"
                 )
             all_config_names[config_name] = opt_config_path
+            all_config_colors[config_name] = opt_config.get("color", default_colors[i % len(default_colors)])
 
         # Run training for each optimization configuration
-        for opt_config_path in args.opt_configs:
-            opt_config = load_config(opt_config_path)
-            framework = opt_config["framework"]
-            config_name = opt_config["name"]
-            if framework == "fvdb":
-                fvdb_results = run_fvdb_training(
-                    scene_name,
-                    results_path,
-                    pathlib.Path(args.benchmark_config),
-                    pathlib.Path(opt_config_path),
-                    config_name,
+        if not args.plot_only:
+            for opt_config_path in args.opt_configs:
+                opt_config = load_config(opt_config_path)
+                framework = opt_config["framework"]
+                config_name = opt_config["name"]
+                if framework == "fvdb":
+                    fvdb_results = run_fvdb_training(
+                        scene_name,
+                        results_path,
+                        pathlib.Path(args.benchmark_config),
+                        pathlib.Path(opt_config_path),
+                        config_name,
+                    )
+                    training_results[config_name] = fvdb_results
+
+                elif framework == "gsplat":
+                    gsplat_results = run_gsplat_training(
+                        scene_name, results_path, pathlib.Path(args.benchmark_config), pathlib.Path(opt_config_path)
+                    )
+                    training_results[config_name] = gsplat_results
+                else:
+                    raise ValueError(f"Invalid framework: {framework}")
+
+            # Generate summary report for each optimization config that was run
+            if training_results:
+                save_report_for_run(
+                    scene_name=scene_name,
+                    training_results=training_results,
+                    output_directory=results_path,
                 )
-                training_results[config_name] = fvdb_results
 
-            elif framework == "gsplat":
-                gsplat_results = run_gsplat_training(
-                    scene_name, results_path, pathlib.Path(args.benchmark_config), pathlib.Path(opt_config_path)
-                )
-                training_results[config_name] = gsplat_results
-            else:
-                raise ValueError(f"Invalid framework: {framework}")
-
-        # Generate summary report for each optimization config that was run
-        if training_results:
-            save_report_for_run(
-                scene_name=scene_name,
-                training_results=training_results,
-                output_directory=results_path,
-            )
-
-        logging.info(f"Completed benchmark for {scene_name}")
+            logging.info(f"Completed benchmark for {scene_name}")
 
     # Generate summary charts if multiple scenes were processed
-    save_summary_report(scenes, results_path)
+    save_summary_report(scenes, results_path, all_config_colors)
 
     logging.info("All benchmarks completed!")
 
