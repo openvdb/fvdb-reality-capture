@@ -153,7 +153,7 @@ def visualize_sfm_scene(scene: frc.sfm_scene.SfmScene,
     # Set the initial camera view to be at the position of the first posed image, in the SfmScene,
     # looking at the center of the 3D points, with Z as up (COLMAP SfM scenes use Z as up).
     viewer_scene.set_camera_lookat(
-        eye=scene.image_centers[0],
+        eye=scene.image_camera_positions[0],
         center=np.zeros(3),
         up=np.array([0, 0, 1]),  # Z is up in COLMAP SfM scenes
     )

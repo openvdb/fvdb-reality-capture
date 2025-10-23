@@ -509,14 +509,14 @@ class SfmScene:
         return median_depths
 
     @property
-    def image_centers(self) -> np.ndarray:
+    def image_camera_positions(self) -> np.ndarray:
         """
         Returns the position where each posed image was captured in the scene (i.e. the position of the camera
         when it captured the image).
 
         Returns:
-            image_centers (np.ndarray): A ``(I, 3)``-shaped array representing the 3D positions of the image centers,
-                where ``N`` is the number of images.
+            image_camera_positions (np.ndarray): A ``(I, 3)``-shaped array representing the 3D positions of the camera positions that captured
+                each posed image in the scene, where ``I`` is the number of images.
         """
 
         if not self._images:

@@ -4,7 +4,7 @@ FROM condaforge/miniforge3:24.11.3-2
 # Set environment variables
 ENV DEBIAN_FRONTEND=noninteractive
 ENV CONDA_AUTO_UPDATE_CONDA=false
-ENV CONDA_OVERRIDE_CUDA=12.0
+ENV CONDA_OVERRIDE_CUDA=12.9
 ENV PATH="/opt/conda/bin:$PATH"
 
 # Install system dependencies for building
@@ -14,6 +14,7 @@ RUN apt-get update && apt-get install -y \
     unzip \
     wget \
     gnupg2 \
+    libglm-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # Add NVIDIA repository for latest Nsight Systems
@@ -21,10 +22,11 @@ RUN wget -qO - https://developer.download.nvidia.com/compute/cuda/repos/ubuntu24
     echo "deb https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2404/x86_64/ /" > /etc/apt/sources.list.d/cuda.list
 
 # Install latest Nsight Systems and create symlink
-RUN apt-get update && apt-get install -y \
-    nsight-systems-2025.3.2 \
-    && rm -rf /var/lib/apt/lists/* \
-    && ln -sf /opt/nvidia/nsight-systems/2025.3.2/bin/nsys /usr/local/bin/nsys
+# Uncomment to profile training in the container
+# RUN apt-get update && apt-get install -y \
+#     nsight-systems-2025.3.2 \
+#     && rm -rf /var/lib/apt/lists/* \
+#     && ln -sf /opt/nvidia/nsight-systems/2025.3.2/bin/nsys /usr/local/bin/nsys
 
 # Copy conda environment file
 COPY docker/benchmark_environment.yml /tmp/benchmark_environment.yml
@@ -37,7 +39,7 @@ RUN conda env create -f /tmp/benchmark_environment.yml
 RUN conda run -n benchmark conda install -c conda-forge scikit-build-core cmake -y
 
 # Patch pycolmap after installation
-RUN sed -i 's/INVALID_POINT3D = np.uint64(-1)/INVALID_POINT3D = np.uint64(2**64-1)/' /opt/conda/envs/benchmark/lib/python3.11/site-packages/pycolmap/scene_manager.py
+RUN conda run -n benchmark sed -i 's/INVALID_POINT3D = np.uint64(-1)/INVALID_POINT3D = np.uint64(2**64-1)/' $(conda run -n benchmark python -c 'import site; print(site.getsitepackages()[0])')/pycolmap/scene_manager.py
 
 # Initialize conda
 RUN conda init
@@ -48,6 +50,9 @@ WORKDIR /workspace
 
 # Clone GSplat repository
 RUN git clone https://github.com/nerfstudio-project/gsplat.git gsplat
+
+## Initialize gsplat submodules (glm, etc.)
+RUN cd gsplat && git submodule update --init --recursive
 
 # Create directories for results
 RUN mkdir -p results/benchmark/summary

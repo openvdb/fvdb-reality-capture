@@ -82,13 +82,16 @@ def run_gsplat_training(
     data_base_path = run_config.get("paths", {}).get("data_base", "/workspace/data")
     scene_path = pathlib.Path(data_base_path) / scene_path
 
-    rescaled_images_path = scene_path / f"images_{params.get('image_downsample_factor', 4)}"
-    if not rescaled_images_path.exists():
-        rescaled_images_path.symlink_to(scene_path / "images")
-        logging.info(f"Created symlink to {rescaled_images_path} from {scene_path / 'images'}")
-    else:
-        logging.info(f"Rescaled images path already exists: {rescaled_images_path}")
-        logging.info(f"Skipping symlink creation")
+    # Create symlinks for both "images_{factor}" and "images_{factor}_png" pointing to "images", if they don't exist
+    ds_factor = params.get("image_downsample_factor", 4)
+    for suffix in ["", "_png"]:
+        rescaled_images_path = scene_path / f"images_{ds_factor}{suffix}"
+        if not rescaled_images_path.exists():
+            rescaled_images_path.symlink_to(scene_path / "images")
+            logging.info(f"Created symlink to {rescaled_images_path} from {scene_path / 'images'}")
+        else:
+            logging.info(f"Rescaled images path already exists: {rescaled_images_path}")
+            logging.info(f"Skipping symlink creation")
 
     # Build GSplat command with computed parameters
     cmd = [
@@ -100,7 +103,7 @@ def run_gsplat_training(
         "--disable_viewer",
         "--disable_video",  # Disable video generation to avoid rendering errors
         "--data_factor",
-        str(params.get("image_downsample_factor", 4)),
+        str(ds_factor),
         "--render_traj_path",
         "ellipse",
         "--data_dir",

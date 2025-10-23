@@ -533,10 +533,6 @@ def export_splats_to_usdz(
     shN = model.shN.cpu().numpy()
     n_sh_coeffs = model.num_sh_bases
 
-    # convert shN from interleaved RGBRGBRGB... to planar RRRGGGBBB... layout
-    shN = shN.reshape((shN.shape[0], 3, shN.shape[1]))
-    shN = shN.transpose(0, 2, 1).reshape((shN.shape[0], shN.shape[2] * 3))
-
     usdz_params = {
         "positions": means,
         "rotations": quats,
