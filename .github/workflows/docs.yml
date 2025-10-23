@@ -116,6 +116,7 @@ jobs:
           pip install -e .
           which sphinx-build
           sphinx-build docs/ -E -a _docs_build
+          cp docs/CNAME _docs_build/
 
       # - name: Install reality-capture package and docs deps
       #   run: |
