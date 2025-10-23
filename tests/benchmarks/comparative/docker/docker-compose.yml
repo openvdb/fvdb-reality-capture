@@ -2,8 +2,8 @@ services:
   benchmark:
     build:
       context: ..
-      dockerfile: docker/${DOCKERFILE:-Dockerfile}
-    container_name: ${CONTAINER_NAME:-fvdb-benchmark}
+      dockerfile: docker/Dockerfile
+    container_name: fvdb-benchmark
     deploy:
       resources:
         reservations:
@@ -29,7 +29,8 @@ services:
     working_dir: /workspace/benchmark
     stdin_open: true
     tty: true
-    shm_size: 2gb
+    shm_size: 16gb
+    ipc: host
     command:
       - bash
       - -lc
