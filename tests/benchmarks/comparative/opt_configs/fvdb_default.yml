@@ -2,7 +2,8 @@
 # at every refinement step.
 # This matches the default behavior of gsplat.
 framework: fvdb
-name: fvdb_default
+name: fvdb
+color: "#76B900"
 
 optimization_config:
   max_epochs: 200

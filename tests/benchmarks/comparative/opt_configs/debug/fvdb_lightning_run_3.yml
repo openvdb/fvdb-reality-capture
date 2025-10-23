@@ -1,5 +1,6 @@
 framework: fvdb
 name: fvdb_lightning_run_3
+color: "#76B900"
 
 optimization_config:
   max_epochs: 1
