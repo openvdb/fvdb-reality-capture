@@ -17,6 +17,7 @@ services:
       - NVIDIA_DRIVER_CAPABILITIES=compute,utility
       - TORCH_CUDA_ARCH_LIST=${TORCH_CUDA_ARCH_LIST:-}
       - CMAKE_BUILD_PARALLEL_LEVEL=${CMAKE_BUILD_PARALLEL_LEVEL:-18}
+      - PYTHONWARNINGS=ignore:::PIL.Image # for DecompressionBombWarning
     volumes:
       - ${CPM_SOURCE_CACHE:?set CPM_SOURCE_CACHE on host}:/workspace/.cache/CPM
       - ../../../../data:/workspace/data
