@@ -86,7 +86,7 @@ class Resume(BaseCommand):
         logger = logging.getLogger(__name__)
 
         logger.info(f"Loading checkpoint at {self.checkpoint_path}")
-        checkpoint_state = torch.load(self.checkpoint_path, map_location=self.device)
+        checkpoint_state = torch.load(self.checkpoint_path, map_location=self.device, weights_only=False)
 
         writer = GaussianSplatReconstructionWriter(
             run_name=self.run_name, save_path=self.io.log_path, config=self.io, exist_ok=False
