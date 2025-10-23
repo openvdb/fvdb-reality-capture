@@ -1,6 +1,6 @@
 # The default GSplat configuration parameters.
 framework: gsplat
-name: gsplat_default
+name: gsplat
 color: "#767676"
 
 training:
