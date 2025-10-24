@@ -9,7 +9,7 @@ Welcome to fVDB-Reality-Capture!
 
 |
 
-fVDB-Reality-Capture is a reality-capture toolbox built on top of `fVDB <https://github.com/openvdb/fvdb-core>`_. It
+fVDB-Reality-Capture is a reality-capture toolbox built on top of `fVDB <https://fvdb.ai>`_. It
 provides high-level abstractions and APIs for common reality capture tasks, such as loading sensor data, reconstructing
 radiance fields, extracting meshes and point clouds, visualization, and exporting results across standard formats such
 as PLY and USDZ. By leveraging the power of fVDB, fVDB-Reality-Capture can scale reconstruction to very large or dense
@@ -80,30 +80,13 @@ A common reality capture pipeline typically resembles the figure below:
        alt="Reality Capture Pipeline"
        style="display: block; margin-left: auto; margin-right: auto; width: 100%;" />
 
-Installation
--------------
-To get started, simply run
-
-.. code-block:: bash
-
-   pip install fvdb-reality-capture
-
-Installation from source
------------------------------
-
-Clone the [fvdb-reality-capture repository](https://github.com/openvdb/fvdb-reality-capture). Then:
-
-.. code-block:: bash
-
-   cd fvdb-reality-capture
-   pip install -e . # for non-editable, drop the -e
-
 
 .. toctree::
    :caption: Introduction
    :hidden:
 
    self
+   installation
 
 .. toctree::
    :maxdepth: 1
