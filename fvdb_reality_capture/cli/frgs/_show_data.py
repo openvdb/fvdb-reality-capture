@@ -50,7 +50,7 @@ class ShowData(BaseCommand):
 
     The dataset folder should either contain a colmap dataset, a set of e57 files, a simple_directory dataset:
 
-    COLMAP Data format: A folder should containining:
+    COLMAP Data format: A folder which contains:
         - cameras.txt
         - images.txt
         - points3D.txt
