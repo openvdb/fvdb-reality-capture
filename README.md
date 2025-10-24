@@ -1,36 +1,34 @@
 # Welcome to fVDB-Reality-Capture!
 
-fVDB-Reality-Capture is a library for building reality capture applications that reconstruct and process 3D capture
-data from sensors built with [fVDB](https://openvdb.github.io/fvdb).
-fVDB-Reality-Capture aims to be production ready, with a focus on robustness, usability, and extensibility.
-It is designed to be easily integrated into existing pipelines and workflows, and to support a wide range of use cases and applications.
+fVDB-Reality-Capture is a reality-capture toolbox built on top of [fVDB](https://fvdb.ai). It
+provides high-level abstractions and APIs for common reality capture tasks, such as loading sensor data, reconstructing
+radiance fields, extracting meshes and point clouds, visualization, and exporting results across standard formats such
+as PLY and USDZ.
+
+By leveraging the power of fVDB, fVDB-Reality-Capture can scale reconstruction to very large or dense
+inputs, while maintaining high performance and low memory usage. *fVDB has 50% better throughput than gsplat in end-to-end training benchmarks and 30% lower runtime, while producing higher quality results and working out-of-the box on a wide range of inputs*.
+The videos below show large-scale reconstructions of complex scenes using fVDB-Reality-Capture.
+
 
   <video autoplay loop controls muted width="100%">
      <source src="https://fvdb-data.s3.us-east-2.amazonaws.com/fvdb-reality-capture/Large_World_480p.mp4" type="video/mp4" />
   </video>
 
-## What is Reality Capture?
+----
 
-Reality capture is the process of creating digital 3D representations of real-world objects and environments using
-various sensing technologies, such as cameras, LiDAR, and depth sensors. The goal of reality capture is to
-accurately and efficiently reconstruct the geometry, appearance, and other properties of the physical world into usable 3D models and scenes.
+**For more information about what fVDB-Reality-Capture can do, tutorials and documentation, please see the
+[fVDB-Reality-Capture documentation](https://fvdb.ai/reality-capture/).**
 
-Modern reality capture pipelines make heavy use of [radiance fields](https://radiancefields.com/).
-*f*VDB-Reality-Capture provides best-in-class tools to reconstruct radiance fields using
-[3D Gaussian Splatting](https://www.mpi-inf.mpg.de/departments/computer-vision-and-machine-learning/research/3d-vision/3d-gaussian-splatting/).
 
-A common reality capture pipeline typically resembles the figure below:
-
-  <img src="https://fvdb-data.s3.us-east-2.amazonaws.com/fvdb-reality-capture/meshing_med.gif"
-       alt="Reality Capture Pipeline"
-       style="display: block; margin-left: auto; margin-right: auto; width: 100%; margin-top: -4em; margin-bottom: -2em" />
 
 ## Installation
 To get started, simply run
 
 ```bash
-pip install fvdb-reality-capture
+pip install fvdb-reality-capture fvdb-core==0.3.0+pt28.cu128 --extra-index-url="https://d36m13axqqhiit.cloudfront.net/simple" torch==2.8.0 --extra-index-url https://download.pytorch.org/whl/cu128
 ```
+
+To install fvdb-reality-capture as well as the appropriate version of fvdb-core and torch.
 
 ### Installation from source
 
@@ -44,9 +42,6 @@ pip install -e . # for non-editable, drop the -e
 # Library Overview
 fVDB-Reality-Capture is a reality-capture-specialized toolbox on top of fVDB analogous to how [torchvision](https://docs.pytorch.org/vision/stable/index.html) is a computer-vision-specialized toolbox on top of [PyTorch](https://pytorch.org/).
 
-With fVDB-Reality-Capture, you can easily load and manipulate 3D capture data, reconstruct radiance fields with 3D
-Gaussian splatting, and extract high quality meshes and point clouds. All these can be visualized in a browser or
-notebook, and exported to common formats like PLY and USDZ.
 
 fVDB-Reality-Capture is built on top of [fVDB](https://openvdb.github.io/fvdb), which provides efficient GPU data
 structures and algorithms for working with sparse volumetric data. By leveraging the power of fVDB, fVDB-Reality-Capture
