@@ -6,7 +6,7 @@ radiance fields, extracting meshes and point clouds, visualization, and exportin
 as PLY and USDZ.
 
 By leveraging the power of fVDB, fVDB-Reality-Capture can scale reconstruction to very large or dense
-inputs, while maintaining high performance and low memory usage. *fVDB has 50% better throughput than gsplat in end-to-end training benchmarks and 30% lower runtime, while producing higher quality results and working out-of-the box on a wide range of inputs*.
+inputs, while maintaining high performance and low memory usage. *fVDB has 50% better throughput than gsplat in end-to-end training benchmarks and 30% lower runtime, while producing higher quality results and working out-of-the-box on a wide range of inputs*.
 The videos below show large-scale reconstructions of complex scenes using fVDB-Reality-Capture.
 
 
@@ -44,7 +44,7 @@ git clone git@github.com:openvdb/fvdb-core.git
 git clone git@github.com:openvdb/fvdb-reality-capture.git
 ```
 
-Next build and install the fVDB library
+Next, build and install the fVDB library
 
 ```bash
 pushd fvdb-core
@@ -61,14 +61,19 @@ popd
 ```
 
 
-# Library Overview
-fVDB-Reality-Capture is a reality-capture-specialized toolbox on top of fVDB analogous to how [torchvision](https://docs.pytorch.org/vision/stable/index.html) is a computer-vision-specialized toolbox on top of [PyTorch](https://pytorch.org/).
+# About fVDB-Reality-Capture
 
+fVDB and fVDB-Reality-Capture were first developed by the
+[NVIDIA High-Fidelity Physics Research Group](https://research.nvidia.com/labs/prl/)
+within the [NVIDIA Spatial Intelligence Lab](https://research.nvidia.com/labs/sil/), and continues to be
+developed with the OpenVDB community to suit the growing needs for a robust framework for
+spatial intelligence research and applications.
 
-fVDB-Reality-Capture is built on top of [fVDB](https://openvdb.github.io/fvdb), which provides efficient GPU data
+fVDB-Reality-Capture is built on top of [fVDB](https://github.com/openvdb/fvdb-core), which provides efficient GPU data
 structures and algorithms for working with sparse volumetric data. By leveraging the power of fVDB, fVDB-Reality-Capture
 can scale reconstruction to very large or dense inputs, while maintaining high performance and low memory usage.
 
-fVDB-Reality-Capture aims to be production ready, with a focus on robustness, usability, and extensibility. It is
-designed to be easily integrated into existing pipelines and workflows, and to support a wide range of use cases and applications. To this end, both fVDB and fVDB-Reality-Capture have a minimal set of dependencies, and are open source
-under the Apache 2.0 license. We welcome contributions and feedback from the community.
+fVDB and fVDB-Reality-Capture are open source under the Apache 2.0 license. We welcome contributions and feedback
+from the community.
+
+For questions or feedback, please use the [GitHub Issues](https://github.com/openvdb/fvdb-reality-capture/issues) for this repository.
