@@ -30,6 +30,7 @@ dependencies = [
     "point-cloud-utils",
     "pye57",
     "pyproj",
+    "requests",
     "sam2==1.1.0",
     "scikit-image",
     "scipy",
