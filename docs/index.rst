@@ -13,8 +13,8 @@ fVDB-Reality-Capture is a reality-capture toolbox built on top of `fVDB <https:/
 provides high-level abstractions and APIs for common reality capture tasks, such as loading sensor data, reconstructing
 radiance fields, extracting meshes and point clouds, visualization, and exporting results across standard formats such
 as PLY and USDZ. By leveraging the power of fVDB, fVDB-Reality-Capture can scale reconstruction to very large or dense
-inputs, while maintaining high performance and low memory usage. The videos below show large-scale reconstructions of
-complex scenes using fVDB-Reality-Capture.
+inputs, while maintaining high performance and low memory usage. *fVDB has 50% better throughput than gsplat in end-to-end training benchmarks and 30% lower runtime, while producing higher quality results and working out-of-the box on a wide range of inputs*.
+The videos below show large-scale reconstructions of complex scenes using fVDB-Reality-Capture.
 
 .. raw:: html
 
