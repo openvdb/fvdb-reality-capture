@@ -32,12 +32,34 @@ To install fvdb-reality-capture as well as the appropriate version of fvdb-core 
 
 ### Installation from source
 
-Clone the [fvdb-reality-capture repository](https://github.com/openvdb/fvdb-reality-capture). Then:
+> **Note:**
+> For more complete instructions for building `fvdb-core` from source, including setting up a build environment and
+> obtaining the necessary dependencies, see the fVDB [README](https://github.com/openvdb/fvdb-core/blob/main/README.md).
+
+
+Clone the [fvdb-core repository](https://github.com/openvdb/fvdb-core) and the [fvdb-reality-capture repository](https://github.com/openvdb/fvdb-reality-capture).
 
 ```bash
-cd fvdb-reality-capture
-pip install -e . # for non-editable, drop the -e
+git clone git@github.com:openvdb/fvdb-core.git
+git clone git@github.com:openvdb/fvdb-reality-capture.git
 ```
+
+Next build and install the fVDB library
+
+```bash
+pushd fvdb-core
+./build.sh install verbose editor_force
+popd
+```
+
+Finally, install fVDB-Reality-Capture
+
+```bash
+pushd fvdb-reality-capture
+pip install .
+popd
+```
+
 
 # Library Overview
 fVDB-Reality-Capture is a reality-capture-specialized toolbox on top of fVDB analogous to how [torchvision](https://docs.pytorch.org/vision/stable/index.html) is a computer-vision-specialized toolbox on top of [PyTorch](https://pytorch.org/).
