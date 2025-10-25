@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "fvdb_reality_capture"
-version = "0.3.0"
+version = "0.3.1"
 description = "fVDB Reality Capture Toolbox."
 authors = [
     {name = "Francis Williams", email = "francis@fwilliams.info"},
