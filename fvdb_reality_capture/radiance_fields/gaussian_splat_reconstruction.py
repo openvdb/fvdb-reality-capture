@@ -541,6 +541,11 @@ class GaussianSplatReconstruction:
 
         global_step = state_dict["step"]
         config = GaussianSplatReconstructionConfig(**state_dict["config"])
+
+        np.random.seed(config.seed)
+        random.seed(config.seed)
+        torch.manual_seed(config.seed)
+
         if override_sfm_scene is not None:
             sfm_scene: SfmScene = override_sfm_scene
             logger.info("Using override SfM scene instead of the one from the checkpoint.")
@@ -1088,9 +1093,9 @@ class GaussianSplatReconstruction:
         if self.pose_adjust_optimizer is not None:
             self.pose_adjust_optimizer.zero_grad()
 
-        for epoch in range(self.config.max_epochs):
-            for minibatch in trainloader:
-
+        start_epoch = self._start_step // len(trainloader)
+        for epoch in range(start_epoch):
+            for _ in trainloader.sampler:
                 # Skip steps before the start step
                 if self._global_step < self._start_step:
                     if pbar is not None:
@@ -1103,6 +1108,8 @@ class GaussianSplatReconstruction:
                         self._global_step += 1
                     continue
 
+        for epoch in range(start_epoch, self.config.max_epochs):
+            for minibatch in trainloader:
                 cam_to_world_mats: torch.Tensor = minibatch["camera_to_world"].to(self.device)  # [B, 4, 4]
                 world_to_cam_mats: torch.Tensor = minibatch["world_to_camera"].to(self.device)  # [B, 4, 4]
 
