@@ -1,57 +1,69 @@
+paths:
+  data_base: ../../data
 datasets:
 - name: garden
-  path: ../../data/360_v2/garden
-  run_directory: results/benchmark/garden/run_64a796223c16b0fd36d6fcc48e388ff6600b7b68
+  path: 360_v2/garden
+  run_directory: results/garden/run_676e4e49eac3402e025d286381816433219481f9_01
   checkpoint_paths:
-  - results/benchmark/garden/run_64a796223c16b0fd36d6fcc48e388ff6600b7b68/checkpoints/ckpt_0644.pt
-  - results/benchmark/garden/run_64a796223c16b0fd36d6fcc48e388ff6600b7b68/checkpoints/ckpt_6440.pt
-  - results/benchmark/garden/run_64a796223c16b0fd36d6fcc48e388ff6600b7b68/checkpoints/ckpt_32200.pt
-  - results/benchmark/garden/run_64a796223c16b0fd36d6fcc48e388ff6600b7b68/checkpoints/ckpt_final.pt
+  - results/garden/run_676e4e49eac3402e025d286381816433219481f9_01/checkpoints/00000664/reconstruct_ckpt.pt
+  - results/garden/run_676e4e49eac3402e025d286381816433219481f9_01/checkpoints/00006640/reconstruct_ckpt.pt
+  - results/garden/run_676e4e49eac3402e025d286381816433219481f9_01/checkpoints/00016600/reconstruct_ckpt.pt
 results:
   base_path: results/benchmark
-training:
-  config:
-    antialias: false
+optimization_config:
+  optimization_config:
+    max_epochs: 100
+    max_steps: null
+    eval_at_percent:
+    - 4
+    - 40
+    - 100
+    save_at_percent:
+    - 4
+    - 40
+    - 100
+    update_viewer_every_epochs: -1
     batch_size: 1
-    eps_2d: 0.3
-    far_plane: 10000000000.0
-    ignore_masks: false
+    crops_per_image: 1
+    sh_degree: 3
     increase_sh_degree_every_epoch: 5
+    inintial_opacity: 0.1
     initial_covariance_scale: 1.0
-    initial_opacity: 0.1
+    ssim_lambda: 0.2
     lpips_net: alex
-    max_epochs: 200
-    min_radius_2d: 0.0
-    near_plane: 0.01
     opacity_reg: 0.0
-    optimize_camera_poses: true
-    pose_opt_lr: 1.0e-05
-    pose_opt_lr_decay: 1.0
-    pose_opt_reg: 1.0e-06
+    scale_reg: 0.0
     random_bkgd: false
-    refine_every_epoch: 0.75
     refine_start_epoch: 3
     refine_stop_epoch: 100
-    refine_using_scale2d_stop_epoch: 0
-    remove_gaussians_outside_scene_bbox: false
+    refine_every_epoch: 0.75
     reset_opacities_every_epoch: 16
-    scale_reg: 0.0
-    sh_degree: 3
-    ssim_lambda: 0.2
+    refine_using_scale2d_stop_epoch: 0
+    ignore_masks: false
+    remove_gaussians_outside_scene_bbox: false
+    optimize_camera_poses: false
+    pose_opt_lr: 1.0e-05
+    pose_opt_reg: 1.0e-06
+    pose_opt_lr_decay: 1.0
+    pose_opt_start_epoch: 0
+    pose_opt_stop_epoch: 200
+    pose_opt_init_std: 0.0001
+    near_plane: 0.01
+    far_plane: 10000000000.0
+    min_radius_2d: 0.0
+    eps_2d: 0.3
+    antialias: false
     tile_size: 16
-  save_at_percent:
-  - 2
-  - 20
-  - 100
-training_params:
-  crop_bbox: null
-  device: cuda
-  disable_viewer: true
-  image_downsample_factor: 4
-  log_images_to_tensorboard: false
-  log_tensorboard_every: 100
-  normalization_type: pca
-  points_percentile_filter: 0.0
-  save_eval_images: false
-  save_results: true
-  use_every_n_as_val: 8
+  training_arguments:
+    image_downsample_factor: 4
+    points_percentile_filter: 0.0
+    normalization_type: pca
+    crop_bbox: null
+    crop_to_points: false
+    min_points_per_image: 5
+    device: cuda
+    use_every_n_as_val: 10
+    log_tensorboard_every: -1
+    log_images_to_tensorboard: false
+    save_results: true
+    save_eval_images: false

@@ -17,6 +17,9 @@ import yaml
 
 sys.path.insert(0, str(pathlib.Path(__file__).parent.parent.parent.resolve()))
 import fvdb_reality_capture as frc
+from fvdb_reality_capture.radiance_fields.gaussian_splat_reconstruction_writer import (
+    GaussianSplatReconstructionWriter,
+)
 
 logger = logging.getLogger("train benchmark checkpoints")
 
@@ -34,30 +37,14 @@ def save_config(config: Dict, config_path: str = "benchmark_config.yaml") -> Non
 
 
 def find_all_checkpoint_files(checkpoints_dir: pathlib.Path) -> List[str]:
-    """Find all checkpoint files in the directory."""
+    """Recursively find all checkpoint files (*.pt containing "ckpt" in the filename) in the directory."""
     checkpoint_paths = []
 
-    # Expects filenames of the form ckpt_<string>.pt. Typically the string is a number or "final".
-    for file in checkpoints_dir.iterdir():
-        if file.is_file() and file.name.startswith("ckpt_") and file.name.endswith(".pt"):
+    for file in checkpoints_dir.rglob("*.pt"):
+        if "ckpt" in file.name:
             checkpoint_paths.append(str(file))
 
-    # Separate numeric and non-numeric checkpoints, sort numerics by number, then sort and append
-    # non-numerics at the end
-    numeric_ckpts = []
-    non_numeric_ckpts = []
-    for x in checkpoint_paths:
-        try:
-            # Try to extract the numeric part after the last underscore and before .pt
-            num = int(x.split("_")[-1].split(".")[0])
-            numeric_ckpts.append((num, x))
-        except (ValueError, IndexError):
-            non_numeric_ckpts.append(x)
-    # Sort numeric checkpoints by their extracted number
-    numeric_ckpts.sort(key=lambda pair: pair[0])
-    non_numeric_ckpts.sort()
-    # Rebuild the list: numerics first (in order), then non-numerics
-    checkpoint_paths = [x for _, x in numeric_ckpts] + non_numeric_ckpts
+    checkpoint_paths.sort()
     return checkpoint_paths
 
 
@@ -143,6 +130,7 @@ def main(
             logger.info(f"Preparing training run for {dataset_name} (initializing datasets/transforms/cache)...")
             runner = frc.radiance_fields.GaussianSplatReconstruction.from_sfm_scene(
                 sfm_scene=sfm_scene,
+                writer=GaussianSplatReconstructionWriter(run_name=run_name, save_path=dataset_results_path),
                 config=base_config,
                 use_every_n_as_val=training_params["use_every_n_as_val"],
             )

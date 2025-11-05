@@ -15,6 +15,8 @@ import yaml
 from fvdb_reality_capture.radiance_fields import (
     GaussianSplatReconstruction,
     GaussianSplatReconstructionConfig,
+    GaussianSplatReconstructionWriter,
+    GaussianSplatReconstructionWriterConfig,
     SfmDataset,
 )
 from fvdb_reality_capture.sfm_scene import SfmScene
@@ -42,28 +44,40 @@ class Benchmark3dgs:
     ):
         self.data_path = data_path
         self.checkpoint_path = checkpoint_path
-        self.results_path = pathlib.Path(checkpoint_path).parent.parent if results_path is None else results_path
+        self.results_path = pathlib.Path(checkpoint_path).parent.parent.parent if results_path is None else results_path
+        run_name = pathlib.Path(checkpoint_path).parent.parent.parent.name
 
         # Load the checkpoint
-        self.checkpoint = Checkpoint.load(pathlib.Path(checkpoint_path), device=device)
+        checkpoint_state = torch.load(pathlib.Path(checkpoint_path), map_location=device, weights_only=False)
 
-        sfm_scene: SfmScene = SfmScene.from_colmap(self.checkpoint.dataset_path)
-        sfm_scene = self.checkpoint.dataset_transform(sfm_scene)
+        writer_config = GaussianSplatReconstructionWriterConfig(
+            save_images=False,
+            save_metrics=False,
+            save_plys=False,
+            save_checkpoints=False,
+            use_tensorboard=False,
+        )
 
-        if "train" not in self.checkpoint.dataset_splits:
-            raise ValueError("No training dataset found in checkpoint")
-        train_indices = self.checkpoint.dataset_splits["train"]
+        print(f"Checkpoint path: {checkpoint_path}")
+        print(f"Results path: {self.results_path}")
+        print(f"Run name: {run_name}")
 
-        self.config = GaussianSplatReconstructionConfig(**self.checkpoint.config)
-        self.train_dataset = SfmDataset(sfm_scene, train_indices)
+        writer = GaussianSplatReconstructionWriter(
+            run_name=run_name, save_path=pathlib.Path(self.results_path), config=writer_config, exist_ok=True
+        )
 
-        step = self.checkpoint.step if self.checkpoint.step is not None else 0
+        # print checkpoint keys
+        print(f"Checkpoint step: {checkpoint_state['step']}")
+
+        self.runner = GaussianSplatReconstruction.from_state_dict(checkpoint_state, writer=writer, device=device)
+
+        step = checkpoint_state["step"]
 
         trainloader = torch.utils.data.DataLoader(
-            self.train_dataset,
-            batch_size=self.config.batch_size,
+            self.runner.training_dataset,
+            batch_size=self.runner.config.batch_size,
             shuffle=False,  # for benchmarking always use the same order of the dataset
-            num_workers=4,
+            num_workers=8,
             persistent_workers=True,
             pin_memory=True,
         )
@@ -81,8 +95,10 @@ class Benchmark3dgs:
         self.pixels = self.image.to(device) / 255.0  # [1, H, W, 3]
 
         # Progressively use higher spherical harmonic degree as we optimize
-        increase_sh_degree_every_step: int = int(self.config.increase_sh_degree_every_epoch * len(self.train_dataset))
-        self.sh_degree_to_use = min(step // increase_sh_degree_every_step, self.config.sh_degree)
+        increase_sh_degree_every_step: int = int(
+            self.runner.config.increase_sh_degree_every_epoch * len(self.runner.training_dataset)
+        )
+        self.sh_degree_to_use = min(step // increase_sh_degree_every_step, self.runner.config.sh_degree)
 
         # run pipeline once to warm up and enable running the benchmarks in any order (or filtered)
         self.run_project_gaussians()
@@ -90,25 +106,30 @@ class Benchmark3dgs:
         self.run_backward()
 
     def run_project_gaussians(self):
-        self.projected_gaussians = self.checkpoint.splats.project_gaussians_for_images(
+        self.projected_gaussians = self.runner.model.project_gaussians_for_images(
             self.world_to_cam_mats,
             self.projection_mats,
             self.image_width,
             self.image_height,
-            self.config.near_plane,
-            self.config.far_plane,
+            self.runner.config.near_plane,
+            self.runner.config.far_plane,
             "perspective",
             self.sh_degree_to_use,
-            self.config.min_radius_2d,
-            self.config.eps_2d,
-            self.config.antialias,
+            self.runner.config.min_radius_2d,
+            self.runner.config.eps_2d,
+            self.runner.config.antialias,
         )
 
     def run_render_gaussians(self):
         # Render an image from the gaussian splats
         # possibly using a crop of the full image
-        self.colors, self.alphas = self.checkpoint.splats.render_from_projected_gaussians(
-            self.projected_gaussians, self.image_width, self.image_height, 0, 0, self.config.tile_size
+        self.colors, self.alphas = self.runner.model.render_from_projected_gaussians(
+            self.projected_gaussians,
+            crop_width=self.image_width,
+            crop_height=self.image_height,
+            crop_origin_w=0,
+            crop_origin_h=0,
+            tile_size=self.runner.config.tile_size,
         )
 
     def run_forward(self):
@@ -129,6 +150,7 @@ def create_benchmark_params():
     for dataset_config in config["datasets"]:
         dataset_name = dataset_config["name"]
         dataset_path = dataset_config["path"]
+        run_path = dataset_config["run_directory"]
 
         logger.info(f"Dataset: {dataset_name}")
         logger.info(f"Dataset path: {dataset_path}")
@@ -138,15 +160,10 @@ def create_benchmark_params():
             logger.info(f"Checkpoint paths: {dataset_config['checkpoint_paths']}")
             checkpoint_paths = dataset_config["checkpoint_paths"]
         else:
-            # Fallback to default pattern if no checkpoint paths are specified
-            checkpoint_paths = [
-                f"results/benchmark/{dataset_name}/run_*/checkpoints/ckpt_00400.pt",
-                f"results/benchmark/{dataset_name}/run_*/checkpoints/ckpt_04000.pt",
-                f"results/benchmark/{dataset_name}/run_*/checkpoints/ckpt_20000.pt",
-            ]
+            raise ValueError(f"No checkpoint paths specified for dataset: {dataset_name}")
 
         for checkpoint_path in checkpoint_paths:
-            params.append((dataset_path, checkpoint_path))
+            params.append((dataset_path, run_path, checkpoint_path))
 
     return params
 
@@ -154,19 +171,24 @@ def create_benchmark_params():
 @pytest.fixture(
     scope="module",
     params=create_benchmark_params(),
-    ids=lambda param: f"{param[0].split('/')[-1]}_ckpt_{param[1].split('_')[-1].split('.')[0]}",
+    ids=lambda param: f"{param[0].rstrip('/').split('/')[-1]}-{param[2].rstrip('/').split('/')[-2]}",
 )
 def benchmark_3dgs(request):
     logging.basicConfig(level=logging.INFO, format="%(levelname)s : %(message)s")
-    data_path, checkpoint_path = request.param
+    data_path, run_path, checkpoint_path = request.param
     return Benchmark3dgs(
         data_path=data_path,
         checkpoint_path=checkpoint_path,
+        results_path=run_path,
     )
 
 
+# We append an ordinal to the benchmark group name so that the report comes out in logical order
+# rather than alphabetical order.
+
+
 @pytest.mark.benchmark(
-    group="3dgs",
+    group="1: 3dgs:project_gaussians",
     warmup=True,
     warmup_iterations=3,
 )
@@ -175,7 +197,7 @@ def test_project_gaussians(benchmark, benchmark_3dgs):
 
 
 @pytest.mark.benchmark(
-    group="3dgs",
+    group="2: 3dgs:render_gaussians",
     warmup=True,
     warmup_iterations=3,
 )
@@ -184,7 +206,7 @@ def test_render_gaussians(benchmark, benchmark_3dgs):
 
 
 @pytest.mark.benchmark(
-    group="3dgs",
+    group="3: 3dgs:forward",
     warmup=True,
     warmup_iterations=3,
 )
@@ -193,7 +215,7 @@ def test_forward(benchmark, benchmark_3dgs):
 
 
 @pytest.mark.benchmark(
-    group="3dgs",
+    group="4: 3dgs:backward",
     warmup=True,
     warmup_iterations=3,
 )
