@@ -1,0 +1,279 @@
+name: fvdb-reality-capture Nightly Benchmarks
+
+on:
+  schedule:
+    - cron: "00 11 * * *"  # Runs every day at 4am pacific/11am UTC
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: "Branch to build"
+        required: true
+        default: "main"
+
+# Allow subsequent pushes to the same PR or REF to cancel any previous jobs.
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  deployments: read
+  pull-requests: read
+  issues: read
+  # Need ID token write permission to use OIDC
+  id-token: write
+
+jobs:
+  ##############################################################################
+  # BUILD FVDB
+  ##############################################################################
+  start-build-runner:
+    name: Start CPU-only EC2 runner for build
+    runs-on: ubuntu-latest
+    outputs:
+      label: ${{ steps.start-build-runner.outputs.label }}
+      ec2-instance-id: ${{ steps.start-build-runner.outputs.ec2-instance-id }}
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::420032683002:role/openvdb-fvdb-github-actions-role
+          aws-region: us-east-2
+      - name: Start EC2 runner
+        id: start-build-runner
+        uses: machulav/ec2-github-runner@v2.4.1
+        with:
+          mode: start
+          github-token: ${{ secrets.GH_PERSONAL_ACCESS_TOKEN }}
+          ec2-image-id: ami-0e14a711dad782a70
+          ec2-instance-type: m6a.8xlarge
+          subnet-id: subnet-03f2320d6e6e0005b
+          security-group-id: sg-0cd08bd89d6212223
+  fvdb-reality-capture-build:
+    name: fvdb-reality-capture Build
+    needs: start-build-runner # required to start the main job when the runner is ready
+    runs-on: ${{ needs.start-build-runner.outputs.label }} # run the job on the newly created runner
+    container:
+      image: aswf/ci-openvdb:2024-clang17.2
+      env:
+        PYTHONPATH: ""
+        CPM_SOURCE_CACHE: "/__w/cpm_cache"
+        CONDA_OVERRIDE_CUDA: "12.8"  # this is to build an environment on machines that lack a CUDA device and needs to match the CUDA version in the build_environment.yml file
+      options: --rm
+    defaults:
+      run:
+        shell: bash -el {0}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # Fetch all history for all branches
+          ref: "main"
+
+      # TODO: DRY this up with an anchor
+      - name: Clone fvdb-core
+        id: clone_fvdb_core
+        run: |
+          echo "Cloning fvdb-core"
+          pwd
+          git clone https://github.com/openvdb/fvdb-core.git
+          pushd fvdb-core
+          FVDB_CORE_COMMIT_HASH=$(git rev-parse HEAD)
+          echo "fvdb_core_commit_hash=$FVDB_CORE_COMMIT_HASH" >> "$GITHUB_OUTPUT"
+          popd
+
+      - name: Check if fvdb-core whl exists
+        uses: softwareforgood/check-artifact-v4-existence@v0
+        id: check_fvdb_core_wheel_artifact
+        with:
+          name: fvdb-wheel-${{ steps.clone_fvdb_core.outputs.fvdb_core_commit_hash }} # Replace with the actual name of your artifact
+
+      - name: Log if fvdb-core wheel already exists
+        if: steps.check_fvdb_core_wheel_artifact.outputs.exists == 'true'
+        run: echo "Artifact 'fvdb-wheel-${{ steps.clone_fvdb_core.outputs.fvdb_core_commit_hash }}' exists. No need to rebuild."
+        # Add further steps here that depend on the artifact's existence
+
+      - name: Set up fvdb-core conda env
+        if: steps.check_fvdb_core_wheel_artifact.outputs.exists == 'false'
+        uses: mamba-org/setup-micromamba@v2
+        with:
+          post-cleanup: 'all'
+          environment-name: fvdb_build
+          environment-file: fvdb-core/env/build_environment.yml
+
+      - name: Build fvdb-core
+        if: steps.check_fvdb_core_wheel_artifact.outputs.exists == 'false'
+        run: |
+          echo "Building fvdb"
+          cd fvdb-core
+          micromamba activate fvdb_build
+          ./build.sh wheel verbose --cuda-arch-list '8.9+PTX'
+
+      - name: Upload fvdb wheel
+        if: steps.check_fvdb_core_wheel_artifact.outputs.exists == 'false'
+        uses: actions/upload-artifact@v4
+        with:
+          name: fvdb-wheel-${{ steps.clone_fvdb_core.outputs.fvdb_core_commit_hash }}
+          path: fvdb-core/dist/*.whl
+          retention-days: 2
+
+  fvdb-build-stop-runner:
+    name: Stop CPU-only EC2 runner for build
+    needs:
+      - start-build-runner # required to get output from the start-build-runner job
+      - fvdb-reality-capture-build # required to wait when the main job is done
+    runs-on: ubuntu-latest
+    if: ${{ always() }} # required to stop the runner even if the error happened in the previous jobs
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::420032683002:role/openvdb-fvdb-github-actions-role
+          aws-region: us-east-2
+      - name: Stop EC2 runner
+        uses: machulav/ec2-github-runner@v2.4.1
+        with:
+          mode: stop
+          github-token: ${{ secrets.GH_PERSONAL_ACCESS_TOKEN }}
+          label: ${{ needs.start-build-runner.outputs.label }}
+          ec2-instance-id: ${{ needs.start-build-runner.outputs.ec2-instance-id }}
+
+
+  ##############################################################################
+  # START FVDB REALITY CAPTURE BENCHMARKS GPU RUNNER
+  ##############################################################################
+  start-benchmarks-gpu-runner:
+    name: Start EC2 GPU runner for benchmarks
+    needs: fvdb-reality-capture-build
+    runs-on: ubuntu-latest
+    outputs:
+      label: ${{ steps.start-tests-gpu-runner.outputs.label }}
+      ec2-instance-id: ${{ steps.start-tests-gpu-runner.outputs.ec2-instance-id }}
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::420032683002:role/openvdb-fvdb-github-actions-role
+          aws-region: us-east-2
+      - name: Start EC2 GPU runner
+        id: start-tests-gpu-runner
+        uses: machulav/ec2-github-runner@v2.4.1
+        with:
+          mode: start
+          github-token: ${{ secrets.GH_PERSONAL_ACCESS_TOKEN }}
+          ec2-image-id: ami-0f5c0b65fde08ae43
+          ec2-instance-type: g6.xlarge # 4 CPU-core, L4 GPU
+          subnet-id: subnet-03f2320d6e6e0005b
+          security-group-id: sg-0cd08bd89d6212223
+
+  ##############################################################################
+  # RUN FVDB REALITY CAPTURE UNIT BENCHMARKS
+  ##############################################################################
+  fvdb-reality-capture-unit-benchmarks:
+    needs: start-benchmarks-gpu-runner # required to start the main job when the runner is ready
+    name: fvdb-reality-capture Unit Benchmarks
+    runs-on: ${{ needs.start-benchmarks-gpu-runner.outputs.label }} # run the job on the newly created runner
+    container:
+      image: aswf/ci-openvdb:2024-clang17.2
+      env:
+        PYTHONPATH: ""
+        CPM_SOURCE_CACHE: "/__w/cpm_cache"
+      options: --rm
+    defaults:
+      run:
+        shell: bash -el {0}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::420032683002:role/openvdb-fvdb-github-actions-role
+          aws-region: us-east-2
+
+      - name: Clone fvdb-core
+        id: clone_fvdb_core
+        run: |
+          echo "Cloning fvdb"
+          pwd
+          git clone https://github.com/openvdb/fvdb-core.git
+          pushd fvdb-core
+          FVDB_CORE_COMMIT_HASH=$(git rev-parse HEAD)
+          echo "fvdb_core_commit_hash=$FVDB_CORE_COMMIT_HASH" >> "$GITHUB_OUTPUT"
+          popd
+
+      - name: Set up fvdb Conda env
+        uses: mamba-org/setup-micromamba@v2
+        with:
+          cache-environment: false
+          post-cleanup: 'all'
+          environment-name: fvdb
+          environment-file: fvdb-core/env/dev_environment.yml
+
+      - name: Download fvdb-core wheel
+        uses: actions/download-artifact@v4
+        with:
+          name: fvdb-wheel-${{ steps.clone_fvdb_core.outputs.fvdb_core_commit_hash }}
+          path: ./dist
+
+      - name: Install wheels
+        run: |
+          micromamba activate fvdb
+          pip install ./dist/*.whl
+
+      - name: Build fvdb-reality-capture
+        run: |
+          echo "Building fvdb-reality-capture"
+          micromamba activate fvdb
+          pip install -e .
+
+      - name: Run benchmarks
+        run: |
+          micromamba activate fvdb
+          cd tests;
+          pytest benchmarks --benchmark-json benchmarks/output.json
+
+      - name: Store benchmark result
+        uses: benchmark-action/github-action-benchmark@v1
+        with:
+            name: fvdb-reality-capture Benchmark with pytest-benchmark
+            tool: 'pytest'
+            output-file-path: fvdb-reality-capture/tests/benchmarks/output.json
+            github-token: ${{ secrets.GITHUB_TOKEN }}
+            auto-push: true
+            # Show alert with commit comment on detecting possible performance regression
+            alert-threshold: '200%'
+            comment-on-alert: true
+            fail-on-alert: true
+            alert-comment-cc-users: '@openvdb/fvdb-dev'
+
+      - name: Cleanup
+        if: always()
+        run: |
+          echo "Cleaning up /__w/_temp directory"
+          sudo rm -rf /__w/_temp/*
+          echo "Cleanup completed"
+
+  ##############################################################################
+  # STOP FVDB TESTS GPU RUNNER
+  ##############################################################################
+  fvdb-benchmarks-stop-gpu-runner:
+    name: Stop GPU EC2 runner for tests
+    needs:
+      - start-benchmarks-gpu-runner # required to get output from the start-benchmarks-gpu-runner job
+      - fvdb-reality-capture-unit-benchmarks # required to wait when the main job is done
+      #- fvdb-reality-capture-docs-test # required to wait when the main job is done
+    runs-on: ubuntu-latest
+    if: ${{ always() }} # required to stop the runner even if the error happened in the previous jobs
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::420032683002:role/openvdb-fvdb-github-actions-role
+          aws-region: us-east-2
+      - name: Stop EC2 runner
+        uses: machulav/ec2-github-runner@v2.4.1
+        with:
+          mode: stop
+          github-token: ${{ secrets.GH_PERSONAL_ACCESS_TOKEN }}
+          label: ${{ needs.start-tests-gpu-runner.outputs.label }}
+          ec2-instance-id: ${{ needs.start-tests-gpu-runner.outputs.ec2-instance-id }}
