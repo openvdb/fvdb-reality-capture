@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 import logging
+import os
 import pathlib
 import sys
 from typing import Literal, Optional, Union
@@ -58,16 +59,9 @@ class Benchmark3dgs:
             use_tensorboard=False,
         )
 
-        print(f"Checkpoint path: {checkpoint_path}")
-        print(f"Results path: {self.results_path}")
-        print(f"Run name: {run_name}")
-
         writer = GaussianSplatReconstructionWriter(
             run_name=run_name, save_path=pathlib.Path(self.results_path), config=writer_config, exist_ok=True
         )
-
-        # print checkpoint keys
-        print(f"Checkpoint step: {checkpoint_state['step']}")
 
         self.runner = GaussianSplatReconstruction.from_state_dict(checkpoint_state, writer=writer, device=device)
 
@@ -144,7 +138,15 @@ class Benchmark3dgs:
 
 def create_benchmark_params():
     """Create benchmark parameters from YAML configuration."""
-    config = load_benchmark_config()
+    original_cwd = pathlib.Path.cwd()
+    try:
+        # Change to the directory of the current test file
+        test_file_dir = os.path.dirname(os.path.abspath(__file__))
+        os.chdir(test_file_dir)
+        config = load_benchmark_config(config_path="benchmark_config.yaml")
+    finally:
+        os.chdir(original_cwd)
+
     params = []
 
     for dataset_config in config["datasets"]:
@@ -155,10 +157,9 @@ def create_benchmark_params():
         logger.info(f"Dataset: {dataset_name}")
         logger.info(f"Dataset path: {dataset_path}")
 
-        # Use checkpoint paths if available, otherwise use default pattern
         if "checkpoint_paths" in dataset_config and dataset_config["checkpoint_paths"]:
-            logger.info(f"Checkpoint paths: {dataset_config['checkpoint_paths']}")
             checkpoint_paths = dataset_config["checkpoint_paths"]
+            logger.info(f"Checkpoint paths: {dataset_config['checkpoint_paths']}")
         else:
             raise ValueError(f"No checkpoint paths specified for dataset: {dataset_name}")
 
@@ -176,11 +177,18 @@ def create_benchmark_params():
 def benchmark_3dgs(request):
     logging.basicConfig(level=logging.INFO, format="%(levelname)s : %(message)s")
     data_path, run_path, checkpoint_path = request.param
-    return Benchmark3dgs(
-        data_path=data_path,
-        checkpoint_path=checkpoint_path,
-        results_path=run_path,
-    )
+    original_cwd = pathlib.Path.cwd()
+    try:
+        # Change to the directory of the current test file
+        test_file_dir = os.path.dirname(os.path.abspath(__file__))
+        os.chdir(test_file_dir)
+        return Benchmark3dgs(
+            data_path=data_path,
+            checkpoint_path=checkpoint_path,
+            results_path=run_path,
+        )
+    finally:
+        os.chdir(original_cwd)
 
 
 # We append an ordinal to the benchmark group name so that the report comes out in logical order
