@@ -237,7 +237,7 @@ jobs:
         with:
             name: fvdb-reality-capture Benchmark with pytest-benchmark
             tool: 'pytest'
-            output-file-path: fvdb-reality-capture/tests/benchmarks/output.json
+            output-file-path: tests/benchmarks/output.json
             github-token: ${{ secrets.GITHUB_TOKEN }}
             auto-push: true
             # Show alert with commit comment on detecting possible performance regression
@@ -275,5 +275,5 @@ jobs:
         with:
           mode: stop
           github-token: ${{ secrets.GH_PERSONAL_ACCESS_TOKEN }}
-          label: ${{ needs.start-tests-gpu-runner.outputs.label }}
-          ec2-instance-id: ${{ needs.start-tests-gpu-runner.outputs.ec2-instance-id }}
+          label: ${{ needs.start-benchmarks-gpu-runner.outputs.label }}
+          ec2-instance-id: ${{ needs.start-benchmarks-gpu-runner.outputs.ec2-instance-id }}
