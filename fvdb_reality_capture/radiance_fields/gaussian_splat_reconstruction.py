@@ -1093,12 +1093,14 @@ class GaussianSplatReconstruction:
         if self.pose_adjust_optimizer is not None:
             self.pose_adjust_optimizer.zero_grad()
 
+        # Iterate over the sampler as opposed to the trainloader. This preserves the same sampling characteristics for
+        # a shuffled dataloader while also avoiding the (often significant) overhead of loading each batch from disk.
         start_epoch = self._start_step // len(trainloader)
         for epoch in range(start_epoch):
             for _ in trainloader.sampler:
                 # Skip steps before the start step
                 if self._global_step < self._start_step:
-                    if pbar is not None:
+                    if pbar:
                         pbar.set_description(
                             f"Skipping step {self._global_step:,} (before start step {self._start_step:,})"
                         )
@@ -1107,6 +1109,13 @@ class GaussianSplatReconstruction:
                     else:
                         self._global_step += 1
                     continue
+
+        # Re-initialize the progress bar so that the speed of the iterations over the sampler (which are very fast) are
+        # not averaged with the speed of actual training iterations.
+        if pbar:
+            pbar = tqdm.tqdm(
+                range(0, total_steps), initial=self._start_step, unit="steps", desc="Gaussian Splat Reconstruction"
+            )
 
         for epoch in range(start_epoch, self.config.max_epochs):
             for minibatch in trainloader:
