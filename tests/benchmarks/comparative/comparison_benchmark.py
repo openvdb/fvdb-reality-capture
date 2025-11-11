@@ -153,7 +153,7 @@ def save_summary_report(scenes: list[str], result_path: pathlib.Path, colors: di
             psnr = report.get("training", {}).get("metrics", {}).get("psnr", 0)
             ssim = report.get("training", {}).get("metrics", {}).get("ssim", 0)
             num_gaussians = report.get("training", {}).get("metrics", {}).get("final_gaussian_count", 0)
-            training_throughput = num_gaussians / training_time
+            training_throughput = num_gaussians / training_time if training_time > 0 else 0
 
             plot_dict["training_throughput"][opt_config_name].append(training_throughput)
             plot_dict["PSNR"][opt_config_name].append(psnr)
