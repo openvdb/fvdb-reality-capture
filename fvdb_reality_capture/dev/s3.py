@@ -122,6 +122,7 @@ def download_uncached(s3_uri: str, dest_file_path: pathlib.Path, client: BaseCli
     bucket, key = parse_s3_uri(s3_uri)
     s3 = client or boto3.client("s3")
     s3.download_file(bucket, key, str(dest_file_path), Callback=ProgressPercentage(s3_uri))
+    return dest_file_path
 
 
 def download(s3_uri: str, cache_dir: pathlib.Path | None = None, client: BaseClient | None = None) -> pathlib.Path:
