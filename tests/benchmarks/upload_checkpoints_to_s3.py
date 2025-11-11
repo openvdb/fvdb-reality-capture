@@ -10,6 +10,7 @@ import logging
 import pathlib
 import sys
 
+import boto3
 import yaml
 
 from fvdb_reality_capture.dev import s3

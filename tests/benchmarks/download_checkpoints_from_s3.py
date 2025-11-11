@@ -3,12 +3,11 @@
 #
 
 """
-Upload checkpoints to S3.
+Download checkpoints from S3.
 """
 
 import logging
 import pathlib
-import shutil
 import sys
 
 import boto3
