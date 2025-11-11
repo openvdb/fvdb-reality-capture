@@ -115,6 +115,15 @@ def parse_s3_uri(s3_uri: str) -> tuple[str, str]:
     return bucket, key
 
 
+def download_uncached(s3_uri: str, dest_file_path: pathlib.Path, client: BaseClient | None = None) -> pathlib.Path:
+    """
+    Download a file from S3 to a local file.
+    """
+    bucket, key = parse_s3_uri(s3_uri)
+    s3 = client or boto3.client("s3")
+    s3.download_file(bucket, key, str(dest_file_path), Callback=ProgressPercentage(s3_uri))
+
+
 def download(s3_uri: str, cache_dir: pathlib.Path | None = None, client: BaseClient | None = None) -> pathlib.Path:
     """
     Download a file from S3 to a local cache directory.
@@ -135,10 +144,7 @@ def download(s3_uri: str, cache_dir: pathlib.Path | None = None, client: BaseCli
         logger.info(f"File already exists in cache at {local_path}, skipping download.")
         return local_path
     local_path.parent.mkdir(parents=True, exist_ok=True)
-    logger.info(f"Downloading checkpoint from S3 to {local_path}...")
-    s3.download_file(bucket, key, str(local_path), Callback=ProgressPercentage(s3_uri))
-    logger.info(f"Downloaded to {local_path}")
-    return local_path
+    return download_uncached(s3_uri, local_path, s3)
 
 
 def upload(source_path: pathlib.Path, bucket: str, key: str, client: BaseClient | None = None) -> str:
