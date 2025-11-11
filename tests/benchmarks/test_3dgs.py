@@ -13,6 +13,7 @@ import torch.nn.functional as F
 import torch.utils.data
 import yaml
 
+from fvdb_reality_capture.dev import s3
 from fvdb_reality_capture.radiance_fields import (
     GaussianSplatReconstruction,
     GaussianSplatReconstructionConfig,
@@ -45,6 +46,11 @@ class Benchmark3dgs:
     ):
         self.data_path = data_path
         self.checkpoint_path = checkpoint_path
+        try:
+            bucket, key = s3.parse_s3_uri(checkpoint_path)
+
+        except ValueError:
+            checkpoint_path = pathlib.Path(checkpoint_path)
         self.results_path = pathlib.Path(checkpoint_path).parent.parent.parent if results_path is None else results_path
         run_name = pathlib.Path(checkpoint_path).parent.parent.parent.name
 
