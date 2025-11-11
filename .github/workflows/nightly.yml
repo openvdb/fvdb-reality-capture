@@ -226,6 +226,15 @@ jobs:
           micromamba activate fvdb
           pip install -e .
 
+      - name: Download config and checkpoints from S3
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::420032683002:role/openvdb-fvdb-github-actions-role
+          aws-region: us-east-2
+        run: |
+          echo "Downloading checkpoints from S3"
+          python tests/benchmarks/download_checkpoints_from_s3.py
+
       - name: Run benchmarks
         run: |
           micromamba activate fvdb
