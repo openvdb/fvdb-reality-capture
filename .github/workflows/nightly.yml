@@ -28,7 +28,7 @@ jobs:
   # BUILD FVDB
   ##############################################################################
   start-build-runner:
-    if: ${{ github.repository == 'openvdb/fvdb-core' }}
+    if: ${{ github.repository == 'openvdb/fvdb-reality-capture' }}
     name: Start CPU-only EC2 runner for build
     runs-on: ubuntu-latest
     outputs:
@@ -119,7 +119,7 @@ jobs:
           retention-days: 2
 
   fvdb-build-stop-runner:
-    if: ${{ github.repository == 'openvdb/fvdb-core' }}
+    if: ${{ github.repository == 'openvdb/fvdb-reality-capture' }}
     name: Stop CPU-only EC2 runner for build
     needs:
       - start-build-runner # required to get output from the start-build-runner job
@@ -232,12 +232,10 @@ jobs:
           pip install -e .
 
       - name: Download config and checkpoints from S3
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          role-to-assume: arn:aws:iam::420032683002:role/openvdb-fvdb-github-actions-role
-          aws-region: us-east-2
         run: |
           echo "Downloading checkpoints from S3"
+          micromamba activate fvdb
+          cd tests/benchmarks;
           python tests/benchmarks/download_checkpoints_from_s3.py
 
       - name: Run benchmarks
