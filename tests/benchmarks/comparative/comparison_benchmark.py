@@ -105,11 +105,22 @@ def save_summary_report(scenes: list[str], result_path: pathlib.Path, colors: di
     # The dictionary has string keys for each metric with values
     # plot_dict[metric] = {config1: [scene1_value, scene2_value, ...], config2: [...], ...}
     plot_dict = {
-        "total_time": {},
-        "training_time": {},
+        "training_throughput": {},
         "PSNR": {},
         "SSIM": {},
         "num_gaussians": {},
+        "total_time": {},
+        "training_time": {},
+    }
+
+    # Labels with units
+    plot_dict_labels = {
+        "training_throughput": "Training Throughput (splats/s)",
+        "PSNR": "PSNR (dB)",
+        "SSIM": "SSIM (0-1)",
+        "num_gaussians": "Final Gaussian Count",
+        "total_time": "Total Time (s)",
+        "training_time": "Training Time (s)",
     }
 
     # A dictionary to hold summary metrics and statistics for each scene/opt-config pair
@@ -142,20 +153,23 @@ def save_summary_report(scenes: list[str], result_path: pathlib.Path, colors: di
             psnr = report.get("training", {}).get("metrics", {}).get("psnr", 0)
             ssim = report.get("training", {}).get("metrics", {}).get("ssim", 0)
             num_gaussians = report.get("training", {}).get("metrics", {}).get("final_gaussian_count", 0)
+            training_throughput = num_gaussians / training_time
 
-            plot_dict["total_time"][opt_config_name].append(total_time)
-            plot_dict["training_time"][opt_config_name].append(training_time)
+            plot_dict["training_throughput"][opt_config_name].append(training_throughput)
             plot_dict["PSNR"][opt_config_name].append(psnr)
             plot_dict["SSIM"][opt_config_name].append(ssim)
             plot_dict["num_gaussians"][opt_config_name].append(num_gaussians)
+            plot_dict["total_time"][opt_config_name].append(total_time)
+            plot_dict["training_time"][opt_config_name].append(training_time)
 
             assert opt_config_name not in summary_data[scene], f"Duplicate config {opt_config_name} for scene {scene}"
             summary_data[scene][opt_config_name] = {
-                "total_time": total_time,
-                "training_time": training_time,
+                "training_throughput": training_throughput,
                 "PSNR": psnr,
                 "SSIM": ssim,
                 "num_gaussians": num_gaussians,
+                "total_time": total_time,
+                "training_time": training_time,
             }
 
     num_metrics = len(plot_dict)
@@ -181,7 +195,7 @@ def save_summary_report(scenes: list[str], result_path: pathlib.Path, colors: di
                 ax.bar_label(rects, rotation=45, padding=3, fmt="%.2f")
             multiplier += 1
         # Add some text for labels, title and custom x-axis tick labels, etc.
-        ax.set_ylabel(f"{metric}")
+        ax.set_ylabel(f"{plot_dict_labels[metric]}")
         ax.set_title(f"{metric.replace('_', ' ').title()}")
         ax.set_xticks(x + width, scenes)
         # Make the xtick labels diagonal for better readability
@@ -225,11 +239,12 @@ def save_summary_report(scenes: list[str], result_path: pathlib.Path, colors: di
     logging.info("SUMMARY STATISTICS ACROSS ALL SCENES")
     logging.info("=" * 80)
 
+    _log_statistics("training_throughput", "Training Throughput", "splats/s")
+    _log_statistics("PSNR", "PSNR", "dB")
+    _log_statistics("SSIM", "SSIM", "")
+    _log_statistics("num_gaussians", "Final Gaussian Count", "")
     _log_statistics("total_time", "Total Time", "s")
     _log_statistics("training_time", "Training Time", "s")
-    _log_statistics("PSNR", "PSNR", "dB")
-    _log_statistics("SSIM", "SSIM", "dB")
-    _log_statistics("num_gaussians", "Final Gaussian Count", "")
 
     output_summary = {
         "per_scene": summary_data,
