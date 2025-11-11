@@ -28,6 +28,7 @@ jobs:
   # BUILD FVDB
   ##############################################################################
   start-build-runner:
+    if: ${{ github.repository == 'openvdb/fvdb-core' }}
     name: Start CPU-only EC2 runner for build
     runs-on: ubuntu-latest
     outputs:
@@ -50,6 +51,7 @@ jobs:
           subnet-id: subnet-03f2320d6e6e0005b
           security-group-id: sg-0cd08bd89d6212223
   fvdb-reality-capture-build:
+    if: ${{ github.repository == 'openvdb/fvdb-reality-capture' }}
     name: fvdb-reality-capture Build
     needs: start-build-runner # required to start the main job when the runner is ready
     runs-on: ${{ needs.start-build-runner.outputs.label }} # run the job on the newly created runner
@@ -117,6 +119,7 @@ jobs:
           retention-days: 2
 
   fvdb-build-stop-runner:
+    if: ${{ github.repository == 'openvdb/fvdb-core' }}
     name: Stop CPU-only EC2 runner for build
     needs:
       - start-build-runner # required to get output from the start-build-runner job
@@ -142,6 +145,7 @@ jobs:
   # START FVDB REALITY CAPTURE BENCHMARKS GPU RUNNER
   ##############################################################################
   start-benchmarks-gpu-runner:
+    if: ${{ github.repository == 'openvdb/fvdb-reality-capture' }}
     name: Start EC2 GPU runner for benchmarks
     needs: fvdb-reality-capture-build
     runs-on: ubuntu-latest
@@ -169,6 +173,7 @@ jobs:
   # RUN FVDB REALITY CAPTURE UNIT BENCHMARKS
   ##############################################################################
   fvdb-reality-capture-unit-benchmarks:
+    if: ${{ github.repository == 'openvdb/fvdb-reality-capture' }}
     needs: start-benchmarks-gpu-runner # required to start the main job when the runner is ready
     name: fvdb-reality-capture Unit Benchmarks
     runs-on: ${{ needs.start-benchmarks-gpu-runner.outputs.label }} # run the job on the newly created runner
@@ -266,6 +271,7 @@ jobs:
   # STOP FVDB TESTS GPU RUNNER
   ##############################################################################
   fvdb-benchmarks-stop-gpu-runner:
+    if: ${{ github.repository == 'openvdb/fvdb-reality-capture' }}
     name: Stop GPU EC2 runner for tests
     needs:
       - start-benchmarks-gpu-runner # required to get output from the start-benchmarks-gpu-runner job
