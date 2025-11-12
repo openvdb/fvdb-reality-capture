@@ -104,6 +104,7 @@ jobs:
           path: fvdb-core/dist
           workflow: nightly.yml
           workflow_conclusion: ""  # Search in runs with any conclusion (success, failure, cancelled)
+          search_artifacts: true  # Search across multiple runs to find the artifact
           if_no_artifact_found: fail
 
       - name: Log if fvdb-core wheel already exists
@@ -246,6 +247,7 @@ jobs:
           path: ./dist
           workflow: nightly.yml
           workflow_conclusion: ""  # Search in runs with any conclusion (success, failure, cancelled)
+          search_artifacts: true  # Search across multiple runs to find the artifact
           if_no_artifact_found: fail
 
       - name: Install wheels
