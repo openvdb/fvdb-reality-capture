@@ -255,8 +255,9 @@ jobs:
         run: |
           echo "Downloading checkpoints from S3"
           micromamba activate fvdb
-          cd tests/benchmarks;
-          python tests/benchmarks/download_checkpoints_from_s3.py
+          pushd tests/benchmarks;
+          python download_checkpoints_from_s3.py
+          popd
 
       - name: Run benchmarks
         run: |
