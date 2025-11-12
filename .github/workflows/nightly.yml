@@ -20,6 +20,7 @@ permissions:
   deployments: read
   pull-requests: read
   issues: read
+  actions: read  # Required to download artifacts from previous workflow runs
   # Need ID token write permission to use OIDC
   id-token: write
 
