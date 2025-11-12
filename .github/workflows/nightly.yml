@@ -254,6 +254,12 @@ jobs:
           micromamba activate fvdb
           pip install -e .
 
+      - name: Download mipnerf360 dataset
+        run: |
+          echo "Downloading mipnerf360 dataset"
+          micromamba activate fvdb
+          frgs download mipnerf360 --download-path ./data
+
       - name: Download config and checkpoints from S3
         run: |
           echo "Downloading checkpoints from S3"
