@@ -103,6 +103,7 @@ jobs:
           name: fvdb-wheel-${{ needs.get-fvdb-core-commit-hash.outputs.fvdb_core_commit_hash }}
           path: fvdb-core/dist
           workflow: nightly.yml
+          workflow_conclusion: ""  # Search in runs with any conclusion (success, failure, cancelled)
           if_no_artifact_found: fail
 
       - name: Log if fvdb-core wheel already exists
@@ -244,6 +245,7 @@ jobs:
           name: fvdb-wheel-${{ needs.get-fvdb-core-commit-hash.outputs.fvdb_core_commit_hash }}
           path: ./dist
           workflow: nightly.yml
+          workflow_conclusion: ""  # Search in runs with any conclusion (success, failure, cancelled)
           if_no_artifact_found: fail
 
       - name: Install wheels
