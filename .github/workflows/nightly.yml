@@ -235,10 +235,12 @@ jobs:
           environment-file: fvdb-core/env/dev_environment.yml
 
       - name: Download fvdb-core wheel
-        uses: actions/download-artifact@v4
+        uses: dawidd6/action-download-artifact@v3
         with:
           name: fvdb-wheel-${{ needs.get-fvdb-core-commit-hash.outputs.fvdb_core_commit_hash }}
           path: ./dist
+          workflow: nightly.yml
+          if_no_artifact_found: fail
 
       - name: Install wheels
         run: |
