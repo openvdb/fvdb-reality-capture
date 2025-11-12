@@ -21,6 +21,7 @@ from fvdb_reality_capture.radiance_fields import (
     SfmDataset,
 )
 from fvdb_reality_capture.sfm_scene import SfmScene
+from fvdb_reality_capture.transforms import Compose, DownsampleImages, NormalizeScene
 
 logger = logging.getLogger("Benchmark 3dgs")
 
@@ -63,7 +64,16 @@ class Benchmark3dgs:
             run_name=run_name, save_path=pathlib.Path(self.results_path), config=writer_config, exist_ok=True
         )
 
-        self.runner = GaussianSplatReconstruction.from_state_dict(checkpoint_state, writer=writer, device=device)
+        # recreate the cache by loading the scene from the data path and applying the same transforms
+        sfm_scene = SfmScene.from_colmap(self.data_path)
+        sfm_scene = Compose(
+            NormalizeScene("pca"),
+            DownsampleImages(image_downsample_factor),
+        )(sfm_scene)
+
+        self.runner = GaussianSplatReconstruction.from_state_dict(
+            checkpoint_state, override_sfm_scene=sfm_scene, writer=writer, device=device
+        )
 
         step = checkpoint_state["step"]
 
@@ -149,9 +159,11 @@ def create_benchmark_params():
 
     params = []
 
+    data_base_path = config["paths"]["data_base"]
+
     for dataset_config in config["datasets"]:
         dataset_name = dataset_config["name"]
-        dataset_path = dataset_config["path"]
+        dataset_path = str(pathlib.Path(data_base_path) / dataset_config["path"])
         run_path = dataset_config["run_directory"]
 
         logger.info(f"Dataset: {dataset_name}")
