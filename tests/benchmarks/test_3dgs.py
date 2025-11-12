@@ -81,7 +81,7 @@ class Benchmark3dgs:
             self.runner.training_dataset,
             batch_size=self.runner.config.batch_size,
             shuffle=False,  # for benchmarking always use the same order of the dataset
-            num_workers=8,
+            num_workers=4,  # use 4 workers based on CI runner resources
             persistent_workers=True,
             pin_memory=True,
         )
