@@ -95,20 +95,23 @@ jobs:
           fetch-depth: 0 # Fetch all history for all branches
           ref: "main"
 
-      - name: Check if fvdb-core whl exists
-        uses: softwareforgood/check-artifact-v4-existence@v0
-        id: check_fvdb_core_wheel_artifact
+      - name: Try to download existing fvdb-core wheel
+        id: download_existing_wheel
+        continue-on-error: true
+        uses: dawidd6/action-download-artifact@v3
         with:
-          name: fvdb-wheel-${{ needs.get-fvdb-core-commit-hash.outputs.fvdb_core_commit_hash }} # Replace with the actual name of your artifact
+          name: fvdb-wheel-${{ needs.get-fvdb-core-commit-hash.outputs.fvdb_core_commit_hash }}
+          path: fvdb-core/dist
+          workflow: nightly.yml
+          if_no_artifact_found: fail
 
       - name: Log if fvdb-core wheel already exists
-        if: steps.check_fvdb_core_wheel_artifact.outputs.exists == 'true'
+        if: steps.download_existing_wheel.outcome == 'success'
         run: echo "Artifact 'fvdb-wheel-${{ needs.get-fvdb-core-commit-hash.outputs.fvdb_core_commit_hash }}' exists. No need to rebuild."
-        # Add further steps here that depend on the artifact's existence
 
       # TODO: DRY this up with an anchor
       - name: Clone fvdb-core
-        if: steps.check_fvdb_core_wheel_artifact.outputs.exists == 'false'
+        if: steps.download_existing_wheel.outcome == 'failure'
         id: clone_fvdb_core
         run: |
           echo "Cloning fvdb-core"
@@ -117,7 +120,7 @@ jobs:
           git -C fvdb-core checkout ${{ needs.get-fvdb-core-commit-hash.outputs.fvdb_core_commit_hash }}
 
       - name: Set up fvdb-core conda env
-        if: steps.check_fvdb_core_wheel_artifact.outputs.exists == 'false'
+        if: steps.download_existing_wheel.outcome == 'failure'
         uses: mamba-org/setup-micromamba@v2
         with:
           post-cleanup: 'all'
@@ -125,7 +128,7 @@ jobs:
           environment-file: fvdb-core/env/build_environment.yml
 
       - name: Build fvdb-core
-        if: steps.check_fvdb_core_wheel_artifact.outputs.exists == 'false'
+        if: steps.download_existing_wheel.outcome == 'failure'
         run: |
           echo "Building fvdb"
           cd fvdb-core
@@ -133,7 +136,7 @@ jobs:
           ./build.sh wheel verbose --cuda-arch-list '8.9+PTX'
 
       - name: Upload fvdb wheel
-        if: steps.check_fvdb_core_wheel_artifact.outputs.exists == 'false'
+        if: steps.download_existing_wheel.outcome == 'failure'
         uses: actions/upload-artifact@v4
         with:
           name: fvdb-wheel-${{ needs.get-fvdb-core-commit-hash.outputs.fvdb_core_commit_hash }}
