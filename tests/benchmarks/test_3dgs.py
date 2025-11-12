@@ -39,9 +39,7 @@ class Benchmark3dgs:
         checkpoint_path: str,
         results_path: Optional[pathlib.Path] = None,
         image_downsample_factor: int = 4,
-        points_percentile_filter: float = 0.0,
         normalization_type: Literal["none", "pca", "ecef2enu", "similarity"] = "pca",
-        crop_bbox: tuple[float, float, float, float, float, float] | None = None,
         device: Union[str, torch.device] = "cuda",
     ):
         self.data_path = data_path
@@ -67,7 +65,7 @@ class Benchmark3dgs:
         # recreate the cache by loading the scene from the data path and applying the same transforms
         sfm_scene = SfmScene.from_colmap(self.data_path)
         sfm_scene = Compose(
-            NormalizeScene("pca"),
+            NormalizeScene(normalization_type),
             DownsampleImages(image_downsample_factor),
         )(sfm_scene)
 
