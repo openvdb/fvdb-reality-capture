@@ -324,6 +324,26 @@ jobs:
           cd tests;
           pytest benchmarks --benchmark-json benchmarks/output.json
 
+      - name: Add commit metadata to benchmark results
+        run: |
+          # Add both commit hashes to the benchmark JSON for reference
+          python3 << 'EOF'
+          import json
+
+          with open('tests/benchmarks/output.json', 'r') as f:
+              data = json.load(f)
+
+          # Add metadata about both commits
+          if 'commit_info' not in data:
+              data['commit_info'] = {}
+
+          data['commit_info']['fvdb_core_commit'] = '${{ needs.get-fvdb-core-commit-hash.outputs.fvdb_core_commit_hash }}'
+          data['commit_info']['fvdb_reality_capture_commit'] = '${{ needs.get-fvdb-core-commit-hash.outputs.fvdb_reality_capture_commit_hash }}'
+
+          with open('tests/benchmarks/output.json', 'w') as f:
+              json.dump(data, f, indent=2)
+          EOF
+
       - name: Store benchmark result
         uses: benchmark-action/github-action-benchmark@v1
         with:
@@ -337,6 +357,8 @@ jobs:
             comment-on-alert: true
             fail-on-alert: true
             alert-comment-cc-users: '@openvdb/fvdb-dev'
+            # Add extra info about fvdb-core commit to the comment
+            comment-always: true
 
       - name: Save commit hashes for next run
         if: success()
@@ -348,18 +370,21 @@ jobs:
           # Create directory if it doesn't exist
           mkdir -p dev/bench
 
-          # Save current commit hashes
+          # Save current commit hashes for skip detection
           cat > dev/bench/last_run_commits.txt << EOF
           fvdb_core: ${{ needs.get-fvdb-core-commit-hash.outputs.fvdb_core_commit_hash }}
           fvdb_reality_capture: ${{ needs.get-fvdb-core-commit-hash.outputs.fvdb_reality_capture_commit_hash }}
           EOF
+
+          # Append to commit mapping log (for historical tracking)
+          echo "$(date -Iseconds) | fvdb-reality-capture: ${{ needs.get-fvdb-core-commit-hash.outputs.fvdb_reality_capture_commit_hash }} | fvdb-core: ${{ needs.get-fvdb-core-commit-hash.outputs.fvdb_core_commit_hash }}" >> dev/bench/commit_mapping.log
 
           # Configure git
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
           # Commit and push
-          git add dev/bench/last_run_commits.txt
+          git add dev/bench/last_run_commits.txt dev/bench/commit_mapping.log
           git commit -m "Save commit hashes for workflow run ${{ github.run_id }}" || echo "No changes to commit"
           git push
 
