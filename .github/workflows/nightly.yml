@@ -189,7 +189,7 @@ jobs:
           retention-days: 30
 
   fvdb-build-stop-runner:
-    if: ${{ always() && github.repository == 'openvdb/fvdb-reality-capture' }}
+    if: ${{ always() && github.repository == 'openvdb/fvdb-reality-capture' && needs.start-build-runner.result != 'skipped' }}
     name: Stop CPU-only EC2 runner for build
     needs:
       - start-build-runner # required to get output from the start-build-runner job
@@ -395,7 +395,7 @@ jobs:
   # STOP FVDB TESTS GPU RUNNER
   ##############################################################################
   fvdb-benchmarks-stop-gpu-runner:
-    if: ${{ always() && github.repository == 'openvdb/fvdb-reality-capture' }}
+    if: ${{ always() && github.repository == 'openvdb/fvdb-reality-capture' && needs.start-benchmarks-gpu-runner.result != 'skipped' }}
     name: Stop GPU EC2 runner for tests
     needs:
       - start-benchmarks-gpu-runner # required to get output from the start-benchmarks-gpu-runner job
