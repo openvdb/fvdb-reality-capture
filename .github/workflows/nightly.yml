@@ -31,7 +31,14 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       fvdb_core_commit_hash: ${{ steps.get-commit-hash.outputs.fvdb_core_commit_hash }}
+      fvdb_reality_capture_commit_hash: ${{ steps.get-commit-hash.outputs.fvdb_reality_capture_commit_hash }}
+      should_skip: ${{ steps.check-changes.outputs.should_skip }}
     steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: gh-pages
+          path: gh-pages
+
       - name: Get fvdb-core commit hash
         id: get-commit-hash
         env:
@@ -46,12 +53,48 @@ jobs:
           FVDB_CORE_COMMIT_HASH=$(gh api repos/openvdb/fvdb-core/commits/main --jq .sha)
           echo "FVDB_CORE_COMMIT_HASH=${FVDB_CORE_COMMIT_HASH}"
           echo "fvdb_core_commit_hash=${FVDB_CORE_COMMIT_HASH}" >> "$GITHUB_OUTPUT"
+
+          # Get fvdb-reality-capture commit hash (current commit)
+          FVDB_RC_COMMIT_HASH="${{ github.sha }}"
+          echo "FVDB_RC_COMMIT_HASH=${FVDB_RC_COMMIT_HASH}"
+          echo "fvdb_reality_capture_commit_hash=${FVDB_RC_COMMIT_HASH}" >> "$GITHUB_OUTPUT"
+
+      - name: Check if commits changed since last run
+        id: check-changes
+        run: |
+          SHOULD_SKIP="false"
+
+          if [ -f "gh-pages/dev/bench/last_run_commits.txt" ]; then
+            echo "Found last run commits file"
+            cat gh-pages/dev/bench/last_run_commits.txt
+
+            LAST_FVDB_CORE=$(grep "fvdb_core:" gh-pages/dev/bench/last_run_commits.txt | cut -d' ' -f2)
+            LAST_FVDB_RC=$(grep "fvdb_reality_capture:" gh-pages/dev/bench/last_run_commits.txt | cut -d' ' -f2)
+
+            CURRENT_FVDB_CORE="${{ steps.get-commit-hash.outputs.fvdb_core_commit_hash }}"
+            CURRENT_FVDB_RC="${{ steps.get-commit-hash.outputs.fvdb_reality_capture_commit_hash }}"
+
+            echo "Last run - fvdb-core: ${LAST_FVDB_CORE}, fvdb-reality-capture: ${LAST_FVDB_RC}"
+            echo "Current  - fvdb-core: ${CURRENT_FVDB_CORE}, fvdb-reality-capture: ${CURRENT_FVDB_RC}"
+
+            if [ "${LAST_FVDB_CORE}" = "${CURRENT_FVDB_CORE}" ] && [ "${LAST_FVDB_RC}" = "${CURRENT_FVDB_RC}" ]; then
+              echo "No changes detected. Skipping workflow."
+              SHOULD_SKIP="true"
+            else
+              echo "Changes detected. Running workflow."
+            fi
+          else
+            echo "No previous run found. Running workflow."
+          fi
+
+          echo "should_skip=${SHOULD_SKIP}" >> "$GITHUB_OUTPUT"
   ##############################################################################
   # BUILD FVDB
   ##############################################################################
   start-build-runner:
-    if: ${{ github.repository == 'openvdb/fvdb-reality-capture' }}
+    if: ${{ github.repository == 'openvdb/fvdb-reality-capture' && needs.get-fvdb-core-commit-hash.outputs.should_skip != 'true' }}
     name: Start CPU-only EC2 runner for build
+    needs: get-fvdb-core-commit-hash
     runs-on: ubuntu-latest
     outputs:
       label: ${{ steps.start-build-runner.outputs.label }}
@@ -294,6 +337,31 @@ jobs:
             comment-on-alert: true
             fail-on-alert: true
             alert-comment-cc-users: '@openvdb/fvdb-dev'
+
+      - name: Save commit hashes for next run
+        if: success()
+        run: |
+          # Check out gh-pages branch
+          git clone --branch gh-pages https://github.com/${{ github.repository }}.git gh-pages-repo
+          cd gh-pages-repo
+
+          # Create directory if it doesn't exist
+          mkdir -p dev/bench
+
+          # Save current commit hashes
+          cat > dev/bench/last_run_commits.txt << EOF
+          fvdb_core: ${{ needs.get-fvdb-core-commit-hash.outputs.fvdb_core_commit_hash }}
+          fvdb_reality_capture: ${{ needs.get-fvdb-core-commit-hash.outputs.fvdb_reality_capture_commit_hash }}
+          EOF
+
+          # Configure git
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          # Commit and push
+          git add dev/bench/last_run_commits.txt
+          git commit -m "Save commit hashes for workflow run ${{ github.run_id }}" || echo "No changes to commit"
+          git push
 
   ##############################################################################
   # STOP FVDB TESTS GPU RUNNER
