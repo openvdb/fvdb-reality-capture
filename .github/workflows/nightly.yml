@@ -345,6 +345,7 @@ jobs:
           EOF
 
       - name: Store benchmark result
+        id: store-benchmark
         uses: benchmark-action/github-action-benchmark@v1
         with:
             name: fvdb-reality-capture Benchmark with pytest-benchmark
@@ -361,7 +362,7 @@ jobs:
             comment-always: true
 
       - name: Save commit hashes for next run
-        if: success()
+        if: steps.store-benchmark.outcome == 'success' || steps.store-benchmark.outcome == 'failure'
         run: |
           # Check out gh-pages branch
           git clone --branch gh-pages https://github.com/${{ github.repository }}.git gh-pages-repo
