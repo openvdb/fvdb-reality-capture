@@ -363,9 +363,11 @@ jobs:
 
       - name: Save commit hashes for next run
         if: steps.store-benchmark.outcome == 'success' || steps.store-benchmark.outcome == 'failure'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # Check out gh-pages branch
-          git clone --branch gh-pages https://github.com/${{ github.repository }}.git gh-pages-repo
+          # Check out gh-pages branch with token authentication
+          git clone --branch gh-pages https://x-access-token:${GITHUB_TOKEN}@github.com/${{ github.repository }}.git gh-pages-repo
           cd gh-pages-repo
 
           # Create directory if it doesn't exist
