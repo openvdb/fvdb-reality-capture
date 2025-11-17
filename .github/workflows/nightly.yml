@@ -77,7 +77,9 @@ jobs:
             echo "Last run - fvdb-core: ${LAST_FVDB_CORE}, fvdb-reality-capture: ${LAST_FVDB_RC}"
             echo "Current  - fvdb-core: ${CURRENT_FVDB_CORE}, fvdb-reality-capture: ${CURRENT_FVDB_RC}"
 
-            if [ "${LAST_FVDB_CORE}" = "${CURRENT_FVDB_CORE}" ] && [ "${LAST_FVDB_RC}" = "${CURRENT_FVDB_RC}" ]; then
+            if [ -n "${LAST_FVDB_CORE}" ] && [ -n "${LAST_FVDB_RC}" ] && \
+              [ "${LAST_FVDB_CORE}" = "${CURRENT_FVDB_CORE}" ] && \
+              [ "${LAST_FVDB_RC}" = "${CURRENT_FVDB_RC}" ]; then
               echo "No changes detected. Skipping workflow."
               SHOULD_SKIP="true"
             else
@@ -358,7 +360,7 @@ jobs:
             comment-on-alert: true
             fail-on-alert: true
             alert-comment-cc-users: '@openvdb/fvdb-dev'
-            # Add extra info about fvdb-core commit to the comment
+            # Always comment on benchmark results, even without alerts
             comment-always: true
 
       - name: Save commit hashes for next run
@@ -367,6 +369,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           # Check out gh-pages branch with token authentication
+          rm -rf gh-pages-repo
           git clone --branch gh-pages https://x-access-token:${GITHUB_TOKEN}@github.com/${{ github.repository }}.git gh-pages-repo
           cd gh-pages-repo
 
@@ -389,7 +392,7 @@ jobs:
           # Commit and push
           git add dev/bench/last_run_commits.txt dev/bench/commit_mapping.log
           git commit -m "Save commit hashes for workflow run ${{ github.run_id }}" || echo "No changes to commit"
-          git push
+          git push || { echo "Failed to push commit hashes. This may cause the next run to not skip properly."; exit 1; }
 
   ##############################################################################
   # STOP FVDB TESTS GPU RUNNER
