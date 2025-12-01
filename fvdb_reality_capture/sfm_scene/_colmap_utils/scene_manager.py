@@ -184,42 +184,25 @@ class SceneManager:
     def _load_images_txt(self, input_file):
         self.images = OrderedDict()
 
-        with open(input_file, "r") as f:
-            is_camera_description_line = False
-
-            for line in iter(lambda: f.readline().strip(), ""):
-                if not line or line.startswith("#"):
-                    continue
-
-                is_camera_description_line = not is_camera_description_line
-
-                data = line.split()
-
-                if is_camera_description_line:
-                    read_quat = np.array(list(map(float, data[1:5])))
-                    read_pos = np.array(list(map(float, data[5:8])))
-                    image_id = int(data[0])
-                    image = Image(
-                        data[-1],
-                        int(data[-2]),
-                        Quaternion(read_quat),
-                        read_pos,
-                    )
-                else:
-                    points_2d_x = [float(x) for x in data[::3]]
-                    points_2d_y = [float(y) for y in data[1::3]]
-                    point3d_ids = [np.uint64(pid) for pid in data[2::3]]
-                    image.points2D = np.array([points_2d_x, points_2d_y]).T
-                    image.point3D_ids = np.array(point3d_ids, dtype=np.uint64)
-
-                    # automatically remove points without an associated 3D point
-                    # mask = (image.point3D_ids != SceneManager.INVALID_POINT3D)
-                    # image.points2D = image.points2D[mask]
-                    # image.point3D_ids = image.point3D_ids[mask]
-
-                    self.images[image_id] = image
-                    self.name_to_image_id[image.name] = image_id
-
+        with open(input_file, "r") as fid:
+            while True:
+                line = fid.readline()
+                if not line:
+                    break
+                line = line.strip()
+                if len(line) > 0 and line[0] != "#":
+                    elems = line.split()
+                    image_id = int(elems[0])
+                    qvec = np.array(list(map(float, elems[1:5])))
+                    tvec = np.array(list(map(float, elems[5:8])))
+                    camera_id = int(elems[8])
+                    image_name = elems[9]
+                    elems = fid.readline().split()
+                    xys = np.column_stack([tuple(map(float, elems[0::3])), tuple(map(float, elems[1::3]))])
+                    point3D_ids = np.array(tuple(map(int, elems[2::3])))
+                    self.images[image_id] = Image(image_name, camera_id, Quaternion(qvec), tvec)
+                    self.images[image_id].points2D = xys
+                    self.images[image_id].point3D_ids = point3D_ids
                     self.last_image_id = max(self.last_image_id, image_id)
 
     # ---------------------------------------------------------------------------
@@ -386,7 +369,11 @@ class SceneManager:
                 print >> fid, image.camera_id, image.name
 
                 data = np.rec.fromarrays(
-                    (image.points2D[:, 0], image.points2D[:, 1], image.point3D_ids.astype(np.int64))
+                    (
+                        image.points2D[:, 0],
+                        image.points2D[:, 1],
+                        image.point3D_ids.astype(np.int64),
+                    )
                 )
                 if len(data) > 0:
                     np.savetxt(fid, data, "%.2f %.2f %d", newline=" ")
@@ -591,7 +578,14 @@ class SceneManager:
 
     # camera_list: set of cameras whose points we'd like to keep
     # min/max triangulation angle: in degrees
-    def filter_points3D(self, min_track_len=0, max_error=np.inf, min_tri_angle=0, max_tri_angle=180, image_set=set()):
+    def filter_points3D(
+        self,
+        min_track_len=0,
+        max_error=np.inf,
+        min_tri_angle=0,
+        max_tri_angle=180,
+        image_set=set(),
+    ):
 
         image_set = set(image_set)
 
