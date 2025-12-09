@@ -1191,7 +1191,7 @@ class GaussianSplatReconstruction:
                     # Render an image from the gaussian splats
                     # possibly using a crop of the full image
                     crop_origin_w, crop_origin_h, crop_w, crop_h = crop
-                    rgbd, alphas = self.model.render_from_projected_gaussians(
+                    rendered_results, alphas = self.model.render_from_projected_gaussians(
                         projected_gaussians,
                         crop_w,
                         crop_h,
@@ -1200,7 +1200,7 @@ class GaussianSplatReconstruction:
                         self.config.tile_size,
                     )
 
-                    colors = rgbd[..., :3]  # [1, H, W, 3]
+                    colors = rendered_results[..., : self.model.num_channels]  # [1, H, W, 3]
 
                     # If you want to add random background, we'll mix it in here
                     if self.config.random_bkgd:
@@ -1221,7 +1221,11 @@ class GaussianSplatReconstruction:
                     loss = torch.lerp(l1loss, ssimloss, self.config.ssim_lambda)  # type: ignore
 
                     if sparse_depth is not None and sparse_depth_uv is not None and median_depths is not None:
-                        depth = rgbd[..., 3]  # [1, H, W]
+                        if self.config.batch_size > 1:
+                            raise NotImplementedError("Sparse depth loss is not implemented for batch_size > 1.")
+                        if rendered_results.shape[-1] != self.model.num_channels + 1:
+                            raise RuntimeError("Model did not render depth channel, but sparse depth loss is enabled.")
+                        depth = rendered_results[..., -1]  # [1, H, W]
                         depth_uv = depth[:, sparse_depth_uv[0, :, 1], sparse_depth_uv[0, :, 0]]  # [B, N]
                         alpha_uv = alphas[:, sparse_depth_uv[0, :, 1], sparse_depth_uv[0, :, 0], 0]  # [B, N]
                         pred_depth = depth_uv / alpha_uv  # [B, N]
