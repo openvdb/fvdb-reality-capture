@@ -27,7 +27,7 @@ class SpatialScaleMode(str, Enum):
 
     MEDIAN_CAMERA_DEPTH = "median_camera_depth"
     """
-    Compute the median depth of SfmPoints across of all cameras in the scene, and use that as the spatial scale.
+    Compute the median depth of SfmPoints across all cameras in the scene, and use that as the spatial scale.
     """
 
     MAX_CAMERA_DEPTH = "max_camera_depth"
