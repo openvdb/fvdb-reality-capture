@@ -1228,7 +1228,7 @@ class GaussianSplatReconstruction:
                         depth = rendered_results[..., -1]  # [1, H, W]
                         depth_uv = depth[:, sparse_depth_uv[0, :, 1], sparse_depth_uv[0, :, 0]]  # [B, N]
                         alpha_uv = alphas[:, sparse_depth_uv[0, :, 1], sparse_depth_uv[0, :, 0], 0]  # [B, N]
-                        pred_depth = depth_uv / alpha_uv  # [B, N]
+                        pred_depth = depth_uv / torch.clamp(alpha_uv, min=1e-6)  # [B, N]
                         pred_depth = pred_depth / median_depths.unsqueeze(1)  # Normalize by median depth
                         sparse_depth = sparse_depth / median_depths.unsqueeze(1)  # Normalize by median depth
 
