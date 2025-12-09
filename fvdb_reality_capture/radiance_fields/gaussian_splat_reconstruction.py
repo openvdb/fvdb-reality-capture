@@ -1234,7 +1234,7 @@ class GaussianSplatReconstruction:
 
                     loss = loss + depth_loss
 
-                    # Rgularize opacity to ensure Gaussian's don't become too opaque
+                    # Regularize opacity to ensure Gaussian's don't become too opaque
                     if self.config.opacity_reg > 0.0:
                         loss = loss + self.config.opacity_reg * torch.abs(self.model.opacities).mean()
 
