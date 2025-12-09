@@ -1220,19 +1220,23 @@ class GaussianSplatReconstruction:
                     )
                     loss = torch.lerp(l1loss, ssimloss, self.config.ssim_lambda)  # type: ignore
 
+                    # Sparse depth loss
                     if sparse_depth is not None and sparse_depth_uv is not None and median_depths is not None:
                         if self.config.batch_size > 1:
                             raise NotImplementedError("Sparse depth loss is not implemented for batch_size > 1.")
                         if rendered_results.shape[-1] != self.model.num_channels + 1:
                             raise RuntimeError("Model did not render depth channel, but sparse depth loss is enabled.")
-                        depth = rendered_results[..., -1]  # [1, H, W]
-                        depth_uv = depth[:, sparse_depth_uv[0, :, 1], sparse_depth_uv[0, :, 0]]  # [B, N]
-                        alpha_uv = alphas[:, sparse_depth_uv[0, :, 1], sparse_depth_uv[0, :, 0], 0]  # [B, N]
-                        pred_depth = depth_uv / torch.clamp(alpha_uv, min=1e-6)  # [B, N]
-                        pred_depth = pred_depth / median_depths.unsqueeze(1)  # Normalize by median depth
-                        sparse_depth = sparse_depth / median_depths.unsqueeze(1)  # Normalize by median depth
+                        if sparse_depth_uv.numel() == 0:
+                            depth_loss = 0.0
+                        else:
+                            depth = rendered_results[..., -1]  # [1, H, W]
+                            depth_uv = depth[:, sparse_depth_uv[0, :, 1], sparse_depth_uv[0, :, 0]]  # [B, N]
+                            alpha_uv = alphas[:, sparse_depth_uv[0, :, 1], sparse_depth_uv[0, :, 0], 0]  # [B, N]
+                            pred_depth = depth_uv / torch.clamp(alpha_uv, min=1e-6)  # [B, N]
+                            pred_depth = pred_depth / median_depths.unsqueeze(1)  # Normalize by median depth
+                            sparse_depth = sparse_depth / median_depths.unsqueeze(1)  # Normalize by median depth
 
-                        depth_loss = nnf.l1_loss(pred_depth, sparse_depth) * self.config.sparse_depth_reg
+                            depth_loss = nnf.l1_loss(pred_depth, sparse_depth) * self.config.sparse_depth_reg
                     else:
                         depth_loss = 0.0
 
