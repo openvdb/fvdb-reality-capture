@@ -35,7 +35,7 @@ class SpatialScaleMode(str, Enum):
     Compute the maximum depth of SfmPoints across all cameras in the scene, and use that as the spatial scale.
     """
 
-    MAX_CAMERA_TO_CENTROID = "max_camera_diagonal"
+    MAX_CAMERA_TO_CENTROID = "max_camera_to_centroid"
     """
     Compute the maximum distance from any camera to the centroid of all camera positions
     (good for orbits around an object).
@@ -541,8 +541,8 @@ class SfmScene:
             dists = np.linalg.norm(origins - centroid, axis=1)
             return float(np.max(dists))
         elif mode == SpatialScaleMode.SCENE_DIAGONAL_PERCENTILE:
-            percentiles = np.percentile(self.points, [5, 95], axis=1)
-            bbox_min, bbox_max = percentiles[:, 0], percentiles[:, 1]
+            percentiles = np.percentile(self.points, [5, 95], axis=0)
+            bbox_min, bbox_max = percentiles[0], percentiles[1]
             scene_diag = np.linalg.norm(bbox_max - bbox_min)
             return float(scene_diag)
         else:
