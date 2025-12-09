@@ -220,7 +220,8 @@ class SfmDataset(torch.utils.data.Dataset, Iterable):
          - image_id: The index of the image in the dataset.
          - image_path: The file path of the image.
          - points (Optional): The projected points in the image (if return_visible_points is True).
-         - depths (Optional): The depths of the projected points (if return_visible_points is True).
+         - sparse_depth (Optional): The depths of the projected points (if return_visible_points is True).
+         - sparse_depth_uv (Optional): The pixel (uv) coordinates of the sparse depth points (if return_visible_points is True).
          - mask (Optional): The mask tensor (if available).
          - mask_path (Optional): The file path of the mask (if available).
 
@@ -290,9 +291,9 @@ class SfmDataset(torch.utils.data.Dataset, Iterable):
         # If you asked to load depths, we'll load the depths of visible colmap points
         if self._return_visible_points:
             # projected points to image plane to get depths
-            points_world = self._sfm_scene.points[image_meta.point_indices]
-            points_cam = (world_to_camera_matrix[:3, :3] @ points_world.T + world_to_camera_matrix[:3, 3:4]).T
-            points_proj = (projection_matrix @ points_cam.T).T
+            points_world = self._sfm_scene.points[image_meta.point_indices]  # (M, 3)
+            points_cam = (world_to_camera_matrix[:3, :3] @ points_world.T + world_to_camera_matrix[:3, 3:4]).T  # (M, 3)
+            points_proj = (projection_matrix @ points_cam.T).T  # (M, 3)
             points = points_proj[:, :2] / points_proj[:, 2:3]  # (M, 2)
             depths = points_cam[:, 2]  # (M,)
             if self.patch_size is not None:
@@ -308,8 +309,10 @@ class SfmDataset(torch.utils.data.Dataset, Iterable):
             )
             points = points[selector]
             depths = depths[selector]
-            data["points"] = torch.from_numpy(points).float()
-            data["depths"] = torch.from_numpy(depths).float()
+            median_depth = np.median(depths)
+            data["median_depth"] = torch.tensor(median_depth).float()
+            data["sparse_depth_uv"] = torch.from_numpy(points).float()
+            data["sparse_depth"] = torch.from_numpy(depths).float()
         return data
 
 

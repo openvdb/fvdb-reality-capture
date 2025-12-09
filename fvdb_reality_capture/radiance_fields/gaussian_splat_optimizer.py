@@ -14,7 +14,7 @@ import torch.optim
 from fvdb import GaussianSplat3d
 from scipy.special import logit
 
-from fvdb_reality_capture.sfm_scene import SfmScene
+from fvdb_reality_capture.sfm_scene import SfmScene, SpatialScaleMode
 
 from .base_gaussian_splat_optimizer import BaseGaussianSplatOptimizer
 
@@ -45,41 +45,6 @@ class InsertionGrad2dThresholdMode(str, Enum):
     During **every** refinement step, set the threshold to the given percentile of the gradients. For highly detailed
     scenes, this mode may be useful to adaptively insert more Gaussians as the model learns more detail. This generally
     produces many more Gaussians and more detailed results at the cost of more memory and compute.
-    """
-
-
-class SpatialScaleMode(str, Enum):
-    """
-    How to interpret 3D optimization scale thresholds (insertion_scale_3d_threshold, deletion_scale_3d_threshold)
-    and learning rates. These thresholds specified in a unitless space, and are subsequently multipled by a spatial scale
-    computed from the scene being optimized. There are several heuristics for computing this spatial scale, specified by the config:
-    """
-
-    ABSOLUTE_UNITS = "absolute_units"
-    """
-    Use the thresholds and learning rates *as-is*, in absolute world units (e.g. meters).
-    """
-
-    MEDIAN_CAMERA_DEPTH = "median_camera_depth"
-    """
-    Compute the median depth of SfmPoints across of all cameras in the scene, and use that as the spatial scale.
-    """
-
-    MAX_CAMERA_DEPTH = "max_camera_depth"
-    """
-    Compute the maximum depth of SfmPoints across all cameras in the scene, and use that as the spatial scale.
-    """
-
-    MAX_CAMERA_TO_CENTROID = "max_camera_diagonal"
-    """
-    Compute the maximum distance from any camera to the centroid of all camera positions
-    (good for orbits around an object).
-    """
-
-    SCENE_DIAGONAL_PERCENTILE = "relative_to_scene_diagonal"
-    """
-    Compute the axis-aligned bounding box of all points within the 5th to 95th percentile range along each axis, and
-    use the given percentile of the length of the diagonal of this box as the spatial scale.
     """
 
 
@@ -405,18 +370,14 @@ class GaussianSplatOptimizer(BaseGaussianSplatOptimizer):
 
         Args:
             model (GaussianSplat3d): The ``GaussianSplat3d`` model to optimize.
+            sfm_scene (SfmScene): The SfM scene over which the model is being optimized.
             config (GaussianSplatOptimizerConfig): Configuration options for the optimizer.
-            means_lr_scale (float): A scale factor to apply to the means learning rate.
-            means_lr_decay_exponent (float): The exponent used for decaying the means learning rate.
-            batch_size (int): The batch size used for training. This is used to scale the learning rates.
 
         Returns:
             GaussianSplatOptimizer: A new :class:`GaussianSplatOptimizer` instance.
         """
 
-        spatial_scale = (
-            cls._compute_spatial_scale(sfm_scene, config.spatial_scale_mode) * config.spatial_scale_multiplier
-        )
+        spatial_scale = sfm_scene.spatial_scale(config.spatial_scale_mode) * config.spatial_scale_multiplier
         optimizer = GaussianSplatOptimizer._make_optimizer(model, spatial_scale, config)
 
         return cls(
@@ -1094,58 +1055,6 @@ class GaussianSplatOptimizer(BaseGaussianSplatOptimizer):
             "sh0": sh0_to_add,
             "shN": shN_to_add,
         }
-
-    @classmethod
-    def _compute_spatial_scale(cls, sfm_scene: SfmScene, mode: SpatialScaleMode) -> float:
-        """
-        Calculate a spatial scale for the scene based on the given mode.
-
-        Args:
-            sfm_scene (SfmScene): The scene to calculate the scale for.
-            mode (SpatialScaleMode): The mode to use for calculating the scale.
-        Returns:
-            spatial_scale (float): The calculated spatial scale.
-        """
-
-        if not sfm_scene.has_visible_point_indices and mode in (
-            SpatialScaleMode.MEDIAN_CAMERA_DEPTH,
-            SpatialScaleMode.MAX_CAMERA_DEPTH,
-        ):
-            raise ValueError(f"Cannot use {mode} when SfmScene.has_visible_point_indices is False")
-
-        if mode == SpatialScaleMode.ABSOLUTE_UNITS:
-            return 1.0
-        elif mode == SpatialScaleMode.MEDIAN_CAMERA_DEPTH or mode == SpatialScaleMode.MAX_CAMERA_DEPTH:
-            # Compute the median distance from the SfmPoints seen by each camera to the position of the camera
-            median_depth_per_camera = []
-            for image_meta in sfm_scene.images:
-                assert (
-                    image_meta.point_indices is not None
-                ), "SfmScene.has_visible_point_indices is True but image has no point indices"
-
-                # Don't use cameras that don't see any points in the estimate
-                if len(image_meta.point_indices) == 0:
-                    continue
-                points = sfm_scene.points[image_meta.point_indices]
-                dist_to_points = np.linalg.norm(points - image_meta.origin, axis=1)
-                median_dist = np.median(dist_to_points)
-                median_depth_per_camera.append(median_dist)
-            if mode == SpatialScaleMode.MEDIAN_CAMERA_DEPTH:
-                return float(np.median(median_depth_per_camera))
-            elif mode == SpatialScaleMode.MAX_CAMERA_DEPTH:
-                return float(np.max(median_depth_per_camera))
-        elif mode == SpatialScaleMode.MAX_CAMERA_TO_CENTROID:
-            origins = np.stack([cam.origin for cam in sfm_scene.images], axis=0)
-            centroid = np.mean(origins, axis=0)
-            dists = np.linalg.norm(origins - centroid, axis=1)
-            return float(np.max(dists))
-        elif mode == SpatialScaleMode.SCENE_DIAGONAL_PERCENTILE:
-            percentiles = np.percentile(sfm_scene.points, [5, 95], axis=1)
-            bbox_min, bbox_max = percentiles[:, 0], percentiles[:, 1]
-            scene_diag = np.linalg.norm(bbox_max - bbox_min)
-            return float(scene_diag)
-        else:
-            raise ValueError(f"Unknown spatial scale mode: {mode}")
 
     @staticmethod
     def _unit_quats_to_rotation_matrices(quaternions: torch.Tensor) -> torch.Tensor:
