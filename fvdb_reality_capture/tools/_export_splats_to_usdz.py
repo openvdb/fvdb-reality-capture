@@ -131,6 +131,7 @@ def _serialize_nurec_usd(
 
     # Define UsdVol::Volume
     from pxr import UsdVol
+
     gauss_path = "/World/gauss"
     gauss_volume = UsdVol.Volume.Define(stage, gauss_path)
     gauss_prim = gauss_volume.GetPrim()
