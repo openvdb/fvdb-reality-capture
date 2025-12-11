@@ -248,7 +248,7 @@ class SfmScene:
             "transformation_matrix": (
                 self._transformation_matrix.tolist() if self._transformation_matrix is not None else None
             ),
-            "cache_path": self._cache.cache_root_path.absolute().as_posix(),
+            "cache_path": self._cache.db_path.parent.absolute().as_posix(),
             "cache_name": self._cache.cache_name,
             "cache_description": self._cache.cache_description,
         }
