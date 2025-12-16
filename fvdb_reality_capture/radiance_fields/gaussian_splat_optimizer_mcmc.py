@@ -99,19 +99,6 @@ class GaussianSplatOptimizerMCMC(GaussianSplatOptimizer):
         self._binomial_coeffs: torch.Tensor | None = None
         self._binomial_coeffs_n_max: int | None = None
 
-        # This hook counts the number of times we call backward between zeroing the gradients.
-        # To determine whether a Gaussian should be split or duplicated, we threshold the *average*
-        # gradient of its 2D mean with respect to the loss.
-        # If we call backward multiple times per iteration (e.g. for different losses) or if we're accumulating gradients,
-        # then the denominator of the average is the total number of backward calls since the last zero_grad().
-        # This hook corrects the count even if backward() is called multiple times per iteration.
-        self._num_grad_accumulation_steps = 1  # Number of times we've called backward since zeroing the gradients
-
-        def _count_accumulation_steps_backward_hook(_):
-            self._num_grad_accumulation_steps += 1
-
-        self._model.means.register_hook(_count_accumulation_steps_backward_hook)
-
     def _get_binomial_coeffs(self) -> tuple[torch.Tensor, int]:
         """
         Get (and cache) the binomial coefficient table for the configured n_max on the current device.
@@ -201,7 +188,6 @@ class GaussianSplatOptimizerMCMC(GaussianSplatOptimizer):
             _private=cls.__PRIVATE__,
         )
         optimizer._means_lr_decay_exponent = state_dict["means_lr_decay_exponent"]
-        optimizer._num_grad_accumulation_steps = state_dict.get("num_grad_accumulation_steps", 1)
 
         return optimizer
 
@@ -238,7 +224,6 @@ class GaussianSplatOptimizerMCMC(GaussianSplatOptimizer):
             set_to_none (bool): If ``True``, set the gradients to ``None`` instead of zeroing them.
                 This can be more memory efficient.
         """
-        self._num_grad_accumulation_steps = 0
         self._optimizer.zero_grad(set_to_none=set_to_none)
 
     @torch.no_grad()
@@ -379,6 +364,7 @@ class GaussianSplatOptimizerMCMC(GaussianSplatOptimizer):
                 ratios=ratios,
                 binomial_coeffs=binomial_coeffs,
                 n_max=n_max,
+                min_opacity=self._config.deletion_opacity_threshold,
             )
 
             self._model.log_scales[sampled_idxs] = new_log_scales
@@ -416,6 +402,7 @@ class GaussianSplatOptimizerMCMC(GaussianSplatOptimizer):
             ratios=ratios,
             binomial_coeffs=binomial_coeffs,
             n_max=n_max,
+            min_opacity=self._config.deletion_opacity_threshold,
         )
 
         self._model.log_scales[sampled_idxs] = new_log_scales
@@ -452,7 +439,6 @@ class GaussianSplatOptimizerMCMC(GaussianSplatOptimizer):
         return {
             "optimizer": self._optimizer.state_dict(),
             "means_lr_decay_exponent": self._means_lr_decay_exponent,
-            "num_grad_accumulation_steps": self._num_grad_accumulation_steps,
             "config": vars(self._config),
             "spatial_scale": self._spatial_scale,
             "step_count": self._step_count,

@@ -111,6 +111,10 @@ class GaussianSplatOptimizerMCMCTests(GettysburgGaussianSplatTestCase, unittest.
 
         means_after = model.means[dead_indices]
         self.assertFalse(torch.allclose(means_before, means_after))
+        # Relocation does *not* guarantee opacity > deletion threshold (ratios can reduce opacity);
+        # it *does* clamp to deletion_opacity_threshold.
+        relocated_opacities = torch.sigmoid(model.logit_opacities[dead_indices])
+        self.assertTrue(torch.all(relocated_opacities >= config.deletion_opacity_threshold - 1e-7))
 
     def test_refine_adds_gaussians(self):
         if self.device != "cuda":
