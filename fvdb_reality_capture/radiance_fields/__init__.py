@@ -10,6 +10,10 @@ from .gaussian_splat_optimizer import (
     InsertionGrad2dThresholdMode,
     SpatialScaleMode,
 )
+from .gaussian_splat_optimizer_mcmc import (
+    GaussianSplatOptimizerMCMC,
+    GaussianSplatOptimizerMCMCConfig,
+)
 from .gaussian_splat_reconstruction import (
     GaussianSplatReconstruction,
     GaussianSplatReconstructionConfig,
@@ -30,6 +34,8 @@ __all__ = [
     "BaseGaussianSplatOptimizer",
     "GaussianSplatOptimizer",
     "GaussianSplatOptimizerConfig",
+    "GaussianSplatOptimizerMCMC",
+    "GaussianSplatOptimizerMCMCConfig",
     "InsertionGrad2dThresholdMode",
     "SpatialScaleMode",
 ]
