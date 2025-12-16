@@ -17,9 +17,17 @@ from fvdb_reality_capture.sfm_scene.sfm_scene import SfmScene
 
 @dataclass
 class GaussianSplatOptimizerMCMCConfig(GaussianSplatOptimizerConfig):
-    noise_lr: float = 5e5
     """
     Parameters for configuring the ``GaussianSplatOptimizerMCMC``.
+    """
+
+    noise_lr: float = 5e5
+    """
+    The learning rate for the noise added to the positions of the Gaussians.
+    """
+    insertion_rate = 1.05
+    """
+    The rate at which new Gaussians are inserted per step.
     """
 
 
@@ -157,6 +165,8 @@ class GaussianSplatOptimizerMCMC(BaseGaussianSplatOptimizer):
         """
         Step the optimizer (updating the model's parameters) and decay the learning rate of the means.
         """
+
+        # MCMC optimization step adds noise to the positions of the Gaussians
         self._model.add_noise_to_means(noise_scale=self._config.noise_lr * self._optimizer.param_groups["means"]["lr"])
 
         self._optimizer.step()
@@ -188,7 +198,7 @@ class GaussianSplatOptimizerMCMC(BaseGaussianSplatOptimizer):
         num_relocated = self._relocate()
 
         # add new GSs
-        num_target = min(self._config.max_gaussians, int(1.05 * self._model.num_gaussians))
+        num_target = min(self._config.max_gaussians, int(self._config.insertion_rate * self._model.num_gaussians))
         num_added = max(0, num_target - self._model.num_gaussians)
         if num_added > 0:
             self._sample_add(num_added)
@@ -232,7 +242,7 @@ class GaussianSplatOptimizerMCMC(BaseGaussianSplatOptimizer):
             sampled_idxs = torch.from_numpy(sampled_idxs_np)
             return sampled_idxs.to(weights.device)
 
-     @torch.no_grad()
+    @torch.no_grad()
     def _update_optimizer_params_and_state(
         self,
         optimizer_fn: Callable[[torch.Tensor], torch.Tensor],
@@ -305,12 +315,9 @@ class GaussianSplatOptimizerMCMC(BaseGaussianSplatOptimizer):
 
             self._model.log_scales[sampled_idxs] = new_log_scales
             self._model.logit_opacities[sampled_idxs] = new_logit_opacities
-            self._model.log_scales[dead_indices] = self._model.log_scales[sampled_idxs]
-            self._model.logit_opacities[dead_indices] = self._model.logit_opacities[sampled_idxs]
-            self._model.quats[dead_indices] = self._model.quats[sampled_idxs]
-            self._model.means[dead_indices] = self._model.means[sampled_idxs]
-            self._model.sh0[dead_indices] = self._model.sh0[sampled_idxs]
-            self._model.shN[dead_indices] = self._model.shN[sampled_idxs]
+            for param_name in ["log_scales", "logit_opacities", "quats", "means", "sh0", "shN"]:
+                param = getattr(self._model, param_name)
+                param[dead_indices] = param[sampled_idxs]
 
             def zero_sampled_gradients(x: torch.Tensor) -> torch.Tensor:
                 x[sampled_idxs] = 0
@@ -325,8 +332,7 @@ class GaussianSplatOptimizerMCMC(BaseGaussianSplatOptimizer):
 
     @torch.no_grad()
     def _sample_add(self, n: int) -> int:
-        """Sample new Gaussians from the model.
-        """
+        """Sample new Gaussians from the model."""
         probs = self._model.opacities().flatten()  # ensure its shape is [N,]
         sampled_idxs = self._multinomial_sample(probs, n, replacement=True)
         new_logit_opacities, new_log_scales = self._model.relocate_gaussians(
@@ -339,16 +345,14 @@ class GaussianSplatOptimizerMCMC(BaseGaussianSplatOptimizer):
 
         self._model.log_scales[sampled_idxs] = new_log_scales
         self._model.logit_opacities[sampled_idxs] = new_logit_opacities
-        self._model.log_scales = torch.cat([self._model.log_scales, self._model.log_scales[sampled_idxs]])
-        self._model.logit_opacities = torch.cat([self._model.logit_opacities, self._model.logit_opacities[sampled_idxs]])
-        self._model.quats = torch.cat([self._model.quats, self._model.quats[sampled_idxs]])
-        self._model.means = torch.cat([self._model.means, self._model.means[sampled_idxs]])
-        self._model.sh0 = torch.cat([self._model.sh0, self._model.sh0[sampled_idxs]])
-        self._model.shN = torch.cat([self._model.shN, self._model.shN[sampled_idxs]])
+
+        for param_name in ["log_scales", "logit_opacities", "quats", "means", "sh0", "shN"]:
+            param = getattr(self._model, param_name)
+            param = torch.cat([param, param[sampled_idxs]])
 
         def zero_extend_sampled_gradients(x: torch.Tensor) -> torch.Tensor:
-           x = torch.cat([x, torch.zeros(n, *x.shape[1:], dtype=x.dtype, device=x.device)])
-           return x
+            x = torch.cat([x, torch.zeros(n, *x.shape[1:], dtype=x.dtype, device=x.device)])
+            return x
 
         self._update_optimizer_params_and_state(
             optimizer_fn=zero_extend_sampled_gradients,
