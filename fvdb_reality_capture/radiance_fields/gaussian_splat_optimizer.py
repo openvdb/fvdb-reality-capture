@@ -324,6 +324,7 @@ class GaussianSplatOptimizer(BaseGaussianSplatOptimizer):
         # This hook corrects the count even if backward() is called multiple times per iteration.
         self._num_grad_accumulation_steps = 1  # Number of times we've called backward since zeroing the gradients
 
+        @torch.utils.hooks.unserializable_hook
         def _count_accumulation_steps_backward_hook(_):
             self._num_grad_accumulation_steps += 1
 
