@@ -2,12 +2,10 @@ import logging
 from dataclasses import dataclass
 from typing import Any, Callable
 
+import numpy as np
 import torch
 from fvdb import GaussianSplat3d
 
-from fvdb_reality_capture.radiance_fields.base_gaussian_splat_optimizer import (
-    BaseGaussianSplatOptimizer,
-)
 from fvdb_reality_capture.radiance_fields.gaussian_splat_optimizer import (
     GaussianSplatOptimizer,
     GaussianSplatOptimizerConfig,
@@ -25,13 +23,22 @@ class GaussianSplatOptimizerMCMCConfig(GaussianSplatOptimizerConfig):
     """
     The learning rate for the noise added to the positions of the Gaussians.
     """
-    insertion_rate = 1.05
+    insertion_rate: float = 1.05
     """
     The rate at which new Gaussians are inserted per step.
     """
 
+    n_max: int = 51
+    """
+    Maximum replication ratio used by the MCMC relocation kernel when computing updated opacities/scales
+    for relocated/duplicated Gaussians.
 
-class GaussianSplatOptimizerMCMC(BaseGaussianSplatOptimizer):
+    This controls the size of the binomial coefficient lookup table passed into
+    :meth:`fvdb.GaussianSplat3d.relocate_gaussians`.
+    """
+
+
+class GaussianSplatOptimizerMCMC(GaussianSplatOptimizer):
     """
     MCMC optimizer for Gaussian Splat radiance fields.
     The optimizer uses an MCMC sampler to optimize the parameters of a ``fvdb.GaussianSplat3d`` model, and
@@ -87,6 +94,11 @@ class GaussianSplatOptimizerMCMC(BaseGaussianSplatOptimizer):
         self._model = model
         self._optimizer = optimizer
 
+        # Store the decay exponent for the means learning rate schedule so we can serialize it
+        self._means_lr_decay_exponent = 1.0
+        self._binomial_coeffs: torch.Tensor | None = None
+        self._binomial_coeffs_n_max: int | None = None
+
         # This hook counts the number of times we call backward between zeroing the gradients.
         # To determine whether a Gaussian should be split or duplicated, we threshold the *average*
         # gradient of its 2D mean with respect to the loss.
@@ -99,6 +111,36 @@ class GaussianSplatOptimizerMCMC(BaseGaussianSplatOptimizer):
             self._num_grad_accumulation_steps += 1
 
         self._model.means.register_hook(_count_accumulation_steps_backward_hook)
+
+    def _get_binomial_coeffs(self) -> tuple[torch.Tensor, int]:
+        """
+        Get (and cache) the binomial coefficient table for the configured n_max on the current device.
+        """
+        n_max = int(self._config.n_max)
+        if n_max <= 0:
+            raise ValueError("n_max must be > 0")
+        if (
+            self._binomial_coeffs is None
+            or self._binomial_coeffs_n_max != n_max
+            or self._binomial_coeffs.device != self._model.device
+        ):
+            self._binomial_coeffs = self._build_binomial_coeffs(n_max=n_max, device=self._model.device)
+            self._binomial_coeffs_n_max = n_max
+        return self._binomial_coeffs, n_max
+
+    @staticmethod
+    def _build_binomial_coeffs(n_max: int, device: torch.device) -> torch.Tensor:
+        """
+        Build a binomial coefficients lookup table of shape [n_max, n_max] as float32.
+        Matches the reference implementation used in fvdb-core tests.
+        """
+        coeffs = torch.zeros((n_max, n_max), device=device, dtype=torch.float32)
+        for row in range(n_max):
+            coeffs[row, 0] = 1.0
+            coeffs[row, row] = 1.0
+            for k in range(1, row):
+                coeffs[row, k] = coeffs[row - 1, k - 1] + coeffs[row - 1, k]
+        return coeffs
 
     @classmethod
     def from_model_and_scene(
@@ -117,7 +159,8 @@ class GaussianSplatOptimizerMCMC(BaseGaussianSplatOptimizer):
         """
 
         spatial_scale = (
-            cls._compute_spatial_scale(sfm_scene, config.spatial_scale_mode) * config.spatial_scale_multiplier
+            GaussianSplatOptimizer._compute_spatial_scale(sfm_scene, config.spatial_scale_mode)
+            * config.spatial_scale_multiplier
         )
         optimizer = GaussianSplatOptimizer._make_optimizer(model, spatial_scale, config)
 
@@ -158,6 +201,7 @@ class GaussianSplatOptimizerMCMC(BaseGaussianSplatOptimizer):
             _private=cls.__PRIVATE__,
         )
         optimizer._means_lr_decay_exponent = state_dict["means_lr_decay_exponent"]
+        optimizer._num_grad_accumulation_steps = state_dict.get("num_grad_accumulation_steps", 1)
 
         return optimizer
 
@@ -167,7 +211,16 @@ class GaussianSplatOptimizerMCMC(BaseGaussianSplatOptimizer):
         """
 
         # MCMC optimization step adds noise to the positions of the Gaussians
-        self._model.add_noise_to_means(noise_scale=self._config.noise_lr * self._optimizer.param_groups["means"]["lr"])
+        means_lr: float | None = None
+        for pg in self._optimizer.param_groups:
+            if pg.get("name") == "means":
+                means_lr = float(pg["lr"])
+                break
+        if means_lr is None:
+            raise RuntimeError("Could not find 'means' param group in optimizer")
+        noise_scale = float(self._config.noise_lr) * means_lr
+        if noise_scale != 0.0:
+            self._model.add_noise_to_means(noise_scale=noise_scale)
 
         self._optimizer.step()
         self._step_count += 1
@@ -188,7 +241,8 @@ class GaussianSplatOptimizerMCMC(BaseGaussianSplatOptimizer):
         self._num_grad_accumulation_steps = 0
         self._optimizer.zero_grad(set_to_none=set_to_none)
 
-    def refine(self) -> dict[str, int]:
+    @torch.no_grad()
+    def refine(self, zero_gradients: bool = True) -> dict[str, int]:
         """
         Perform a step of refinement by relocating and adding Gaussians.
         """
@@ -198,24 +252,31 @@ class GaussianSplatOptimizerMCMC(BaseGaussianSplatOptimizer):
         num_relocated = self._relocate()
 
         # add new GSs
-        num_target = min(self._config.max_gaussians, int(self._config.insertion_rate * self._model.num_gaussians))
+        if self._config.max_gaussians > 0:
+            num_target = min(self._config.max_gaussians, int(self._config.insertion_rate * self._model.num_gaussians))
+        else:
+            num_target = int(self._config.insertion_rate * self._model.num_gaussians)
         num_added = max(0, num_target - self._model.num_gaussians)
         if num_added > 0:
             self._sample_add(num_added)
 
-        self._model.log_scales.grad = None
-        self._model.logit_opacities.grad = None
-        self._model.quats.grad = None
-        self._model.means.grad = None
-        self._model.sh0.grad = None
-        self._model.shN.grad = None
+        if zero_gradients:
+            self._model.log_scales.grad = None
+            self._model.logit_opacities.grad = None
+            self._model.quats.grad = None
+            self._model.means.grad = None
+            self._model.sh0.grad = None
+            self._model.shN.grad = None
 
-        if self.verbose:
+        self._refine_count += 1
+        self._logger.debug(
             f"MCMC Optimizer refinement (step {self._step_count:,}): {num_relocated:,} relocated, {num_added:,} added. "
             f"Before refinement model had {num_gaussians_before_refinement:,} Gaussians, after refinement has {self._model.num_gaussians:,} Gaussians."
+        )
 
         return {"num_relocated": num_relocated, "num_added": num_added}
 
+    @staticmethod
     @torch.no_grad()
     def _multinomial_sample(weights: torch.Tensor, n: int, replacement: bool = True) -> torch.Tensor:
         """Sample from a distribution using torch.multinomial or numpy.random.choice.
@@ -293,24 +354,31 @@ class GaussianSplatOptimizerMCMC(BaseGaussianSplatOptimizer):
         Returns:
             int: The number of Gaussians relocated.
         """
-        dead_mask = self._model.opacities() <= self._config.deletion_opacity_threshold
-        n_gs = dead_mask.sum().item()
+        dead_mask = self._model.opacities <= self._config.deletion_opacity_threshold
+        n_gs = int(dead_mask.sum().item())
         if n_gs > 0:
             dead_indices = dead_mask.nonzero(as_tuple=True)[0]
             alive_indices = (~dead_mask).nonzero(as_tuple=True)[0]
             n = len(dead_indices)
 
             # Sample for new GSs
-            eps = torch.finfo(torch.float32).eps
-            probs = self._model.opacities()[alive_indices].flatten()  # ensure its shape is [N,]
+            probs = self._model.opacities[alive_indices].flatten()  # ensure its shape is [N,]
+            if probs.numel() == 0:
+                return 0
+            # multinomial requires sum(probs) > 0
+            if float(probs.sum().item()) == 0.0:
+                probs = torch.ones_like(probs)
             sampled_idxs = self._multinomial_sample(probs, n, replacement=True)
             sampled_idxs = alive_indices[sampled_idxs]
+            ratios = torch.bincount(sampled_idxs, minlength=self._model.num_gaussians)[sampled_idxs] + 1
+            binomial_coeffs, n_max = self._get_binomial_coeffs()
+            ratios = ratios.to(dtype=torch.int32)
             new_logit_opacities, new_log_scales = self._model.relocate_gaussians(
                 log_scales=self._model.log_scales[sampled_idxs],
                 logit_opacities=self._model.logit_opacities[sampled_idxs],
-                ratios=torch.bincount(sampled_idxs)[sampled_idxs] + 1,
-                binomial_coeffs=self._binomial_coeffs,
-                n_max=self._config.n_max,
+                ratios=ratios,
+                binomial_coeffs=binomial_coeffs,
+                n_max=n_max,
             )
 
             self._model.log_scales[sampled_idxs] = new_log_scales
@@ -333,22 +401,35 @@ class GaussianSplatOptimizerMCMC(BaseGaussianSplatOptimizer):
     @torch.no_grad()
     def _sample_add(self, n: int) -> int:
         """Sample new Gaussians from the model."""
-        probs = self._model.opacities().flatten()  # ensure its shape is [N,]
+        probs = self._model.opacities.flatten()  # ensure its shape is [N,]
+        if probs.numel() == 0:
+            return 0
+        if float(probs.sum().item()) == 0.0:
+            probs = torch.ones_like(probs)
         sampled_idxs = self._multinomial_sample(probs, n, replacement=True)
+        ratios = torch.bincount(sampled_idxs, minlength=self._model.num_gaussians)[sampled_idxs] + 1
+        binomial_coeffs, n_max = self._get_binomial_coeffs()
+        ratios = ratios.to(dtype=torch.int32)
         new_logit_opacities, new_log_scales = self._model.relocate_gaussians(
             log_scales=self._model.log_scales[sampled_idxs],
             logit_opacities=self._model.logit_opacities[sampled_idxs],
-            ratios=torch.bincount(sampled_idxs)[sampled_idxs] + 1,
-            binomial_coeffs=self._binomial_coeffs,
-            n_max=self._config.n_max,
+            ratios=ratios,
+            binomial_coeffs=binomial_coeffs,
+            n_max=n_max,
         )
 
         self._model.log_scales[sampled_idxs] = new_log_scales
         self._model.logit_opacities[sampled_idxs] = new_logit_opacities
 
-        for param_name in ["log_scales", "logit_opacities", "quats", "means", "sh0", "shN"]:
-            param = getattr(self._model, param_name)
-            param = torch.cat([param, param[sampled_idxs]])
+        # Extend model tensors with sampled copies (after relocation adjustment)
+        self._model.set_state(
+            means=torch.cat([self._model.means, self._model.means[sampled_idxs]], dim=0),
+            quats=torch.cat([self._model.quats, self._model.quats[sampled_idxs]], dim=0),
+            log_scales=torch.cat([self._model.log_scales, self._model.log_scales[sampled_idxs]], dim=0),
+            logit_opacities=torch.cat([self._model.logit_opacities, self._model.logit_opacities[sampled_idxs]], dim=0),
+            sh0=torch.cat([self._model.sh0, self._model.sh0[sampled_idxs]], dim=0),
+            shN=torch.cat([self._model.shN, self._model.shN[sampled_idxs]], dim=0),
+        )
 
         def zero_extend_sampled_gradients(x: torch.Tensor) -> torch.Tensor:
             x = torch.cat([x, torch.zeros(n, *x.shape[1:], dtype=x.dtype, device=x.device)])
@@ -359,6 +440,7 @@ class GaussianSplatOptimizerMCMC(BaseGaussianSplatOptimizer):
             parameter_names={"log_scales", "logit_opacities", "quats", "means", "sh0", "shN"},
             reset_adam_step_counts=False,
         )
+        return n
 
     def state_dict(self) -> dict[str, Any]:
         """
@@ -370,6 +452,7 @@ class GaussianSplatOptimizerMCMC(BaseGaussianSplatOptimizer):
         return {
             "optimizer": self._optimizer.state_dict(),
             "means_lr_decay_exponent": self._means_lr_decay_exponent,
+            "num_grad_accumulation_steps": self._num_grad_accumulation_steps,
             "config": vars(self._config),
             "spatial_scale": self._spatial_scale,
             "step_count": self._step_count,
