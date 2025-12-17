@@ -14,6 +14,7 @@ import torch.utils.data
 import yaml
 
 from fvdb_reality_capture.radiance_fields import (
+    GaussianSplatOptimizerMCMCConfig,
     GaussianSplatReconstruction,
     GaussianSplatReconstructionConfig,
     GaussianSplatReconstructionWriter,
@@ -41,6 +42,7 @@ class Benchmark3dgs:
         image_downsample_factor: int = 4,
         normalization_type: Literal["none", "pca", "ecef2enu", "similarity"] = "pca",
         device: Union[str, torch.device] = "cuda",
+        force_mcmc_optimizer: bool = False,
     ):
         self.data_path = data_path
         self.checkpoint_path = checkpoint_path
@@ -72,6 +74,24 @@ class Benchmark3dgs:
         self.runner = GaussianSplatReconstruction.from_state_dict(
             checkpoint_state, override_sfm_scene=sfm_scene, writer=writer, device=device
         )
+
+        # Optional: force attaching an MCMC optimizer (for benchmarking forward pass under MCMC plumbing).
+        # This does not change rendering behavior directly, but it validates that the runner can be
+        # configured with the MCMC optimizer in this benchmark harness.
+        if force_mcmc_optimizer:
+            if isinstance(device, str):
+                is_cuda = device.startswith("cuda")
+            else:
+                is_cuda = device.type == "cuda"
+            if not is_cuda:
+                raise RuntimeError("force_mcmc_optimizer=True requires a CUDA device")
+            mcmc_cfg = GaussianSplatOptimizerMCMCConfig(
+                noise_lr=0.0,
+                insertion_rate=1.0,
+            )
+            self.runner._optimizer = mcmc_cfg.make_optimizer(  # type: ignore[attr-defined]
+                model=self.runner.model, sfm_scene=self.runner.training_dataset.sfm_scene
+            )
 
         step = checkpoint_state["step"]
 
@@ -201,6 +221,33 @@ def benchmark_3dgs(request):
         os.chdir(original_cwd)
 
 
+@pytest.fixture(
+    scope="module",
+    params=create_benchmark_params(),
+    ids=lambda param: f"{param[0].rstrip('/').split('/')[-1]}-{param[2].rstrip('/').split('/')[-2]}-mcmc",
+)
+def benchmark_3dgs_mcmc(request):
+    """
+    Same benchmark harness as `benchmark_3dgs`, but forces attaching an MCMC optimizer.
+    """
+    if not torch.cuda.is_available():
+        pytest.skip("MCMC optimizer requires CUDA")
+    logging.basicConfig(level=logging.INFO, format="%(levelname)s : %(message)s")
+    data_path, run_path, checkpoint_path = request.param
+    original_cwd = pathlib.Path.cwd()
+    try:
+        test_file_dir = os.path.dirname(os.path.abspath(__file__))
+        os.chdir(test_file_dir)
+        return Benchmark3dgs(
+            data_path=data_path,
+            checkpoint_path=checkpoint_path,
+            results_path=run_path,
+            force_mcmc_optimizer=True,
+        )
+    finally:
+        os.chdir(original_cwd)
+
+
 # We append an ordinal to the benchmark group name so that the report comes out in logical order
 # rather than alphabetical order.
 
@@ -230,6 +277,15 @@ def test_render_gaussians(benchmark, benchmark_3dgs):
 )
 def test_forward(benchmark, benchmark_3dgs):
     benchmark(benchmark_3dgs.run_forward)
+
+
+@pytest.mark.benchmark(
+    group="3b: 3dgs:forward_mcmc",
+    warmup=True,
+    warmup_iterations=3,
+)
+def test_forward_mcmc(benchmark, benchmark_3dgs_mcmc):
+    benchmark(benchmark_3dgs_mcmc.run_forward)
 
 
 @pytest.mark.benchmark(

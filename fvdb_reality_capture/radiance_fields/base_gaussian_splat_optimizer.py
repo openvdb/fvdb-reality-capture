@@ -16,7 +16,7 @@ DerivedOptimizer = TypeVar("DerivedOptimizer", bound=type)
 
 def splat_optimizer(cls: DerivedOptimizer) -> DerivedOptimizer:
     """
-    Decorator to register a optimizer class which inherits from :class:`BaseGaussianSplatOptimizer`.
+    Decorator to register an optimizer class which inherits from :class:`BaseGaussianSplatOptimizer`.
 
     Args:
         cls: The optimizer class to register.
@@ -68,6 +68,20 @@ class BaseGaussianSplatOptimizer(ABC):
         Returns:
             optimizer (BaseGaussianSplatOptimizer): A new :class:`BaseGaussianSplatOptimizer` instance.
         """
+        # Backwards compatibility: older checkpoints may not have stored the optimizer class name.
+        # Infer from version/keys where possible.
+        if "name" not in state_dict:
+            version = state_dict.get("version", None)
+            if version == 3 or "insertion_grad_2d_abs_threshold" in state_dict:
+                state_dict["name"] = "GaussianSplatOptimizer"
+            elif version == 1 and "insertion_grad_2d_abs_threshold" not in state_dict:
+                state_dict["name"] = "GaussianSplatOptimizerMCMC"
+            else:
+                raise ValueError(
+                    "Optimizer state dict is missing 'name' and optimizer type could not be inferred. "
+                    f"Keys: {sorted(state_dict.keys())}"
+                )
+
         OptimizerType = REGISTERED_OPTIMIZERS.get(state_dict["name"], None)
         if OptimizerType is None:
             raise ValueError(
