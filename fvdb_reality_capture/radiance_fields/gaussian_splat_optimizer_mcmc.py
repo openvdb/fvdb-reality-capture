@@ -60,7 +60,7 @@ class GaussianSplatOptimizerMCMC(BaseGaussianSplatOptimizer):
     MCMC optimizer for Gaussian Splat radiance fields.
     The optimizer uses an MCMC sampler to optimize the parameters of a ``fvdb.GaussianSplat3d`` model, and
     provides utilities to refine the model by inserting and deleting Gaussians based on their contribution to the
-    optimization. The tools here mostly follow the algorithm in the Gaussian Splating as Markov Chain Monte Carlo (MCMC)
+    optimization. The tools here mostly follow the algorithm in the Gaussian Splatting as Markov Chain Monte Carlo (MCMC)
     [paper](https://arxiv.org/abs/2404.09591).
 
     .. note:: You should not call the constructor of this class directly. Instead use :func:`from_model_and_scene`
@@ -98,7 +98,7 @@ class GaussianSplatOptimizerMCMC(BaseGaussianSplatOptimizer):
             )
         self._logger = logging.getLogger(f"{self.__class__.__module__}.{self.__class__.__name__}")
 
-        # How many timeds we've called step() on this optimizer
+        # How many times we've called step() on this optimizer
         self._step_count = step_count
 
         # How many times we've called refine() on this optimizer

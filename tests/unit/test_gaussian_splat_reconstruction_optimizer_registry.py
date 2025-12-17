@@ -8,11 +8,10 @@ from typing import Any
 import torch
 
 import fvdb_reality_capture as frc
-from fvdb_reality_capture import radiance_fields
 from tests.unit.common import load_gettysburg_scene_and_dataset
 
 
-class MockWriter(radiance_fields.GaussianSplatReconstructionBaseWriter):
+class MockWriter(frc.radiance_fields.GaussianSplatReconstructionBaseWriter):
     """Writer that records nothing; used to avoid filesystem side effects in tests."""
 
     def __init__(self):

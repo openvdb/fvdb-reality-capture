@@ -6,7 +6,6 @@ import pathlib
 import random
 import time
 from dataclasses import dataclass, field
-from enum import Enum
 from typing import Any, List, Literal
 
 import numpy as np
@@ -28,12 +27,7 @@ from .camera_pose_adjust import CameraPoseAdjustment
 from .gaussian_splat_dataset import SfmDataset
 from .gaussian_splat_optimizer import (
     BaseGaussianSplatOptimizer,
-    GaussianSplatOptimizer,
     GaussianSplatOptimizerConfig,
-)
-from .gaussian_splat_optimizer_mcmc import (
-    GaussianSplatOptimizerMCMC,
-    GaussianSplatOptimizerMCMCConfig,
 )
 from .gaussian_splat_reconstruction_writer import (
     GaussianSplatReconstructionBaseWriter,

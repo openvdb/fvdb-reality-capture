@@ -13,7 +13,6 @@ from tests.unit.common import GettysburgGaussianSplatTestCase
 
 
 class GaussianSplatOptimizerTests(GettysburgGaussianSplatTestCase, unittest.TestCase):
-    pass
 
     def test_serialize_optimizer(self):
         model_1 = self.model

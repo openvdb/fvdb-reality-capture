@@ -13,7 +13,6 @@ from tests.unit.common import GettysburgGaussianSplatTestCase
 
 
 class GaussianSplatOptimizerMCMCTests(GettysburgGaussianSplatTestCase, unittest.TestCase):
-    pass
 
     def test_serialize_optimizer_mcmc(self):
         if self.device != "cuda":
