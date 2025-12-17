@@ -1,4 +1,5 @@
 import logging
+import math
 from dataclasses import dataclass
 from typing import Any, Callable
 
@@ -6,6 +7,10 @@ import numpy as np
 import torch
 from fvdb import GaussianSplat3d
 
+from fvdb_reality_capture.radiance_fields.base_gaussian_splat_optimizer import (
+    BaseGaussianSplatOptimizer,
+    splat_optimizer,
+)
 from fvdb_reality_capture.radiance_fields.gaussian_splat_optimizer import (
     GaussianSplatOptimizer,
     GaussianSplatOptimizerConfig,
@@ -37,8 +42,16 @@ class GaussianSplatOptimizerMCMCConfig(GaussianSplatOptimizerConfig):
     :meth:`fvdb.GaussianSplat3d.relocate_gaussians`.
     """
 
+    def make_optimizer(self, model: GaussianSplat3d, sfm_scene: SfmScene) -> "GaussianSplatOptimizerMCMC":
+        return GaussianSplatOptimizerMCMC.from_model_and_scene(
+            model=model,
+            sfm_scene=sfm_scene,
+            config=self,
+        )
 
-class GaussianSplatOptimizerMCMC(GaussianSplatOptimizer):
+
+@splat_optimizer
+class GaussianSplatOptimizerMCMC(BaseGaussianSplatOptimizer):
     """
     MCMC optimizer for Gaussian Splat radiance fields.
     The optimizer uses an MCMC sampler to optimize the parameters of a ``fvdb.GaussianSplat3d`` model, and
@@ -46,7 +59,7 @@ class GaussianSplatOptimizerMCMC(GaussianSplatOptimizer):
     optimization. The tools here mostly follow the algorithm in the Gaussian Splating as Markov Chain Monte Carlo (MCMC)
     [paper](https://arxiv.org/abs/2404.09591).
 
-    .. note:: You should not call the constructor of this class directly. Instead use :func:`from_model_and_config`
+    .. note:: You should not call the constructor of this class directly. Instead use :func:`from_model_and_scene`
               or :func:`from_state_dict`.
     """
 
@@ -437,6 +450,7 @@ class GaussianSplatOptimizerMCMC(GaussianSplatOptimizer):
             state_dict (dict[str, Any]): A state dict containing the state of the optimizer.
         """
         return {
+            "name": self.__class__.name(),
             "optimizer": self._optimizer.state_dict(),
             "means_lr_decay_exponent": self._means_lr_decay_exponent,
             "config": vars(self._config),
@@ -445,3 +459,72 @@ class GaussianSplatOptimizerMCMC(GaussianSplatOptimizer):
             "refine_count": self._refine_count,
             "version": 1,
         }
+
+    @torch.no_grad()
+    def filter_gaussians(self, indices_or_mask: torch.Tensor):
+        """
+        Filter the Gaussians in the model to only those specified by the given indices or mask
+        and update the optimizer state accordingly. This can be used to delete, shuffle, or duplicate
+        the Gaussians during optimization.
+
+        Args:
+            indices_or_mask (torch.Tensor): A 1D tensor of indices or a boolean mask indicating which Gaussians to keep.
+        """
+
+        def _copy_param_and_grad(param: torch.Tensor) -> torch.Tensor:
+            new_param = param[indices_or_mask]
+            new_param.grad = param.grad[indices_or_mask] if param.grad is not None else None
+            return new_param
+
+        self._model.set_state(
+            means=_copy_param_and_grad(self._model.means),
+            quats=_copy_param_and_grad(self._model.quats),
+            log_scales=_copy_param_and_grad(self._model.log_scales),
+            logit_opacities=_copy_param_and_grad(self._model.logit_opacities),
+            sh0=_copy_param_and_grad(self._model.sh0),
+            shN=_copy_param_and_grad(self._model.shN),
+        )
+        self._update_optimizer_params_and_state(lambda x: x[indices_or_mask])
+
+    def reset_learning_rates_and_decay(self, batch_size: int, expected_steps: int):
+        """
+        Set the learning rates and learning rate decay factor based on the batch size and the expected
+        number of optimization steps (*i.e.* the number of times :func:`step()` is called).
+
+        This is useful if you want to change the batch size or expected number of steps after creating
+        the optimizer.
+
+        Args:
+            batch_size (int): The batch size used for training. This is used to scale the learning rates.
+            expected_steps (int): The expected number of optimization steps.
+        """
+        if batch_size <= 0:
+            raise ValueError("batch_size must be > 0")
+        if expected_steps <= 0:
+            raise ValueError("expected_steps must be > 0")
+
+        self._means_lr_decay_exponent = 0.01 ** (1.0 / expected_steps)
+
+        # Scale the learning rate and momentum parameters (epsilon, betas) based on batch size,
+        # reference: https://www.cs.princeton.edu/~smalladi/blog/2024/01/22/SDEs-ScalingRules/
+        # Note that this will not make the training exactly equivalent to the original INRIA
+        # Gaussian splat implementation.
+        # See https://arxiv.org/pdf/2402.18824v1 for more details.
+        lr_batch_rescale = math.sqrt(float(batch_size))
+
+        # Store learning rates in a dictionary so we can look them up
+        # using param_group['name'] for each parameter group in the optimizer.
+        reset_lr_values = {
+            "means": self._config.means_lr * self._spatial_scale * lr_batch_rescale,
+            "log_scales": self._config.log_scales_lr * lr_batch_rescale,
+            "quats": self._config.quats_lr * lr_batch_rescale,
+            "logit_opacities": self._config.logit_opacities_lr * lr_batch_rescale,
+            "sh0": self._config.sh0_lr * lr_batch_rescale,
+            "shN": self._config.shN_lr * lr_batch_rescale,
+        }
+
+        rescaled_betas = (1.0 - batch_size * (1.0 - 0.9), 1.0 - batch_size * (1.0 - 0.999))
+        for param_group in self._optimizer.param_groups:
+            param_group["betas"] = rescaled_betas
+            param_group["lr"] = reset_lr_values[param_group["name"]]
+            param_group["eps"] = 1e-15 / lr_batch_rescale

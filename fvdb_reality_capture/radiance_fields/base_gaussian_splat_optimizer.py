@@ -2,10 +2,37 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 from abc import ABC, abstractmethod
-from typing import Any
+from typing import Any, TypeVar
 
 import torch
 from fvdb import GaussianSplat3d
+
+# Keeps track of names of registered optimizers and their classes.
+REGISTERED_OPTIMIZERS = {}
+
+
+DerivedOptimizer = TypeVar("DerivedOptimizer", bound=type)
+
+
+def splat_optimizer(cls: DerivedOptimizer) -> DerivedOptimizer:
+    """
+    Decorator to register a optimizer class which inherits from :class:`BaseGaussianSplatOptimizer`.
+
+    Args:
+        cls: The optimizer class to register.
+
+    Returns:
+        cls: The registered optimizer class.
+    """
+    if not issubclass(cls, BaseGaussianSplatOptimizer):
+        raise TypeError(f"Optimizer {cls} must inherit from BaseGaussianSplatOptimizer.")
+
+    if cls.name() in REGISTERED_OPTIMIZERS:
+        del REGISTERED_OPTIMIZERS[cls.name()]
+
+    REGISTERED_OPTIMIZERS[cls.name()] = cls
+
+    return cls
 
 
 class BaseGaussianSplatOptimizer(ABC):
@@ -20,6 +47,15 @@ class BaseGaussianSplatOptimizer(ABC):
     """
 
     @classmethod
+    def name(cls) -> str:
+        """
+        Stable name used for optimizer (de)serialization and registry lookup.
+
+        By default we use the class name. Override in subclasses if you need a different stable identifier.
+        """
+        return cls.__name__
+
+    @classmethod
     @abstractmethod
     def from_state_dict(cls, model: GaussianSplat3d, state_dict: dict[str, Any]) -> "BaseGaussianSplatOptimizer":
         """
@@ -32,7 +68,14 @@ class BaseGaussianSplatOptimizer(ABC):
         Returns:
             optimizer (BaseGaussianSplatOptimizer): A new :class:`BaseGaussianSplatOptimizer` instance.
         """
-        pass
+        OptimizerType = REGISTERED_OPTIMIZERS.get(state_dict["name"], None)
+        if OptimizerType is None:
+            raise ValueError(
+                f"Optimizer '{state_dict['name']}' is not registered. Optimizer classes must be registered "
+                f"with the `splat_optimizer` decorator which will be called when the optimizer is defined. "
+                f"Ensure the optimizer class uses the `splat_optimizer` decorator and was imported before calling from_state_dict."
+            )
+        return OptimizerType.from_state_dict(model, state_dict)
 
     @abstractmethod
     def state_dict(self) -> dict[str, Any]:

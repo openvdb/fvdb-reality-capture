@@ -16,7 +16,7 @@ from scipy.special import logit
 
 from fvdb_reality_capture.sfm_scene import SfmScene
 
-from .base_gaussian_splat_optimizer import BaseGaussianSplatOptimizer
+from .base_gaussian_splat_optimizer import BaseGaussianSplatOptimizer, splat_optimizer
 
 
 class InsertionGrad2dThresholdMode(str, Enum):
@@ -248,7 +248,15 @@ class GaussianSplatOptimizerConfig:
     Learning rate for the specular spherical harmonics (order > 0).
     """
 
+    def make_optimizer(self, model: GaussianSplat3d, sfm_scene: SfmScene) -> BaseGaussianSplatOptimizer:
+        return GaussianSplatOptimizer.from_model_and_scene(
+            model=model,
+            sfm_scene=sfm_scene,
+            config=self,
+        )
 
+
+@splat_optimizer
 class GaussianSplatOptimizer(BaseGaussianSplatOptimizer):
     """
     Optimizer for reconstructing a scene using Gaussian Splat radiance fields over a collection of posed images.
@@ -498,6 +506,7 @@ class GaussianSplatOptimizer(BaseGaussianSplatOptimizer):
             state_dict (dict[str, Any]): A state dict containing the state of the optimizer.
         """
         return {
+            "name": self.__class__.name(),
             "optimizer": self._optimizer.state_dict(),
             "means_lr_decay_exponent": self._means_lr_decay_exponent,
             "insertion_grad_2d_abs_threshold": self._insertion_grad_2d_abs_threshold,

@@ -6,6 +6,7 @@ import pathlib
 import random
 import time
 from dataclasses import dataclass, field
+from enum import Enum
 from typing import Any, List, Literal
 
 import numpy as np
@@ -29,6 +30,10 @@ from .gaussian_splat_optimizer import (
     BaseGaussianSplatOptimizer,
     GaussianSplatOptimizer,
     GaussianSplatOptimizerConfig,
+)
+from .gaussian_splat_optimizer_mcmc import (
+    GaussianSplatOptimizerMCMC,
+    GaussianSplatOptimizerMCMCConfig,
 )
 from .gaussian_splat_reconstruction_writer import (
     GaussianSplatReconstructionBaseWriter,
@@ -401,7 +406,9 @@ class GaussianSplatReconstruction:
         Args:
             sfm_scene (SfmScene): The Structure-from-Motion scene containing images and camera poses.
             config (GaussianSplatReconstructionConfig): Configuration for the reconstruction process.
-            optimizer_config (GaussianSplatOptimizerConfig): Configuration for the optimizer.
+            optimizer_config (GaussianSplatOptimizerConfig): Configuration for the optimizer. The type of the config determines the type of optimizer used,
+                either :class:`GaussianSplatOptimizerConfig` for the classic insertion/splitting/deletion strategy, or
+                :class:`GaussianSplatOptimizerMCMCConfig` for the MCMC strategy.
             writer (GaussianSplatReconstructionBaseWriter): Writer instance to handle logging metrics, saving images, checkpoints, PLY, files,
                 and other results.
             viz_scene (Scene | None): Optional :class:`fvdb.viz.Scene` instance for visualizing optimization progress. If None,
@@ -436,11 +443,7 @@ class GaussianSplatReconstruction:
 
         # Initialize optimizer
         max_steps = config.max_epochs * len(train_dataset)
-        optimizer = GaussianSplatOptimizer.from_model_and_scene(
-            model=model,
-            sfm_scene=train_dataset.sfm_scene,
-            config=optimizer_config,
-        )
+        optimizer = optimizer_config.make_optimizer(model=model, sfm_scene=train_dataset.sfm_scene)
         optimizer.reset_learning_rates_and_decay(batch_size=config.batch_size, expected_steps=max_steps)
 
         # Initialize pose optimizer
@@ -557,7 +560,7 @@ class GaussianSplatReconstruction:
             train_indices = np.array(state_dict["train_indices"], dtype=int)
             val_indices = np.array(state_dict["val_indices"], dtype=int)
         model = GaussianSplat3d.from_state_dict(state_dict["model"])
-        optimizer = GaussianSplatOptimizer.from_state_dict(model, state_dict["optimizer"])
+        optimizer = BaseGaussianSplatOptimizer.from_state_dict(model, state_dict["optimizer"])
         num_training_poses = state_dict["num_training_poses"]
         pose_adjust_model, pose_adjust_optimizer, pose_adjust_scheduler = None, None, None
 

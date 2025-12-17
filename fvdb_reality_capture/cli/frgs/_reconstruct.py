@@ -20,6 +20,7 @@ from tyro.conf import Positional, arg
 from fvdb_reality_capture.cli import BaseCommand
 from fvdb_reality_capture.radiance_fields import (
     GaussianSplatOptimizerConfig,
+    GaussianSplatOptimizerMCMCConfig,
     GaussianSplatReconstruction,
     GaussianSplatReconstructionConfig,
     GaussianSplatReconstructionWriter,
@@ -351,3 +352,16 @@ class Reconstruct(BaseCommand):
             self._run_single_reconstruction(sfm_scene, writer, viz_scene)
         else:
             self._run_chunked_reconstruction(sfm_scene, writer, viz_scene)
+
+
+@dataclass
+class ReconstructMCMC(Reconstruct):
+    """
+    Reconstruct a Gaussian Splat Radiance Field using the MCMC optimizer strategy.
+
+    This command is identical to :class:`Reconstruct`, but exposes the
+    :class:`~fvdb_reality_capture.radiance_fields.GaussianSplatOptimizerMCMCConfig`
+    configuration under ``--opt.*``.
+    """
+
+    opt: GaussianSplatOptimizerMCMCConfig = field(default_factory=GaussianSplatOptimizerMCMCConfig)
