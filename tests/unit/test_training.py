@@ -70,6 +70,86 @@ class GaussianSplatReconstructionTests(unittest.TestCase):
 
         self.assertEqual(runner.model.num_gaussians, self.sfm_scene.points.shape[0])
 
+    def test_run_training_with_mcmc_optimizer_no_refine(self):
+        if not torch.cuda.is_available():
+            self.skipTest("GaussianSplatOptimizerMCMC uses CUDA-only ops")
+
+        short_config = frc.radiance_fields.GaussianSplatReconstructionConfig(
+            max_epochs=1,
+            refine_start_epoch=10_000,  # never refine
+            refine_stop_epoch=10_000,
+            eval_at_percent=[],
+            save_at_percent=[],
+            optimize_camera_poses=False,  # keep this test lightweight
+        )
+
+        mcmc_opt_config = frc.radiance_fields.GaussianSplatOptimizerMCMCConfig(
+            noise_lr=0.0,  # disable stochastic noise in step()
+            insertion_rate=1.0,  # no insertion in refine() (which we also skip)
+            spatial_scale_mode=frc.radiance_fields.SpatialScaleMode.ABSOLUTE_UNITS,
+        )
+
+        runner = frc.radiance_fields.GaussianSplatReconstruction.from_sfm_scene(
+            self.sfm_scene,
+            config=short_config,
+            optimizer_config=mcmc_opt_config,
+            use_every_n_as_val=2,
+        )
+        self.assertIsInstance(runner.optimizer, frc.radiance_fields.GaussianSplatOptimizerMCMC)
+
+        n_before = runner.model.num_gaussians
+        runner.optimize()
+        n_after = runner.model.num_gaussians
+        self.assertEqual(n_after, n_before)
+
+    def test_run_training_with_mcmc_optimizer_with_refine_small_epoch(self):
+        """
+        Integration-style test: run a very short epoch (few images) and ensure the training loop
+        actually calls optimizer.refine() for the MCMC optimizer, causing insertion to occur.
+        """
+        if not torch.cuda.is_available():
+            self.skipTest("GaussianSplatOptimizerMCMC uses CUDA-only ops")
+
+        # Make the "epoch" short by using only a few images.
+        num_images = min(4, len(self.sfm_scene.images))
+        small_scene = self.sfm_scene.select_images(np.arange(num_images))
+
+        # With batch_size=1 and 4 images:
+        # num_steps_per_epoch == 4
+        # refine_every_step == int(0.5 * 4) == 2, so refine triggers at global_step==2.
+        short_config = frc.radiance_fields.GaussianSplatReconstructionConfig(
+            max_epochs=1,
+            batch_size=1,
+            refine_start_epoch=0,
+            refine_stop_epoch=1,
+            refine_every_epoch=0.5,
+            eval_at_percent=[],
+            save_at_percent=[],
+            optimize_camera_poses=False,
+        )
+
+        mcmc_opt_config = frc.radiance_fields.GaussianSplatOptimizerMCMCConfig(
+            noise_lr=0.0,
+            insertion_rate=1.0001,  # small, fast insertion
+            deletion_opacity_threshold=0.0,  # avoid relocation in this test; isolate insertion via refine()
+            spatial_scale_mode=frc.radiance_fields.SpatialScaleMode.ABSOLUTE_UNITS,
+        )
+
+        runner = frc.radiance_fields.GaussianSplatReconstruction.from_sfm_scene(
+            small_scene,
+            config=short_config,
+            optimizer_config=mcmc_opt_config,
+            use_every_n_as_val=-1,
+        )
+        self.assertIsInstance(runner.optimizer, frc.radiance_fields.GaussianSplatOptimizerMCMC)
+
+        n_before = runner.model.num_gaussians
+        runner.optimize(show_progress=False)
+        n_after = runner.model.num_gaussians
+
+        self.assertGreater(runner.optimizer.state_dict().get("refine_count", 0), 0)
+        self.assertGreater(n_after, n_before)
+
     def test_run_training_with_saving(self):
         short_config = frc.radiance_fields.GaussianSplatReconstructionConfig(
             max_epochs=2,
