@@ -189,10 +189,7 @@ class GaussianSplatOptimizerMCMC(BaseGaussianSplatOptimizer):
             config (GaussianSplatOptimizerMCMCConfig): Configuration options for the optimizer.
         """
 
-        spatial_scale = (
-            GaussianSplatOptimizer._compute_spatial_scale(sfm_scene, config.spatial_scale_mode)
-            * config.spatial_scale_multiplier
-        )
+        spatial_scale = sfm_scene.spatial_scale(config.spatial_scale_mode) * config.spatial_scale_multiplier
         optimizer = GaussianSplatOptimizer._make_optimizer(model, spatial_scale, config)
 
         return cls(
