@@ -685,6 +685,15 @@ class GaussianSplatOptimizer(BaseGaussianSplatOptimizer):
         )
         return {"num_duplicated": num_duplicated, "num_split": num_split, "num_deleted": num_deleted}
 
+    def regularization_loss(self) -> torch.Tensor:
+        """
+        No-op regularization loss for the basica optimizer.
+
+        Returns:
+            regularization_loss (torch.Tensor): A zero tensor.
+        """
+        return torch.zeros((), device=self._model.means.device)
+
     @torch.no_grad()
     def _reset_opacities(self):
         """

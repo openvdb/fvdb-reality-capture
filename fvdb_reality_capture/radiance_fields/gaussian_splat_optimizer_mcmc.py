@@ -31,10 +31,15 @@ class GaussianSplatOptimizerMCMCConfig(GaussianSplatOptimizerConfig):
     noise_lr: float = 5e5
     """
     The learning rate for the noise added to the positions of the Gaussians.
+
+    Default: ``5e5``.
     """
+
     insertion_rate: float = 1.05
     """
     The rate at which new Gaussians are inserted per step.
+
+    Default: ``1.05`` (i.e., 5% more Gaussians per refinement step).
     """
 
     n_max: int = 51
@@ -44,6 +49,28 @@ class GaussianSplatOptimizerMCMCConfig(GaussianSplatOptimizerConfig):
 
     This controls the size of the binomial coefficient lookup table passed into
     :meth:`fvdb.GaussianSplat3d.relocate_gaussians`.
+
+    Default: ``51``.
+    """
+
+    opacity_regularization: float = 0.01
+    """
+    Weight for opacity regularization loss :math:`L_{opacity} = \\frac{1}{N} \\sum_i |opacity_i|`.
+
+    This loss encourages the opacities of the Gaussians to be small, which in turn encourages Gaussians to
+    disapear in areas where they are not needed.
+
+    Default: ``0.01``.
+    """
+
+    scale_regularization: float = 0.01
+    """
+    Weight for scale regularization loss :math:`L_{scale} = \\frac{1}{N} \\sum_i |scale_i|`.
+
+    This loss encourages the scales of the Gaussians to be small, which in turn encourages Gaussians to
+    disapear in areas where they are not needed.
+
+    Default: ``0.01``.
     """
 
     def make_optimizer(self, model: GaussianSplat3d, sfm_scene: SfmScene) -> "GaussianSplatOptimizerMCMC":
@@ -277,6 +304,25 @@ class GaussianSplatOptimizerMCMC(BaseGaussianSplatOptimizer):
         )
 
         return {"num_relocated": num_relocated, "num_added": num_added}
+
+    def regularization_loss(self) -> torch.Tensor:
+        """
+        Compute a loss regularizing the scales and opacities of the Gaussians in the model.
+
+        This loss encourages the opacities and scales of the Gaussians to be small, encouraging Gaussians to disapear
+        in areas where they are not needed (to later be relocated to more productive areas).
+
+        Returns:
+            reg_loss (torch.Tensor): A scalar tensor representing the regularization loss.
+        """
+
+        # Rgularize opacity to ensure Gaussian's don't become too opaque
+        loss = self._config.opacity_regularization * self._model.opacities.mean()
+
+        # Regularize scales to ensure Gaussians don't become too large
+        loss = loss + self._config.scale_regularization * self._model.scales.mean()
+
+        return loss
 
     @staticmethod
     @torch.no_grad()

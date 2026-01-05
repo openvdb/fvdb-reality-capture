@@ -156,3 +156,13 @@ class BaseGaussianSplatOptimizer(ABC):
             refinement_stat (dict[str, Any]): A dictionary containing statistics about the refinement step.
         """
         pass
+
+    @abstractmethod
+    def regularization_loss(self) -> torch.Tensor:
+        """
+        Abstract method to compute the regularization loss for the current model parameters.
+
+        Returns:
+            reg_loss (torch.Tensor): A scalar tensor representing the regularization loss.
+        """
+        pass

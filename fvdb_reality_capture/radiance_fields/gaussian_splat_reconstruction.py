@@ -161,24 +161,6 @@ class GaussianSplatReconstructionConfig:
     Default: ``"alex"`` meaning the `AlexNet <https://en.wikipedia.org/wiki/AlexNet>`_ architecture.
     """
 
-    opacity_reg: float = 0.0
-    """
-    Weight for opacity regularization loss :math:`L_{opacity} = \\frac{1}{N} \\sum_i |opacity_i|`.
-
-    If set to a value greater than 0, this will encourage the opacities of the Gaussians to be small.
-
-    Default: ``0.0`` (no opacity regularization).
-    """
-
-    scale_reg: float = 0.0
-    """
-    Weight for scale regularization loss :math:`L_{scale} = \\frac{1}{N} \\sum_i |scale_i|`.
-
-    If set to a value greater than 0, this will encourage the scales of the Gaussians to be small.
-
-    Default: ``0.0`` (no scale regularization).
-    """
-
     random_bkgd: bool = False
     """
     Whether to render images with the radiance field against a background of random values during optimization.
@@ -1189,13 +1171,9 @@ class GaussianSplatReconstruction:
                     )
                     loss = torch.lerp(l1loss, ssimloss, self.config.ssim_lambda)  # type: ignore
 
-                    # Rgularize opacity to ensure Gaussian's don't become too opaque
-                    if self.config.opacity_reg > 0.0:
-                        loss = loss + self.config.opacity_reg * torch.abs(self.model.opacities).mean()
-
-                    # Regularize scales to ensure Gaussians don't become too large
-                    if self.config.scale_reg > 0.0:
-                        loss = loss + self.config.scale_reg * torch.abs(self.model.scales).mean()
+                    # Apply any additional regularization to the model for the given
+                    # optimizer.
+                    loss = loss + self.optimizer.regularization_loss()
 
                     # If you're optimizing poses, regularize the pose parameters so the poses
                     # don't drift too far from the initial values
