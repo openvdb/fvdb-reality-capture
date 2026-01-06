@@ -1,7 +1,7 @@
 name: fvdb-reality-capture Unit Tests
 
 on:
-  pull_request:
+  pull_request_target:
     branches:
       - '**'
     paths-ignore:
@@ -85,12 +85,12 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0 # Fetch all history for all branches
-          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.ref || github.ref }}
+          ref: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.base.ref || github.ref }}
           # For pull requests, this automatically checks out the merge commit
           # For pushes, this checks out the pushed commit
 
       - name: Fetch PR branch
-        if: github.event_name == 'pull_request'
+        if: github.event_name == 'pull_request_target'
         run: |
           cd $GITHUB_WORKSPACE
           git config --global user.name "github-actions[bot]"
@@ -100,7 +100,7 @@ jobs:
           git fetch origin pull/${{ github.event.pull_request.number }}/head:pr_branch
 
       - name: Merge PR branch into base
-        if: github.event_name == 'pull_request'
+        if: github.event_name == 'pull_request_target'
         run: |
           cd $GITHUB_WORKSPACE
           git merge pr_branch
