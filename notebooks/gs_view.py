@@ -1,6 +1,9 @@
 # %%
+import argparse
 import logging
 import os
+import termios
+import time
 
 import cv2
 import fvdb
@@ -15,9 +18,6 @@ import fvdb_reality_capture as frc
 logging.basicConfig(level=logging.DEBUG, format="%(levelname)s : %(message)s")
 
 logger = logging.getLogger("main")
-logger.info(f"Found {torch.cuda.device_count()} devices: {torch.cuda.get_device_name(0)}")
-os.environ["CUDA_VISIBLE_DEVICES"] = "0"
-logger.info(f"Found {torch.cuda.device_count()} devices: {torch.cuda.get_device_name(0)}")
 
 
 # Visualize the SfmScene interactively in a 3D viewer using fvdb.viz.Viewer
@@ -59,26 +59,53 @@ def visualize_sfm_scene(scene: frc.sfm_scene.SfmScene, name: str, center_scene: 
     return viewer_scene
 
 
-import argparse
+# %%
 
 if __name__ == "__main__":
+
+    # _device_count = torch.cuda.device_count()
+    # _device_names = [torch.cuda.get_device_name(d) for d in range(_device_count)]
+    # logger.info(f"Found {_device_count} devices: " + str(_device_names))
+    os.environ["CUDA_VISIBLE_DEVICES"] = "1"
+    _device_count = torch.cuda.device_count()
+    _device_names = [torch.cuda.get_device_name(d) for d in range(_device_count)]
+    logger.info(f"Found {_device_count} devices: " + str(_device_names))
 
     parser = argparse.ArgumentParser(description="view gs ply model")
 
     parser.add_argument("model_path", type=str, default="", help="path to the model .ply file")
     parser.add_argument("--ip_address", required=False, type=str, default="127.0.0.1", help="viewer ip address")
-    parser.add_argument("--port", required=False, type=int, default=8016, help="viewer port")
+    parser.add_argument("--port", required=False, type=int, default=8017, help="viewer port")
 
     args = parser.parse_args()
 
     model_path = args.model_path
+    if not os.path.exists(model_path):
+        logger.error(f"File {model_path} not found.")
+    dirname = os.path.basename(os.path.dirname(model_path))
     fvdb.viz.init(port=args.port)
 
     model, metadata = fvdb.GaussianSplat3d.from_ply(model_path)
     # Add our splat model to the viewer
-    scene = fvdb.viz.get_scene("Gaussian Splat Model Visualization")
-    scene.add_gaussian_splat_3d("Reconstructed Gaussian Splat Radiance Field", model)
+    logger.info(f"Read model with {model.num_gaussians:_} splats from model_path")
+    scene = fvdb.viz.get_scene(f"3DGS model at {dirname}")
+    scene.add_gaussian_splat_3d("3DGS Radiance Field", model)
 
-    fvdb.viz.show()
+    origin = (-0.073, -0.06, 0.006)  # (0.251, -0.842, 0.028)
+    lookAt = (-0.3826399, 0.9235322, -0.02598172)  # (-0.073, -0.06, 0.006)
+    up = (0, 0, 1.0)
+    scene.set_camera_lookat(eye=origin, center=lookAt, up=up)
+
+    # fvdb.viz.show()
 
     input("Press any key to exit the script. ")
+
+    # _scene = fvdb.viz.get_scene(f"3DGS model at {dirname}")
+    origin = scene.camera_orbit_center
+    lookAt = scene.camera_orbit_direction
+    up = scene.camera_up_direction
+    logger.info(f"origin={str(origin.numpy())}, lookAt={str(lookAt.numpy())}, {str(up)}")
+
+    # scene1 = fvdb.viz.get_scene(f"3DGS model at {dirname}")
+
+    # input("Press any key again to exit the script. ")
