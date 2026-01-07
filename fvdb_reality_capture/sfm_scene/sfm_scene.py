@@ -146,10 +146,15 @@ class SfmScene:
         # If there are images, check if they have point indices
         # Images can either all have point indices or none of them should
         if len(images) > 0:
-            all_images_have_same_visibility = len(set([img.point_indices is None for img in images])) == 1
+            num_points = [None if img.point_indices is None else len(img.point_indices) for img in images]
+            has_point_indices_set = set([np is not None for np in num_points])
+            all_images_have_same_visibility = len(has_point_indices_set) == 1
             if not all_images_have_same_visibility or ():
                 raise ValueError("All images must either have point indices or none of them should.")
-            self._has_point_indices = images[0].point_indices is not None if images else False
+            if not has_point_indices_set.pop():
+                self._has_point_indices = False
+            else:
+                self._has_point_indices = sum([len(img.point_indices) for img in images]) > 0
         else:
             # In the case, where there are no images, we default to saying there are no point indices
             # which makes some semantic sense because images are required to have point indices
