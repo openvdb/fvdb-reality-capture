@@ -15,7 +15,7 @@ import point_cloud_utils as pcu
 import torch
 
 import fvdb_reality_capture as frc
-import fvdb_reality_capture.transforms as fvtransforms
+from fvdb_reality_capture import transforms as fvtransforms
 from fvdb_reality_capture.tools import (
     export_splats_to_usdz,
     mesh_from_splats,
@@ -80,8 +80,8 @@ def visualize_sfm_scene(scene: frc.sfm_scene.SfmScene, name: str, center_scene: 
         f"{name} Cameras",
         camera_to_world_matrices=scene.camera_to_world_matrices,
         projection_matrices=scene.projection_matrices,
-        axis_length=2,
-        frustum_scale=2.5,
+        axis_length=0.5,
+        frustum_scale=0.5,
     )
 
     # Set the initial camera view to be at the position of the first posed image, in the SfmScene,
@@ -157,8 +157,10 @@ if __name__ == "__main__":
 
     parser.add_argument("--downsample_factor", required=False, type=int, default=4, help="image downsample factor")
     parser.add_argument(
-        "--scene_normalization", required=False, type=str, default="none", help="Scene normalization: [none|pca]"
+        "--scene_normalization", required=False, type=str, default="none", help="Scene normalization: [none|pca|scale]"
     )
+    parser.add_argument("--scene_size", required=False, type=float, default=10.0, help="target scene size in meters")
+
     parser.add_argument("--means_lr", required=False, type=float, default=1.6e-5, help="means learning rate")
     parser.add_argument("--max_epochs", required=False, type=int, default=13, help="Number of training epochs")
     parser.add_argument("--refine_start_epoch", required=False, type=int, default=2, help="densification start")
@@ -168,8 +170,8 @@ if __name__ == "__main__":
     parser.add_argument("--save_at_percent", metavar="int", type=float, nargs="+", default=[30, 50, 80, 100])
     parser.add_argument("--optimize_camera_poses", action="store_true")
     parser.add_argument("--random_bkgd", action="store_true")
-    parser.add_argument("--opacity_reg", required=False, type=float, default=0.2)
-    parser.add_argument("--scale_reg", required=False, type=float, default=0.2)
+    parser.add_argument("--opacity_reg", required=False, type=float, default=0.0)
+    parser.add_argument("--scale_reg", required=False, type=float, default=0.0)
     parser.add_argument("--remove_gaussians_outside_scene_bbox", action="store_true")
     # [-45, -45, -5, 45, 45, 25]
     parser.add_argument("--scene_bbox", metavar="float", type=float, nargs=6, default=[])
@@ -180,9 +182,11 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
     logger = logging.getLogger("main")
-    logger.info(f"Found {torch.cuda.device_count()} devices: {torch.cuda.get_device_name(0)}")
+
     os.environ["CUDA_VISIBLE_DEVICES"] = "0"
-    logger.info(f"Found {torch.cuda.device_count()} devices: {torch.cuda.get_device_name(0)}")
+    _device_count = torch.cuda.device_count()
+    _device_names = [torch.cuda.get_device_name(d) for d in range(_device_count)]
+    logger.info(f"Found {_device_count} devices: " + str(_device_names))
 
     colmap_path = args.data_dir
     colmap_sparse_path = os.path.join(colmap_path, "sparse", "0")
@@ -242,7 +246,7 @@ if __name__ == "__main__":
         fvtransforms.DownsampleImages(
             image_downsample_factor=args.downsample_factor, image_type="jpg", rescaled_jpeg_quality=95
         ),
-        fvtransforms.NormalizeScene(normalization_type=args.scene_normalization),
+        fvtransforms.NormalizeScene(normalization_type=args.scene_normalization, scale_target=args.scene_size),
         # fvtransforms.PercentileFilterPoints(percentile_min=3.0, percentile_max=97.0),
         # fvtransforms.FilterImagesWithLowPoints(min_num_points=50),
     )
@@ -311,24 +315,25 @@ if __name__ == "__main__":
         plot_reconstruction_results(model, cleaned_sfm_scene, image_id=16)
         plot_reconstruction_results(model, cleaned_sfm_scene, image_id=100)
 
-    # Add our splat model to the viewer
-    scene = fvdb.viz.get_scene("Gaussian Splat Model Visualization")
-    scene.add_gaussian_splat_3d("Reconstructed Gaussian Splat Radiance Field", model)
+    if False:
+        # Add our splat model to the viewer
+        scene = fvdb.viz.get_scene("Gaussian Splat Model Visualization")
+        scene.add_gaussian_splat_3d("Reconstructed Gaussian Splat Radiance Field", model)
 
-    scene.add_cameras(
-        "Input Cameras",
-        camera_to_world_matrices=cleaned_sfm_scene.camera_to_world_matrices,
-        projection_matrices=cleaned_sfm_scene.projection_matrices,
-        axis_length=1,
-        frustum_scale=1.5,
-    )
+        scene.add_cameras(
+            "Input Cameras",
+            camera_to_world_matrices=cleaned_sfm_scene.camera_to_world_matrices,
+            projection_matrices=cleaned_sfm_scene.projection_matrices,
+            axis_length=1,
+            frustum_scale=1.5,
+        )
 
-    # Set up the viewer's initial camera to be positioned at the first camera in the SfmScene
-    # looking at the center of the scene. This should give a good initial view of the model.
-    camera_position = cleaned_sfm_scene.images[0].origin
-    camera_lookat_point = model.means.mean(dim=0)
-    scene.set_camera_lookat(eye=camera_position, center=camera_lookat_point, up=(0, 0, 1))  # Colmap uses Z as up
-    fvdb.viz.show()
+        # Set up the viewer's initial camera to be positioned at the first camera in the SfmScene
+        # looking at the center of the scene. This should give a good initial view of the model.
+        camera_position = cleaned_sfm_scene.images[0].origin
+        camera_lookat_point = model.means.mean(dim=0)
+        scene.set_camera_lookat(eye=camera_position, center=camera_lookat_point, up=(0, 0, 1))  # Colmap uses Z as up
+        fvdb.viz.show()
 
     if args.build_mesh:
         # cleaned_sfm_scene = sfm_scene
