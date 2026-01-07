@@ -17,7 +17,7 @@ import msgpack
 import numpy as np
 import torch
 from fvdb import GaussianSplat3d
-from pxr import Gf, Sdf, Usd, UsdGeom, UsdUtils, UsdVol
+from pxr import Gf, Sdf, Usd, UsdGeom, UsdUtils
 
 # Set up logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
@@ -130,6 +130,8 @@ def _serialize_nurec_usd(
     stage.SetMetadataByDictKey("customLayerData", "renderSettings", render_settings)
 
     # Define UsdVol::Volume
+    from pxr import UsdVol
+
     gauss_path = "/World/gauss"
     gauss_volume = UsdVol.Volume.Define(stage, gauss_path)
     gauss_prim = gauss_volume.GetPrim()

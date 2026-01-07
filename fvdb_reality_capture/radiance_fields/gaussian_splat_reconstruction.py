@@ -162,6 +162,13 @@ class GaussianSplatReconstructionConfig:
     Default: ``"alex"`` meaning the `AlexNet <https://en.wikipedia.org/wiki/AlexNet>`_ architecture.
     """
 
+    sparse_depth_reg: float = 0.0
+    """
+    Weight for sparse depth loss. If you have sparse depth measurements for some pixels in the images, you can set this weight
+    to a value greater than 0 to encourage the reconstruction to match those depth measurements.
+    Default: ``0.0`` (no sparse depth loss).
+    """
+
     opacity_reg: float = 0.0
     """
     Weight for opacity regularization loss :math:`L_{opacity} = \\frac{1}{N} \\sum_i |opacity_i|`.
@@ -438,7 +445,7 @@ class GaussianSplatReconstruction:
         max_steps = config.max_epochs * len(train_dataset)
         optimizer = GaussianSplatOptimizer.from_model_and_scene(
             model=model,
-            sfm_scene=train_dataset.sfm_scene,
+            sfm_scene=sfm_scene,
             config=optimizer_config,
         )
         optimizer.reset_learning_rates_and_decay(batch_size=config.batch_size, expected_steps=max_steps)
@@ -652,7 +659,11 @@ class GaussianSplatReconstruction:
         self._viz_update_interval_epochs = viz_update_interval_epochs
 
         self._sfm_scene = sfm_scene
-        self._training_dataset = SfmDataset(sfm_scene=sfm_scene, dataset_indices=train_indices)
+        self._training_dataset = SfmDataset(
+            sfm_scene=sfm_scene,
+            dataset_indices=train_indices,
+            return_visible_points=(self.config.sparse_depth_reg > 0.0),
+        )
         self._validation_dataset = SfmDataset(sfm_scene=sfm_scene, dataset_indices=val_indices)
 
         self.device: torch.device = model.device
@@ -1140,10 +1151,24 @@ class GaussianSplatReconstruction:
                 image = minibatch["image"]  # [B, H, W, 3]
                 mask = minibatch["mask"] if "mask" in minibatch and not self.config.ignore_masks else None
                 image_height, image_width = image.shape[1:3]
+                sparse_depth = minibatch["sparse_depth"].to(self.device) if "sparse_depth" in minibatch else None
+                sparse_depth_uv = (
+                    minibatch["sparse_depth_uv"].to(self.device, dtype=torch.int32)
+                    if "sparse_depth_uv" in minibatch
+                    else None
+                )
+                median_depths = (
+                    minibatch["median_depth"].to(self.device) if "median_depth" in minibatch else None
+                )  # [B,]
 
                 # Progressively use higher spherical harmonic degree as we optimize
                 sh_degree_to_use = min(self._global_step // increase_sh_degree_every_step, self.config.sh_degree)
-                projected_gaussians = self.model.project_gaussians_for_images(
+                projection_function = (
+                    self.model.project_gaussians_for_images_and_depths
+                    if self.config.sparse_depth_reg > 0
+                    else self.model.project_gaussians_for_images
+                )
+                projected_gaussians = projection_function(
                     world_to_cam_mats,
                     projection_mats,
                     image_width,
@@ -1166,7 +1191,7 @@ class GaussianSplatReconstruction:
                     # Render an image from the gaussian splats
                     # possibly using a crop of the full image
                     crop_origin_w, crop_origin_h, crop_w, crop_h = crop
-                    colors, alphas = self.model.render_from_projected_gaussians(
+                    rendered_results, alphas = self.model.render_from_projected_gaussians(
                         projected_gaussians,
                         crop_w,
                         crop_h,
@@ -1174,6 +1199,9 @@ class GaussianSplatReconstruction:
                         crop_origin_h,
                         self.config.tile_size,
                     )
+
+                    colors = rendered_results[..., : self.model.num_channels]  # [1, H, W, 3]
+
                     # If you want to add random background, we'll mix it in here
                     if self.config.random_bkgd:
                         bkgd = torch.rand(1, 3, device=self.device)
@@ -1192,7 +1220,29 @@ class GaussianSplatReconstruction:
                     )
                     loss = torch.lerp(l1loss, ssimloss, self.config.ssim_lambda)  # type: ignore
 
-                    # Rgularize opacity to ensure Gaussian's don't become too opaque
+                    # Sparse depth loss
+                    if sparse_depth is not None and sparse_depth_uv is not None and median_depths is not None:
+                        if self.config.batch_size > 1:
+                            raise NotImplementedError("Sparse depth loss is not implemented for batch_size > 1.")
+                        if rendered_results.shape[-1] != self.model.num_channels + 1:
+                            raise RuntimeError("Model did not render depth channel, but sparse depth loss is enabled.")
+                        if sparse_depth_uv.numel() == 0:
+                            depth_loss = 0.0
+                        else:
+                            depth = rendered_results[..., -1]  # [1, H, W]
+                            depth_uv = depth[:, sparse_depth_uv[0, :, 1], sparse_depth_uv[0, :, 0]]  # [B, N]
+                            alpha_uv = alphas[:, sparse_depth_uv[0, :, 1], sparse_depth_uv[0, :, 0], 0]  # [B, N]
+                            pred_depth = depth_uv / torch.clamp(alpha_uv, min=1e-6)  # [B, N]
+                            pred_depth = pred_depth / median_depths.unsqueeze(1)  # Normalize by median depth
+                            sparse_depth = sparse_depth / median_depths.unsqueeze(1)  # Normalize by median depth
+
+                            depth_loss = nnf.l1_loss(pred_depth, sparse_depth) * self.config.sparse_depth_reg
+                    else:
+                        depth_loss = 0.0
+
+                    loss = loss + depth_loss
+
+                    # Regularize opacity to ensure Gaussian's don't become too opaque
                     if self.config.opacity_reg > 0.0:
                         loss = loss + self.config.opacity_reg * torch.abs(self.model.opacities).mean()
 
@@ -1262,6 +1312,11 @@ class GaussianSplatReconstruction:
                     self._writer.log_metric(self._global_step, f"{log_tag}/loss", loss.item())
                     self._writer.log_metric(self._global_step, f"{log_tag}/l1loss", l1loss.item())
                     self._writer.log_metric(self._global_step, f"{log_tag}/ssimloss", ssimloss.item())
+                    self._writer.log_metric(
+                        self._global_step,
+                        f"{log_tag}/depth_loss",
+                        depth_loss if isinstance(depth_loss, float) else depth_loss.item(),
+                    )
                     self._writer.log_metric(self._global_step, f"{log_tag}/num_gaussians", self.model.num_gaussians)
                     self._writer.log_metric(self._global_step, f"{log_tag}/sh_degree", sh_degree_to_use)
                     self._writer.log_metric(self._global_step, f"{log_tag}/mem_allocated", mem_allocated)
