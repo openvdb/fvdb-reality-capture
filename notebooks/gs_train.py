@@ -246,7 +246,7 @@ if __name__ == "__main__":
         fvtransforms.DownsampleImages(
             image_downsample_factor=args.downsample_factor, image_type="jpg", rescaled_jpeg_quality=95
         ),
-        fvtransforms.NormalizeScene(normalization_type=args.scene_normalization, scale_target=args.scene_size),
+        fvtransforms.NormalizeScene(normalization_type=args.scene_normalization),
         # fvtransforms.PercentileFilterPoints(percentile_min=3.0, percentile_max=97.0),
         # fvtransforms.FilterImagesWithLowPoints(min_num_points=50),
     )
