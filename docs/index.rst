@@ -1,4 +1,4 @@
-Welcome to fVDB-Reality-Capture!
+Welcome to ƒVDB-Reality-Capture!
 ===================================================
 
 .. raw:: html
@@ -9,12 +9,11 @@ Welcome to fVDB-Reality-Capture!
 
 |
 
-fVDB-Reality-Capture is a reality-capture toolbox built on top of `fVDB <https://fvdb.ai>`_. It
-provides high-level abstractions and APIs for common reality capture tasks, such as loading sensor data, reconstructing
+ƒVDB-Reality-Capture is a reality-capture toolbox built on top of `ƒVDB <https://fvdb.ai>`_. It is maintained and developed by NVIDIA. ƒVDB-Reality-Capture provides high-level abstractions and APIs for common reality capture tasks, such as loading sensor data, reconstructing
 radiance fields, extracting meshes and point clouds, visualization, and exporting results across standard formats such
-as PLY and USDZ. By leveraging the power of fVDB, fVDB-Reality-Capture can scale reconstruction to very large or dense
-inputs, while maintaining high performance and low memory usage. *fVDB has 50% better throughput than gsplat in end-to-end training benchmarks and 30% lower runtime, while producing higher quality results and working out-of-the box on a wide range of inputs*.
-The videos below show large-scale reconstructions of complex scenes using fVDB-Reality-Capture.
+as PLY and USDZ. By leveraging the power of ƒVDB, ƒVDB-Reality-Capture can scale reconstruction to very large or dense
+inputs, while maintaining high performance and low memory usage. *ƒVDB has 50% better throughput than gsplat in end-to-end training benchmarks and 30% lower runtime, while producing higher quality results and working out-of-the box on a wide range of inputs*.
+The videos below show large-scale reconstructions of complex scenes using ƒVDB-Reality-Capture.
 
 .. raw:: html
 
@@ -36,14 +35,14 @@ The videos below show large-scale reconstructions of complex scenes using fVDB-R
 
 |
 
-The relationship between fVDB-Reality-Capture and fVDB is analogous to the relationship between
+The relationship between ƒVDB-Reality-Capture and ƒVDB is analogous to the relationship between
 `torchvision <https://docs.pytorch.org/vision/stable/index.html>`_ and `PyTorch <https://pytorch.org/>`_, where
-fVDB-Reality-Capture provides domain-specific functionality for reality capture applications, while fVDB provides the
+ƒVDB-Reality-Capture provides domain-specific functionality for reality capture applications, while ƒVDB provides the
 underlying data structures and algorithms for efficient GPU computation.
 
-fVDB-Reality-Capture aims to be production ready, with a focus on robustness, usability, and extensibility. It is
+ƒVDB-Reality-Capture aims to be production ready, with a focus on robustness, usability, and extensibility. It is
 designed to be easily integrated into existing pipelines and workflows, and to support a wide range of use cases and
-applications. To this end, both fVDB and fVDB-Reality-Capture have a minimal set of dependencies, and are open source
+applications. To this end, both ƒVDB and ƒVDB-Reality-Capture have a minimal set of dependencies, and are open source
 under the Apache 2.0 license. We welcome contributions and feedback from the community.
 
 Features
@@ -69,7 +68,7 @@ and efficiently reconstruct the geometry, appearance, and other properties of th
 and scenes.
 
 Modern reality capture pipelines make heavy use of `radiance fields <https://radiancefields.com/>`_.
-fVDB-Reality-Capture provides best-in-class tools to reconstruct radiance fields using
+ƒVDB-Reality-Capture provides best-in-class tools to reconstruct radiance fields using
 `3D Gaussian Splatting <https://www.mpi-inf.mpg.de/departments/computer-vision-and-machine-learning/research/3d-vision/3d-gaussian-splatting/>`_.
 
 A common reality capture pipeline typically resembles the figure below:
@@ -87,6 +86,7 @@ A common reality capture pipeline typically resembles the figure below:
 
    self
    installation
+   GitHub Repository <https://github.com/openvdb/fvdb-reality-capture>
 
 .. toctree::
    :maxdepth: 1
@@ -105,6 +105,14 @@ A common reality capture pipeline typically resembles the figure below:
    api/tools
    api/transforms
    api/frgs
+
+.. toctree::
+   :maxdepth: 1
+   :caption: fVDB-Core Library
+   :hidden:
+
+   fvdb-core Docs <https://fvdb.ai/docs/>
+   fvdb-core GitHub <https://github.com/openvdb/fvdb-core>
 
 .. raw:: html
 
