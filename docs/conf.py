@@ -15,7 +15,7 @@ sys.path.insert(0, os.path.abspath(".."))
 
 # -- Project information -----------------------------------------------------
 
-project = "fVDB Reality Capture"
+project = "ƒVDB Reality Capture"
 copyright = "Contributors to the OpenVDB Project"
 author = "Contributors to the OpenVDB Project"
 
@@ -74,6 +74,10 @@ html_static_path = [
     "tutorials/radiance_field_and_mesh_reconstruction_files",
     "tutorials/sensor_data_loading_and_manipulation_files",
     "CNAME",
+    "_static",
+]
+html_css_files = [
+    "css/custom.css",
 ]
 
 myst_heading_anchors = 3
