@@ -673,7 +673,7 @@ plot_three_images_with_bbox(tx_scene, "Three images from a normalized, downsampl
 
 
 
-**⚠️ Caveat about transform oder ⚠️**
+**⚠️ Caveat about transform order ⚠️**
 One caveat about composing transforms is that for some transforms, *order matters*. For example, when you crop a scene, the image masks are pre-computed as part of the transformation. If you normalize the scene after cropping, your images and bounding boxes won't match as expected. This is expected behavior. We are working on solutions to configure this behavior in an upcoming release.
 
 Here we show an example where we crop the scene, which caches image masks, and then normalize the scene. Note how the plotted bounding boxes don't align with the image mask.

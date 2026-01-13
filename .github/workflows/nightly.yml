@@ -27,6 +27,7 @@ permissions:
 jobs:
   # Get current commit hash of fvdb-core main and store in a variable
   get-fvdb-core-commit-hash:
+    if: ${{ github.repository == 'openvdb/fvdb-reality-capture' }}
     name: Get fvdb-core commit hash
     runs-on: ubuntu-latest
     outputs:
