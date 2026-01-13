@@ -42,7 +42,7 @@ class GaussianSplatOptimizerMCMCConfig(GaussianSplatOptimizerConfig):
     Default: ``1.05`` (i.e., 5% more Gaussians per refinement step).
     """
 
-    n_max: int = 51
+    binomial_coeffs_n_max: int = 51
     """
     Maximum replication ratio used by the MCMC relocation kernel when computing updated opacities/scales
     for relocated/duplicated Gaussians.
@@ -140,14 +140,46 @@ class GaussianSplatOptimizerMCMC(BaseGaussianSplatOptimizer):
 
         # Store the decay exponent for the means learning rate schedule so we can serialize it
         self._means_lr_decay_exponent = 1.0
+        self._means_lr_scheduler: torch.optim.lr_scheduler.LRScheduler | None = None
         self._binomial_coeffs: torch.Tensor | None = None
         self._binomial_coeffs_n_max: int | None = None
+
+        # Ensure we have a scheduler ready (does nothing unless _means_lr_decay_exponent != 1.0)
+        self._ensure_means_lr_scheduler()
+
+    def _ensure_means_lr_scheduler(self) -> None:
+        """
+        Ensure we have a `torch.optim.lr_scheduler` that decays only the "means" param group learning rate.
+
+        We use `MultiplicativeLR` since our schedule is "multiply LR by a constant each optimizer step".
+        """
+        if self._means_lr_scheduler is not None:
+            return
+
+        def _one(_: int) -> float:
+            return 1.0
+
+        def _means_lambda(_: int, _self: "GaussianSplatOptimizerMCMC" = self) -> float:
+            # Read exponent dynamically in case it gets updated via reset_learning_rates_and_decay().
+            return float(_self._means_lr_decay_exponent)
+
+        lr_lambdas: list[Callable[[int], float]] = []
+        for pg in self._optimizer.param_groups:
+            if pg.get("name") == "means":
+                lr_lambdas.append(_means_lambda)
+            else:
+                lr_lambdas.append(_one)
+
+        self._means_lr_scheduler = torch.optim.lr_scheduler.MultiplicativeLR(
+            self._optimizer,
+            lr_lambda=lr_lambdas,
+        )
 
     def _get_binomial_coeffs(self) -> tuple[torch.Tensor, int]:
         """
         Get (and cache) the binomial coefficient table for the configured n_max on the current device.
         """
-        n_max = int(self._config.n_max)
+        n_max = int(self._config.binomial_coeffs_n_max)
         if n_max <= 0:
             raise ValueError("n_max must be > 0")
         if (
@@ -164,6 +196,13 @@ class GaussianSplatOptimizerMCMC(BaseGaussianSplatOptimizer):
         """
         Build a binomial coefficients lookup table of shape [n_max, n_max] as float32.
         Matches the reference implementation used in fvdb-core tests.
+
+        Args:
+            n_max (int): The maximum number of binomial coefficients to compute.
+            device (torch.device): The device to compute the binomial coefficients on.
+
+        Returns:
+            torch.Tensor: A tensor of shape [n_max, n_max] containing the binomial coefficients.
         """
         coeffs = torch.zeros((n_max, n_max), device=device, dtype=torch.float32)
         for row in range(n_max):
@@ -229,6 +268,7 @@ class GaussianSplatOptimizerMCMC(BaseGaussianSplatOptimizer):
             _private=cls.__PRIVATE__,
         )
         optimizer._means_lr_decay_exponent = state_dict["means_lr_decay_exponent"]
+        optimizer._ensure_means_lr_scheduler()
 
         return optimizer
 
@@ -251,11 +291,10 @@ class GaussianSplatOptimizerMCMC(BaseGaussianSplatOptimizer):
 
         self._optimizer.step()
         self._step_count += 1
-        # Decay the means learning rate
-        for param_group in self._optimizer.param_groups:
-            if param_group["name"] == "means":
-                param_group["lr"] *= self._means_lr_decay_exponent
-                return
+        # Decay the means learning rate (using a scheduler so only the "means" param group is affected)
+        self._ensure_means_lr_scheduler()
+        assert self._means_lr_scheduler is not None
+        self._means_lr_scheduler.step()
 
     def zero_grad(self, set_to_none: bool = False):
         """
@@ -446,7 +485,14 @@ class GaussianSplatOptimizerMCMC(BaseGaussianSplatOptimizer):
 
     @torch.no_grad()
     def _sample_add(self, n: int) -> int:
-        """Sample new Gaussians from the model."""
+        """Sample new Gaussians from the model.
+
+        Args:
+            n (int): The number of new Gaussians to sample.
+
+        Returns:
+            int: The number of new Gaussians sampled.
+        """
         probs = self._model.opacities.flatten()  # ensure its shape is [N,]
         if probs.numel() == 0:
             return 0
@@ -575,3 +621,7 @@ class GaussianSplatOptimizerMCMC(BaseGaussianSplatOptimizer):
             param_group["betas"] = rescaled_betas
             param_group["lr"] = reset_lr_values[param_group["name"]]
             param_group["eps"] = 1e-15 / lr_batch_rescale
+
+        # Ensure scheduler exists so subsequent steps apply the updated decay exponent.
+        # If a scheduler already exists, it reads _means_lr_decay_exponent dynamically.
+        self._ensure_means_lr_scheduler()
