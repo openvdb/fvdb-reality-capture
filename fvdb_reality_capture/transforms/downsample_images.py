@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 import logging
+import os
 import pathlib
 from typing import Any, Literal
 
@@ -124,7 +125,14 @@ class DownsampleImages(BaseTransform):
 
         regenerate_cache = False
 
-        if output_cache.num_files != input_scene.num_images:
+        num_masks = sum(
+            [
+                len(str(image_meta.mask_path)) > 0 and os.path.exists(image_meta.mask_path)
+                for image_meta in input_scene.images
+            ]
+        )
+
+        if output_cache.num_files != input_scene.num_images + num_masks:
             if output_cache.num_files == 0:
                 self._logger.info(f"No downsampled images found in the cache.")
             else:
@@ -139,6 +147,7 @@ class DownsampleImages(BaseTransform):
         for image_id in range(input_scene.num_images):
             if regenerate_cache:
                 break
+
             cache_image_filename = f"image_{image_id:0{num_zeropad}}"
             image_meta = input_scene.images[image_id]
             if not output_cache.has_file(cache_image_filename):
@@ -166,6 +175,13 @@ class DownsampleImages(BaseTransform):
                 output_cache.clear_current_folder()
                 regenerate_cache = True
                 break
+            mask_path = ""
+            if num_masks > 0:
+                cache_mask_filename = f"mask_{image_meta.image_id:0{num_zeropad}}"
+                if output_cache.has_file(cache_mask_filename):
+                    mask_file_meta = output_cache.get_file_metadata(cache_mask_filename)
+                    mask_path = str(mask_file_meta["path"])
+                    print("using cached mask", mask_path)
 
             new_image_metadata.append(
                 SfmPosedImageMetadata(
@@ -174,7 +190,7 @@ class DownsampleImages(BaseTransform):
                     camera_metadata=new_camera_metadata[image_meta.camera_id],
                     camera_id=image_meta.camera_id,
                     image_path=str(cache_file_meta["path"]),
-                    mask_path=image_meta.mask_path,
+                    mask_path=mask_path,
                     point_indices=image_meta.point_indices,
                     image_id=image_meta.image_id,
                 )
@@ -217,6 +233,41 @@ class DownsampleImages(BaseTransform):
                         "downsample_mode": self._rescale_sampling_mode,
                     },
                 )
+
+                mask_path = str(image_meta.mask_path)
+                if len(mask_path) > 0 and os.path.exists(mask_path):
+                    full_res_mask_path = mask_path
+                    full_res_mask = cv2.imread(full_res_mask_path)
+                    assert full_res_mask is not None, f"Failed to load mask {full_res_mask_path}"
+                    mask_h, mask_w = full_res_mask.shape[:2]
+                    rescaled_mask_h = int(mask_h / self._image_downsample_factor)
+                    rescaled_mask_w = int(mask_w / self._image_downsample_factor)
+                    assert rescaled_mask_w == new_camera_metadata[image_meta.camera_id].width, "Got mismatched widths!"
+                    assert (
+                        rescaled_mask_h == new_camera_metadata[image_meta.camera_id].height
+                    ), "Got mismatched heights!"
+                    pbar.set_description(
+                        f"Rescaling {image_filename} from {mask_w} x {mask_h} to {rescaled_mask_w} x {rescaled_mask_h}"
+                    )
+                    rescaled_mask = cv2.resize(
+                        full_res_mask, (rescaled_mask_w, rescaled_mask_h), interpolation=cv2.INTER_NEAREST_EXACT
+                    )
+                    assert (
+                        rescaled_mask.shape[0] == rescaled_img_h and rescaled_mask.shape[1] == rescaled_img_w
+                    ), f"Rescaled mask {image_filename} has shape {rescaled_mask.shape} but expected {rescaled_img_h, rescaled_img_w}"
+                    # Save the rescaled image to the cache
+                    cache_mask_filename = f"mask_{image_meta.image_id:0{num_zeropad}}"
+                    cache_mask_meta = output_cache.write_file(
+                        name=cache_mask_filename,
+                        data=rescaled_mask,
+                        data_type="png",
+                        metadata={"downsample_mode": cv2.INTER_NEAREST_EXACT},
+                    )
+                    mask_path = str(cache_mask_meta["path"])
+
+                else:
+                    mask_path = ""
+
                 new_image_metadata.append(
                     SfmPosedImageMetadata(
                         world_to_camera_matrix=image_meta.world_to_camera_matrix,
@@ -224,7 +275,7 @@ class DownsampleImages(BaseTransform):
                         camera_metadata=new_camera_metadata[image_meta.camera_id],
                         camera_id=image_meta.camera_id,
                         image_path=str(cache_file_meta["path"]),
-                        mask_path=image_meta.mask_path,
+                        mask_path=mask_path,
                         point_indices=image_meta.point_indices,
                         image_id=image_meta.image_id,
                     )
