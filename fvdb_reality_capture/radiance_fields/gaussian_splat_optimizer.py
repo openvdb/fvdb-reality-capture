@@ -648,7 +648,7 @@ class GaussianSplatOptimizer(BaseGaussianSplatOptimizer):
 
     def regularization_loss(self) -> torch.Tensor:
         """
-        No-op regularization loss for the basica optimizer.
+        No-op regularization loss for the basic optimizer.
 
         Returns:
             regularization_loss (torch.Tensor): A zero tensor.
