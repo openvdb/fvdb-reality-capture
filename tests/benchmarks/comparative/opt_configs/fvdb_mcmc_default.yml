@@ -1,7 +1,14 @@
-# An fVDB run which uses a percentile of the 2D gradients to adaptively refine the scene
+# An fVDB run which uses a fixed threshold on the 2D gradients to refine the scene
 # at every refinement step.
+# This matches the default behavior of gsplat.
 framework: fvdb
-name: fvdb_adaptive_histogram_grad2d
+name: fvdb_mcmc
+color: "#264D00"
+
+splat_optimizer: GaussianSplatOptimizerMCMC
+
+optimization_config:
+  max_gaussians: 3000000
 
 reconstruction_config:
   max_epochs: 200
@@ -9,8 +16,7 @@ reconstruction_config:
   eval_at_percent:
     - 100
   save_at_percent:
-  - 20
-  - 100
+    - 100
 
   # Optimization parameters
   batch_size: 1
@@ -24,18 +30,12 @@ reconstruction_config:
   random_bkgd: false
   refine_start_epoch: 3
   refine_stop_epoch: 100
-  refine_every_epoch: 1.0
+  refine_every_epoch: 0.75
   ignore_masks: false
   remove_gaussians_outside_scene_bbox: false
-  clip_max_gaussians_to_memory: true
-  histogram_grad_2d_threshold: true
-  adaptive_grad_2d_threshold: true
-  grad_2d_percentile: 0.9
-  absolute_grad_2d_threshold: -1
-  use_scene_scale_for_refinement: true
 
   # Pose optimization
-  optimize_camera_poses: true
+  optimize_camera_poses: false
   pose_opt_lr: 1.0e-05
   pose_opt_reg: 1.0e-06
   pose_opt_lr_decay: 1.0
@@ -60,9 +60,8 @@ training_arguments:
   min_points_per_image: 5
 
   device: cuda
-  use_every_n_as_val: 100
+  use_every_n_as_val: 10
 
-  disable_viewer: true
   log_tensorboard_every: -1
   log_images_to_tensorboard: false
   save_results: true

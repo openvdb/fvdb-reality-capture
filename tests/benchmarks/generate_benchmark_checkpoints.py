@@ -24,6 +24,37 @@ from fvdb_reality_capture.radiance_fields.gaussian_splat_reconstruction_writer i
 logger = logging.getLogger("train benchmark checkpoints")
 
 
+def _coerce_config_value(target_obj: object, key: str, value):
+    """
+    Coerce YAML values into the expected Python types for config objects.
+
+    This is especially important for enum-typed fields, which are typically represented
+    as strings in YAML.
+    """
+    # Handle boolean conversion explicitly (yaml may parse some values as strings depending on source)
+    if isinstance(value, str) and value.lower() in ["true", "false"]:
+        value = value.lower() == "true"
+
+    if not hasattr(target_obj, key):
+        return value
+
+    current_value = getattr(target_obj, key)
+
+    # Coerce enum values from strings (and allow passing through already-correct enum values)
+    try:
+        import enum
+
+        if isinstance(current_value, enum.Enum):
+            if isinstance(value, str):
+                return type(current_value)(value)
+            return value
+    except Exception:
+        # If enum import/coercion fails for any reason, fall back to raw value
+        pass
+
+    return value
+
+
 def load_config(config_path: str = "benchmark_config.yaml") -> Dict:
     """Load benchmark configuration from YAML file."""
     with open(config_path, "r") as f:
@@ -84,16 +115,33 @@ def main(
     datasets = config["datasets"]
     training_params = config["optimization_config"]["training_arguments"]
 
+    # Determine the optimizer type
+    optimizer_class = (
+        frc.radiance_fields.GaussianSplatOptimizerMCMCConfig
+        if config["optimization_config"]["splat_optimizer"] == "GaussianSplatOptimizerMCMC"
+        else frc.radiance_fields.GaussianSplatOptimizerConfig
+    )
+
+    logger.info(f"Using optimizer class: {optimizer_class.__name__}")
+
     # Create base Config object
     base_config = frc.radiance_fields.GaussianSplatReconstructionConfig()
+    base_optimizer_config = optimizer_class()
 
-    # Override config with values from YAML
-    for key, value in config["optimization_config"]["optimization_config"].items():
+    # Override configs with values from YAML.
+    for key, value in config["optimization_config"]["reconstruction_config"].items():
         if hasattr(base_config, key):
-            # Handle boolean conversion explicitly
-            if isinstance(value, str) and value.lower() in ["true", "false"]:
-                value = value.lower() == "true"
-            setattr(base_config, key, value)
+            setattr(base_config, key, _coerce_config_value(base_config, key, value))
+        else:
+            logger.warning(f"Ignoring unknown reconstruction_config field '{key}' (not present on {type(base_config)})")
+
+    for key, value in config["optimization_config"]["optimization_config"].items():
+        if hasattr(base_optimizer_config, key):
+            setattr(base_optimizer_config, key, _coerce_config_value(base_optimizer_config, key, value))
+        else:
+            logger.warning(
+                f"Ignoring unknown optimization_config field '{key}' (not present on {type(base_config)} or {type(base_optimizer_config)})"
+            )
 
     # Set save percentages
     # base_config.save_at_percent = save_at_percent
@@ -132,6 +180,7 @@ def main(
                 sfm_scene=sfm_scene,
                 writer=GaussianSplatReconstructionWriter(run_name=run_name, save_path=dataset_results_path),
                 config=base_config,
+                optimizer_config=base_optimizer_config,
                 use_every_n_as_val=training_params["use_every_n_as_val"],
             )
 
