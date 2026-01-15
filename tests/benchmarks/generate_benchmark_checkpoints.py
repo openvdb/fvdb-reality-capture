@@ -129,13 +129,13 @@ def main(
     base_optimizer_config = optimizer_class()
 
     # Override configs with values from YAML.
-    for key, value in config["optimization_config"]["reconstruction_config"].items():
+    for key, value in config["optimization_config"].get("reconstruction_config", {}).items():
         if hasattr(base_config, key):
             setattr(base_config, key, _coerce_config_value(base_config, key, value))
         else:
             logger.warning(f"Ignoring unknown reconstruction_config field '{key}' (not present on {type(base_config)})")
 
-    for key, value in config["optimization_config"]["optimization_config"].items():
+    for key, value in config["optimization_config"].get("optimization_config", {}).items():
         if hasattr(base_optimizer_config, key):
             setattr(base_optimizer_config, key, _coerce_config_value(base_optimizer_config, key, value))
         else:

@@ -3,15 +3,16 @@ paths:
 datasets:
 - name: garden
   path: 360_v2/garden
-  run_directory: results/garden/run_676e4e49eac3402e025d286381816433219481f9_01
+  run_directory: results/garden/run_e21a737b13111a08d8bf49b742bb0de5434fcbe0
   checkpoint_paths:
-  - results/garden/run_676e4e49eac3402e025d286381816433219481f9_01/checkpoints/00000664/reconstruct_ckpt.pt
-  - results/garden/run_676e4e49eac3402e025d286381816433219481f9_01/checkpoints/00006640/reconstruct_ckpt.pt
-  - results/garden/run_676e4e49eac3402e025d286381816433219481f9_01/checkpoints/00016600/reconstruct_ckpt.pt
+  - results/garden/run_e21a737b13111a08d8bf49b742bb0de5434fcbe0/checkpoints/00000664/reconstruct_ckpt.pt
+  - results/garden/run_e21a737b13111a08d8bf49b742bb0de5434fcbe0/checkpoints/00006640/reconstruct_ckpt.pt
+  - results/garden/run_e21a737b13111a08d8bf49b742bb0de5434fcbe0/checkpoints/00016600/reconstruct_ckpt.pt
 results:
   base_path: results/benchmark
 optimization_config:
-  optimization_config:
+  splat_optimizer: GaussianSplatOptimizer
+  reconstruction_config:
     max_epochs: 100
     max_steps: null
     eval_at_percent:
@@ -22,23 +23,18 @@ optimization_config:
     - 4
     - 40
     - 100
-    update_viewer_every_epochs: -1
     batch_size: 1
     crops_per_image: 1
     sh_degree: 3
     increase_sh_degree_every_epoch: 5
-    inintial_opacity: 0.1
+    initial_opacity: 0.1
     initial_covariance_scale: 1.0
     ssim_lambda: 0.2
     lpips_net: alex
-    opacity_reg: 0.0
-    scale_reg: 0.0
     random_bkgd: false
     refine_start_epoch: 3
     refine_stop_epoch: 100
     refine_every_epoch: 0.75
-    reset_opacities_every_epoch: 16
-    refine_using_scale2d_stop_epoch: 0
     ignore_masks: false
     remove_gaussians_outside_scene_bbox: false
     optimize_camera_poses: false
