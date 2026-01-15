@@ -7,9 +7,6 @@ color: "#76B900"
 
 splat_optimizer: GaussianSplatOptimizer
 
-optimization_config:
-  max_gaussians: 3000000
-
 reconstruction_config:
   max_epochs: 200
   max_steps: null

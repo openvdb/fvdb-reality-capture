@@ -244,6 +244,14 @@ if __name__ == "__main__":
             help="Path to the benchmark configuration file (default: benchmark_config.yaml)",
         )
         parser.add_argument(
+            "--results-base-path",
+            default="results",
+            help=(
+                "Base directory to write benchmark results to. "
+                "The script will create per-dataset subdirectories under this path."
+            ),
+        )
+        parser.add_argument(
             "--find-checkpoints-run-name",
             help=(
                 "Skip training and look for checkpoints in the specified run directory name, "
@@ -252,4 +260,8 @@ if __name__ == "__main__":
         )
 
         args = parser.parse_args()
-        main(run_name=args.find_checkpoints_run_name, config_path=args.config)
+        main(
+            run_name=args.find_checkpoints_run_name,
+            results_base_path=pathlib.Path(args.results_base_path),
+            config_path=args.config,
+        )

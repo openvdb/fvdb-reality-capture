@@ -1,0 +1,88 @@
+name: example_matrix
+
+paths:
+  # Base paths for different environments
+  # TODO are these used?
+  fvdb_base: ../openvdb/fvdb/projects/3d_gaussian_splatting  # Relative path from benchmark directory
+  gsplat_base: ../gsplat/examples  # Relative path from benchmark directory
+  data_base: /workspace/data  # Docker container path for data
+
+datasets:
+- name: garden
+  path: 360_v2/garden
+- name: bicycle
+  path: 360_v2/bicycle
+- name: bonsai
+  path: 360_v2/bonsai
+- name: counter
+  path: 360_v2/counter
+- name: kitchen
+  path: 360_v2/kitchen
+- name: room
+  path: 360_v2/room
+- name: stump
+  path: 360_v2/stump
+
+opt_configs:
+  fvdb_default:
+    path: opt_configs/fvdb_default.yml
+  fvdb_mcmc:
+    path: opt_configs/fvdb_mcmc_default.yml
+
+runs:
+  - dataset: garden
+    opt_config: fvdb_default
+  - dataset: garden
+    opt_config: fvdb_mcmc
+    overrides:
+      fvdb:
+        optimization_config:
+          max_gaussians: 5500000
+  - dataset: bicycle
+    opt_config: fvdb_default
+  - dataset: bicycle
+    opt_config: fvdb_mcmc
+    overrides:
+      fvdb:
+        optimization_config:
+          max_gaussians: 5500000
+  - dataset: bonsai
+    opt_config: fvdb_default
+  - dataset: bonsai
+    opt_config: fvdb_mcmc
+    overrides:
+      fvdb:
+        optimization_config:
+          max_gaussians: 1200000
+  - dataset: counter
+    opt_config: fvdb_default
+  - dataset: counter
+    opt_config: fvdb_mcmc
+    overrides:
+      fvdb:
+        optimization_config:
+          max_gaussians: 1000000
+  - dataset: kitchen
+    opt_config: fvdb_default
+  - dataset: kitchen
+    opt_config: fvdb_mcmc
+    overrides:
+      fvdb:
+        optimization_config:
+          max_gaussians: 1400000
+  - dataset: room
+    opt_config: fvdb_default
+  - dataset: room
+    opt_config: fvdb_mcmc
+    overrides:
+      fvdb:
+        optimization_config:
+          max_gaussians: 1300000
+  - dataset: stump
+    opt_config: fvdb_default
+  - dataset: stump
+    opt_config: fvdb_mcmc
+    overrides:
+      fvdb:
+        optimization_config:
+          max_gaussians: 4500000
