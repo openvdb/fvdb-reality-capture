@@ -21,6 +21,14 @@ docker compose -f docker/docker-compose.yml build
 
 ### 2. Run the Container
 
+By default, the container will auto-detect your host UID/GID from the bind-mounted directories (especially the host CPM cache).
+If auto-detection fails (unusual), you can force it by exporting:
+
+```bash
+export LOCAL_UID="$(id -u)"
+export LOCAL_GID="$(id -g)"
+```
+
 ```bash
 docker compose -f docker/docker-compose.yml up -d
 ```
@@ -34,7 +42,7 @@ docker logs fvdb-benchmark
 Open an interactive bash shell in the container:
 
 ```bash
-docker compose -f docker/docker-compose.yml exec benchmark bash
+docker compose -f docker/docker-compose.yml exec --user "$(id -u):$(id -g)" benchmark bash
 ```
 
 ### 3. Run Benchmarks

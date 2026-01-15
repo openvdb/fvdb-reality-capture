@@ -15,6 +15,8 @@ RUN apt-get update && apt-get install -y \
     wget \
     gnupg2 \
     libglm-dev \
+    passwd \
+    util-linux \
     && rm -rf /var/lib/apt/lists/*
 
 # Add NVIDIA repository for latest Nsight Systems
@@ -56,6 +58,14 @@ RUN cd gsplat && git submodule update --init --recursive
 
 # Create directories for results
 RUN mkdir -p results/benchmark/summary
+
+# Allow the runtime-mapped (host) UID/GID to write into the conda env and gsplat tree
+# (the container drops root privileges at runtime via docker/uid_entrypoint.sh).
+RUN chmod -R a+rwX /opt/conda/envs/benchmark /opt/conda/pkgs /workspace/gsplat /workspace/results
+
+# UID/GID mapping entrypoint (runs as root briefly, then drops privileges)
+COPY docker/uid_entrypoint.sh /usr/local/bin/uid_entrypoint.sh
+RUN chmod +x /usr/local/bin/uid_entrypoint.sh
 
 # Set default conda environment
 ENV CONDA_DEFAULT_ENV=benchmark
