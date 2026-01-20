@@ -46,28 +46,55 @@ def _write_minimal_report(report_path: Path) -> None:
     report_path.write_text(json.dumps(report))
 
 
+def _write_minimal_matrix(matrix_path: Path, comparative_dir: Path, include_gsplat: bool) -> None:
+    opt_configs = {
+        "fvdb_default": {
+            "path": str((comparative_dir / "opt_configs" / "fvdb_default.yml").resolve()),
+        }
+    }
+    runs = [{"dataset": "garden", "opt_config": "fvdb_default"}]
+    if include_gsplat:
+        opt_configs["gsplat_default"] = {
+            "path": str((comparative_dir / "opt_configs" / "gsplat_default.yml").resolve()),
+        }
+        runs.append({"dataset": "garden", "opt_config": "gsplat_default"})
+
+    matrix = {
+        "name": "test_matrix",
+        "paths": {
+            "fvdb_base": "unused",
+            "gsplat_base": "unused",
+            "data_base": "unused",
+        },
+        "datasets": [{"name": "garden", "path": "360_v2/garden"}],
+        "opt_configs": opt_configs,
+        "runs": runs,
+    }
+    matrix_path.write_text(yaml.safe_dump(matrix, sort_keys=False))
+
+
 def test_comparison_benchmark_plot_only(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     module, comparative_dir = _load_comparison_benchmark_module()
 
-    report_path = tmp_path / "garden_comparison_report.json"
+    matrix_path = tmp_path / "matrix.yml"
+    _write_minimal_matrix(matrix_path, comparative_dir, include_gsplat=False)
+
+    results_path = tmp_path / "results" / "test_matrix"
+    results_path.mkdir(parents=True, exist_ok=True)
+    report_path = results_path / "garden_comparison_report.json"
     _write_minimal_report(report_path)
 
-    benchmark_config = comparative_dir / "benchmark_config.yaml"
     args = [
         "comparison_benchmark.py",
-        "--benchmark-config",
-        str(benchmark_config),
+        "--matrix",
+        str(matrix_path),
         "--plot-only",
-        "--result-dir",
-        str(tmp_path),
-        "--scenes",
-        "garden",
     ]
     monkeypatch.setattr(sys, "argv", args)
     module.main()
 
-    assert (tmp_path / "summary" / "summary_data.json").exists()
-    assert (tmp_path / "summary" / "summary_comparison.png").exists()
+    assert (results_path / "summary" / "summary_data.json").exists()
+    assert (results_path / "summary" / "summary_comparison.png").exists()
 
 
 def test_comparison_benchmark_with_stubbed_training(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
@@ -86,35 +113,27 @@ def test_comparison_benchmark_with_stubbed_training(tmp_path: Path, monkeypatch:
     monkeypatch.setattr(module, "run_fvdb_training", _stub_train)
     monkeypatch.setattr(module, "run_gsplat_training", _stub_train)
 
-    benchmark_config = comparative_dir / "benchmark_config.yaml"
-    fvdb_config = comparative_dir / "opt_configs" / "fvdb_default.yml"
-    gsplat_config = comparative_dir / "opt_configs" / "gsplat_default.yml"
+    matrix_path = tmp_path / "matrix.yml"
+    _write_minimal_matrix(matrix_path, comparative_dir, include_gsplat=True)
     args = [
         "comparison_benchmark.py",
-        "--benchmark-config",
-        str(benchmark_config),
-        "--opt-configs",
-        str(fvdb_config),
-        str(gsplat_config),
-        "--scenes",
-        "garden",
-        "--result-dir",
-        str(tmp_path),
+        "--matrix",
+        str(matrix_path),
     ]
     monkeypatch.setattr(sys, "argv", args)
     module.main()
 
-    report_path = tmp_path / "garden_comparison_report.json"
+    report_path = tmp_path / "results" / "test_matrix" / "garden_comparison_report.json"
     assert report_path.exists()
-    assert (tmp_path / "summary" / "summary_data.json").exists()
+    assert (tmp_path / "results" / "test_matrix" / "summary" / "summary_data.json").exists()
 
 
 def test_comparative_configs_match_contract():
     from . import contract
 
     comparative_dir = Path(__file__).resolve().parent / "comparative"
-    benchmark_config = comparative_dir / "benchmark_config.yaml"
-    config = contract.load_benchmark_yaml(str(benchmark_config))
+    matrix_config = comparative_dir / "matrix.yml"
+    config = contract.load_benchmark_yaml(str(matrix_config))
     contract.validate_comparative_benchmark_yaml(config)
 
     opt_configs_dir = comparative_dir / "opt_configs"
