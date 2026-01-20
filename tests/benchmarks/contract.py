@@ -22,6 +22,12 @@ from fvdb_reality_capture.radiance_fields import (
 )
 
 CONTRACT_VERSION = 1
+"""
+Semantic version of the benchmark contract.
+
+Increment this when the expected checkpoint/config schemas change in a
+backwards-incompatible way for the benchmark suite.
+"""
 
 TOP_LEVEL_CHECKPOINT_KEYS = {
     "magic",
@@ -38,6 +44,9 @@ TOP_LEVEL_CHECKPOINT_KEYS = {
     "pose_adjust_optimizer",
     "pose_adjust_scheduler",
 }
+"""
+Required top-level keys in benchmark checkpoints.
+"""
 
 RECONSTRUCTION_CONFIG_KEYS = {
     "seed",
@@ -74,6 +83,11 @@ RECONSTRUCTION_CONFIG_KEYS = {
     "antialias",
     "tile_size",
 }
+"""
+Allowed field names for `GaussianSplatReconstructionConfig` in benchmark configs
+and checkpoint `config` payloads. Defaults mean values may be omitted elsewhere,
+but the contract constrains the *set* of valid keys.
+"""
 
 OPTIMIZER_CONFIG_KEYS = {
     "max_gaussians",
@@ -99,6 +113,9 @@ OPTIMIZER_CONFIG_KEYS = {
     "sh0_lr",
     "shN_lr",
 }
+"""
+Allowed fields in `GaussianSplatOptimizerConfig` in benchmark configs and checkpoint `optimizer.config` payloads.
+"""
 
 MCMC_OPTIMIZER_EXTRA_KEYS = {
     "noise_lr",
@@ -107,14 +124,25 @@ MCMC_OPTIMIZER_EXTRA_KEYS = {
     "opacity_regularization",
     "scale_regularization",
 }
+"""
+Extra fields allowed only when using `GaussianSplatOptimizerMCMCConfig`.
+"""
 
 
 def load_benchmark_yaml(path: str) -> dict[str, Any]:
+    """
+    Load a YAML file as a dict.
+
+    Used by benchmark config validation and comparison benchmark tests.
+    """
     with open(path, "r") as f:
         return yaml.safe_load(f)
 
 
 def _raise_contract_error(message: str, *, details: dict[str, Any] | None = None) -> None:
+    """
+    Raise a ValueError with optional structured details appended.
+    """
     if details:
         detail_lines = [f"{k}={v!r}" for k, v in details.items()]
         message = message + " (" + ", ".join(detail_lines) + ")"
@@ -122,6 +150,19 @@ def _raise_contract_error(message: str, *, details: dict[str, Any] | None = None
 
 
 def validate_checkpoint_contract(state: dict[str, Any]) -> None:
+    """
+    Validate the on-disk checkpoint schema used by benchmark tests.
+
+    A valid checkpoint must include:
+    - Top-level keys in `TOP_LEVEL_CHECKPOINT_KEYS`
+    - `magic == "GaussianSplattingCheckpoint"`
+    - `version == GaussianSplatReconstruction.version`
+    - `config` keys constrained by `RECONSTRUCTION_CONFIG_KEYS`
+    - `optimizer.config` keys constrained by `OPTIMIZER_CONFIG_KEYS` (plus
+      `MCMC_OPTIMIZER_EXTRA_KEYS` when using the MCMC optimizer)
+
+    This is intentionally strict: missing or extra keys are treated as errors.
+    """
     if not isinstance(state, dict):
         _raise_contract_error("Checkpoint state must be a dict", details={"type": type(state).__name__})
 
@@ -174,6 +215,17 @@ def validate_checkpoint_contract(state: dict[str, Any]) -> None:
 
 
 def validate_benchmark_yaml(config: dict[str, Any]) -> None:
+    """
+    Validate the benchmark YAML schema used by `generate_benchmark_checkpoints.py`.
+
+    A valid benchmark YAML must include:
+    - `paths.data_base`
+    - `datasets[]` entries with `name`, `path`, `run_directory`, `checkpoint_paths`
+    - `optimization_config.splat_optimizer` in {"GaussianSplatOptimizer","GaussianSplatOptimizerMCMC"}
+    - `optimization_config.reconstruction_config` keys constrained by `RECONSTRUCTION_CONFIG_KEYS`
+    - `optimization_config.optimization_config` keys constrained by `OPTIMIZER_CONFIG_KEYS` (+ MCMC extras)
+    - `optimization_config.training_arguments` with `image_downsample_factor`, `use_every_n_as_val`, `device`
+    """
     if not isinstance(config, dict):
         _raise_contract_error("Benchmark config must be a dict", details={"type": type(config).__name__})
 
@@ -229,6 +281,16 @@ def validate_benchmark_yaml(config: dict[str, Any]) -> None:
 
 
 def validate_comparative_benchmark_yaml(config: dict[str, Any]) -> None:
+    """
+    Validate the comparative benchmark matrix YAML schema.
+
+    A valid matrix YAML must include:
+    - top-level `name`
+    - `paths` with `fvdb_base`, `gsplat_base`, `data_base`
+    - `datasets[]` entries with `name`, `path`
+    - `opt_configs` mapping with entries containing `path`
+    - `runs[]` entries with `dataset` and `opt_config`
+    """
     if not isinstance(config, dict):
         _raise_contract_error("Comparative benchmark config must be a dict", details={"type": type(config).__name__})
 
@@ -251,6 +313,24 @@ def validate_comparative_benchmark_yaml(config: dict[str, Any]) -> None:
 
 
 def validate_comparative_opt_config(config: dict[str, Any]) -> None:
+    """
+    Validate a single comparative opt-config file.
+
+    For FVDB configs, the schema is strict against current dataclasses.
+    For GSplat configs, we keep this permissive (the config is passed through).
+
+    A valid FVDB opt-config must include:
+    - `framework: fvdb`
+    - `name`
+    - `reconstruction_config` keys constrained by `RECONSTRUCTION_CONFIG_KEYS`
+    - `optimization_config` keys constrained by `OPTIMIZER_CONFIG_KEYS` (+ MCMC extras)
+    - `training_arguments` with `image_downsample_factor`, `use_every_n_as_val`, `device`
+
+    A valid GSplat opt-config must include:
+    - `framework: gsplat`
+    - `name`
+    - either `training` or `preset`
+    """
     if not isinstance(config, dict):
         _raise_contract_error("Opt config must be a dict", details={"type": type(config).__name__})
     framework = config.get("framework")
@@ -294,7 +374,8 @@ def validate_comparative_opt_config(config: dict[str, Any]) -> None:
 def _assert_contract_matches_dataclasses() -> None:
     """
     Internal check to keep the explicit contract in sync with the dataclasses.
-    Used by tests.
+
+    Used by tests to ensure the contract stays aligned with code changes.
     """
     recon_keys = set(vars(GaussianSplatReconstructionConfig()).keys())
     if recon_keys != RECONSTRUCTION_CONFIG_KEYS:
