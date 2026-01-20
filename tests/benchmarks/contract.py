@@ -214,13 +214,14 @@ def validate_checkpoint_contract(state: dict[str, Any]) -> None:
         )
 
 
-def validate_benchmark_yaml(config: dict[str, Any]) -> None:
+def validate_benchmark_yaml(config: dict[str, Any], *, require_run_paths: bool = True) -> None:
     """
     Validate the benchmark YAML schema used by `generate_benchmark_checkpoints.py`.
 
     A valid benchmark YAML must include:
     - `paths.data_base`
-    - `datasets[]` entries with `name`, `path`, `run_directory`, `checkpoint_paths`
+    - `datasets[]` entries with `name`, `path` and (when `require_run_paths` is True)
+      `run_directory`, `checkpoint_paths`
     - `optimization_config.splat_optimizer` in {"GaussianSplatOptimizer","GaussianSplatOptimizerMCMC"}
     - `optimization_config.reconstruction_config` keys constrained by `RECONSTRUCTION_CONFIG_KEYS`
     - `optimization_config.optimization_config` keys constrained by `OPTIMIZER_CONFIG_KEYS` (+ MCMC extras)
@@ -239,10 +240,13 @@ def validate_benchmark_yaml(config: dict[str, Any]) -> None:
     for d in datasets:
         if not isinstance(d, dict):
             _raise_contract_error("Each dataset entry must be a dict")
-        for key in ("name", "path", "run_directory", "checkpoint_paths"):
+        required_keys = ["name", "path"]
+        if require_run_paths:
+            required_keys.extend(["run_directory", "checkpoint_paths"])
+        for key in required_keys:
             if key not in d:
                 _raise_contract_error("Dataset missing required key", details={"missing": key})
-        if not isinstance(d["checkpoint_paths"], list):
+        if require_run_paths and not isinstance(d.get("checkpoint_paths"), list):
             _raise_contract_error("Dataset checkpoint_paths must be a list")
 
     opt_section = config.get("optimization_config", {})

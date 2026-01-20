@@ -70,7 +70,7 @@ def test_checkpoint_contract_accepts_mcmc_optimizer_config():
 def test_benchmark_config_yaml_matches_contract():
     config_path = pathlib.Path(__file__).parent / "benchmark_config.yaml"
     config = contract.load_benchmark_yaml(str(config_path))
-    contract.validate_benchmark_yaml(config)
+    contract.validate_benchmark_yaml(config, require_run_paths=True)
 
 
 def test_benchmark_yaml_rejects_unknown_key():
@@ -78,7 +78,7 @@ def test_benchmark_yaml_rejects_unknown_key():
     config = contract.load_benchmark_yaml(str(config_path))
     config["optimization_config"]["reconstruction_config"]["opacity_reg"] = 0.0
     with pytest.raises(ValueError, match="Unknown reconstruction_config keys"):
-        contract.validate_benchmark_yaml(config)
+        contract.validate_benchmark_yaml(config, require_run_paths=True)
 
 
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA required for benchmark smoke test.")
