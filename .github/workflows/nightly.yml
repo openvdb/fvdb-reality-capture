@@ -325,7 +325,7 @@ jobs:
         run: |
           micromamba activate fvdb
           cd tests;
-          pytest benchmarks --benchmark-json benchmarks/output.json
+          pytest benchmarks --benchmark-json benchmarks/output.json --ignore=benchmarks/test_benchmark_contract.py
 
       - name: Add commit metadata to benchmark results
         run: |

@@ -1,0 +1,258 @@
+# Copyright Contributors to the OpenVDB Project
+# SPDX-License-Identifier: Apache-2.0
+#
+"""
+Benchmark contract checks to prevent nightly benchmark breakage.
+
+This module defines a small, explicit compatibility contract used by
+`tests/benchmarks/test_3dgs.py` and `tests/benchmarks/generate_benchmark_checkpoints.py`.
+"""
+
+from __future__ import annotations
+
+from typing import Any
+
+import yaml
+
+from fvdb_reality_capture.radiance_fields import (
+    GaussianSplatOptimizerConfig,
+    GaussianSplatOptimizerMCMCConfig,
+    GaussianSplatReconstruction,
+    GaussianSplatReconstructionConfig,
+)
+
+CONTRACT_VERSION = 1
+
+TOP_LEVEL_CHECKPOINT_KEYS = {
+    "magic",
+    "version",
+    "step",
+    "config",
+    "sfm_scene",
+    "model",
+    "optimizer",
+    "train_indices",
+    "val_indices",
+    "num_training_poses",
+    "pose_adjust_model",
+    "pose_adjust_optimizer",
+    "pose_adjust_scheduler",
+}
+
+RECONSTRUCTION_CONFIG_KEYS = {
+    "seed",
+    "max_epochs",
+    "max_steps",
+    "eval_at_percent",
+    "save_at_percent",
+    "batch_size",
+    "crops_per_image",
+    "sh_degree",
+    "increase_sh_degree_every_epoch",
+    "initial_opacity",
+    "initial_covariance_scale",
+    "ssim_lambda",
+    "lpips_net",
+    "sparse_depth_reg",
+    "random_bkgd",
+    "refine_start_epoch",
+    "refine_stop_epoch",
+    "refine_every_epoch",
+    "ignore_masks",
+    "remove_gaussians_outside_scene_bbox",
+    "optimize_camera_poses",
+    "pose_opt_lr",
+    "pose_opt_reg",
+    "pose_opt_lr_decay",
+    "pose_opt_start_epoch",
+    "pose_opt_stop_epoch",
+    "pose_opt_init_std",
+    "near_plane",
+    "far_plane",
+    "min_radius_2d",
+    "eps_2d",
+    "antialias",
+    "tile_size",
+}
+
+OPTIMIZER_CONFIG_KEYS = {
+    "max_gaussians",
+    "insertion_grad_2d_threshold_mode",
+    "deletion_opacity_threshold",
+    "deletion_scale_3d_threshold",
+    "deletion_scale_2d_threshold",
+    "insertion_grad_2d_threshold",
+    "insertion_scale_3d_threshold",
+    "insertion_scale_2d_threshold",
+    "opacity_updates_use_revised_formulation",
+    "insertion_split_factor",
+    "insertion_duplication_factor",
+    "reset_opacities_every_n_refinements",
+    "use_scales_for_deletion_after_n_refinements",
+    "use_screen_space_scales_for_refinement_until",
+    "spatial_scale_mode",
+    "spatial_scale_multiplier",
+    "means_lr",
+    "log_scales_lr",
+    "quats_lr",
+    "logit_opacities_lr",
+    "sh0_lr",
+    "shN_lr",
+}
+
+MCMC_OPTIMIZER_EXTRA_KEYS = {
+    "noise_lr",
+    "insertion_rate",
+    "binomial_coeffs_n_max",
+    "opacity_regularization",
+    "scale_regularization",
+}
+
+
+def load_benchmark_yaml(path: str) -> dict[str, Any]:
+    with open(path, "r") as f:
+        return yaml.safe_load(f)
+
+
+def _raise_contract_error(message: str, *, details: dict[str, Any] | None = None) -> None:
+    if details:
+        detail_lines = [f"{k}={v!r}" for k, v in details.items()]
+        message = message + " (" + ", ".join(detail_lines) + ")"
+    raise ValueError(message)
+
+
+def validate_checkpoint_contract(state: dict[str, Any]) -> None:
+    if not isinstance(state, dict):
+        _raise_contract_error("Checkpoint state must be a dict", details={"type": type(state).__name__})
+
+    missing = TOP_LEVEL_CHECKPOINT_KEYS - set(state.keys())
+    if missing:
+        _raise_contract_error("Checkpoint missing required keys", details={"missing": sorted(missing)})
+
+    if state.get("magic") != "GaussianSplattingCheckpoint":
+        _raise_contract_error(
+            "Checkpoint magic mismatch",
+            details={"magic": state.get("magic"), "expected": "GaussianSplattingCheckpoint"},
+        )
+    if state.get("version") != GaussianSplatReconstruction.version:
+        _raise_contract_error(
+            "Checkpoint version mismatch",
+            details={"version": state.get("version"), "expected": GaussianSplatReconstruction.version},
+        )
+
+    cfg = state.get("config")
+    if not isinstance(cfg, dict):
+        _raise_contract_error("Checkpoint config must be a dict", details={"type": type(cfg).__name__})
+
+    cfg_keys = set(cfg.keys())
+    missing_cfg = RECONSTRUCTION_CONFIG_KEYS - cfg_keys
+    extra_cfg = cfg_keys - RECONSTRUCTION_CONFIG_KEYS
+    if missing_cfg or extra_cfg:
+        _raise_contract_error(
+            "Checkpoint config key mismatch",
+            details={"missing": sorted(missing_cfg), "extra": sorted(extra_cfg)},
+        )
+
+    optimizer = state.get("optimizer")
+    if not isinstance(optimizer, dict):
+        _raise_contract_error("Checkpoint optimizer must be a dict", details={"type": type(optimizer).__name__})
+    opt_cfg = optimizer.get("config")
+    if not isinstance(opt_cfg, dict):
+        _raise_contract_error("Checkpoint optimizer config must be a dict", details={"type": type(opt_cfg).__name__})
+
+    opt_cfg_keys = set(opt_cfg.keys())
+    opt_base = OPTIMIZER_CONFIG_KEYS
+    opt_mcmc = OPTIMIZER_CONFIG_KEYS | MCMC_OPTIMIZER_EXTRA_KEYS
+    if opt_cfg_keys != opt_base and opt_cfg_keys != opt_mcmc:
+        _raise_contract_error(
+            "Checkpoint optimizer config key mismatch",
+            details={
+                "keys": sorted(opt_cfg_keys),
+                "expected": "GaussianSplatOptimizerConfig or GaussianSplatOptimizerMCMCConfig",
+            },
+        )
+
+
+def validate_benchmark_yaml(config: dict[str, Any]) -> None:
+    if not isinstance(config, dict):
+        _raise_contract_error("Benchmark config must be a dict", details={"type": type(config).__name__})
+
+    paths = config.get("paths", {})
+    if not isinstance(paths, dict) or "data_base" not in paths:
+        _raise_contract_error("Benchmark config missing paths.data_base")
+
+    datasets = config.get("datasets", [])
+    if not isinstance(datasets, list) or not datasets:
+        _raise_contract_error("Benchmark config datasets must be a non-empty list")
+    for d in datasets:
+        if not isinstance(d, dict):
+            _raise_contract_error("Each dataset entry must be a dict")
+        for key in ("name", "path", "run_directory", "checkpoint_paths"):
+            if key not in d:
+                _raise_contract_error("Dataset missing required key", details={"missing": key})
+        if not isinstance(d["checkpoint_paths"], list):
+            _raise_contract_error("Dataset checkpoint_paths must be a list")
+
+    opt_section = config.get("optimization_config", {})
+    if not isinstance(opt_section, dict):
+        _raise_contract_error("optimization_config must be a dict")
+    splat_optimizer = opt_section.get("splat_optimizer")
+    if splat_optimizer not in ("GaussianSplatOptimizer", "GaussianSplatOptimizerMCMC"):
+        _raise_contract_error(
+            "optimization_config.splat_optimizer must be GaussianSplatOptimizer or GaussianSplatOptimizerMCMC",
+            details={"splat_optimizer": splat_optimizer},
+        )
+
+    recon_cfg = opt_section.get("reconstruction_config", {})
+    if not isinstance(recon_cfg, dict):
+        _raise_contract_error("optimization_config.reconstruction_config must be a dict")
+    recon_extra = set(recon_cfg.keys()) - RECONSTRUCTION_CONFIG_KEYS
+    if recon_extra:
+        _raise_contract_error("Unknown reconstruction_config keys", details={"extra": sorted(recon_extra)})
+
+    opt_cfg = opt_section.get("optimization_config", {})
+    if not isinstance(opt_cfg, dict):
+        _raise_contract_error("optimization_config.optimization_config must be a dict")
+    allowed_opt_keys = OPTIMIZER_CONFIG_KEYS | (MCMC_OPTIMIZER_EXTRA_KEYS if splat_optimizer else set())
+    opt_extra = set(opt_cfg.keys()) - allowed_opt_keys
+    if opt_extra:
+        _raise_contract_error("Unknown optimization_config keys", details={"extra": sorted(opt_extra)})
+
+    training_args = opt_section.get("training_arguments", {})
+    if not isinstance(training_args, dict):
+        _raise_contract_error("optimization_config.training_arguments must be a dict")
+    for key in ("image_downsample_factor", "use_every_n_as_val", "device"):
+        if key not in training_args:
+            _raise_contract_error("training_arguments missing required key", details={"missing": key})
+
+
+def _assert_contract_matches_dataclasses() -> None:
+    """
+    Internal check to keep the explicit contract in sync with the dataclasses.
+    Used by tests.
+    """
+    recon_keys = set(vars(GaussianSplatReconstructionConfig()).keys())
+    if recon_keys != RECONSTRUCTION_CONFIG_KEYS:
+        _raise_contract_error(
+            "RECONSTRUCTION_CONFIG_KEYS out of sync with GaussianSplatReconstructionConfig",
+            details={
+                "missing": sorted(recon_keys - RECONSTRUCTION_CONFIG_KEYS),
+                "extra": sorted(RECONSTRUCTION_CONFIG_KEYS - recon_keys),
+            },
+        )
+    opt_keys = set(vars(GaussianSplatOptimizerConfig()).keys())
+    if opt_keys != OPTIMIZER_CONFIG_KEYS:
+        _raise_contract_error(
+            "OPTIMIZER_CONFIG_KEYS out of sync with GaussianSplatOptimizerConfig",
+            details={
+                "missing": sorted(opt_keys - OPTIMIZER_CONFIG_KEYS),
+                "extra": sorted(OPTIMIZER_CONFIG_KEYS - opt_keys),
+            },
+        )
+    mcmc_keys = set(vars(GaussianSplatOptimizerMCMCConfig()).keys())
+    expected_mcmc = OPTIMIZER_CONFIG_KEYS | MCMC_OPTIMIZER_EXTRA_KEYS
+    if mcmc_keys != expected_mcmc:
+        _raise_contract_error(
+            "MCMC_OPTIMIZER_EXTRA_KEYS out of sync with GaussianSplatOptimizerMCMCConfig",
+            details={"missing": sorted(mcmc_keys - expected_mcmc), "extra": sorted(expected_mcmc - mcmc_keys)},
+        )

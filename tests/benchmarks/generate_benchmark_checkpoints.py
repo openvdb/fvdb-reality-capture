@@ -17,6 +17,7 @@ import yaml
 
 sys.path.insert(0, str(pathlib.Path(__file__).parent.parent.parent.resolve()))
 import fvdb_reality_capture as frc
+from fvdb_reality_capture.benchmarks.contract import validate_benchmark_yaml
 from fvdb_reality_capture.radiance_fields.gaussian_splat_reconstruction_writer import (
     GaussianSplatReconstructionWriter,
 )
@@ -102,6 +103,7 @@ def main(
 
     # Load configuration
     config = load_config(config_path)
+    validate_benchmark_yaml(config)
 
     # data base path
     data_base_path = config["paths"]["data_base"]

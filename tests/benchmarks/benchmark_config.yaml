@@ -50,6 +50,9 @@ optimization_config:
     eps_2d: 0.3
     antialias: false
     tile_size: 16
+  optimization_config:
+    reset_opacities_every_n_refinements: 16
+    use_screen_space_scales_for_refinement_until: 0
   training_arguments:
     image_downsample_factor: 4
     points_percentile_filter: 0.0
