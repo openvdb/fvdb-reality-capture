@@ -10,7 +10,6 @@ import point_cloud_utils as pcu
 import pytest
 import torch
 
-from fvdb_reality_capture.benchmarks import contract
 from fvdb_reality_capture.radiance_fields import (
     GaussianSplatOptimizerConfig,
     GaussianSplatOptimizerMCMCConfig,
@@ -21,6 +20,8 @@ from fvdb_reality_capture.radiance_fields import (
     SpatialScaleMode,
 )
 from fvdb_reality_capture.sfm_scene import SfmScene
+
+from . import contract
 
 
 def _minimal_checkpoint_state() -> dict:

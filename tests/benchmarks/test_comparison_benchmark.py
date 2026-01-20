@@ -110,7 +110,7 @@ def test_comparison_benchmark_with_stubbed_training(tmp_path: Path, monkeypatch:
 
 
 def test_comparative_configs_match_contract():
-    from fvdb_reality_capture.benchmarks import contract
+    from . import contract
 
     comparative_dir = Path(__file__).resolve().parent / "comparative"
     benchmark_config = comparative_dir / "benchmark_config.yaml"
