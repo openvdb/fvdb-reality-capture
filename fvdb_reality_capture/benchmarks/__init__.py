@@ -12,6 +12,8 @@ from .contract import (
     load_benchmark_yaml,
     validate_benchmark_yaml,
     validate_checkpoint_contract,
+    validate_comparative_benchmark_yaml,
+    validate_comparative_opt_config,
 )
 
 __all__ = [
@@ -21,6 +23,8 @@ __all__ = [
     "OPTIMIZER_CONFIG_KEYS",
     "MCMC_OPTIMIZER_EXTRA_KEYS",
     "load_benchmark_yaml",
+    "validate_comparative_benchmark_yaml",
+    "validate_comparative_opt_config",
     "validate_benchmark_yaml",
     "validate_checkpoint_contract",
 ]

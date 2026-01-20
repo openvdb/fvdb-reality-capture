@@ -188,7 +188,13 @@ def save_summary_report(scenes: list[str], result_path: pathlib.Path, colors: di
         for i, (opt_config_name, measurement) in enumerate(metric_data.items()):
             offset = width * multiplier
             assert isinstance(measurement, list)
-            rects = ax.bar(x + offset, measurement, width, label=opt_config_name, color=colors[opt_config_name])
+            rects = ax.bar(
+                x + offset,
+                measurement,
+                width,
+                label=opt_config_name,
+                color=colors.get(opt_config_name, "#999999"),
+            )
             if metric in ["num_gaussians"]:
                 ax.bar_label(rects, rotation=45, padding=3, fmt="%d")
             else:
@@ -377,12 +383,12 @@ def main():
         # Run training
 
         training_results = {}
-        if not args.opt_configs:
+        if not args.opt_configs and not args.plot_only:
             parser.error("--opt-configs is required unless --plot-only or --eval-only is specified")
 
         # Validate that all optimization configs have unique names
         all_config_names = dict()
-        for i, opt_config_path in enumerate(args.opt_configs):
+        for i, opt_config_path in enumerate(args.opt_configs or []):
             opt_config = load_config(opt_config_path)
             if "framework" not in opt_config:
                 raise RuntimeError(f"Framework not specified in opt config: {opt_config_path}")

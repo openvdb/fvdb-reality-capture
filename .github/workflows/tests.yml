@@ -283,7 +283,7 @@ jobs:
         run: |
           micromamba activate fvdb
           cd tests;
-          pytest -v unit benchmarks/test_benchmark_contract.py
+          pytest -v unit benchmarks/test_benchmark_contract.py benchmarks/test_comparison_benchmark.py
 
   ##############################################################################
   # RUN FVDB DOCUMENTATION TESTS

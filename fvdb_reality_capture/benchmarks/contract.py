@@ -226,6 +226,69 @@ def validate_benchmark_yaml(config: dict[str, Any]) -> None:
             _raise_contract_error("training_arguments missing required key", details={"missing": key})
 
 
+def validate_comparative_benchmark_yaml(config: dict[str, Any]) -> None:
+    if not isinstance(config, dict):
+        _raise_contract_error("Comparative benchmark config must be a dict", details={"type": type(config).__name__})
+
+    paths = config.get("paths", {})
+    if not isinstance(paths, dict):
+        _raise_contract_error("Comparative benchmark config missing paths section")
+    for key in ("fvdb_base", "gsplat_base", "data_base"):
+        if key not in paths:
+            _raise_contract_error("Comparative benchmark config missing paths key", details={"missing": key})
+
+    datasets = config.get("datasets", [])
+    if not isinstance(datasets, list) or not datasets:
+        _raise_contract_error("Comparative benchmark datasets must be a non-empty list")
+    for d in datasets:
+        if not isinstance(d, dict):
+            _raise_contract_error("Each dataset entry must be a dict")
+        for key in ("name", "path"):
+            if key not in d:
+                _raise_contract_error("Dataset missing required key", details={"missing": key})
+
+
+def validate_comparative_opt_config(config: dict[str, Any]) -> None:
+    if not isinstance(config, dict):
+        _raise_contract_error("Opt config must be a dict", details={"type": type(config).__name__})
+    framework = config.get("framework")
+    if framework not in ("fvdb", "gsplat"):
+        _raise_contract_error("Opt config framework must be fvdb or gsplat", details={"framework": framework})
+    if "name" not in config:
+        _raise_contract_error("Opt config missing name")
+
+    if framework == "fvdb":
+        recon_cfg = config.get("reconstruction_config", {})
+        if not isinstance(recon_cfg, dict):
+            _raise_contract_error("FVDB opt config reconstruction_config must be a dict")
+        recon_extra = set(recon_cfg.keys()) - RECONSTRUCTION_CONFIG_KEYS
+        if recon_extra:
+            _raise_contract_error("Unknown FVDB reconstruction_config keys", details={"extra": sorted(recon_extra)})
+
+        opt_cfg = config.get("optimization_config", {})
+        if not isinstance(opt_cfg, dict):
+            _raise_contract_error("FVDB opt config optimization_config must be a dict")
+        splat_optimizer = config.get("splat_optimizer", "GaussianSplatOptimizer")
+        allowed_opt_keys = OPTIMIZER_CONFIG_KEYS | (
+            MCMC_OPTIMIZER_EXTRA_KEYS if splat_optimizer == "GaussianSplatOptimizerMCMC" else set()
+        )
+        opt_extra = set(opt_cfg.keys()) - allowed_opt_keys
+        if opt_extra:
+            _raise_contract_error("Unknown FVDB optimization_config keys", details={"extra": sorted(opt_extra)})
+
+        training_args = config.get("training_arguments", {})
+        if not isinstance(training_args, dict):
+            _raise_contract_error("FVDB opt config training_arguments must be a dict")
+        for key in ("image_downsample_factor", "use_every_n_as_val", "device"):
+            if key not in training_args:
+                _raise_contract_error("training_arguments missing required key", details={"missing": key})
+
+    else:
+        # gsplat: keep this permissive since the config is passed through to the external trainer.
+        if "training" not in config and "preset" not in config:
+            _raise_contract_error("GSplat opt config must define training or preset")
+
+
 def _assert_contract_matches_dataclasses() -> None:
     """
     Internal check to keep the explicit contract in sync with the dataclasses.
