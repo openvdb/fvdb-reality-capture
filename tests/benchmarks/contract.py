@@ -213,7 +213,9 @@ def validate_benchmark_yaml(config: dict[str, Any]) -> None:
     opt_cfg = opt_section.get("optimization_config", {})
     if not isinstance(opt_cfg, dict):
         _raise_contract_error("optimization_config.optimization_config must be a dict")
-    allowed_opt_keys = OPTIMIZER_CONFIG_KEYS | (MCMC_OPTIMIZER_EXTRA_KEYS if splat_optimizer else set())
+    allowed_opt_keys = OPTIMIZER_CONFIG_KEYS | (
+        MCMC_OPTIMIZER_EXTRA_KEYS if splat_optimizer == "GaussianSplatOptimizerMCMC" else set()
+    )
     opt_extra = set(opt_cfg.keys()) - allowed_opt_keys
     if opt_extra:
         _raise_contract_error("Unknown optimization_config keys", details={"extra": sorted(opt_extra)})
