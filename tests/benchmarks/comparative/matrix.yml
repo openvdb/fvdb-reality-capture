@@ -1,9 +1,6 @@
 name: example_matrix
 
 paths:
-  # Base paths for different environments
-  # TODO are these used?
-  fvdb_base: ../openvdb/fvdb/projects/3d_gaussian_splatting  # Relative path from benchmark directory
   gsplat_base: ../gsplat/examples  # Relative path from benchmark directory
   data_base: /workspace/data  # Docker container path for data
 
