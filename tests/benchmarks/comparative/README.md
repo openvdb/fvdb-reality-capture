@@ -86,14 +86,6 @@ results/example_matrix/
 - **Peak GPU Memory**
 - **Training Throughput** (splats/s)
 
-## Visualization
-
-```bash
-python visualize_comparison.py --scene bicycle
-```
-
-Opens viewers at http://localhost:8080 (FVDB) and http://localhost:8081 (GSplat).
-
 ## Docker
 
 See [DOCKER_README.md](DOCKER_README.md) for containerized execution.

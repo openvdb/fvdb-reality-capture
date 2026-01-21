@@ -36,9 +36,6 @@ python comparison_benchmark.py --matrix matrix.yml
 
 # Plot existing results
 python comparison_benchmark.py --matrix matrix.yml --plot-only
-
-# Launch visualization
-python visualize_comparison.py --scene bicycle
 ```
 
 ## Data Setup
@@ -48,12 +45,6 @@ The container mounts:
 - `./results` → `/workspace/results`
 
 Download datasets with `frgs download all` (requires fvdb-reality-capture installed).
-
-## Visualization
-
-Ports exposed:
-- **8080**: FVDB viewer
-- **8081**: GSplat viewer
 
 ## Troubleshooting
 
