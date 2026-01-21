@@ -111,9 +111,10 @@ def save_summary_report(
         "num_gaussians": {c: [] for c in config_order},
         "total_time": {c: [] for c in config_order},
         "training_time": {c: [] for c in config_order},
+        "peak_gpu_memory_gb": {c: [] for c in config_order},
     }
 
-    # Labels with units
+    # Labels with units (y-axis)
     plot_dict_labels = {
         "training_throughput": "Training Throughput (splats/s)",
         "PSNR": "PSNR (dB)",
@@ -121,6 +122,18 @@ def save_summary_report(
         "num_gaussians": "Final Gaussian Count",
         "total_time": "Total Time (s)",
         "training_time": "Training Time (s)",
+        "peak_gpu_memory_gb": "Peak GPU Memory (GB)",
+    }
+
+    # Plot titles (properly capitalized)
+    plot_dict_titles = {
+        "training_throughput": "Training Throughput",
+        "PSNR": "PSNR",
+        "SSIM": "SSIM",
+        "num_gaussians": "Num Gaussians",
+        "total_time": "Total Time",
+        "training_time": "Training Time",
+        "peak_gpu_memory_gb": "Peak GPU Memory GB",
     }
 
     # A dictionary to hold summary metrics and statistics for each scene/opt-config pair
@@ -160,6 +173,9 @@ def save_summary_report(
             psnr = cfg_report.get("training", {}).get("metrics", {}).get("psnr", float("nan"))
             ssim = cfg_report.get("training", {}).get("metrics", {}).get("ssim", float("nan"))
             num_gaussians = cfg_report.get("training", {}).get("metrics", {}).get("final_gaussian_count", float("nan"))
+            peak_gpu_memory_gb = (
+                cfg_report.get("training", {}).get("metrics", {}).get("peak_gpu_memory_gb", float("nan"))
+            )
             training_throughput = num_gaussians / training_time if training_time and training_time > 0 else float("nan")
 
             plot_dict["training_throughput"][cfg].append(float(training_throughput))
@@ -168,6 +184,7 @@ def save_summary_report(
             plot_dict["num_gaussians"][cfg].append(float(num_gaussians))
             plot_dict["total_time"][cfg].append(float(total_time))
             plot_dict["training_time"][cfg].append(float(training_time))
+            plot_dict["peak_gpu_memory_gb"][cfg].append(float(peak_gpu_memory_gb))
 
             assert cfg not in summary_data[scene], f"Duplicate config {cfg} for scene {scene}"
             summary_data[scene][cfg] = {
@@ -177,6 +194,7 @@ def save_summary_report(
                 "num_gaussians": num_gaussians,
                 "total_time": total_time,
                 "training_time": training_time,
+                "peak_gpu_memory_gb": peak_gpu_memory_gb,
             }
 
     num_metrics = len(plot_dict)
@@ -210,7 +228,7 @@ def save_summary_report(
             multiplier += 1
         # Add some text for labels, title and custom x-axis tick labels, etc.
         ax.set_ylabel(f"{plot_dict_labels[metric]}")
-        ax.set_title(f"{metric.replace('_', ' ').title()}")
+        ax.set_title(plot_dict_titles[metric])
         ax.set_xticks(x + width, scenes)
         # Make the xtick labels diagonal for better readability
         ax.set_xticklabels(scenes, rotation=45, ha="right")
@@ -264,6 +282,7 @@ def save_summary_report(
     _log_statistics("num_gaussians", "Final Gaussian Count", "")
     _log_statistics("total_time", "Total Time", "s")
     _log_statistics("training_time", "Training Time", "s")
+    _log_statistics("peak_gpu_memory_gb", "Peak GPU Memory", "GB")
 
     output_summary = {
         "per_scene": summary_data,

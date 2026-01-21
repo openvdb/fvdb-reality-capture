@@ -13,6 +13,7 @@ import sys
 import time
 from typing import Dict, List
 
+import torch
 import yaml
 
 sys.path.insert(0, str(pathlib.Path(__file__).parent.parent.parent.resolve()))
@@ -174,6 +175,11 @@ def main(
         if train:
             run_name = get_run_name(dataset_results_path)
 
+            # Reset GPU memory stats before any GPU operations for accurate peak measurement
+            device = torch.device(training_params.get("device", "cuda"))
+            if device.type == "cuda":
+                torch.cuda.reset_peak_memory_stats(device)
+
             sfm_scene = frc.sfm_scene.SfmScene.from_colmap(dataset_path)
             sfm_scene = frc.transforms.Compose(
                 frc.transforms.NormalizeScene("pca"),
@@ -195,6 +201,15 @@ def main(
             start_time = time.time()
             runner.optimize()
             training_time = time.time() - start_time
+
+            # Query peak GPU memory after training
+            if device.type == "cuda":
+                torch.cuda.synchronize(device)
+                peak_gpu_bytes = torch.cuda.max_memory_allocated(device)
+                peak_gpu_gb = peak_gpu_bytes / (1024**3)
+                # Print in parseable format for run_fvdb_training.py to extract
+                print(f"FVDB_PEAK_GPU_MEMORY_GB: {peak_gpu_gb:.6f}")
+
             logger.info(f"Training completed for {dataset_name} in {training_time:.2f} seconds")
         else:
             logger.info(f"Skipping training for {dataset_name}")

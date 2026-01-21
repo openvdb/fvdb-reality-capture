@@ -154,6 +154,22 @@ def extract_training_metrics(output: str, total_time: float) -> dict[str, Any]:
             except Exception:
                 pass
 
+    # Extract peak GPU memory
+    # GSplat format: "Step:  99 {'mem': 0.19268178939819336, ...}"
+    # FVDB format: "FVDB_PEAK_GPU_MEMORY_GB: 1.234"
+    gsplat_mem_pattern = r"'mem':\s*([0-9.]+)"
+    fvdb_mem_pattern = r"FVDB_PEAK_GPU_MEMORY_GB:\s*([0-9.]+)"
+
+    gsplat_mem_matches = re.findall(gsplat_mem_pattern, output)
+    if gsplat_mem_matches:
+        # GSplat reports mem in GB, take the last value (final step)
+        metrics["peak_gpu_memory_gb"] = float(gsplat_mem_matches[-1])
+
+    fvdb_mem_matches = re.findall(fvdb_mem_pattern, output)
+    if fvdb_mem_matches:
+        # FVDB reports peak GPU memory in GB
+        metrics["peak_gpu_memory_gb"] = float(fvdb_mem_matches[-1])
+
     # Calculate final metrics
     if metrics["loss_values"]:
         metrics["final_loss"] = metrics["loss_values"][-1]
