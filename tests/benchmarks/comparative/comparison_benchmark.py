@@ -393,7 +393,8 @@ def main():
         if not scene_name or scene_name not in dataset_by_name:
             raise ValueError(f"Run references unknown dataset: {scene_name}")
         if not opt_alias or opt_alias not in opt_configs:
-            raise ValueError(f"Run references unknown opt_config alias: {opt_alias}")
+            logging.warning(f"Skipping run with unknown opt_config alias: {opt_alias}")
+            continue
 
         variant = run.get("variant")
         run_key = f"{opt_alias}__{variant}" if variant else str(opt_alias)
