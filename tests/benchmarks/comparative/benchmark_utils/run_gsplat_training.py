@@ -15,7 +15,11 @@ from ._common import extract_training_metrics, run_command
 
 
 def run_gsplat_training(
-    scene_name: str, result_path: pathlib.Path, benchmark_config_path: pathlib.Path, opt_config_path: pathlib.Path
+    scene_name: str,
+    run_dir: pathlib.Path,
+    matrix_config_path: pathlib.Path,
+    opt_config_path: pathlib.Path,
+    extra_cli_args: list[str] | None = None,
 ) -> dict[str, Any]:
     """Run GSplat training using the simplified basic benchmark approach."""
     logging.info(f"Starting GSplat training for scene: {scene_name}")
@@ -24,7 +28,7 @@ def run_gsplat_training(
     start_time = time.time()
 
     # Load the benchmark config
-    with open(benchmark_config_path, "r") as f:
+    with open(matrix_config_path, "r") as f:
         run_config = yaml.safe_load(f)
 
     # Filter to only include the current scene
@@ -37,7 +41,7 @@ def run_gsplat_training(
 
     # Create results directory
     config_name = opt_config["name"]
-    gsplat_result_dir = result_path / f"{scene_name}_{config_name}"
+    gsplat_result_dir = run_dir / f"{scene_name}_{config_name}"
     gsplat_result_dir.mkdir(parents=True, exist_ok=True)
 
     # Create log file for capturing output
@@ -94,10 +98,13 @@ def run_gsplat_training(
             logging.info(f"Skipping symlink creation")
 
     # Build GSplat command with computed parameters
+    gsplat_mode = opt_config.get("mode", "default")
+    if gsplat_mode not in ("default", "mcmc"):
+        raise ValueError(f"Unsupported gsplat mode: {gsplat_mode}")
     cmd = [
         sys.executable,
         "simple_trainer.py",
-        "default",
+        gsplat_mode,
         "--eval_steps",
         str(max_steps),  # Evaluate at final step
         "--disable_viewer",
@@ -119,16 +126,25 @@ def run_gsplat_training(
         str(refine_stop_steps),
         "--strategy.refine_every",
         str(refine_every_steps),
-        "--strategy.reset_every",
-        str(reset_every_steps),
-        "--strategy.pause_refine_after_reset",
-        "0",
         "--strategy.verbose",  # Enable verbose output to see refinement info
         "--global_scale",
         "1.0",
-        "--strategy.refine_scale2d_stop_iter",
-        "1",  # Disable 2D scale-based splitting to match FVDB behavior
     ]
+    if gsplat_mode == "default":
+        cmd.extend(
+            [
+                "--strategy.reset_every",
+                str(reset_every_steps),
+                "--strategy.pause_refine_after_reset",
+                "0",
+                "--strategy.refine_scale2d_stop_iter",
+                "1",  # Disable 2D scale-based splitting to match FVDB behavior
+            ]
+        )
+    if extra_cli_args:
+        if not isinstance(extra_cli_args, list) or not all(isinstance(x, str) for x in extra_cli_args):
+            raise ValueError("extra_cli_args must be a list[str]")
+        cmd.extend(extra_cli_args)
 
     logging.info(f"GSplat command: {' '.join(cmd)}")
 

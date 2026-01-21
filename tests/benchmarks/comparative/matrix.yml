@@ -28,6 +28,10 @@ opt_configs:
     path: opt_configs/fvdb_default.yml
   fvdb_mcmc:
     path: opt_configs/fvdb_mcmc_default.yml
+  gsplat_default:
+    path: opt_configs/gsplat_default.yml
+  gsplat_mcmc:
+    path: opt_configs/gsplat_mcmc_default.yml
 
 runs:
   - dataset: garden
@@ -38,6 +42,15 @@ runs:
       fvdb:
         optimization_config:
           max_gaussians: 5500000
+  - dataset: garden
+    opt_config: gsplat_default
+  - dataset: garden
+    opt_config: gsplat_mcmc
+    overrides:
+      gsplat:
+        cli_args:
+          - --strategy.cap_max
+          - "5500000"
   - dataset: bicycle
     opt_config: fvdb_default
   - dataset: bicycle
@@ -46,6 +59,15 @@ runs:
       fvdb:
         optimization_config:
           max_gaussians: 5500000
+  - dataset: bicycle
+    opt_config: gsplat_default
+  - dataset: bicycle
+    opt_config: gsplat_mcmc
+    overrides:
+      gsplat:
+        cli_args:
+          - --strategy.cap_max
+          - "5500000"
   - dataset: bonsai
     opt_config: fvdb_default
   - dataset: bonsai
@@ -54,6 +76,15 @@ runs:
       fvdb:
         optimization_config:
           max_gaussians: 1200000
+  - dataset: bonsai
+    opt_config: gsplat_default
+  - dataset: bonsai
+    opt_config: gsplat_mcmc
+    overrides:
+      gsplat:
+        cli_args:
+          - --strategy.cap_max
+          - "1200000"
   - dataset: counter
     opt_config: fvdb_default
   - dataset: counter
@@ -62,6 +93,15 @@ runs:
       fvdb:
         optimization_config:
           max_gaussians: 1000000
+  - dataset: counter
+    opt_config: gsplat_default
+  - dataset: counter
+    opt_config: gsplat_mcmc
+    overrides:
+      gsplat:
+        cli_args:
+          - --strategy.cap_max
+          - "1000000"
   - dataset: kitchen
     opt_config: fvdb_default
   - dataset: kitchen
@@ -70,6 +110,15 @@ runs:
       fvdb:
         optimization_config:
           max_gaussians: 1400000
+  - dataset: kitchen
+    opt_config: gsplat_default
+  - dataset: kitchen
+    opt_config: gsplat_mcmc
+    overrides:
+      gsplat:
+        cli_args:
+          - --strategy.cap_max
+          - "1400000"
   - dataset: room
     opt_config: fvdb_default
   - dataset: room
@@ -78,6 +127,15 @@ runs:
       fvdb:
         optimization_config:
           max_gaussians: 1300000
+  - dataset: room
+    opt_config: gsplat_default
+  - dataset: room
+    opt_config: gsplat_mcmc
+    overrides:
+      gsplat:
+        cli_args:
+          - --strategy.cap_max
+          - "1300000"
   - dataset: stump
     opt_config: fvdb_default
   - dataset: stump
@@ -86,3 +144,12 @@ runs:
       fvdb:
         optimization_config:
           max_gaussians: 4500000
+  - dataset: stump
+    opt_config: gsplat_default
+  - dataset: stump
+    opt_config: gsplat_mcmc
+    overrides:
+      gsplat:
+        cli_args:
+          - --strategy.cap_max
+          - "4500000"

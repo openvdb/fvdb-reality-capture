@@ -1,8 +1,8 @@
-# The default GSplat configuration parameters.
+# The GSplat configuration for MCMC-style comparison runs.
 framework: gsplat
-name: gsplat
-color: "#767676"
-mode: default
+name: gsplat_mcmc
+color: "#4D4D4D"
+mode: mcmc
 
 training:
   config:
