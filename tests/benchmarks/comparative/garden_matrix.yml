@@ -1,0 +1,38 @@
+name: garden_benchmark
+
+paths:
+  gsplat_base: ../gsplat/examples  # Relative path from benchmark directory
+  data_base: /workspace/data  # Docker container path for data
+
+datasets:
+- name: garden
+  path: 360_v2/garden
+
+opt_configs:
+  fvdb_default:
+    path: opt_configs/fvdb_default.yml
+  fvdb_mcmc:
+    path: opt_configs/fvdb_mcmc_default.yml
+  gsplat_default:
+    path: opt_configs/gsplat_default.yml
+  gsplat_mcmc:
+    path: opt_configs/gsplat_mcmc_default.yml
+
+runs:
+  - dataset: garden
+    opt_config: fvdb_default
+  - dataset: garden
+    opt_config: fvdb_mcmc
+    overrides:
+      fvdb:
+        optimization_config:
+          max_gaussians: 5500000
+  - dataset: garden
+    opt_config: gsplat_default
+  - dataset: garden
+    opt_config: gsplat_mcmc
+    overrides:
+      gsplat:
+        cli_args:
+          - --strategy.cap_max
+          - "5500000"

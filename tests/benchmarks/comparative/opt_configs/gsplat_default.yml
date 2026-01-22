@@ -1,7 +1,7 @@
 # The default GSplat configuration parameters.
 framework: gsplat
 name: gsplat
-color: "#767676"
+color: "#2ca02c"  # Green
 mode: default
 
 training:

@@ -59,6 +59,14 @@ def extract_training_metrics(output: str, total_time: float) -> dict[str, Any]:
         "loss_values": [],
         "step_times": [],
         "loss_steps": [],  # Track which steps correspond to loss values
+        "psnr_values": [],  # Time-series PSNR values
+        "psnr_steps": [],  # Steps corresponding to PSNR values
+        "ssim_values": [],  # Time-series SSIM values
+        "ssim_steps": [],  # Steps corresponding to SSIM values
+        "lpips_values": [],  # Time-series LPIPS values
+        "lpips_steps": [],  # Steps corresponding to LPIPS values
+        "iteration_rates": [],  # Training throughput (steps/s or it/s)
+        "rate_steps": [],  # Steps corresponding to iteration rates
     }
 
     # Extract loss values and their corresponding steps from output
@@ -107,21 +115,57 @@ def extract_training_metrics(output: str, total_time: float) -> dict[str, Any]:
         step_numbers = [int(step.replace(",", "")) for step in all_steps]
         metrics["final_step"] = max(step_numbers)
 
-    # Extract evaluation metrics (PSNR, SSIM, LPIPS)
-    psnr_pattern = r"PSNR: ([0-9.]+)"
-    ssim_pattern = r"SSIM: ([0-9.]+)"
-    lpips_pattern = r"LPIPS: ([0-9.]+)"
+    # Extract evaluation metrics (PSNR, SSIM, LPIPS) - both time-series and final values
+    # Split output into lines for more precise extraction
+    output_lines = output.split("\n")
 
-    psnr_matches = re.findall(psnr_pattern, output)
-    ssim_matches = re.findall(ssim_pattern, output)
-    lpips_matches = re.findall(lpips_pattern, output)
+    # Track current step as we parse lines
+    current_step = 0
 
-    if psnr_matches:
-        metrics["psnr"] = float(psnr_matches[-1])  # Use the last (most recent) PSNR value
-    if ssim_matches:
-        metrics["ssim"] = float(ssim_matches[-1])  # Use the last (most recent) SSIM value
-    if lpips_matches:
-        metrics["lpips"] = float(lpips_matches[-1])  # Use the last (most recent) LPIPS value
+    for line in output_lines:
+        # Check if this line contains loss value (indicates actual training, not data loading)
+        has_loss = "loss=" in line
+
+        # Update current step if we find a step indicator
+        step_match = re.search(r"\|\s*(\d+)/\d+\s*\[", line)
+        if step_match:
+            current_step = int(step_match.group(1))
+
+        # Extract iteration rate from progress bars
+        # Pattern: "3.17steps/s" or "1.27it/s"
+        # Only capture rates from lines with loss values to exclude data loading progress bars
+        rate_match = re.search(r"(\d+\.\d+)(steps/s|it/s)", line)
+        if rate_match and step_match and has_loss:
+            rate_value = float(rate_match.group(1))
+            metrics["iteration_rates"].append(rate_value)
+            metrics["rate_steps"].append(current_step)
+
+        # Extract PSNR/SSIM/LPIPS when they appear in evaluation lines
+        psnr_match = re.search(r"PSNR:\s*([0-9.]+)", line)
+        if psnr_match:
+            psnr_value = float(psnr_match.group(1))
+            metrics["psnr_values"].append(psnr_value)
+            metrics["psnr_steps"].append(current_step)
+
+        ssim_match = re.search(r"SSIM:\s*([0-9.]+)", line)
+        if ssim_match:
+            ssim_value = float(ssim_match.group(1))
+            metrics["ssim_values"].append(ssim_value)
+            metrics["ssim_steps"].append(current_step)
+
+        lpips_match = re.search(r"LPIPS:\s*([0-9.]+)", line)
+        if lpips_match:
+            lpips_value = float(lpips_match.group(1))
+            metrics["lpips_values"].append(lpips_value)
+            metrics["lpips_steps"].append(current_step)
+
+    # Store final values (last in the time series) for backward compatibility
+    if metrics["psnr_values"]:
+        metrics["psnr"] = metrics["psnr_values"][-1]
+    if metrics["ssim_values"]:
+        metrics["ssim"] = metrics["ssim_values"][-1]
+    if metrics["lpips_values"]:
+        metrics["lpips"] = metrics["lpips_values"][-1]
 
     # Extract training-only time from FVDB helper logs if available
     training_time_pattern = r"Training completed for .* in ([0-9.]+) seconds"

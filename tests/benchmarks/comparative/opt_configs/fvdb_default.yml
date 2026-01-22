@@ -3,7 +3,7 @@
 # This matches the default behavior of gsplat.
 framework: fvdb
 name: fvdb
-color: "#76B900"
+color: "#1f77b4"  # Blue
 
 splat_optimizer: GaussianSplatOptimizer
 

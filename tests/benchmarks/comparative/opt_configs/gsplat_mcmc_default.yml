@@ -1,7 +1,7 @@
 # The GSplat configuration for MCMC-style comparison runs.
 framework: gsplat
 name: gsplat_mcmc
-color: "#4D4D4D"
+color: "#d62728"  # Red
 mode: mcmc
 
 training:

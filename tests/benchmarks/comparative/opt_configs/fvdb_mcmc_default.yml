@@ -3,7 +3,7 @@
 # This matches the default behavior of gsplat.
 framework: fvdb
 name: fvdb_mcmc
-color: "#264D00"
+color: "#ff7f0e"  # Orange
 
 splat_optimizer: GaussianSplatOptimizerMCMC
 

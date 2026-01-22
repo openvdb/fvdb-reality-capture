@@ -325,6 +325,209 @@ def save_summary_report(
     logging.info("=" * 80)
 
 
+def save_training_curves(
+    scene_name: str, result_path: pathlib.Path, colors: dict[str, str], config_order: list[str]
+) -> None:
+    """
+    Generate training curve plots for a single scene across multiple configurations.
+
+    Creates a multi-subplot figure showing time-dependent metrics:
+    - Iterations/s (training throughput over time)
+    - Loss (training loss convergence)
+    - PSNR (if available from validation during training)
+    - SSIM (if available from validation during training)
+
+    Files saved:
+        {scene_name}_training.png
+            Line plot visualization with 2-4 subplots (depending on available metrics).
+            Each subplot shows one metric over training steps with one line per configuration.
+
+    Args:
+        scene_name (str): Name of the scene to plot.
+        result_path (pathlib.Path): Directory containing the scene comparison report.
+        colors (dict[str, str]): Dictionary mapping configuration names to hex colors.
+        config_order (list[str]): List of configuration names in display order.
+
+    Returns:
+        None
+    """
+    # Load comparison report for this scene
+    report_file = result_path / f"{scene_name}_comparison_report.json"
+    if not report_file.exists():
+        logging.warning(f"Cannot generate training curves: missing report {report_file}")
+        return
+
+    try:
+        with open(report_file, "r") as f:
+            report = json.load(f)
+    except Exception as e:
+        logging.warning(f"Could not load report for training curves: {e}")
+        return
+
+    # Determine which metrics are available across all configs
+    has_psnr = False
+    has_ssim = False
+    has_iterations = False
+    has_loss = False
+
+    for config_name in config_order:
+        if config_name not in report:
+            continue
+        metrics = report[config_name].get("training", {}).get("metrics", {})
+        if metrics.get("psnr_values") and len(metrics.get("psnr_values", [])) > 1:
+            has_psnr = True
+        if metrics.get("ssim_values") and len(metrics.get("ssim_values", [])) > 1:
+            has_ssim = True
+        if metrics.get("iteration_rates") and len(metrics.get("iteration_rates", [])) > 0:
+            has_iterations = True
+        if metrics.get("loss_values") and len(metrics.get("loss_values", [])) > 0:
+            has_loss = True
+
+    # Determine subplot layout - separate iterations and loss for clarity
+    num_plots = 0
+    if has_iterations:
+        num_plots += 1
+    if has_loss:
+        num_plots += 1
+    if has_psnr:
+        num_plots += 1
+    if has_ssim:
+        num_plots += 1
+
+    if num_plots == 0:
+        logging.info(f"No training curve data available for {scene_name}, skipping training curves")
+        return
+
+    # Create figure with dynamic subplot layout
+    fig, axs = plt.subplots(num_plots, 1, figsize=(12, 3.5 * num_plots))
+    if num_plots == 1:
+        axs = [axs]  # Make it iterable
+
+    subplot_idx = 0
+
+    # Subplot 1: Iterations/s (training throughput)
+    if has_iterations:
+        ax_iter = axs[subplot_idx]
+
+        for config_name in config_order:
+            if config_name not in report:
+                continue
+
+            metrics = report[config_name].get("training", {}).get("metrics", {})
+            color = colors.get(config_name, "#999999")
+
+            iteration_rates = metrics.get("iteration_rates", [])
+            rate_steps = metrics.get("rate_steps", [])
+
+            if iteration_rates and rate_steps and len(iteration_rates) > 0:
+                ax_iter.plot(
+                    rate_steps,
+                    iteration_rates,
+                    label=config_name,
+                    color=color,
+                    linewidth=1.2,
+                    alpha=0.9,
+                )
+
+        ax_iter.set_ylabel("Training Throughput (it/s)", fontsize=11)
+        ax_iter.set_xlabel("Training Step", fontsize=11)
+        ax_iter.set_title("Training Throughput Over Time", fontsize=12, fontweight="bold")
+        ax_iter.grid(True, alpha=0.3)
+        ax_iter.legend(loc="best", framealpha=0.9)
+
+        subplot_idx += 1
+
+    # Subplot 2: Loss convergence
+    if has_loss:
+        ax_loss = axs[subplot_idx]
+
+        for config_name in config_order:
+            if config_name not in report:
+                continue
+
+            metrics = report[config_name].get("training", {}).get("metrics", {})
+            color = colors.get(config_name, "#999999")
+
+            loss_values = metrics.get("loss_values", [])
+            loss_steps = metrics.get("loss_steps", [])
+
+            if loss_values and loss_steps and len(loss_values) > 0:
+                ax_loss.plot(
+                    loss_steps,
+                    loss_values,
+                    label=config_name,
+                    color=color,
+                    linewidth=0.8,
+                    alpha=0.75,
+                )
+
+        ax_loss.set_ylabel("Loss", fontsize=11)
+        ax_loss.set_xlabel("Training Step", fontsize=11)
+        ax_loss.set_title("Loss Convergence", fontsize=12, fontweight="bold")
+        ax_loss.grid(True, alpha=0.3)
+        ax_loss.legend(loc="best", framealpha=0.9)
+
+        subplot_idx += 1
+
+    # Subplot 2: PSNR (if available)
+    if has_psnr:
+        ax_psnr = axs[subplot_idx]
+
+        for config_name in config_order:
+            if config_name not in report:
+                continue
+
+            metrics = report[config_name].get("training", {}).get("metrics", {})
+            psnr_values = metrics.get("psnr_values", [])
+            psnr_steps = metrics.get("psnr_steps", [])
+
+            if psnr_values and psnr_steps and len(psnr_values) > 1:
+                color = colors.get(config_name, "#999999")
+                ax_psnr.scatter(psnr_steps, psnr_values, label=config_name, color=color, s=40, alpha=0.8)
+                ax_psnr.plot(psnr_steps, psnr_values, color=color, alpha=0.3, linewidth=0.8)
+
+        ax_psnr.set_ylabel("PSNR (dB)")
+        ax_psnr.set_xlabel("Training Step")
+        ax_psnr.set_title("PSNR Over Training")
+        ax_psnr.grid(True, alpha=0.3)
+        ax_psnr.legend(loc="best")
+
+        subplot_idx += 1
+
+    # Subplot 3: SSIM (if available)
+    if has_ssim:
+        ax_ssim = axs[subplot_idx]
+
+        for config_name in config_order:
+            if config_name not in report:
+                continue
+
+            metrics = report[config_name].get("training", {}).get("metrics", {})
+            ssim_values = metrics.get("ssim_values", [])
+            ssim_steps = metrics.get("ssim_steps", [])
+
+            if ssim_values and ssim_steps and len(ssim_values) > 1:
+                color = colors.get(config_name, "#999999")
+                ax_ssim.scatter(ssim_steps, ssim_values, label=config_name, color=color, s=40, alpha=0.8)
+                ax_ssim.plot(ssim_steps, ssim_values, color=color, alpha=0.3, linewidth=0.8)
+
+        ax_ssim.set_ylabel("SSIM")
+        ax_ssim.set_xlabel("Training Step")
+        ax_ssim.set_title("SSIM Over Training")
+        ax_ssim.grid(True, alpha=0.3)
+        ax_ssim.legend(loc="best")
+
+        subplot_idx += 1
+
+    # Save figure
+    plt.tight_layout()
+    output_file = result_path / f"{scene_name}_training.png"
+    plt.savefig(output_file, dpi=300, bbox_inches="tight")
+    plt.close()
+
+    logging.info(f"Training curves saved to: {output_file}")
+
+
 def main():
     """
     fVDB Comparative Benchmark script.
@@ -570,6 +773,11 @@ def main():
         if training_results:
             save_report_for_run(scene_name=scene_name, training_results=training_results, output_directory=results_path)
 
+            # Generate training curves for this scene
+            save_training_curves(
+                scene_name=scene_name, result_path=results_path, colors=all_config_colors, config_order=config_order
+            )
+
         logging.info(f"Completed benchmark for {scene_name}")
 
     # Generate summary charts if multiple scenes were processed
@@ -579,6 +787,11 @@ def main():
             report_file = results_path / f"{scene_name}_comparison_report.json"
             if not report_file.exists():
                 logging.warning(f"Missing comparison report for expected scene '{scene_name}': {report_file}")
+            else:
+                # Generate training curves from existing reports
+                save_training_curves(
+                    scene_name=scene_name, result_path=results_path, colors=all_config_colors, config_order=config_order
+                )
 
     save_summary_report(scenes, results_path, all_config_colors, config_order)
 
