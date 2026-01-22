@@ -290,7 +290,7 @@ def validate_comparative_benchmark_yaml(config: dict[str, Any]) -> None:
 
     A valid matrix YAML must include:
     - top-level `name`
-    - `paths` with `fvdb_base`, `gsplat_base`, `data_base`
+    - `paths` with `gsplat_base`, `data_base`
     - `datasets[]` entries with `name`, `path`
     - `opt_configs` mapping with entries containing `path`
     - `runs[]` entries with `dataset` and `opt_config`
@@ -301,7 +301,7 @@ def validate_comparative_benchmark_yaml(config: dict[str, Any]) -> None:
     paths = config.get("paths", {})
     if not isinstance(paths, dict):
         _raise_contract_error("Comparative benchmark config missing paths section")
-    for key in ("fvdb_base", "gsplat_base", "data_base"):
+    for key in ("gsplat_base", "data_base"):
         if key not in paths:
             _raise_contract_error("Comparative benchmark config missing paths key", details={"missing": key})
 

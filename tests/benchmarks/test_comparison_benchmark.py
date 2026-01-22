@@ -62,7 +62,6 @@ def _write_minimal_matrix(matrix_path: Path, comparative_dir: Path, include_gspl
     matrix = {
         "name": "test_matrix",
         "paths": {
-            "fvdb_base": "unused",
             "gsplat_base": "unused",
             "data_base": "unused",
         },
@@ -152,7 +151,7 @@ def test_comparison_benchmark_gsplat_overrides(tmp_path: Path, monkeypatch: pyte
 
     matrix = {
         "name": "test_matrix",
-        "paths": {"fvdb_base": "unused", "gsplat_base": "unused", "data_base": "unused"},
+        "paths": {"gsplat_base": "unused", "data_base": "unused"},
         "datasets": [{"name": "garden", "path": "360_v2/garden"}],
         "opt_configs": {
             "gsplat_mcmc": {"path": str((comparative_dir / "opt_configs" / "gsplat_mcmc_default.yml").resolve())}
