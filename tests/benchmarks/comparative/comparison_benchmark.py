@@ -27,13 +27,12 @@ default_colors = ["#76B900", "#767676"]
 
 def save_report_for_run(scene_name: str, training_results: dict[str, Any], output_directory: pathlib.Path) -> None:
     """
-    Generate a JSON report summarizing the training and evaluation results for a given scene.
+    Generate a JSON report summarizing the comparison of training results for multiple configurations for a given scene.
 
     Args:
         scene_name (str): The name of the scene.
         training_results (Dict): A dictionary containing training results for each configuration.
-        eval_results (Dict): A dictionary containing evaluation results.
-        result_dir (str): The directory to save the report.
+        output_directory (pathlib.Path): The directory to save the report.
 
     Returns:
         None
@@ -89,11 +88,29 @@ def save_summary_report(
     Generate a summary report comparing different runs across multiple scenes.
 
     This function creates a summary directory, generates grouped bar charts for each metric,
-    and CSV and JSON files containing statistics across all scenes and configurations.
+    and statistics files containing aggregated results across all scenes and configurations.
+
+    Files saved:
+        summary/summary_comparison.png
+            Grouped bar chart visualization showing all metrics (training throughput, PSNR, SSIM,
+            final Gaussian count, total time, training time, peak GPU memory) with one group per
+            scene and one bar per configuration. Each bar is labeled with its value. Missing data
+            shown as "NA".
+
+        summary/summary_data.json
+            Aggregated statistics in JSON format containing two top-level keys:
+            - "per_scene": Dict mapping scene names to configuration results. For each scene and
+              config combination, contains metrics (training_throughput, PSNR, SSIM, num_gaussians,
+              total_time, training_time, peak_gpu_memory_gb).
+            - "statistics": Dict mapping each metric to per-config statistics including mean,
+              standard deviation, median, min, and max values computed across all scenes.
 
     Args:
         scenes (list[str]): List of scene names to include in the summary.
-        result_dir (str): Directory containing the individual scene reports.
+        result_path (pathlib.Path): Directory containing the individual scene reports
+            (expects files like "{scene}_comparison_report.json").
+        colors (dict[str, str]): Dictionary mapping configuration names to hex color codes for plotting.
+        config_order (list[str]): List of configuration names in the order to display in plots.
 
     Returns:
         None
@@ -312,38 +329,58 @@ def main():
     """
     fVDB Comparative Benchmark script.
 
-    This script allows benchmarking and comparison of fVDB 3D Gaussian Splatting to GSplat on one or more scenes.
-    It supports running training, evaluation, and generating summary plots from existing results.
+    This script benchmarks and compares fVDB 3D Gaussian Splatting to GSplat on multiple scenes
+    defined in a matrix configuration YAML file. It runs training for each configured run,
+    generates per-scene reports, and produces a summary report with comparative visualizations.
 
-    Scene Selection:
-        - If --scenes is provided: Use only the specified scenes
-        - If --scenes is not provided: Use all scenes defined in the config file
-        - Use --list-scenes to see available scenes in the config
+    Matrix Configuration Structure:
+        The matrix YAML file defines:
+        - datasets: List of scene definitions with paths and metadata
+        - opt_configs: Mapping of optimizer config aliases to YAML file paths and colors
+        - runs: List of (dataset, opt_config) pairs specifying which runs to execute
+
+        Results are saved to results/<matrix_name>/ relative to the matrix file location.
 
     Command-line Arguments:
-        --benchmark-config Path to the benchmark configuration YAML file (required unless --plot-only).
-        --opt-configs      Space separated list of optimization config YAML files to use.
-        --scenes           Space-separated list of scene names to benchmark (optional, defaults to all scenes in config).
-        --result-dir       Directory to store results (default: results/benchmark).
-        --log-level        Logging level (default: INFO).
-        --list-scenes      List available scenes from config and exit.
-        --plot-only        Only plot the results from previous run and exit.
+        --matrix       Path to matrix YAML file defining datasets, opt_configs, and runs (required).
+        --log-level    Logging level (default: INFO). Options: DEBUG, INFO, WARNING, ERROR, CRITICAL.
+        --plot-only    Skip training and only generate plots from existing results.
 
-    The script sets up signal handling for graceful interruption, parses arguments,
-    loads configuration, and processes each scene as specified.
+    Workflow:
+        1. Loads matrix configuration YAML file
+        2. Creates results directory at results/<matrix_name>/
+        3. For each run in the matrix:
+           - Prepares framework-specific (fVDB or GSplat) configuration
+           - Executes training and captures metrics
+           - Saves per-run results to run_dir
+        4. Generates per-scene comparison report (JSON) summarizing all runs for that scene
+        5. Generates summary report across all scenes with plots and aggregated statistics
+           Outputs to results/<matrix_name>/summary/
+
+    Output Files:
+        Per-scene reports (at results/<matrix_name>/):
+            {scene_name}_comparison_report.json
+                Comparison metrics for all configurations on a given scene
+
+        Summary report (at results/<matrix_name>/summary/):
+            summary_comparison.png
+                Grouped bar charts comparing all metrics across scenes and configurations
+            summary_data.json
+                Per-scene results and aggregated statistics for all metrics
+
+        Logs:
+            benchmark.log (at results/<matrix_name>/)
+                Full execution log with timestamps
 
     Example usage:
-        # Run all scenes from config
-        python comparison_benchmark.py --benchmark-config config.yaml --opt-configs opt1.yaml opt2.yaml
+        # Run all scenes and configurations defined in matrix
+        python comparison_benchmark.py --matrix garden_matrix.yml
 
-        # Run specific scenes
-        python comparison_benchmark.py --benchmark-config config.yaml --scenes garden,bicycle --opt-configs opt1.yaml opt2.yaml
+        # Run with verbose logging
+        python comparison_benchmark.py --matrix garden_matrix.yml --log-level DEBUG
 
-        # List available scenes
-        python comparison_benchmark.py --benchmark-config config.yaml --list-scenes
-
-        # Generate plots from existing results
-        python comparison_benchmark.py --scenes garden,bicycle --plot-only
+        # Generate plots from existing results without re-training
+        python comparison_benchmark.py --matrix garden_matrix.yml --plot-only
 
     Returns:
         None

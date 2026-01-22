@@ -21,7 +21,34 @@ def run_gsplat_training(
     opt_config_path: pathlib.Path,
     extra_cli_args: list[str] | None = None,
 ) -> dict[str, Any]:
-    """Run GSplat training using the simplified basic benchmark approach."""
+    """
+    Run GSplat training using the matrix configuration.
+
+    Executes the GSplat training pipeline for a specific scene by invoking
+    `simple_trainer.py` with computed densification parameters matched to fVDB.
+    Handles image downsampling via symlinks and extracts training metrics including
+    rendering performance and final quality scores.
+
+    Args:
+        scene_name (str): The name of the scene to train on.
+        run_dir (pathlib.Path): Directory to save the run results and logs.
+        matrix_config_path (pathlib.Path): Path to the matrix configuration YAML file
+            (contains datasets, opt_configs, and runs definitions).
+        opt_config_path (pathlib.Path): Path to the optimization configuration YAML file
+            (contains GSplat training parameters and mode selection).
+        extra_cli_args (list[str] | None): Additional command-line arguments to pass
+            to GSplat's simple_trainer.py. If None, only default arguments are used.
+
+    Returns:
+        dict[str, Any]: Training results containing:
+            - "success" (bool): Whether training completed successfully (exit_code == 0)
+            - "total_time" (float): Total wall-clock time in seconds
+            - "training_time" (float): Pure training time in seconds (excluding setup),
+              measured from first "Step N" log entry to completion
+            - "exit_code" (int): Process exit code (0 = success)
+            - "metrics" (dict[str, Any]): Extracted training metrics (PSNR, SSIM, etc.)
+            - "result_dir" (str): Path to the run results directory
+    """
     logging.info(f"Starting GSplat training for scene: {scene_name}")
 
     # Start timing
@@ -157,6 +184,20 @@ def run_gsplat_training(
     stop_event = _threading.Event()
 
     def _watch_training_start(log_path: str, pattern: str, started_flag: dict, stop_evt: _threading.Event):
+        """
+        Background thread that monitors the training log for the first training step.
+
+        Watches the training log file for a line matching the given pattern (typically
+        the first "Step N" output) and records the timestamp when training actually starts.
+        Used to separate setup/initialization time from pure training time.
+
+        Args:
+            log_path (str): Path to the training log file to monitor.
+            pattern (str): Regex pattern to search for (e.g., r"Step\s+\d+").
+            started_flag (dict): Dictionary with "t" key to store the training start timestamp.
+                Set to None initially, updated when pattern is found.
+            stop_evt (_threading.Event): Event to signal thread to stop monitoring.
+        """
         # Wait until the file exists
         while not stop_evt.is_set() and not _os.path.exists(log_path):
             time.sleep(0.05)

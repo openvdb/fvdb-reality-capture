@@ -20,14 +20,30 @@ def run_fvdb_training(
     fvdb_results_base_path: pathlib.Path | None = None,
 ) -> dict[str, Any]:
     """
-    Run fVDB training using the benchmark configuration.
+    Run fVDB training using the matrix configuration.
+
+    Executes the fVDB training pipeline for a specific scene by invoking
+    `generate_benchmark_checkpoints.py` with a filtered configuration containing
+    only the specified scene. Captures training metrics and timing information.
 
     Args:
-        scene_name (str): The name of the scene to train on
-        result_path (pathlib.Path): Directory to save the results.
-        benchmark_config_path (Path): Path to the benchmark configuration file.
-        opt_config_path (Path): Path to the optimization configuration file.
-        name (str): Name of the training run.
+        scene_name (str): The name of the scene to train on.
+        run_dir (pathlib.Path): Directory to save the run results and logs.
+        matrix_config_path (pathlib.Path): Path to the matrix configuration YAML file
+            (contains datasets, opt_configs, and runs definitions).
+        opt_config_path (pathlib.Path): Path to the optimization configuration YAML file
+            (contains fVDB training parameters).
+        fvdb_results_base_path (pathlib.Path | None): Base directory for fVDB results.
+            If None, defaults to run_dir / "fvdb_results".
+
+    Returns:
+        dict[str, Any]: Training results containing:
+            - "success" (bool): Whether training completed successfully (exit_code == 0)
+            - "total_time" (float): Total wall-clock time in seconds
+            - "training_time" (float): Pure training time in seconds (excluding setup)
+            - "exit_code" (int): Process exit code (0 = success)
+            - "metrics" (dict[str, Any]): Extracted training metrics (PSNR, SSIM, etc.)
+            - "result_dir" (str): Path to the run results directory
     """
     logging.info(f"Starting FVDB training for scene: {scene_name} with config: {opt_config_path.name}")
 
