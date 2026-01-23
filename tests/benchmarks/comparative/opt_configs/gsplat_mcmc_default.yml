@@ -35,6 +35,15 @@ training:
     ssim_lambda: 0.2
     tile_size: 16
     eval_at_percent:
+      - 10
+      - 20
+      - 30
+      - 40
+      - 50
+      - 60
+      - 70
+      - 80
+      - 90
       - 100
   save_at_percent:
     - 100

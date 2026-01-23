@@ -128,12 +128,22 @@ def run_gsplat_training(
     gsplat_mode = opt_config.get("mode", "default")
     if gsplat_mode not in ("default", "mcmc"):
         raise ValueError(f"Unsupported gsplat mode: {gsplat_mode}")
+
+    # Convert eval_at_percent to eval_steps
+    eval_at_percent = opt_config.get("training", {}).get("config", {}).get("eval_at_percent", [100])
+    eval_steps = [int(pct * max_steps / 100) for pct in eval_at_percent]
+    logging.info(f"  Eval at percent: {eval_at_percent}")
+    logging.info(f"  Eval steps: {eval_steps}")
+
     cmd = [
         sys.executable,
         "simple_trainer.py",
         gsplat_mode,
         "--eval_steps",
-        str(max_steps),  # Evaluate at final step
+    ]
+    # Add eval steps as space-separated values
+    cmd.extend([str(step) for step in eval_steps])
+    cmd.extend([
         "--disable_viewer",
         "--disable_video",  # Disable video generation to avoid rendering errors
         "--data_factor",
@@ -156,7 +166,7 @@ def run_gsplat_training(
         "--strategy.verbose",  # Enable verbose output to see refinement info
         "--global_scale",
         "1.0",
-    ]
+    ])
     if gsplat_mode == "default":
         cmd.extend(
             [

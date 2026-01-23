@@ -67,26 +67,27 @@ def extract_training_metrics(output: str, total_time: float) -> dict[str, Any]:
         "lpips_steps": [],  # Steps corresponding to LPIPS values
         "iteration_rates": [],  # Training throughput (steps/s or it/s)
         "rate_steps": [],  # Steps corresponding to iteration rates
+        "gaussian_count_values": [],  # Time-series Gaussian count values
+        "gaussian_count_steps": [],  # Steps corresponding to Gaussian counts
     }
 
     # Extract loss values and their corresponding steps from output
     import re
 
-    # Extract loss values with their step context
-    loss_pattern = r"loss=([0-9.]+)"
-    losses = re.findall(loss_pattern, output)
-    metrics["loss_values"] = [float(loss) for loss in losses]
+    # Extract loss and step together from each line to ensure proper alignment
+    # Pattern: "loss=0.123| ... | 1234/42000 [" - captures both loss and step from the same line
+    loss_step_pattern = r"loss=([0-9.]+).*?\|\s*(\d+)/\d+\s*\["
 
-    # Extract step numbers from progress indicators that appear with losses
-    # Pattern: "| 1234/42000 [" - captures the current step from progress bars
-    step_progress_pattern = r"\|\s*(\d+)/\d+\s*\["
-    step_matches = re.findall(step_progress_pattern, output)
-
-    # Convert to integers and ensure we have the same number as losses
-    if step_matches and len(step_matches) >= len(losses):
-        # Take the first len(losses) step numbers to match with losses
-        metrics["loss_steps"] = [int(step) for step in step_matches[: len(losses)]]
+    loss_step_matches = re.findall(loss_step_pattern, output)
+    if loss_step_matches:
+        metrics["loss_values"] = [float(loss) for loss, step in loss_step_matches]
+        metrics["loss_steps"] = [int(step) for loss, step in loss_step_matches]
     else:
+        # Fallback to old method if pattern doesn't match
+        loss_pattern = r"loss=([0-9.]+)"
+        losses = re.findall(loss_pattern, output)
+        metrics["loss_values"] = [float(loss) for loss in losses]
+
         # Fallback: create evenly spaced step numbers
         if losses:
             max_steps = 42000  # Default expected steps
@@ -126,10 +127,17 @@ def extract_training_metrics(output: str, total_time: float) -> dict[str, Any]:
         # Check if this line contains loss value (indicates actual training, not data loading)
         has_loss = "loss=" in line
 
-        # Update current step if we find a step indicator
+        # Update current step if we find a step indicator in a training line (with loss)
+        # Don't update from evaluation progress bars (they show image counts, not training steps)
         step_match = re.search(r"\|\s*(\d+)/\d+\s*\[", line)
-        if step_match:
+        if step_match and has_loss:
             current_step = int(step_match.group(1))
+
+        # Also check for fVDB checkpoint/evaluation step indicators
+        # Pattern: "Saving checkpoint at global step 33200"
+        checkpoint_match = re.search(r"global step\s+(\d+)", line)
+        if checkpoint_match:
+            current_step = int(checkpoint_match.group(1))
 
         # Extract iteration rate from progress bars
         # Pattern: "3.17steps/s" or "1.27it/s"
@@ -159,6 +167,32 @@ def extract_training_metrics(output: str, total_time: float) -> dict[str, Any]:
             metrics["lpips_values"].append(lpips_value)
             metrics["lpips_steps"].append(current_step)
 
+        # Extract Gaussian count from various formats
+        # New FVDB format: "num gaussians=817,140"
+        # Old FVDB format: "Num Gaussians: 817,140 (before:"
+        # GSplat formats: "Now having 817140 GSs" or "Number of GS: 817140"
+        gaussian_patterns = [
+            r"num gaussians=([\d,]+)",
+            r"Num Gaussians:\s*([\d,]+)\s*\(before:",
+            r"Now having\s+([\d,]+)\s+GSs",
+            r"Number of GS:\s+([\d,]+)",
+        ]
+        for pattern in gaussian_patterns:
+            gaussian_match = re.search(pattern, line)
+            if gaussian_match:
+                count_str = gaussian_match.group(1).replace(",", "")
+                try:
+                    gaussian_count = int(count_str)
+                    # Only add if we have a valid step and avoid duplicates
+                    if current_step > 0 and (
+                        not metrics["gaussian_count_steps"] or metrics["gaussian_count_steps"][-1] != current_step
+                    ):
+                        metrics["gaussian_count_values"].append(gaussian_count)
+                        metrics["gaussian_count_steps"].append(current_step)
+                    break  # Stop after first match
+                except ValueError:
+                    pass
+
     # Store final values (last in the time series) for backward compatibility
     if metrics["psnr_values"]:
         metrics["psnr"] = metrics["psnr_values"][-1]
@@ -178,25 +212,29 @@ def extract_training_metrics(output: str, total_time: float) -> dict[str, Any]:
         except Exception:
             pass
 
-    # Extract final Gaussian count
-    # New FVDB progress format example in pbar: "loss=0.021| sh degree=3| num gaussians=817,140"
-    # Old FVDB summary debug format: "Num Gaussians: X (before: Y)"
-    # GSplat format: "Now having X GSs"
-    gaussian_patterns = [
-        r"num gaussians=([\d,]+)",  # new FVDB
-        r"Num Gaussians: ([\d,]+) \(before:",  # old FVDB
-        r"Now having (\d+) GSs",  # GSplat
-        r"Number of GS: (\d+)",  # GSplat
-    ]
-    for _pat in gaussian_patterns:
-        _matches = re.findall(_pat, output)
-        if _matches:
-            count_str = _matches[-1].replace(",", "")
-            try:
-                metrics["final_gaussian_count"] = int(count_str)
-                break
-            except Exception:
-                pass
+    # Extract final Gaussian count from time-series data if available, otherwise from full output
+    if metrics["gaussian_count_values"]:
+        metrics["final_gaussian_count"] = metrics["gaussian_count_values"][-1]
+    else:
+        # Fallback: extract from full output
+        # New FVDB progress format example in pbar: "loss=0.021| sh degree=3| num gaussians=817,140"
+        # Old FVDB summary debug format: "Num Gaussians: X (before: Y)"
+        # GSplat format: "Now having X GSs"
+        gaussian_patterns = [
+            r"num gaussians=([\d,]+)",  # new FVDB
+            r"Num Gaussians: ([\d,]+) \(before:",  # old FVDB
+            r"Now having (\d+) GSs",  # GSplat
+            r"Number of GS: (\d+)",  # GSplat
+        ]
+        for _pat in gaussian_patterns:
+            _matches = re.findall(_pat, output)
+            if _matches:
+                count_str = _matches[-1].replace(",", "")
+                try:
+                    metrics["final_gaussian_count"] = int(count_str)
+                    break
+                except Exception:
+                    pass
 
     # Extract peak GPU memory
     # GSplat format: "Step:  99 {'mem': 0.19268178939819336, ...}"

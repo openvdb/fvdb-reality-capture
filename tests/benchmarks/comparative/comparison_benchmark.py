@@ -334,12 +334,13 @@ def save_training_curves(
     Creates a multi-subplot figure showing time-dependent metrics:
     - Iterations/s (training throughput over time)
     - Loss (training loss convergence)
+    - Gaussian Count (number of Gaussians over time)
     - PSNR (if available from validation during training)
     - SSIM (if available from validation during training)
 
     Files saved:
         {scene_name}_training.png
-            Line plot visualization with 2-4 subplots (depending on available metrics).
+            Line plot visualization with 2-5 subplots (depending on available metrics).
             Each subplot shows one metric over training steps with one line per configuration.
 
     Args:
@@ -369,6 +370,7 @@ def save_training_curves(
     has_ssim = False
     has_iterations = False
     has_loss = False
+    has_gaussian_count = False
 
     for config_name in config_order:
         if config_name not in report:
@@ -382,12 +384,16 @@ def save_training_curves(
             has_iterations = True
         if metrics.get("loss_values") and len(metrics.get("loss_values", [])) > 0:
             has_loss = True
+        if metrics.get("gaussian_count_values") and len(metrics.get("gaussian_count_values", [])) > 0:
+            has_gaussian_count = True
 
     # Determine subplot layout - separate iterations and loss for clarity
     num_plots = 0
     if has_iterations:
         num_plots += 1
     if has_loss:
+        num_plots += 1
+    if has_gaussian_count:
         num_plots += 1
     if has_psnr:
         num_plots += 1
@@ -466,6 +472,38 @@ def save_training_curves(
         ax_loss.set_title("Loss Convergence", fontsize=12, fontweight="bold")
         ax_loss.grid(True, alpha=0.3)
         ax_loss.legend(loc="best", framealpha=0.9)
+
+        subplot_idx += 1
+
+    # Subplot: Gaussian Count (if available)
+    if has_gaussian_count:
+        ax_gaussians = axs[subplot_idx]
+
+        for config_name in config_order:
+            if config_name not in report:
+                continue
+
+            metrics = report[config_name].get("training", {}).get("metrics", {})
+            color = colors.get(config_name, "#999999")
+
+            gaussian_count_values = metrics.get("gaussian_count_values", [])
+            gaussian_count_steps = metrics.get("gaussian_count_steps", [])
+
+            if gaussian_count_values and gaussian_count_steps and len(gaussian_count_values) > 0:
+                ax_gaussians.plot(
+                    gaussian_count_steps,
+                    gaussian_count_values,
+                    label=config_name,
+                    color=color,
+                    linewidth=1.2,
+                    alpha=0.9,
+                )
+
+        ax_gaussians.set_ylabel("Number of Gaussians", fontsize=11)
+        ax_gaussians.set_xlabel("Training Step", fontsize=11)
+        ax_gaussians.set_title("Gaussian Count Over Time", fontsize=12, fontweight="bold")
+        ax_gaussians.grid(True, alpha=0.3)
+        ax_gaussians.legend(loc="best", framealpha=0.9)
 
         subplot_idx += 1
 
