@@ -557,8 +557,13 @@ def save_training_curves(
 
         subplot_idx += 1
 
+    # Add main title and subtitle
+    scene_title = scene_name.replace("_", " ").title()
+    fig.suptitle("Gaussian Splat Training", fontsize=16, fontweight="bold", y=0.99)
+    fig.text(0.5, 0.97, f"Scene: {scene_title}", ha="center", fontsize=12, style="italic")
+
     # Save figure
-    plt.tight_layout()
+    plt.tight_layout(rect=[0, 0, 1, 0.97])  # Leave space for suptitle and subtitle
     output_file = result_path / f"{scene_name}_training.png"
     plt.savefig(output_file, dpi=300, bbox_inches="tight")
     plt.close()
