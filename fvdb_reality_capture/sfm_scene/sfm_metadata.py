@@ -84,6 +84,16 @@ class SfmCameraMetadata:
             distortion_parameters (np.ndarray): An array of distortion coefficients corresponding to the camera type, or an empty array if no distortion is present.
         """
 
+        # Store original (distorted) intrinsics for serialization
+        self._original_fx = fx
+        self._original_fy = fy
+        self._original_cx = cx
+        self._original_cy = cy
+        self._original_width = img_width
+        self._original_height = img_height
+        self._camera_type = camera_type
+        self._distortion_parameters = distortion_parameters
+
         # camera intrinsics assuming a perspective projection model
         projection_matrix = np.array([[fx, 0, cx], [0, fy, cy], [0, 0, 1]])
 
@@ -95,44 +105,56 @@ class SfmCameraMetadata:
                 projection_matrix, distortion_parameters, None, undistorted_proj_mat, (img_width, img_height), cv2.CV_32FC1  # type: ignore
             )
 
-            self._projection_matrix = undistorted_proj_mat
-
             self._undistort_roi = tuple([v for v in undistort_roi])
             assert len(self._undistort_roi) == 4, "Undistort ROI must be a tuple of (x, y, width, height)"
 
             self._undistort_map_x = undistort_map_x
             self._undistort_map_y = undistort_map_y
+
+            # Adjust projection matrix for ROI crop: shift principal point by ROI offset
+            roi_x, roi_y, roi_w, roi_h = self._undistort_roi
+            adjusted_proj_mat = undistorted_proj_mat.copy()
+            adjusted_proj_mat[0, 2] -= roi_x  # cx - roi_x
+            adjusted_proj_mat[1, 2] -= roi_y  # cy - roi_y
+
+            self._projection_matrix = adjusted_proj_mat
+            self._fx = adjusted_proj_mat[0, 0]
+            self._fy = adjusted_proj_mat[1, 1]
+            self._cx = adjusted_proj_mat[0, 2]
+            self._cy = adjusted_proj_mat[1, 2]
+            self._width = roi_w
+            self._height = roi_h
         else:
             self._projection_matrix = projection_matrix
             self._undistort_roi = None
             self._undistort_map_x = None
             self._undistort_map_y = None
 
-        self._fx = self._projection_matrix[0, 0]
-        self._fy = self._projection_matrix[1, 1]
-        self._cx = self._projection_matrix[0, 2]
-        self._cy = self._projection_matrix[1, 2]
-        self._width = img_width
-        self._height = img_height
-        self._camera_type = camera_type
-        self._distortion_parameters = distortion_parameters
+            self._fx = fx
+            self._fy = fy
+            self._cx = cx
+            self._cy = cy
+            self._width = img_width
+            self._height = img_height
 
     def state_dict(self) -> dict[str, Any]:
         """
         Return a state dictionary representing the camera metadata.
 
         This dictionary can be used to serialize and deserialize the camera metadata.
+        The dictionary stores the original (distorted) intrinsics so that the camera
+        can be correctly reconstructed with undistortion maps.
 
         Returns:
             state_dict (dict[str, Any]): A dictionary containing the camera metadata.
         """
         return {
-            "img_width": self.width,
-            "img_height": self.height,
-            "fx": self.fx,
-            "fy": self.fy,
-            "cx": self.cx,
-            "cy": self.cy,
+            "img_width": self._original_width,
+            "img_height": self._original_height,
+            "fx": self._original_fx,
+            "fy": self._original_fy,
+            "cx": self._original_cx,
+            "cy": self._original_cy,
             "camera_type": self.camera_type.value,
             "distortion_parameters": self.distortion_parameters.tolist(),
         }
@@ -278,6 +300,32 @@ class SfmCameraMetadata:
         return self._height
 
     @property
+    def original_width(self) -> int:
+        """
+        Return the original (distorted) width of the camera image in pixel units.
+
+        This is the width of the image as captured by the camera, before any undistortion
+        is applied. This is useful when working with the raw images on disk.
+
+        Returns:
+            original_width (int): The original width of the camera image in pixels.
+        """
+        return self._original_width
+
+    @property
+    def original_height(self) -> int:
+        """
+        Return the original (distorted) height of the camera image in pixel units.
+
+        This is the height of the image as captured by the camera, before any undistortion
+        is applied. This is useful when working with the raw images on disk.
+
+        Returns:
+            original_height (int): The original height of the camera image in pixels.
+        """
+        return self._original_height
+
+    @property
     def camera_type(self) -> SfmCameraType:
         """
         Return the type of camera used to capture the image.
@@ -311,9 +359,12 @@ class SfmCameraMetadata:
         """
         return self._distortion_parameters
 
-    def resize(self, new_width, new_height) -> "SfmCameraMetadata":
+    def resize(self, new_width: int, new_height: int) -> "SfmCameraMetadata":
         """
         Return a new :class:`SfmCameraMetadata` object with the camera parameters resized to the new image dimensions.
+
+        The resize is applied to the original (distorted) camera parameters, so that undistortion
+        will be correctly recomputed for the new resolution.
 
         Args:
             new_width (int): The new width of the camera image (must be a positive integer)
@@ -325,12 +376,13 @@ class SfmCameraMetadata:
         if new_width <= 0 or new_height <= 0:
             raise ValueError("New size must be positive integers.")
 
-        rescale_w = self.width / new_width
-        rescale_h = self.height / new_height
-        new_fx = self.fx / rescale_w
-        new_fy = self.fy / rescale_h
-        new_cx = self.cx / rescale_w
-        new_cy = self.cy / rescale_h
+        # Scale based on original (distorted) image dimensions
+        rescale_w = self._original_width / new_width
+        rescale_h = self._original_height / new_height
+        new_fx = self._original_fx / rescale_w
+        new_fy = self._original_fy / rescale_h
+        new_cx = self._original_cx / rescale_w
+        new_cy = self._original_cy / rescale_h
 
         return SfmCameraMetadata(
             new_width, new_height, new_fx, new_fy, new_cx, new_cy, self.camera_type, self.distortion_parameters

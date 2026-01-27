@@ -108,8 +108,9 @@ class DownsampleImages(BaseTransform):
 
         new_camera_metadata = {}
         for cam_id, cam_meta in input_scene.cameras.items():
-            rescaled_cam_w = int(cam_meta.width / self._image_downsample_factor)
-            rescaled_cam_h = int(cam_meta.height / self._image_downsample_factor)
+            # Use original (distorted) dimensions since we're downsampling the raw images on disk
+            rescaled_cam_w = int(cam_meta.original_width / self._image_downsample_factor)
+            rescaled_cam_h = int(cam_meta.original_height / self._image_downsample_factor)
             new_camera_metadata[cam_id] = cam_meta.resize(rescaled_cam_w, rescaled_cam_h)
 
         self._logger.info(
@@ -209,8 +210,13 @@ class DownsampleImages(BaseTransform):
                 img_h, img_w = full_res_img.shape[:2]
                 rescaled_img_h = int(img_h / self._image_downsample_factor)
                 rescaled_img_w = int(img_w / self._image_downsample_factor)
-                assert rescaled_img_w == new_camera_metadata[image_meta.camera_id].width, "Got mismatched widths!"
-                assert rescaled_img_h == new_camera_metadata[image_meta.camera_id].height, "Got mismatched heights!"
+                # Compare with original (distorted) dimensions since we're downsampling raw images from disk
+                assert (
+                    rescaled_img_w == new_camera_metadata[image_meta.camera_id].original_width
+                ), f"Got mismatched widths {rescaled_img_w} !={new_camera_metadata[image_meta.camera_id].original_width}"
+                assert (
+                    rescaled_img_h == new_camera_metadata[image_meta.camera_id].original_height
+                ), f"Got mismatched heights {rescaled_img_h} !={new_camera_metadata[image_meta.camera_id].original_height}"
                 pbar.set_description(
                     f"Rescaling {image_filename} from {img_w} x {img_h} to {rescaled_img_w} x {rescaled_img_h}"
                 )
@@ -241,9 +247,12 @@ class DownsampleImages(BaseTransform):
                     mask_h, mask_w = full_res_mask.shape[:2]
                     rescaled_mask_h = int(mask_h / self._image_downsample_factor)
                     rescaled_mask_w = int(mask_w / self._image_downsample_factor)
-                    assert rescaled_mask_w == new_camera_metadata[image_meta.camera_id].width, "Got mismatched widths!"
+                    # Compare with original (distorted) dimensions since masks correspond to raw images from disk
                     assert (
-                        rescaled_mask_h == new_camera_metadata[image_meta.camera_id].height
+                        rescaled_mask_w == new_camera_metadata[image_meta.camera_id].original_width
+                    ), "Got mismatched widths!"
+                    assert (
+                        rescaled_mask_h == new_camera_metadata[image_meta.camera_id].original_height
                     ), "Got mismatched heights!"
                     pbar.set_description(
                         f"Rescaling {image_filename} from {mask_w} x {mask_h} to {rescaled_mask_w} x {rescaled_mask_h}"
