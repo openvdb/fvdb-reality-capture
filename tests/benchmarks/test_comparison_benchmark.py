@@ -28,18 +28,20 @@ def _write_minimal_report(report_path: Path, include_time_series: bool = False) 
 
     if include_time_series:
         # Add time-series data for training curve plots
-        metrics.update({
-            "loss_steps": [0, 1000, 2000, 3000],
-            "loss_values": [0.1, 0.08, 0.06, 0.05],
-            "psnr_steps": [0, 1000, 2000, 3000],
-            "psnr_values": [20.0, 22.5, 24.0, 25.0],
-            "ssim_steps": [0, 1000, 2000, 3000],
-            "ssim_values": [0.7, 0.75, 0.8, 0.85],
-            "gaussian_count_steps": [0, 1000, 2000, 3000],
-            "gaussian_count_values": [100000, 150000, 180000, 200000],
-            "iterations_per_s_steps": [0, 1000, 2000, 3000],
-            "iterations_per_s_values": [50.0, 48.0, 47.0, 46.0],
-        })
+        metrics.update(
+            {
+                "loss_steps": [0, 1000, 2000, 3000],
+                "loss_values": [0.1, 0.08, 0.06, 0.05],
+                "psnr_steps": [0, 1000, 2000, 3000],
+                "psnr_values": [20.0, 22.5, 24.0, 25.0],
+                "ssim_steps": [0, 1000, 2000, 3000],
+                "ssim_values": [0.7, 0.75, 0.8, 0.85],
+                "gaussian_count_steps": [0, 1000, 2000, 3000],
+                "gaussian_count_values": [100000, 150000, 180000, 200000],
+                "iterations_per_s_steps": [0, 1000, 2000, 3000],
+                "iterations_per_s_values": [50.0, 48.0, 47.0, 46.0],
+            }
+        )
 
     report = {
         "fvdb_default": {
