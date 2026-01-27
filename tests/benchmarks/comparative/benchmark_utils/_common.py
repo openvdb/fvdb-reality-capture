@@ -190,8 +190,8 @@ def extract_training_metrics(output: str, total_time: float) -> dict[str, Any]:
                         metrics["gaussian_count_values"].append(gaussian_count)
                         metrics["gaussian_count_steps"].append(current_step)
                     break  # Stop after first match
-                except ValueError:
-                    pass
+                except ValueError as e:
+                    logging.warning(f"Failed to parse gaussian_count from '{count_str}' (pattern: {pattern}): {e}")
 
     # Store final values (last in the time series) for backward compatibility
     if metrics["psnr_values"]:
@@ -209,8 +209,8 @@ def extract_training_metrics(output: str, total_time: float) -> dict[str, Any]:
     if _m:
         try:
             metrics["training_time"] = float(_m.group(1))
-        except Exception:
-            pass
+        except Exception as e:
+            logging.warning(f"Failed to parse training_time from '{_m.group(1)}': {e}")
 
     # Extract final Gaussian count from time-series data if available, otherwise from full output
     if metrics["gaussian_count_values"]:
@@ -233,8 +233,8 @@ def extract_training_metrics(output: str, total_time: float) -> dict[str, Any]:
                 try:
                     metrics["final_gaussian_count"] = int(count_str)
                     break
-                except Exception:
-                    pass
+                except Exception as e:
+                    logging.warning(f"Failed to parse final_gaussian_count from '{count_str}' (pattern: {_pat}): {e}")
 
     # Extract peak GPU memory
     # GSplat format: "Step:  99 {'mem': 0.19268178939819336, ...}"
