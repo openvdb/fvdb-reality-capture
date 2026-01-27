@@ -23,7 +23,24 @@ def _load_comparison_benchmark_module():
     return module, comparative_dir
 
 
-def _write_minimal_report(report_path: Path) -> None:
+def _write_minimal_report(report_path: Path, include_time_series: bool = False) -> None:
+    metrics = {"psnr": 1.0, "ssim": 1.0, "final_gaussian_count": 1}
+
+    if include_time_series:
+        # Add time-series data for training curve plots
+        metrics.update({
+            "loss_steps": [0, 1000, 2000, 3000],
+            "loss_values": [0.1, 0.08, 0.06, 0.05],
+            "psnr_steps": [0, 1000, 2000, 3000],
+            "psnr_values": [20.0, 22.5, 24.0, 25.0],
+            "ssim_steps": [0, 1000, 2000, 3000],
+            "ssim_values": [0.7, 0.75, 0.8, 0.85],
+            "gaussian_count_steps": [0, 1000, 2000, 3000],
+            "gaussian_count_values": [100000, 150000, 180000, 200000],
+            "iterations_per_s_steps": [0, 1000, 2000, 3000],
+            "iterations_per_s_values": [50.0, 48.0, 47.0, 46.0],
+        })
+
     report = {
         "fvdb_default": {
             "config_name": "fvdb_default",
@@ -34,7 +51,7 @@ def _write_minimal_report(report_path: Path) -> None:
                 "total_time": 1.0,
                 "training_time": 1.0,
                 "exit_code": 0,
-                "metrics": {"psnr": 1.0, "ssim": 1.0, "final_gaussian_count": 1},
+                "metrics": metrics,
                 "result_dir": "results/benchmark",
             },
             "success": True,
@@ -182,6 +199,38 @@ def test_comparison_benchmark_gsplat_overrides(tmp_path: Path, monkeypatch: pyte
 
     report_path = tmp_path / "results" / "test_matrix" / "garden_comparison_report.json"
     assert report_path.exists()
+
+
+def test_training_curves_plot_generation(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """Test that training curve plots are generated when time-series data is present."""
+    module, comparative_dir = _load_comparison_benchmark_module()
+
+    matrix_path = tmp_path / "matrix.yml"
+    _write_minimal_matrix(matrix_path, comparative_dir, include_gsplat=False)
+
+    results_path = tmp_path / "results" / "test_matrix"
+    results_path.mkdir(parents=True, exist_ok=True)
+    report_path = results_path / "garden_comparison_report.json"
+
+    # Write report with time-series data
+    _write_minimal_report(report_path, include_time_series=True)
+
+    args = [
+        "comparison_benchmark.py",
+        "--matrix",
+        str(matrix_path),
+        "--plot-only",
+    ]
+    monkeypatch.setattr(sys, "argv", args)
+    module.main()
+
+    # Assert summary plots exist
+    assert (results_path / "summary" / "summary_data.json").exists()
+    assert (results_path / "summary" / "summary_comparison.png").exists()
+
+    # Assert training curves plot exists
+    training_curves_plot = results_path / "garden_training.png"
+    assert training_curves_plot.exists(), f"Training curves plot not found at {training_curves_plot}"
 
 
 def test_comparative_configs_match_contract():
