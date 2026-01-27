@@ -191,7 +191,13 @@ def extract_training_metrics(output: str, total_time: float) -> dict[str, Any]:
                         metrics["gaussian_count_steps"].append(current_step)
                     break  # Stop after first match
                 except ValueError:
-                    pass
+                    # Ignore lines where the gaussian count is not a valid integer,
+                    # but log at debug level to aid troubleshooting of unexpected formats.
+                    logging.debug(
+                        "Failed to parse gaussian count '%s' from line: %s",
+                        count_str,
+                        line,
+                    )
 
     # Store final values (last in the time series) for backward compatibility
     if metrics["psnr_values"]:
