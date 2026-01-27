@@ -250,10 +250,10 @@ class DownsampleImages(BaseTransform):
                     # Compare with original (distorted) dimensions since masks correspond to raw images from disk
                     assert (
                         rescaled_mask_w == new_camera_metadata[image_meta.camera_id].original_width
-                    ), "Got mismatched widths!"
+                    ), f"Got mismatched mask widths {rescaled_mask_w} != {new_camera_metadata[image_meta.camera_id].original_width}"
                     assert (
                         rescaled_mask_h == new_camera_metadata[image_meta.camera_id].original_height
-                    ), "Got mismatched heights!"
+                    ), f"Got mismatched mask heights {rescaled_mask_h} != {new_camera_metadata[image_meta.camera_id].original_height}"
                     pbar.set_description(
                         f"Rescaling {image_filename} from {mask_w} x {mask_h} to {rescaled_mask_w} x {rescaled_mask_h}"
                     )
