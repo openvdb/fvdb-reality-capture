@@ -28,6 +28,7 @@ dependencies = [
     "nanovdb-editor<0.2.0",
     "numpy>=2.0.0",
     "opencv-python-headless",
+    "open-clip-torch",
     "point-cloud-utils",
     "pye57",
     "pyproj",
