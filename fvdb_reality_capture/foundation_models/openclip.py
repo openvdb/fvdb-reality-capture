@@ -252,7 +252,7 @@ class OpenCLIPModel:
         """
         if not text_list:
             raise ValueError("encode_text expected a non-empty text_list")
-        tokens = torch.cat([self._tokenizer(text) for text in text_list]).to(self._device)
+        tokens = self._tokenizer(text_list).to(self._device)
         embeddings = self._model.encode_text(tokens)
         return embeddings
 
