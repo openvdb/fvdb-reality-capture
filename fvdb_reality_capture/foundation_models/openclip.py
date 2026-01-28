@@ -13,7 +13,6 @@ import logging
 
 import torch
 import torchvision.transforms as T
-from torch import nn
 
 try:
     import open_clip
@@ -29,7 +28,7 @@ _DTYPE_TO_PRECISION = {
 }
 
 
-class OpenCLIPModel(nn.Module):
+class OpenCLIPModel:
     """
     A simple wrapper for the OpenCLIP model for encoding images and text.
 
@@ -46,7 +45,7 @@ class OpenCLIPModel(nn.Module):
 
         model = OpenCLIPModel(device="cuda")
 
-        # Encode images (expects PIL Image or tensor)
+        # Encode images (expects tensor with shape [B, C, H, W] or [C, H, W])
         image_features = model.encode_image(images)
 
         # Encode text
