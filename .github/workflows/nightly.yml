@@ -347,6 +347,13 @@ jobs:
               json.dump(data, f, indent=2)
           EOF
 
+      - name: Clean up modified benchmark_config.yaml
+        run: |
+          # Remove the locally modified benchmark_config.yaml to avoid conflicts when switching branches
+          # This file is downloaded and modified by download_checkpoints_from_s3.py
+          git checkout -- tests/benchmarks/benchmark_config.yaml || true
+          git clean -fd tests/benchmarks/ || true
+
       - name: Store benchmark result
         id: store-benchmark
         uses: benchmark-action/github-action-benchmark@v1
