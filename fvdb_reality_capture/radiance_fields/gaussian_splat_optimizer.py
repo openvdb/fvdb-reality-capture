@@ -167,6 +167,12 @@ class GaussianSplatOptimizerConfig:
     After that, only 3D scales are used for refinement.
     """
 
+    post_refinement_sort: bool = True
+    """
+    After refining Gaussians, sort them based on their respective Morton codes in order to maximize spatial locality and
+    minimize fragmentation during rasterization.
+    """
+
     spatial_scale_mode: SpatialScaleMode = SpatialScaleMode.MEDIAN_CAMERA_DEPTH
     """
     How to interpret 3D optimization scale thresholds and learning rates (*i.e.* :obj:`insertion_scale_3d_threshold`,
@@ -641,14 +647,15 @@ class GaussianSplatOptimizer(BaseGaussianSplatOptimizer):
 
         # Compute normalized Gaussian means in the range of [0, 1 << 21) and their Morton encoding. Sort the Gaussians
         # based on their respective Morton codes in order to maximize spatial locality and minimize fragmentation.
-        bbox_min = torch.min(self._model.means, dim=0).values
-        bbox_max = torch.max(self._model.means, dim=0).values
-        bbox_area = bbox_max - bbox_min
-        normalized_means = (self._model.means - bbox_min) / (bbox_area)
-        ijks = (normalized_means * ((1 << 21) - 1)).to(torch.int32)
-        code = morton(ijks)
-        indices = torch.argsort(code)
-        self.filter_gaussians(indices)
+        if self._config.post_refinement_sort:
+            bbox_min = torch.min(self._model.means, dim=0).values
+            bbox_max = torch.max(self._model.means, dim=0).values
+            bbox_area = bbox_max - bbox_min
+            normalized_means = (self._model.means - bbox_min) / (bbox_area)
+            ijks = (normalized_means * ((1 << 21) - 1)).to(torch.int32)
+            code = morton(ijks)
+            indices = torch.argsort(code)
+            self.filter_gaussians(indices)
 
         self._refine_count += 1
         self._logger.debug(
