@@ -11,7 +11,7 @@ import numpy as np
 import torch
 import torch.nn.functional as nnf
 import torch.optim
-from fvdb import GaussianSplat3d
+from fvdb import GaussianSplat3d, morton
 from scipy.special import logit
 
 from fvdb_reality_capture.sfm_scene import SfmScene, SpatialScaleMode
@@ -638,6 +638,17 @@ class GaussianSplatOptimizer(BaseGaussianSplatOptimizer):
 
         if should_reset_opacities:
             self._reset_opacities()
+
+        # Compute normalized Gaussian means in the range of [0, 1 << 21) and their Morton encoding. Sort the Gaussians
+        # based on their respective Morton codes in order to maximize spatial locality and minimize fragmentation.
+        bbox_min = torch.min(self._model.means, dim=0).values
+        bbox_max = torch.max(self._model.means, dim=0).values
+        bbox_area = bbox_max - bbox_min
+        normalized_means = (self._model.means - bbox_min) / (bbox_area)
+        ijks = (normalized_means * ((1 << 21) - 1)).to(torch.int32)
+        code = morton(ijks)
+        indices = torch.argsort(code)
+        self.filter_gaussians(indices)
 
         self._refine_count += 1
         self._logger.debug(
