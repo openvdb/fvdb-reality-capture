@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 import logging
+import multiprocessing
 import os
 import pathlib
 import sys
@@ -12,6 +13,11 @@ import torch
 import torch.nn.functional as F
 import torch.utils.data
 import yaml
+
+# Set multiprocessing start method to 'spawn' to avoid fork() warnings with PyTorch
+# This must be done before any multiprocessing operations
+if multiprocessing.get_start_method(allow_none=True) != "spawn":
+    multiprocessing.set_start_method("spawn", force=True)
 
 from fvdb_reality_capture.radiance_fields import (
     GaussianSplatOptimizerMCMCConfig,

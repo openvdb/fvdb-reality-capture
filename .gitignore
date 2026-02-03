@@ -51,7 +51,8 @@ _build
 docs/build
 *tmp*.py
 *.whl
-tests/benchmark/data
+tests/benchmarks/data
+tests/benchmarks/output.json
 releases/
 /data/
 /data/*

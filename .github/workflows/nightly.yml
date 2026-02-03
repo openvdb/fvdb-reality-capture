@@ -325,7 +325,7 @@ jobs:
         run: |
           micromamba activate fvdb
           cd tests;
-          pytest benchmarks --benchmark-json benchmarks/output.json --ignore=benchmarks/test_benchmark_contract.py
+          pytest benchmarks/test_3dgs.py --benchmark-json benchmarks/output.json
 
       - name: Add commit metadata to benchmark results
         run: |
@@ -352,7 +352,8 @@ jobs:
           # Remove the locally modified benchmark_config.yaml to avoid conflicts when switching branches
           # This file is downloaded and modified by download_checkpoints_from_s3.py
           git checkout -- tests/benchmarks/benchmark_config.yaml || true
-          git clean -fd tests/benchmarks/ || true
+          # Clean up but exclude output.json which contains benchmark results
+          git clean -fd tests/benchmarks/ -e tests/benchmarks/output.json || true
 
       - name: Store benchmark result
         id: store-benchmark
