@@ -104,6 +104,7 @@ OPTIMIZER_CONFIG_KEYS = {
     "reset_opacities_every_n_refinements",
     "use_scales_for_deletion_after_n_refinements",
     "use_screen_space_scales_for_refinement_until",
+    "post_refinement_sort",
     "spatial_scale_mode",
     "spatial_scale_multiplier",
     "means_lr",
