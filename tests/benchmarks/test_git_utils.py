@@ -31,9 +31,7 @@ class TestGetGitInfo(unittest.TestCase):
         self.repo_path = pathlib.Path(self.temp_dir)
 
         # Initialize git repo
-        subprocess.run(
-            ["git", "init"], cwd=self.repo_path, check=True, capture_output=True
-        )
+        subprocess.run(["git", "init"], cwd=self.repo_path, check=True, capture_output=True)
         subprocess.run(
             ["git", "config", "user.email", "test@test.com"],
             cwd=self.repo_path,
@@ -135,9 +133,7 @@ class TestGetCurrentCommit(unittest.TestCase):
         self.repo_path = pathlib.Path(self.temp_dir)
 
         # Initialize git repo with a commit
-        subprocess.run(
-            ["git", "init"], cwd=self.repo_path, check=True, capture_output=True
-        )
+        subprocess.run(["git", "init"], cwd=self.repo_path, check=True, capture_output=True)
         subprocess.run(
             ["git", "config", "user.email", "test@test.com"],
             cwd=self.repo_path,
@@ -206,9 +202,7 @@ class TestCheckoutCommit(unittest.TestCase):
         self.repo_path = pathlib.Path(self.temp_dir)
 
         # Initialize git repo
-        subprocess.run(
-            ["git", "init"], cwd=self.repo_path, check=True, capture_output=True
-        )
+        subprocess.run(["git", "init"], cwd=self.repo_path, check=True, capture_output=True)
         subprocess.run(
             ["git", "config", "user.email", "test@test.com"],
             cwd=self.repo_path,

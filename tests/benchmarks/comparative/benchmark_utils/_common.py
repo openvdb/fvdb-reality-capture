@@ -260,9 +260,7 @@ def setup_signal_handlers():
         for process_info in active_processes:
             try:
                 if process_info["process"].poll() is None:  # Process is still running
-                    logging.info(
-                        f"Force killing benchmark process: {process_info['name']}"
-                    )
+                    logging.info(f"Force killing benchmark process: {process_info['name']}")
                     process_info["process"].kill()
             except Exception as e:
                 logging.warning(f"Error killing process {process_info['name']}: {e}")
@@ -324,9 +322,7 @@ def extract_training_metrics(output: str, total_time: float) -> dict[str, Any]:
         # Fallback: create evenly spaced step numbers
         if losses:
             max_steps = 42000  # Default expected steps
-            metrics["loss_steps"] = [
-                int(i * max_steps / len(losses)) for i in range(len(losses))
-            ]
+            metrics["loss_steps"] = [int(i * max_steps / len(losses)) for i in range(len(losses))]
 
     # Extract step information
     # Handle multiple formats from both FVDB and GSplat logs
@@ -420,16 +416,13 @@ def extract_training_metrics(output: str, total_time: float) -> dict[str, Any]:
                     gaussian_count = int(count_str)
                     # Only add if we have a valid step and avoid duplicates
                     if current_step > 0 and (
-                        not metrics["gaussian_count_steps"]
-                        or metrics["gaussian_count_steps"][-1] != current_step
+                        not metrics["gaussian_count_steps"] or metrics["gaussian_count_steps"][-1] != current_step
                     ):
                         metrics["gaussian_count_values"].append(gaussian_count)
                         metrics["gaussian_count_steps"].append(current_step)
                     break  # Stop after first match
                 except ValueError as e:
-                    logging.warning(
-                        f"Failed to parse gaussian_count from '{count_str}' (pattern: {pattern}): {e}"
-                    )
+                    logging.warning(f"Failed to parse gaussian_count from '{count_str}' (pattern: {pattern}): {e}")
 
     # Store final values (last in the time series) for backward compatibility
     if metrics["psnr_values"]:
@@ -472,9 +465,7 @@ def extract_training_metrics(output: str, total_time: float) -> dict[str, Any]:
                     metrics["final_gaussian_count"] = int(count_str)
                     break
                 except Exception as e:
-                    logging.warning(
-                        f"Failed to parse final_gaussian_count from '{count_str}' (pattern: {_pat}): {e}"
-                    )
+                    logging.warning(f"Failed to parse final_gaussian_count from '{count_str}' (pattern: {_pat}): {e}")
 
     # Extract peak GPU memory
     # GSplat format: "Step:  99 {'mem': 0.19268178939819336, ...}"
@@ -552,9 +543,7 @@ def run_command(
             )
 
             # Register the process for cleanup
-            process_name = (
-                f"{cmd[0]} {' '.join(cmd[1:3])}"  # First few args for identification
-            )
+            process_name = f"{cmd[0]} {' '.join(cmd[1:3])}"  # First few args for identification
             active_processes.append({"process": process, "name": process_name})
 
             # Use tee to display output in real-time while also capturing it
@@ -581,11 +570,7 @@ def run_command(
                 tee_process.wait()
 
                 # Clean up process registration
-                active_processes[:] = [
-                    p
-                    for p in active_processes
-                    if p["process"] not in [process, tee_process]
-                ]
+                active_processes[:] = [p for p in active_processes if p["process"] not in [process, tee_process]]
 
                 # Read the log file for metrics
                 if os.path.exists(log_file):
@@ -608,11 +593,7 @@ def run_command(
                     tee_process.kill()
 
                 # Clean up process registration
-                active_processes[:] = [
-                    p
-                    for p in active_processes
-                    if p["process"] not in [process, tee_process]
-                ]
+                active_processes[:] = [p for p in active_processes if p["process"] not in [process, tee_process]]
                 raise
         else:
             # Fallback to direct execution without capturing output
@@ -629,9 +610,7 @@ def run_command(
             )
 
             # Register the process for cleanup
-            process_name = (
-                f"{cmd[0]} {' '.join(cmd[1:3])}"  # First few args for identification
-            )
+            process_name = f"{cmd[0]} {' '.join(cmd[1:3])}"  # First few args for identification
             active_processes.append({"process": process, "name": process_name})
 
             try:
@@ -639,9 +618,7 @@ def run_command(
                 return_code = process.wait()
 
                 # Clean up process registration
-                active_processes[:] = [
-                    p for p in active_processes if p["process"] != process
-                ]
+                active_processes[:] = [p for p in active_processes if p["process"] != process]
 
                 # Since we're not capturing stdout/stderr, we can't get the output
                 # But we can check if the process completed successfully
@@ -664,9 +641,7 @@ def run_command(
                     process.kill()
 
                 # Clean up process registration
-                active_processes[:] = [
-                    p for p in active_processes if p["process"] != process
-                ]
+                active_processes[:] = [p for p in active_processes if p["process"] != process]
                 raise
 
     except subprocess.TimeoutExpired:

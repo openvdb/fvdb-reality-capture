@@ -74,9 +74,7 @@ def get_commit_key(
     return (commits["fvdb_core"], commits["fvdb_reality_capture"], commits["gsplat"])
 
 
-def detect_repo_paths(
-    matrix_config: dict[str, Any], matrix_dir: pathlib.Path
-) -> dict[str, pathlib.Path | None]:
+def detect_repo_paths(matrix_config: dict[str, Any], matrix_dir: pathlib.Path) -> dict[str, pathlib.Path | None]:
     """
     Detect repository paths from matrix config or environment.
 
@@ -167,9 +165,7 @@ class CommitManager:
 
         self._initialized = True
 
-    def ensure_commits(
-        self, required_commits: dict[str, str | None], framework: str
-    ) -> dict[str, dict[str, Any]]:
+    def ensure_commits(self, required_commits: dict[str, str | None], framework: str) -> dict[str, dict[str, Any]]:
         """
         Ensure the required commits are checked out and built.
 
@@ -242,9 +238,7 @@ class CommitManager:
         return git_info
 
 
-def save_report_for_run(
-    scene_name: str, training_results: dict[str, Any], output_directory: pathlib.Path
-) -> None:
+def save_report_for_run(scene_name: str, training_results: dict[str, Any], output_directory: pathlib.Path) -> None:
     """
     Generate a JSON report summarizing the comparison of training results for multiple configurations for a given scene.
 
@@ -292,9 +286,7 @@ def save_report_for_run(
         if repositories:
             for repo_name, repo_info in repositories.items():
                 if isinstance(repo_info, dict) and repo_info.get("commit"):
-                    commit = repo_info.get(
-                        "short_commit", repo_info.get("commit", "")[:7]
-                    )
+                    commit = repo_info.get("short_commit", repo_info.get("commit", "")[:7])
                     dirty = " (dirty)" if repo_info.get("dirty") else ""
                     logging.info(f"  {repo_name}: {commit}{dirty}")
 
@@ -425,31 +417,13 @@ def save_summary_report(
 
             total_time = cfg_report.get("total_time", 0.0)
             training_time = cfg_report.get("training_time", total_time)
-            psnr = (
-                cfg_report.get("training", {})
-                .get("metrics", {})
-                .get("psnr", float("nan"))
-            )
-            ssim = (
-                cfg_report.get("training", {})
-                .get("metrics", {})
-                .get("ssim", float("nan"))
-            )
-            num_gaussians = (
-                cfg_report.get("training", {})
-                .get("metrics", {})
-                .get("final_gaussian_count", float("nan"))
-            )
+            psnr = cfg_report.get("training", {}).get("metrics", {}).get("psnr", float("nan"))
+            ssim = cfg_report.get("training", {}).get("metrics", {}).get("ssim", float("nan"))
+            num_gaussians = cfg_report.get("training", {}).get("metrics", {}).get("final_gaussian_count", float("nan"))
             peak_gpu_memory_gb = (
-                cfg_report.get("training", {})
-                .get("metrics", {})
-                .get("peak_gpu_memory_gb", float("nan"))
+                cfg_report.get("training", {}).get("metrics", {}).get("peak_gpu_memory_gb", float("nan"))
             )
-            training_throughput = (
-                num_gaussians / training_time
-                if training_time and training_time > 0
-                else float("nan")
-            )
+            training_throughput = num_gaussians / training_time if training_time and training_time > 0 else float("nan")
 
             plot_dict["training_throughput"][cfg].append(float(training_throughput))
             plot_dict["PSNR"][cfg].append(float(psnr))
@@ -459,9 +433,7 @@ def save_summary_report(
             plot_dict["training_time"][cfg].append(float(training_time))
             plot_dict["peak_gpu_memory_gb"][cfg].append(float(peak_gpu_memory_gb))
 
-            assert (
-                cfg not in summary_data[scene]
-            ), f"Duplicate config {cfg} for scene {scene}"
+            assert cfg not in summary_data[scene], f"Duplicate config {cfg} for scene {scene}"
             summary_data[scene][cfg] = {
                 "training_throughput": training_throughput,
                 "PSNR": psnr,
@@ -653,9 +625,7 @@ def save_training_curves(
     # Load comparison report for this scene
     report_file = result_path / f"{scene_name}_comparison_report.json"
     if not report_file.exists():
-        logging.warning(
-            f"Cannot generate training curves: missing report {report_file}"
-        )
+        logging.warning(f"Cannot generate training curves: missing report {report_file}")
         return
 
     try:
@@ -680,17 +650,11 @@ def save_training_curves(
             has_psnr = True
         if metrics.get("ssim_values") and len(metrics.get("ssim_values", [])) > 1:
             has_ssim = True
-        if (
-            metrics.get("iteration_rates")
-            and len(metrics.get("iteration_rates", [])) > 0
-        ):
+        if metrics.get("iteration_rates") and len(metrics.get("iteration_rates", [])) > 0:
             has_iterations = True
         if metrics.get("loss_values") and len(metrics.get("loss_values", [])) > 0:
             has_loss = True
-        if (
-            metrics.get("gaussian_count_values")
-            and len(metrics.get("gaussian_count_values", [])) > 0
-        ):
+        if metrics.get("gaussian_count_values") and len(metrics.get("gaussian_count_values", [])) > 0:
             has_gaussian_count = True
 
     # Determine subplot layout - separate iterations and loss for clarity
@@ -707,9 +671,7 @@ def save_training_curves(
         num_plots += 1
 
     if num_plots == 0:
-        logging.info(
-            f"No training curve data available for {scene_name}, skipping training curves"
-        )
+        logging.info(f"No training curve data available for {scene_name}, skipping training curves")
         return
 
     # Create figure with dynamic subplot layout
@@ -745,9 +707,7 @@ def save_training_curves(
 
         ax_iter.set_ylabel("Training Throughput (it/s)", fontsize=11)
         ax_iter.set_xlabel("Training Step", fontsize=11)
-        ax_iter.set_title(
-            "Training Throughput Over Time", fontsize=12, fontweight="bold"
-        )
+        ax_iter.set_title("Training Throughput Over Time", fontsize=12, fontweight="bold")
         ax_iter.grid(True, alpha=0.3)
         ax_iter.legend(loc="best", framealpha=0.9)
 
@@ -799,11 +759,7 @@ def save_training_curves(
             gaussian_count_values = metrics.get("gaussian_count_values", [])
             gaussian_count_steps = metrics.get("gaussian_count_steps", [])
 
-            if (
-                gaussian_count_values
-                and gaussian_count_steps
-                and len(gaussian_count_values) > 0
-            ):
+            if gaussian_count_values and gaussian_count_steps and len(gaussian_count_values) > 0:
                 ax_gaussians.plot(
                     gaussian_count_steps,
                     gaussian_count_values,
@@ -815,9 +771,7 @@ def save_training_curves(
 
         ax_gaussians.set_ylabel("Number of Gaussians", fontsize=11)
         ax_gaussians.set_xlabel("Training Step", fontsize=11)
-        ax_gaussians.set_title(
-            "Gaussian Count Over Time", fontsize=12, fontweight="bold"
-        )
+        ax_gaussians.set_title("Gaussian Count Over Time", fontsize=12, fontweight="bold")
         ax_gaussians.grid(True, alpha=0.3)
         ax_gaussians.legend(loc="best", framealpha=0.9)
 
@@ -845,9 +799,7 @@ def save_training_curves(
                     s=40,
                     alpha=0.8,
                 )
-                ax_psnr.plot(
-                    psnr_steps, psnr_values, color=color, alpha=0.3, linewidth=0.8
-                )
+                ax_psnr.plot(psnr_steps, psnr_values, color=color, alpha=0.3, linewidth=0.8)
 
         ax_psnr.set_ylabel("PSNR (dB)")
         ax_psnr.set_xlabel("Training Step")
@@ -879,9 +831,7 @@ def save_training_curves(
                     s=40,
                     alpha=0.8,
                 )
-                ax_ssim.plot(
-                    ssim_steps, ssim_values, color=color, alpha=0.3, linewidth=0.8
-                )
+                ax_ssim.plot(ssim_steps, ssim_values, color=color, alpha=0.3, linewidth=0.8)
 
         ax_ssim.set_ylabel("SSIM")
         ax_ssim.set_xlabel("Training Step")
@@ -894,9 +844,7 @@ def save_training_curves(
     # Add main title and subtitle
     scene_title = scene_name.replace("_", " ").title()
     fig.suptitle("Gaussian Splat Training", fontsize=16, fontweight="bold", y=0.99)
-    fig.text(
-        0.5, 0.97, f"Scene: {scene_title}", ha="center", fontsize=12, style="italic"
-    )
+    fig.text(0.5, 0.97, f"Scene: {scene_title}", ha="center", fontsize=12, style="italic")
 
     # Save figure
     plt.tight_layout(rect=[0, 0, 1, 0.97])  # Leave space for suptitle and subtitle
@@ -967,17 +915,13 @@ def main():
     Returns:
         None
     """
-    parser = argparse.ArgumentParser(
-        description="Comparative Benchmark (matrix-driven)"
-    )
+    parser = argparse.ArgumentParser(description="Comparative Benchmark (matrix-driven)")
     parser.add_argument(
         "--matrix",
         required=True,
         help="Path to matrix YAML file defining datasets, configs, and runs",
     )
-    parser.add_argument(
-        "--log-level", default="INFO", help="Logging level (default: INFO)"
-    )
+    parser.add_argument("--log-level", default="INFO", help="Logging level (default: INFO)")
     parser.add_argument(
         "--plot-only",
         action="store_true",
@@ -1013,9 +957,7 @@ def main():
     datasets = matrix_config.get("datasets", [])
     if not datasets:
         parser.error("matrix.yml must define a non-empty 'datasets:' list")
-    dataset_by_name = {
-        d.get("name"): d for d in datasets if isinstance(d, dict) and d.get("name")
-    }
+    dataset_by_name = {d.get("name"): d for d in datasets if isinstance(d, dict) and d.get("name")}
 
     opt_configs = matrix_config.get("opt_configs", {})
     if not isinstance(opt_configs, dict) or not opt_configs:
@@ -1065,15 +1007,11 @@ def main():
 
         opt_entry = opt_configs[opt_alias]
         if not isinstance(opt_entry, dict) or "path" not in opt_entry:
-            raise ValueError(
-                f"opt_configs.{opt_alias} must be a mapping with a 'path' field"
-            )
+            raise ValueError(f"opt_configs.{opt_alias} must be a mapping with a 'path' field")
         opt_config_path = (matrix_dir / opt_entry["path"]).resolve()
         opt_config = load_config(opt_config_path)
         if "framework" not in opt_config:
-            raise RuntimeError(
-                f"Framework not specified in opt config: {opt_config_path}"
-            )
+            raise RuntimeError(f"Framework not specified in opt config: {opt_config_path}")
         framework = opt_config["framework"]
 
         overrides = run.get("overrides", {}) or {}
@@ -1091,9 +1029,7 @@ def main():
             if prev is None:
                 all_config_colors[run_key] = color
             elif prev != color:
-                logging.warning(
-                    f"Color mismatch for {run_key}: {prev} vs {color}; keeping {prev}"
-                )
+                logging.warning(f"Color mismatch for {run_key}: {prev} vs {color}; keeping {prev}")
 
         # Extract commit information from opt_config
         commits = get_commits_from_opt_config(opt_config)
@@ -1172,9 +1108,7 @@ def main():
                     merged_opt_path = run_dir / "opt_config.yml"
                     run_dir.mkdir(parents=True, exist_ok=True)
                     with open(merged_opt_path, "w") as f:
-                        yaml.safe_dump(
-                            merged_opt, f, default_flow_style=False, sort_keys=False
-                        )
+                        yaml.safe_dump(merged_opt, f, default_flow_style=False, sort_keys=False)
 
                     fvdb_results = run_fvdb_training(
                         scene_name=scene_name,
@@ -1197,24 +1131,16 @@ def main():
                     merged_opt_path = run_dir / "opt_config.yml"
                     run_dir.mkdir(parents=True, exist_ok=True)
                     with open(merged_opt_path, "w") as f:
-                        yaml.safe_dump(
-                            merged_opt, f, default_flow_style=False, sort_keys=False
-                        )
+                        yaml.safe_dump(merged_opt, f, default_flow_style=False, sort_keys=False)
 
                     opt_cli_args = opt_config.get("cli_args", []) or []
                     override_cli_args = framework_overrides.get("cli_args", []) or []
-                    if not isinstance(opt_cli_args, list) or not all(
-                        isinstance(x, str) for x in opt_cli_args
-                    ):
-                        raise ValueError(
-                            f"{opt_config_path} cli_args must be a list[str]"
-                        )
+                    if not isinstance(opt_cli_args, list) or not all(isinstance(x, str) for x in opt_cli_args):
+                        raise ValueError(f"{opt_config_path} cli_args must be a list[str]")
                     if not isinstance(override_cli_args, list) or not all(
                         isinstance(x, str) for x in override_cli_args
                     ):
-                        raise ValueError(
-                            f"Run overrides for gsplat.cli_args must be a list[str]"
-                        )
+                        raise ValueError(f"Run overrides for gsplat.cli_args must be a list[str]")
 
                     gsplat_results = run_gsplat_training(
                         scene_name=scene_name,
@@ -1256,9 +1182,7 @@ def main():
         for scene_name in scenes:
             report_file = results_path / f"{scene_name}_comparison_report.json"
             if not report_file.exists():
-                logging.warning(
-                    f"Missing comparison report for expected scene '{scene_name}': {report_file}"
-                )
+                logging.warning(f"Missing comparison report for expected scene '{scene_name}': {report_file}")
             else:
                 # Generate training curves from existing reports
                 save_training_curves(
