@@ -27,7 +27,7 @@ services:
       - LOCAL_GROUP=${LOCAL_GROUP-}
     volumes:
       - ${CPM_SOURCE_CACHE:?set CPM_SOURCE_CACHE on host}:/workspace/.cache/CPM
-      - ../../../../data:/workspace/data
+      - ${BENCHMARK_DATA_PATH:-../../../../data}:/workspace/data
       - ../results:/workspace/results
       - ../../../../../:/workspace/openvdb
       - ..:/workspace/benchmark

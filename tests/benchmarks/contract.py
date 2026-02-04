@@ -174,12 +174,18 @@ def validate_checkpoint_contract(state: dict[str, Any]) -> None:
     if state.get("magic") != "GaussianSplattingCheckpoint":
         _raise_contract_error(
             "Checkpoint magic mismatch",
-            details={"magic": state.get("magic"), "expected": "GaussianSplattingCheckpoint"},
+            details={
+                "magic": state.get("magic"),
+                "expected": "GaussianSplattingCheckpoint",
+            },
         )
     if state.get("version") != GaussianSplatReconstruction.version:
         _raise_contract_error(
             "Checkpoint version mismatch",
-            details={"version": state.get("version"), "expected": GaussianSplatReconstruction.version},
+            details={
+                "version": state.get("version"),
+                "expected": GaussianSplatReconstruction.version,
+            },
         )
 
     cfg = state.get("config")
@@ -197,10 +203,16 @@ def validate_checkpoint_contract(state: dict[str, Any]) -> None:
 
     optimizer = state.get("optimizer")
     if not isinstance(optimizer, dict):
-        _raise_contract_error("Checkpoint optimizer must be a dict", details={"type": type(optimizer).__name__})
+        _raise_contract_error(
+            "Checkpoint optimizer must be a dict",
+            details={"type": type(optimizer).__name__},
+        )
     opt_cfg = optimizer.get("config")
     if not isinstance(opt_cfg, dict):
-        _raise_contract_error("Checkpoint optimizer config must be a dict", details={"type": type(opt_cfg).__name__})
+        _raise_contract_error(
+            "Checkpoint optimizer config must be a dict",
+            details={"type": type(opt_cfg).__name__},
+        )
 
     opt_cfg_keys = set(opt_cfg.keys())
     opt_base = OPTIMIZER_CONFIG_KEYS
@@ -297,14 +309,20 @@ def validate_comparative_benchmark_yaml(config: dict[str, Any]) -> None:
     - `runs[]` entries with `dataset` and `opt_config`
     """
     if not isinstance(config, dict):
-        _raise_contract_error("Comparative benchmark config must be a dict", details={"type": type(config).__name__})
+        _raise_contract_error(
+            "Comparative benchmark config must be a dict",
+            details={"type": type(config).__name__},
+        )
 
     paths = config.get("paths", {})
     if not isinstance(paths, dict):
         _raise_contract_error("Comparative benchmark config missing paths section")
     for key in ("gsplat_base", "data_base"):
         if key not in paths:
-            _raise_contract_error("Comparative benchmark config missing paths key", details={"missing": key})
+            _raise_contract_error(
+                "Comparative benchmark config missing paths key",
+                details={"missing": key},
+            )
 
     datasets = config.get("datasets", [])
     if not isinstance(datasets, list) or not datasets:
@@ -331,6 +349,9 @@ def validate_comparative_opt_config(config: dict[str, Any]) -> None:
     - `optimization_config` keys constrained by `OPTIMIZER_CONFIG_KEYS` (+ MCMC extras)
     - `training_arguments` with `image_downsample_factor`, `use_every_n_as_val`, `device`
 
+    Optional fields (both frameworks):
+    - `commits` dict with optional keys: `fvdb_core`, `fvdb_reality_capture`, `gsplat`
+
     A valid GSplat opt-config must include:
     - `framework: gsplat`
     - `name`
@@ -340,9 +361,25 @@ def validate_comparative_opt_config(config: dict[str, Any]) -> None:
         _raise_contract_error("Opt config must be a dict", details={"type": type(config).__name__})
     framework = config.get("framework")
     if framework not in ("fvdb", "gsplat"):
-        _raise_contract_error("Opt config framework must be fvdb or gsplat", details={"framework": framework})
+        _raise_contract_error(
+            "Opt config framework must be fvdb or gsplat",
+            details={"framework": framework},
+        )
     if "name" not in config:
         _raise_contract_error("Opt config missing name")
+
+    # Validate optional commits section
+    commits = config.get("commits")
+    if commits is not None:
+        if not isinstance(commits, dict):
+            _raise_contract_error(
+                "Opt config commits must be a dict",
+                details={"type": type(commits).__name__},
+            )
+        allowed_commit_keys = {"fvdb_core", "fvdb_reality_capture", "gsplat"}
+        extra_commit_keys = set(commits.keys()) - allowed_commit_keys
+        if extra_commit_keys:
+            _raise_contract_error("Unknown commits keys", details={"extra": sorted(extra_commit_keys)})
 
     if framework == "fvdb":
         recon_cfg = config.get("reconstruction_config", {})
@@ -350,7 +387,10 @@ def validate_comparative_opt_config(config: dict[str, Any]) -> None:
             _raise_contract_error("FVDB opt config reconstruction_config must be a dict")
         recon_extra = set(recon_cfg.keys()) - RECONSTRUCTION_CONFIG_KEYS
         if recon_extra:
-            _raise_contract_error("Unknown FVDB reconstruction_config keys", details={"extra": sorted(recon_extra)})
+            _raise_contract_error(
+                "Unknown FVDB reconstruction_config keys",
+                details={"extra": sorted(recon_extra)},
+            )
 
         opt_cfg = config.get("optimization_config", {})
         if not isinstance(opt_cfg, dict):
@@ -361,7 +401,10 @@ def validate_comparative_opt_config(config: dict[str, Any]) -> None:
         )
         opt_extra = set(opt_cfg.keys()) - allowed_opt_keys
         if opt_extra:
-            _raise_contract_error("Unknown FVDB optimization_config keys", details={"extra": sorted(opt_extra)})
+            _raise_contract_error(
+                "Unknown FVDB optimization_config keys",
+                details={"extra": sorted(opt_extra)},
+            )
 
         training_args = config.get("training_arguments", {})
         if not isinstance(training_args, dict):
@@ -405,5 +448,8 @@ def _assert_contract_matches_dataclasses() -> None:
     if mcmc_keys != expected_mcmc:
         _raise_contract_error(
             "MCMC_OPTIMIZER_EXTRA_KEYS out of sync with GaussianSplatOptimizerMCMCConfig",
-            details={"missing": sorted(mcmc_keys - expected_mcmc), "extra": sorted(expected_mcmc - mcmc_keys)},
+            details={
+                "missing": sorted(mcmc_keys - expected_mcmc),
+                "extra": sorted(expected_mcmc - mcmc_keys),
+            },
         )

@@ -1,0 +1,98 @@
+# Example fVDB configuration with specific commits
+#
+# This demonstrates how to specify commits for fvdb-core and fvdb-reality-capture
+# to benchmark a specific version of the codebase.
+#
+# The `commits` section is optional. If omitted, the benchmark will use whatever
+# commits are currently checked out in the repositories.
+#
+# Usage:
+#   commits:
+#     fvdb_core: <commit-sha>           # Optional: specific fvdb-core commit
+#     fvdb_reality_capture: <commit-sha> # Optional: specific fvdb-reality-capture commit
+#
+# When a commit is specified:
+#   1. The benchmark system will checkout that commit in the repository
+#   2. Rebuild/reinstall the package if the commit changed
+#   3. Run all benchmarks for this opt-config
+#   4. Record the commit info in the benchmark report
+#
+# Runs using the same commits will be grouped together to minimize rebuilds.
+
+framework: fvdb
+
+# Specify commits to benchmark (replace with actual commit SHAs)
+commits:
+  fvdb_core: abc123def456789...        # Replace with actual commit SHA
+  fvdb_reality_capture: xyz789abc...   # Replace with actual commit SHA
+
+name: fvdb_commit_example
+color: "#9467bd"  # Purple - to distinguish from default
+
+splat_optimizer: GaussianSplatOptimizer
+
+reconstruction_config:
+  max_epochs: 200
+  max_steps: null
+  eval_at_percent:
+    - 10
+    - 20
+    - 30
+    - 40
+    - 50
+    - 60
+    - 70
+    - 80
+    - 90
+    - 100
+  save_at_percent:
+    - 100
+
+  # Optimization parameters
+  batch_size: 1
+  crops_per_image: 1
+  sh_degree: 3
+  increase_sh_degree_every_epoch: 5
+  initial_opacity: 0.1
+  initial_covariance_scale: 1.0
+  ssim_lambda: 0.2
+  lpips_net: alex
+  random_bkgd: false
+  refine_start_epoch: 3
+  refine_stop_epoch: 100
+  refine_every_epoch: 0.75
+  ignore_masks: false
+  remove_gaussians_outside_scene_bbox: false
+
+  # Pose optimization
+  optimize_camera_poses: false
+  pose_opt_lr: 1.0e-05
+  pose_opt_reg: 1.0e-06
+  pose_opt_lr_decay: 1.0
+  pose_opt_start_epoch: 0
+  pose_opt_stop_epoch: 200
+  pose_opt_init_std: 1.0e-04
+
+  # Gaussian rendering parameters
+  near_plane: 0.01
+  far_plane: 10000000000.0
+  min_radius_2d: 0.0
+  eps_2d: 0.3
+  antialias: false
+  tile_size: 16
+
+training_arguments:
+  image_downsample_factor: 4
+  points_percentile_filter: 0.0
+  normalization_type: pca
+  crop_bbox: null
+  crop_to_points: false
+  min_points_per_image: 5
+
+  device: cuda
+  use_every_n_as_val: 10
+
+  log_tensorboard_every: -1
+  log_images_to_tensorboard: false
+  save_results: true
+  save_eval_images: false

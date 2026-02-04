@@ -14,6 +14,237 @@ import yaml
 active_processes = []
 
 
+# =============================================================================
+# Git Utilities
+# =============================================================================
+
+
+def get_git_info(repo_path: pathlib.Path) -> dict[str, Any]:
+    """
+    Get git repository information.
+
+    Args:
+        repo_path: Path to the git repository.
+
+    Returns:
+        Dictionary containing:
+            - commit: Full commit SHA
+            - short_commit: Short commit SHA (first 7 characters)
+            - branch: Current branch name (or None if detached HEAD)
+            - dirty: True if there are uncommitted changes
+            - path: Path to the repository
+    """
+    repo_path = pathlib.Path(repo_path).resolve()
+
+    if not repo_path.exists():
+        return {
+            "commit": None,
+            "short_commit": None,
+            "branch": None,
+            "dirty": None,
+            "path": str(repo_path),
+            "error": f"Repository path does not exist: {repo_path}",
+        }
+
+    try:
+        # Get full commit SHA
+        commit = (
+            subprocess.check_output(
+                ["git", "rev-parse", "HEAD"],
+                cwd=repo_path,
+                stderr=subprocess.DEVNULL,
+            )
+            .decode("utf-8")
+            .strip()
+        )
+
+        # Get short commit
+        short_commit = commit[:7] if commit else None
+
+        # Get current branch (returns empty string if detached HEAD)
+        try:
+            branch = (
+                subprocess.check_output(
+                    ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+                    cwd=repo_path,
+                    stderr=subprocess.DEVNULL,
+                )
+                .decode("utf-8")
+                .strip()
+            )
+            if branch == "HEAD":
+                branch = None  # Detached HEAD state
+        except subprocess.CalledProcessError:
+            branch = None
+
+        # Check if working directory is dirty
+        try:
+            subprocess.check_output(
+                ["git", "diff", "--quiet", "HEAD"],
+                cwd=repo_path,
+                stderr=subprocess.DEVNULL,
+            )
+            dirty = False
+        except subprocess.CalledProcessError:
+            dirty = True
+
+        return {
+            "commit": commit,
+            "short_commit": short_commit,
+            "branch": branch,
+            "dirty": dirty,
+            "path": str(repo_path),
+        }
+
+    except subprocess.CalledProcessError as e:
+        return {
+            "commit": None,
+            "short_commit": None,
+            "branch": None,
+            "dirty": None,
+            "path": str(repo_path),
+            "error": f"Git command failed: {e}",
+        }
+    except FileNotFoundError:
+        return {
+            "commit": None,
+            "short_commit": None,
+            "branch": None,
+            "dirty": None,
+            "path": str(repo_path),
+            "error": "Git is not installed or not in PATH",
+        }
+
+
+def get_current_commit(repo_path: pathlib.Path) -> str | None:
+    """
+    Get the current HEAD commit SHA for a repository.
+
+    Args:
+        repo_path: Path to the git repository.
+
+    Returns:
+        Full commit SHA, or None if unable to determine.
+    """
+    info = get_git_info(repo_path)
+    return info.get("commit")
+
+
+def checkout_commit(repo_path: pathlib.Path, commit: str) -> bool:
+    """
+    Checkout a specific commit in the repository.
+
+    Args:
+        repo_path: Path to the git repository.
+        commit: Commit SHA to checkout.
+
+    Returns:
+        True if checkout succeeded, False otherwise.
+    """
+    repo_path = pathlib.Path(repo_path).resolve()
+
+    try:
+        # First, fetch to ensure we have the commit
+        logging.info(f"Fetching latest refs in {repo_path}...")
+        subprocess.run(
+            ["git", "fetch", "--all"],
+            cwd=repo_path,
+            check=False,  # Don't fail if fetch fails (e.g., no network)
+            capture_output=True,
+        )
+
+        # Checkout the commit
+        logging.info(f"Checking out commit {commit[:7]}... in {repo_path}")
+        subprocess.run(
+            ["git", "checkout", commit],
+            cwd=repo_path,
+            check=True,
+            capture_output=True,
+        )
+        return True
+
+    except subprocess.CalledProcessError as e:
+        logging.error(f"Failed to checkout commit {commit} in {repo_path}: {e}")
+        if e.stderr:
+            logging.error(f"Git stderr: {e.stderr.decode('utf-8')}")
+        return False
+
+
+def build_fvdb_core(repo_path: pathlib.Path, verbose: bool = True) -> bool:
+    """
+    Build and install fvdb-core from the given repository path.
+
+    Args:
+        repo_path: Path to the fvdb-core repository.
+        verbose: Whether to show verbose build output.
+
+    Returns:
+        True if build succeeded, False otherwise.
+    """
+    repo_path = pathlib.Path(repo_path).resolve()
+    build_script = repo_path / "build.sh"
+
+    if not build_script.exists():
+        logging.error(f"build.sh not found in {repo_path}")
+        return False
+
+    try:
+        logging.info(f"Building fvdb-core from {repo_path}...")
+        cmd = ["./build.sh", "install"]
+        if verbose:
+            cmd.append("verbose")
+
+        # Set up environment
+        env = os.environ.copy()
+        # Preserve important CUDA environment variables
+        for var in ["TORCH_CUDA_ARCH_LIST", "CUDAARCHS", "CPM_SOURCE_CACHE"]:
+            if var in os.environ:
+                env[var] = os.environ[var]
+
+        result = subprocess.run(
+            cmd,
+            cwd=repo_path,
+            env=env,
+            check=True,
+        )
+        logging.info("fvdb-core build completed successfully")
+        return True
+
+    except subprocess.CalledProcessError as e:
+        logging.error(f"Failed to build fvdb-core: {e}")
+        return False
+
+
+def install_python_package(repo_path: pathlib.Path, editable: bool = False) -> bool:
+    """
+    Install a Python package from the given repository path.
+
+    Args:
+        repo_path: Path to the repository containing pyproject.toml or setup.py.
+        editable: Whether to install in editable mode (-e).
+
+    Returns:
+        True if installation succeeded, False otherwise.
+    """
+    repo_path = pathlib.Path(repo_path).resolve()
+
+    try:
+        logging.info(f"Installing Python package from {repo_path}...")
+        cmd = ["pip", "install"]
+        if editable:
+            cmd.extend(["-e", str(repo_path)])
+        else:
+            cmd.append(str(repo_path))
+
+        subprocess.run(cmd, check=True)
+        logging.info(f"Package installation from {repo_path} completed successfully")
+        return True
+
+    except subprocess.CalledProcessError as e:
+        logging.error(f"Failed to install package from {repo_path}: {e}")
+        return False
+
+
 def setup_signal_handlers():
     """
     Set up signal handlers to ensure all subprocesses are killed on interrupt.
@@ -29,7 +260,9 @@ def setup_signal_handlers():
         for process_info in active_processes:
             try:
                 if process_info["process"].poll() is None:  # Process is still running
-                    logging.info(f"Force killing benchmark process: {process_info['name']}")
+                    logging.info(
+                        f"Force killing benchmark process: {process_info['name']}"
+                    )
                     process_info["process"].kill()
             except Exception as e:
                 logging.warning(f"Error killing process {process_info['name']}: {e}")
@@ -91,7 +324,9 @@ def extract_training_metrics(output: str, total_time: float) -> dict[str, Any]:
         # Fallback: create evenly spaced step numbers
         if losses:
             max_steps = 42000  # Default expected steps
-            metrics["loss_steps"] = [int(i * max_steps / len(losses)) for i in range(len(losses))]
+            metrics["loss_steps"] = [
+                int(i * max_steps / len(losses)) for i in range(len(losses))
+            ]
 
     # Extract step information
     # Handle multiple formats from both FVDB and GSplat logs
@@ -185,13 +420,16 @@ def extract_training_metrics(output: str, total_time: float) -> dict[str, Any]:
                     gaussian_count = int(count_str)
                     # Only add if we have a valid step and avoid duplicates
                     if current_step > 0 and (
-                        not metrics["gaussian_count_steps"] or metrics["gaussian_count_steps"][-1] != current_step
+                        not metrics["gaussian_count_steps"]
+                        or metrics["gaussian_count_steps"][-1] != current_step
                     ):
                         metrics["gaussian_count_values"].append(gaussian_count)
                         metrics["gaussian_count_steps"].append(current_step)
                     break  # Stop after first match
                 except ValueError as e:
-                    logging.warning(f"Failed to parse gaussian_count from '{count_str}' (pattern: {pattern}): {e}")
+                    logging.warning(
+                        f"Failed to parse gaussian_count from '{count_str}' (pattern: {pattern}): {e}"
+                    )
 
     # Store final values (last in the time series) for backward compatibility
     if metrics["psnr_values"]:
@@ -234,7 +472,9 @@ def extract_training_metrics(output: str, total_time: float) -> dict[str, Any]:
                     metrics["final_gaussian_count"] = int(count_str)
                     break
                 except Exception as e:
-                    logging.warning(f"Failed to parse final_gaussian_count from '{count_str}' (pattern: {_pat}): {e}")
+                    logging.warning(
+                        f"Failed to parse final_gaussian_count from '{count_str}' (pattern: {_pat}): {e}"
+                    )
 
     # Extract peak GPU memory
     # GSplat format: "Step:  99 {'mem': 0.19268178939819336, ...}"
@@ -261,7 +501,10 @@ def extract_training_metrics(output: str, total_time: float) -> dict[str, Any]:
 
 
 def run_command(
-    cmd: list[str], cwd: str | None = None, env: dict[str, Any] | None = None, log_file: str | None = None
+    cmd: list[str],
+    cwd: str | None = None,
+    env: dict[str, Any] | None = None,
+    log_file: str | None = None,
 ) -> tuple[int, str, str]:
     """
     Run a command in a subprocess and return exit code, stdout, and stderr.
@@ -309,7 +552,9 @@ def run_command(
             )
 
             # Register the process for cleanup
-            process_name = f"{cmd[0]} {' '.join(cmd[1:3])}"  # First few args for identification
+            process_name = (
+                f"{cmd[0]} {' '.join(cmd[1:3])}"  # First few args for identification
+            )
             active_processes.append({"process": process, "name": process_name})
 
             # Use tee to display output in real-time while also capturing it
@@ -336,7 +581,11 @@ def run_command(
                 tee_process.wait()
 
                 # Clean up process registration
-                active_processes[:] = [p for p in active_processes if p["process"] not in [process, tee_process]]
+                active_processes[:] = [
+                    p
+                    for p in active_processes
+                    if p["process"] not in [process, tee_process]
+                ]
 
                 # Read the log file for metrics
                 if os.path.exists(log_file):
@@ -359,7 +608,11 @@ def run_command(
                     tee_process.kill()
 
                 # Clean up process registration
-                active_processes[:] = [p for p in active_processes if p["process"] not in [process, tee_process]]
+                active_processes[:] = [
+                    p
+                    for p in active_processes
+                    if p["process"] not in [process, tee_process]
+                ]
                 raise
         else:
             # Fallback to direct execution without capturing output
@@ -376,7 +629,9 @@ def run_command(
             )
 
             # Register the process for cleanup
-            process_name = f"{cmd[0]} {' '.join(cmd[1:3])}"  # First few args for identification
+            process_name = (
+                f"{cmd[0]} {' '.join(cmd[1:3])}"  # First few args for identification
+            )
             active_processes.append({"process": process, "name": process_name})
 
             try:
@@ -384,14 +639,20 @@ def run_command(
                 return_code = process.wait()
 
                 # Clean up process registration
-                active_processes[:] = [p for p in active_processes if p["process"] != process]
+                active_processes[:] = [
+                    p for p in active_processes if p["process"] != process
+                ]
 
                 # Since we're not capturing stdout/stderr, we can't get the output
                 # But we can check if the process completed successfully
                 if return_code == 0:
                     return return_code, "Process completed successfully", ""
                 else:
-                    return return_code, "", f"Process failed with exit code {return_code}"
+                    return (
+                        return_code,
+                        "",
+                        f"Process failed with exit code {return_code}",
+                    )
 
             except KeyboardInterrupt:
                 logging.info("Received interrupt signal, terminating process...")
@@ -403,7 +664,9 @@ def run_command(
                     process.kill()
 
                 # Clean up process registration
-                active_processes[:] = [p for p in active_processes if p["process"] != process]
+                active_processes[:] = [
+                    p for p in active_processes if p["process"] != process
+                ]
                 raise
 
     except subprocess.TimeoutExpired:

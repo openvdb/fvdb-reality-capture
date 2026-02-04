@@ -1,7 +1,7 @@
+#!/usr/bin/env bash
 # Copyright Contributors to the OpenVDB Project
 # SPDX-License-Identifier: Apache-2.0
 
-#!/usr/bin/env bash
 set -euo pipefail
 
 # Map container runtime user to the host user so files created on bind mounts

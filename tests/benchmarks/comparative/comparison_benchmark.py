@@ -20,18 +20,238 @@ from typing import Any
 import matplotlib.pyplot as plt
 import numpy as np
 import yaml
-from benchmark_utils import load_config, run_fvdb_training, run_gsplat_training
+from benchmark_utils import (
+    build_fvdb_core,
+    checkout_commit,
+    get_current_commit,
+    get_git_info,
+    install_python_package,
+    load_config,
+    run_fvdb_training,
+    run_gsplat_training,
+)
 
 default_colors = ["#76B900", "#767676"]
 
 
-def save_report_for_run(scene_name: str, training_results: dict[str, Any], output_directory: pathlib.Path) -> None:
+# =============================================================================
+# Commit Management
+# =============================================================================
+
+
+def get_commits_from_opt_config(opt_config: dict[str, Any]) -> dict[str, str | None]:
+    """
+    Extract commit specifications from an opt_config.
+
+    Args:
+        opt_config: The loaded opt_config dictionary.
+
+    Returns:
+        Dictionary with keys 'fvdb_core', 'fvdb_reality_capture', 'gsplat'
+        and values being commit SHAs or None if not specified.
+    """
+    commits = opt_config.get("commits", {}) or {}
+    return {
+        "fvdb_core": commits.get("fvdb_core"),
+        "fvdb_reality_capture": commits.get("fvdb_reality_capture"),
+        "gsplat": commits.get("gsplat"),
+    }
+
+
+def get_commit_key(
+    opt_config: dict[str, Any],
+) -> tuple[str | None, str | None, str | None]:
+    """
+    Get a hashable key representing the commit combination for an opt_config.
+
+    Args:
+        opt_config: The loaded opt_config dictionary.
+
+    Returns:
+        Tuple of (fvdb_core_commit, fvdb_reality_capture_commit, gsplat_commit).
+    """
+    commits = get_commits_from_opt_config(opt_config)
+    return (commits["fvdb_core"], commits["fvdb_reality_capture"], commits["gsplat"])
+
+
+def detect_repo_paths(
+    matrix_config: dict[str, Any], matrix_dir: pathlib.Path
+) -> dict[str, pathlib.Path | None]:
+    """
+    Detect repository paths from matrix config or environment.
+
+    Args:
+        matrix_config: The loaded matrix configuration.
+        matrix_dir: Directory containing the matrix config file.
+
+    Returns:
+        Dictionary with keys 'fvdb_core', 'fvdb_reality_capture', 'gsplat'
+        and values being pathlib.Path objects or None if not found.
+    """
+    paths = matrix_config.get("paths", {}) or {}
+
+    # Default paths based on typical container layout
+    default_candidates = {
+        "fvdb_core": [
+            pathlib.Path("/workspace/openvdb/fvdb-core"),
+            matrix_dir.parent.parent.parent.parent / "fvdb-core",
+        ],
+        "fvdb_reality_capture": [
+            pathlib.Path("/workspace/openvdb/fvdb-reality-capture"),
+            matrix_dir.parent.parent.parent,  # Relative to tests/benchmarks/comparative/
+        ],
+        "gsplat": [
+            pathlib.Path("/workspace/gsplat"),
+            matrix_dir / paths.get("gsplat_base", "../gsplat/examples"),
+        ],
+    }
+
+    detected = {}
+    for repo, candidates in default_candidates.items():
+        # Check if explicitly specified in paths
+        explicit_path = paths.get(f"{repo}_path")
+        if explicit_path:
+            p = pathlib.Path(explicit_path)
+            if p.exists():
+                detected[repo] = p.resolve()
+                continue
+
+        # Try default candidates
+        for candidate in candidates:
+            if candidate.exists():
+                # For gsplat, we want the repo root, not examples dir
+                if repo == "gsplat" and "examples" in str(candidate):
+                    candidate = candidate.parent
+                detected[repo] = candidate.resolve()
+                break
+        else:
+            detected[repo] = None
+
+    return detected
+
+
+class CommitManager:
+    """
+    Manages checkout and build state for repositories.
+
+    Tracks which commits are currently installed and handles checkout/rebuild
+    when needed to minimize rebuilds.
+    """
+
+    def __init__(self, repo_paths: dict[str, pathlib.Path | None]):
+        """
+        Initialize the commit manager.
+
+        Args:
+            repo_paths: Dictionary mapping repo names to their paths.
+        """
+        self.repo_paths = repo_paths
+        self.current_commits: dict[str, str | None] = {
+            "fvdb_core": None,
+            "fvdb_reality_capture": None,
+            "gsplat": None,
+        }
+        self._initialized = False
+
+    def initialize(self) -> None:
+        """Initialize current commit state by reading from repositories."""
+        if self._initialized:
+            return
+
+        for repo, path in self.repo_paths.items():
+            if path and path.exists():
+                self.current_commits[repo] = get_current_commit(path)
+                logging.info(
+                    f"Detected {repo} at commit {self.current_commits[repo][:7] if self.current_commits[repo] else 'unknown'}"
+                )
+
+        self._initialized = True
+
+    def ensure_commits(
+        self, required_commits: dict[str, str | None], framework: str
+    ) -> dict[str, dict[str, Any]]:
+        """
+        Ensure the required commits are checked out and built.
+
+        Args:
+            required_commits: Dictionary of repo -> commit SHA (or None for current).
+            framework: The framework being used ('fvdb' or 'gsplat').
+
+        Returns:
+            Dictionary of repo -> git_info for the current state after checkout/build.
+        """
+        self.initialize()
+
+        git_info: dict[str, dict[str, Any]] = {}
+        needs_fvdb_core_rebuild = False
+        needs_fvdb_rc_reinstall = False
+        needs_gsplat_rebuild = False
+
+        # Check which repos need checkout
+        for repo in ["fvdb_core", "fvdb_reality_capture", "gsplat"]:
+            required = required_commits.get(repo)
+            current = self.current_commits.get(repo)
+            path = self.repo_paths.get(repo)
+
+            if required and path and required != current:
+                logging.info(
+                    f"Commit mismatch for {repo}: current={current[:7] if current else 'None'}, required={required[:7]}"
+                )
+
+                # Checkout the required commit
+                if checkout_commit(path, required):
+                    self.current_commits[repo] = required
+
+                    # Mark for rebuild
+                    if repo == "fvdb_core":
+                        needs_fvdb_core_rebuild = True
+                    elif repo == "fvdb_reality_capture":
+                        needs_fvdb_rc_reinstall = True
+                    elif repo == "gsplat":
+                        needs_gsplat_rebuild = True
+                else:
+                    logging.error(f"Failed to checkout {required} in {repo}")
+
+        # Perform rebuilds as needed
+        if needs_fvdb_core_rebuild and self.repo_paths.get("fvdb_core"):
+            logging.info("Rebuilding fvdb-core...")
+            if not build_fvdb_core(self.repo_paths["fvdb_core"]):
+                logging.error("fvdb-core build failed!")
+
+        if needs_fvdb_rc_reinstall and self.repo_paths.get("fvdb_reality_capture"):
+            logging.info("Reinstalling fvdb-reality-capture...")
+            if not install_python_package(self.repo_paths["fvdb_reality_capture"]):
+                logging.error("fvdb-reality-capture install failed!")
+
+        if needs_gsplat_rebuild and self.repo_paths.get("gsplat"):
+            logging.info("Rebuilding gsplat...")
+            if not install_python_package(self.repo_paths["gsplat"]):
+                logging.error("gsplat build failed!")
+
+        # Collect current git info for all relevant repos
+        if framework == "fvdb":
+            for repo in ["fvdb_core", "fvdb_reality_capture"]:
+                path = self.repo_paths.get(repo)
+                if path:
+                    git_info[repo] = get_git_info(path)
+        elif framework == "gsplat":
+            path = self.repo_paths.get("gsplat")
+            if path:
+                git_info["gsplat"] = get_git_info(path)
+
+        return git_info
+
+
+def save_report_for_run(
+    scene_name: str, training_results: dict[str, Any], output_directory: pathlib.Path
+) -> None:
     """
     Generate a JSON report summarizing the comparison of training results for multiple configurations for a given scene.
 
     Args:
         scene_name (str): The name of the scene.
         training_results (Dict): A dictionary containing training results for each configuration.
+            Each result may contain a "repositories" key with git info.
         output_directory (pathlib.Path): The directory to save the report.
 
     Returns:
@@ -41,10 +261,14 @@ def save_report_for_run(scene_name: str, training_results: dict[str, Any], outpu
 
     reports = {}
     for config_name, result in training_results.items():
+        # Extract repository info if present
+        repositories = result.get("repositories", {})
+
         report = {
             "config_name": config_name,
             "scene": scene_name,
             "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
+            "repositories": repositories,
             "training": result,
             "success": result["success"],
             "total_time": result["total_time"],
@@ -62,6 +286,17 @@ def save_report_for_run(scene_name: str, training_results: dict[str, Any], outpu
         logging.info(f"Config: {config_name}:")
         logging.info("----------------------------")
         logging.info(f" Scene: {scene_name}")
+
+        # Log repository info if present
+        repositories = report.get("repositories", {})
+        if repositories:
+            for repo_name, repo_info in repositories.items():
+                if isinstance(repo_info, dict) and repo_info.get("commit"):
+                    commit = repo_info.get(
+                        "short_commit", repo_info.get("commit", "")[:7]
+                    )
+                    dirty = " (dirty)" if repo_info.get("dirty") else ""
+                    logging.info(f"  {repo_name}: {commit}{dirty}")
 
         total_time = report["total_time"]
         training_time = report.get("training_time", total_time)
@@ -82,7 +317,10 @@ def save_report_for_run(scene_name: str, training_results: dict[str, Any], outpu
 
 
 def save_summary_report(
-    scenes: list[str], result_path: pathlib.Path, colors: dict[str, str], config_order: list[str]
+    scenes: list[str],
+    result_path: pathlib.Path,
+    colors: dict[str, str],
+    config_order: list[str],
 ) -> None:
     """
     Generate a summary report comparing different runs across multiple scenes.
@@ -187,13 +425,31 @@ def save_summary_report(
 
             total_time = cfg_report.get("total_time", 0.0)
             training_time = cfg_report.get("training_time", total_time)
-            psnr = cfg_report.get("training", {}).get("metrics", {}).get("psnr", float("nan"))
-            ssim = cfg_report.get("training", {}).get("metrics", {}).get("ssim", float("nan"))
-            num_gaussians = cfg_report.get("training", {}).get("metrics", {}).get("final_gaussian_count", float("nan"))
-            peak_gpu_memory_gb = (
-                cfg_report.get("training", {}).get("metrics", {}).get("peak_gpu_memory_gb", float("nan"))
+            psnr = (
+                cfg_report.get("training", {})
+                .get("metrics", {})
+                .get("psnr", float("nan"))
             )
-            training_throughput = num_gaussians / training_time if training_time and training_time > 0 else float("nan")
+            ssim = (
+                cfg_report.get("training", {})
+                .get("metrics", {})
+                .get("ssim", float("nan"))
+            )
+            num_gaussians = (
+                cfg_report.get("training", {})
+                .get("metrics", {})
+                .get("final_gaussian_count", float("nan"))
+            )
+            peak_gpu_memory_gb = (
+                cfg_report.get("training", {})
+                .get("metrics", {})
+                .get("peak_gpu_memory_gb", float("nan"))
+            )
+            training_throughput = (
+                num_gaussians / training_time
+                if training_time and training_time > 0
+                else float("nan")
+            )
 
             plot_dict["training_throughput"][cfg].append(float(training_throughput))
             plot_dict["PSNR"][cfg].append(float(psnr))
@@ -203,7 +459,9 @@ def save_summary_report(
             plot_dict["training_time"][cfg].append(float(training_time))
             plot_dict["peak_gpu_memory_gb"][cfg].append(float(peak_gpu_memory_gb))
 
-            assert cfg not in summary_data[scene], f"Duplicate config {cfg} for scene {scene}"
+            assert (
+                cfg not in summary_data[scene]
+            ), f"Duplicate config {cfg} for scene {scene}"
             summary_data[scene][cfg] = {
                 "training_throughput": training_throughput,
                 "PSNR": psnr,
@@ -233,7 +491,13 @@ def save_summary_report(
             values = np.array(measurement, dtype=float)
             plot_values = np.nan_to_num(values, nan=0.0)
 
-            rects = ax.bar(x + offset, plot_values, width, label=cfg_name, color=colors.get(cfg_name, "#999999"))
+            rects = ax.bar(
+                x + offset,
+                plot_values,
+                width,
+                label=cfg_name,
+                color=colors.get(cfg_name, "#999999"),
+            )
 
             # Per-bar labels: show NA for missing values
             if metric in ["num_gaussians"]:
@@ -256,7 +520,12 @@ def save_summary_report(
     fig.legend(handles, labels, loc="upper center")
     plt.tight_layout(pad=3.0)
     # add space above heighest bars to avoid cutting off the labels
-    plt.savefig(summary_dir / f"summary_comparison.png", dpi=300, bbox_inches="tight", pad_inches=0.5)
+    plt.savefig(
+        summary_dir / f"summary_comparison.png",
+        dpi=300,
+        bbox_inches="tight",
+        pad_inches=0.5,
+    )
     plt.close()
 
     statistics = {}
@@ -301,9 +570,35 @@ def save_summary_report(
     _log_statistics("training_time", "Training Time", "s")
     _log_statistics("peak_gpu_memory_gb", "Peak GPU Memory", "GB")
 
+    # Collect unique repository versions from reports
+    repository_versions: dict[str, dict[str, Any]] = {}
+    for scene in scenes:
+        report_file = result_path / f"{scene}_comparison_report.json"
+        if report_file.exists():
+            try:
+                with open(report_file, "r") as f:
+                    report = json.load(f)
+                for cfg_name, cfg_report in report.items():
+                    repos = cfg_report.get("repositories", {})
+                    for repo_name, repo_info in repos.items():
+                        if isinstance(repo_info, dict) and repo_info.get("commit"):
+                            key = f"{cfg_name}:{repo_name}"
+                            if key not in repository_versions:
+                                repository_versions[key] = {
+                                    "config": cfg_name,
+                                    "repository": repo_name,
+                                    "commit": repo_info.get("commit"),
+                                    "short_commit": repo_info.get("short_commit"),
+                                    "branch": repo_info.get("branch"),
+                                    "dirty": repo_info.get("dirty"),
+                                }
+            except Exception:
+                pass  # Skip if report can't be loaded
+
     output_summary = {
         "per_scene": summary_data,
         "statistics": statistics,
+        "repository_versions": repository_versions,
     }
 
     class NpEncoder(json.JSONEncoder):
@@ -326,7 +621,10 @@ def save_summary_report(
 
 
 def save_training_curves(
-    scene_name: str, result_path: pathlib.Path, colors: dict[str, str], config_order: list[str]
+    scene_name: str,
+    result_path: pathlib.Path,
+    colors: dict[str, str],
+    config_order: list[str],
 ) -> None:
     """
     Generate training curve plots for a single scene across multiple configurations.
@@ -355,7 +653,9 @@ def save_training_curves(
     # Load comparison report for this scene
     report_file = result_path / f"{scene_name}_comparison_report.json"
     if not report_file.exists():
-        logging.warning(f"Cannot generate training curves: missing report {report_file}")
+        logging.warning(
+            f"Cannot generate training curves: missing report {report_file}"
+        )
         return
 
     try:
@@ -380,11 +680,17 @@ def save_training_curves(
             has_psnr = True
         if metrics.get("ssim_values") and len(metrics.get("ssim_values", [])) > 1:
             has_ssim = True
-        if metrics.get("iteration_rates") and len(metrics.get("iteration_rates", [])) > 0:
+        if (
+            metrics.get("iteration_rates")
+            and len(metrics.get("iteration_rates", [])) > 0
+        ):
             has_iterations = True
         if metrics.get("loss_values") and len(metrics.get("loss_values", [])) > 0:
             has_loss = True
-        if metrics.get("gaussian_count_values") and len(metrics.get("gaussian_count_values", [])) > 0:
+        if (
+            metrics.get("gaussian_count_values")
+            and len(metrics.get("gaussian_count_values", [])) > 0
+        ):
             has_gaussian_count = True
 
     # Determine subplot layout - separate iterations and loss for clarity
@@ -401,7 +707,9 @@ def save_training_curves(
         num_plots += 1
 
     if num_plots == 0:
-        logging.info(f"No training curve data available for {scene_name}, skipping training curves")
+        logging.info(
+            f"No training curve data available for {scene_name}, skipping training curves"
+        )
         return
 
     # Create figure with dynamic subplot layout
@@ -437,7 +745,9 @@ def save_training_curves(
 
         ax_iter.set_ylabel("Training Throughput (it/s)", fontsize=11)
         ax_iter.set_xlabel("Training Step", fontsize=11)
-        ax_iter.set_title("Training Throughput Over Time", fontsize=12, fontweight="bold")
+        ax_iter.set_title(
+            "Training Throughput Over Time", fontsize=12, fontweight="bold"
+        )
         ax_iter.grid(True, alpha=0.3)
         ax_iter.legend(loc="best", framealpha=0.9)
 
@@ -489,7 +799,11 @@ def save_training_curves(
             gaussian_count_values = metrics.get("gaussian_count_values", [])
             gaussian_count_steps = metrics.get("gaussian_count_steps", [])
 
-            if gaussian_count_values and gaussian_count_steps and len(gaussian_count_values) > 0:
+            if (
+                gaussian_count_values
+                and gaussian_count_steps
+                and len(gaussian_count_values) > 0
+            ):
                 ax_gaussians.plot(
                     gaussian_count_steps,
                     gaussian_count_values,
@@ -501,7 +815,9 @@ def save_training_curves(
 
         ax_gaussians.set_ylabel("Number of Gaussians", fontsize=11)
         ax_gaussians.set_xlabel("Training Step", fontsize=11)
-        ax_gaussians.set_title("Gaussian Count Over Time", fontsize=12, fontweight="bold")
+        ax_gaussians.set_title(
+            "Gaussian Count Over Time", fontsize=12, fontweight="bold"
+        )
         ax_gaussians.grid(True, alpha=0.3)
         ax_gaussians.legend(loc="best", framealpha=0.9)
 
@@ -521,8 +837,17 @@ def save_training_curves(
 
             if psnr_values and psnr_steps and len(psnr_values) > 1:
                 color = colors.get(config_name, "#999999")
-                ax_psnr.scatter(psnr_steps, psnr_values, label=config_name, color=color, s=40, alpha=0.8)
-                ax_psnr.plot(psnr_steps, psnr_values, color=color, alpha=0.3, linewidth=0.8)
+                ax_psnr.scatter(
+                    psnr_steps,
+                    psnr_values,
+                    label=config_name,
+                    color=color,
+                    s=40,
+                    alpha=0.8,
+                )
+                ax_psnr.plot(
+                    psnr_steps, psnr_values, color=color, alpha=0.3, linewidth=0.8
+                )
 
         ax_psnr.set_ylabel("PSNR (dB)")
         ax_psnr.set_xlabel("Training Step")
@@ -546,8 +871,17 @@ def save_training_curves(
 
             if ssim_values and ssim_steps and len(ssim_values) > 1:
                 color = colors.get(config_name, "#999999")
-                ax_ssim.scatter(ssim_steps, ssim_values, label=config_name, color=color, s=40, alpha=0.8)
-                ax_ssim.plot(ssim_steps, ssim_values, color=color, alpha=0.3, linewidth=0.8)
+                ax_ssim.scatter(
+                    ssim_steps,
+                    ssim_values,
+                    label=config_name,
+                    color=color,
+                    s=40,
+                    alpha=0.8,
+                )
+                ax_ssim.plot(
+                    ssim_steps, ssim_values, color=color, alpha=0.3, linewidth=0.8
+                )
 
         ax_ssim.set_ylabel("SSIM")
         ax_ssim.set_xlabel("Training Step")
@@ -560,7 +894,9 @@ def save_training_curves(
     # Add main title and subtitle
     scene_title = scene_name.replace("_", " ").title()
     fig.suptitle("Gaussian Splat Training", fontsize=16, fontweight="bold", y=0.99)
-    fig.text(0.5, 0.97, f"Scene: {scene_title}", ha="center", fontsize=12, style="italic")
+    fig.text(
+        0.5, 0.97, f"Scene: {scene_title}", ha="center", fontsize=12, style="italic"
+    )
 
     # Save figure
     plt.tight_layout(rect=[0, 0, 1, 0.97])  # Leave space for suptitle and subtitle
@@ -631,10 +967,22 @@ def main():
     Returns:
         None
     """
-    parser = argparse.ArgumentParser(description="Comparative Benchmark (matrix-driven)")
-    parser.add_argument("--matrix", required=True, help="Path to matrix YAML file defining datasets, configs, and runs")
-    parser.add_argument("--log-level", default="INFO", help="Logging level (default: INFO)")
-    parser.add_argument("--plot-only", action="store_true", help="Only plot results from an existing run and exit")
+    parser = argparse.ArgumentParser(
+        description="Comparative Benchmark (matrix-driven)"
+    )
+    parser.add_argument(
+        "--matrix",
+        required=True,
+        help="Path to matrix YAML file defining datasets, configs, and runs",
+    )
+    parser.add_argument(
+        "--log-level", default="INFO", help="Logging level (default: INFO)"
+    )
+    parser.add_argument(
+        "--plot-only",
+        action="store_true",
+        help="Only plot results from an existing run and exit",
+    )
 
     args = parser.parse_args()
 
@@ -656,13 +1004,18 @@ def main():
     logging.basicConfig(
         level=getattr(logging, args.log_level.upper()),
         format="%(asctime)s - %(levelname)s - %(message)s",
-        handlers=[logging.StreamHandler(sys.stdout), logging.FileHandler(benchmark_log_path)],
+        handlers=[
+            logging.StreamHandler(sys.stdout),
+            logging.FileHandler(benchmark_log_path),
+        ],
     )
 
     datasets = matrix_config.get("datasets", [])
     if not datasets:
         parser.error("matrix.yml must define a non-empty 'datasets:' list")
-    dataset_by_name = {d.get("name"): d for d in datasets if isinstance(d, dict) and d.get("name")}
+    dataset_by_name = {
+        d.get("name"): d for d in datasets if isinstance(d, dict) and d.get("name")
+    }
 
     opt_configs = matrix_config.get("opt_configs", {})
     if not isinstance(opt_configs, dict) or not opt_configs:
@@ -682,7 +1035,15 @@ def main():
                 out[k] = v
         return out
 
-    # Build run plan grouped by scene
+    # Detect repository paths
+    repo_paths = detect_repo_paths(matrix_config, matrix_dir)
+    logging.info(f"Detected repository paths: {repo_paths}")
+
+    # Initialize commit manager
+    commit_manager = CommitManager(repo_paths)
+
+    # Build run plan - collect all run definitions
+    all_run_defs: list[dict[str, Any]] = []
     runs_by_scene: dict[str, list[dict[str, Any]]] = {}
     config_order: list[str] = []
     all_config_colors: dict[str, str] = {}
@@ -704,11 +1065,15 @@ def main():
 
         opt_entry = opt_configs[opt_alias]
         if not isinstance(opt_entry, dict) or "path" not in opt_entry:
-            raise ValueError(f"opt_configs.{opt_alias} must be a mapping with a 'path' field")
+            raise ValueError(
+                f"opt_configs.{opt_alias} must be a mapping with a 'path' field"
+            )
         opt_config_path = (matrix_dir / opt_entry["path"]).resolve()
         opt_config = load_config(opt_config_path)
         if "framework" not in opt_config:
-            raise RuntimeError(f"Framework not specified in opt config: {opt_config_path}")
+            raise RuntimeError(
+                f"Framework not specified in opt config: {opt_config_path}"
+            )
         framework = opt_config["framework"]
 
         overrides = run.get("overrides", {}) or {}
@@ -726,102 +1091,164 @@ def main():
             if prev is None:
                 all_config_colors[run_key] = color
             elif prev != color:
-                logging.warning(f"Color mismatch for {run_key}: {prev} vs {color}; keeping {prev}")
+                logging.warning(
+                    f"Color mismatch for {run_key}: {prev} vs {color}; keeping {prev}"
+                )
 
-        runs_by_scene.setdefault(scene_name, []).append(
-            {
-                "scene_name": scene_name,
-                "run_key": run_key,
-                "run_dir": run_dir,
-                "framework": framework,
-                "opt_alias": opt_alias,
-                "opt_config_path": opt_config_path,
-                "opt_config": opt_config,
-                "framework_overrides": framework_overrides,
-            }
-        )
+        # Extract commit information from opt_config
+        commits = get_commits_from_opt_config(opt_config)
+        commit_key = get_commit_key(opt_config)
+
+        run_def = {
+            "scene_name": scene_name,
+            "run_key": run_key,
+            "run_dir": run_dir,
+            "framework": framework,
+            "opt_alias": opt_alias,
+            "opt_config_path": opt_config_path,
+            "opt_config": opt_config,
+            "framework_overrides": framework_overrides,
+            "commits": commits,
+            "commit_key": commit_key,
+        }
+
+        all_run_defs.append(run_def)
+        runs_by_scene.setdefault(scene_name, []).append(run_def)
+
+    # Group runs by commit key to minimize rebuilds
+    runs_by_commit: dict[tuple, list[dict[str, Any]]] = {}
+    for run_def in all_run_defs:
+        commit_key = run_def["commit_key"]
+        runs_by_commit.setdefault(commit_key, []).append(run_def)
+
+    # Log commit grouping
+    logging.info(f"Found {len(runs_by_commit)} unique commit combination(s)")
+    for commit_key, commit_runs in runs_by_commit.items():
+        logging.info(f"  Commit key {commit_key}: {len(commit_runs)} run(s)")
 
     # Determine scenes to process (in datasets order, but only those with runs)
     scenes = [d["name"] for d in datasets if d.get("name") in runs_by_scene]
     if not scenes:
         parser.error("No runnable scenes found (check 'runs:' vs 'datasets:')")
 
-    # Process each scene
-    for scene_name in scenes:
-        logging.info(f"Processing scene: {scene_name}")
+    # Track training results by scene (accumulated across commit groups)
+    all_training_results: dict[str, dict[str, Any]] = {scene: {} for scene in scenes}
 
-        # Plot-only mode: do not run training, only summarize existing reports
-        if args.plot_only:
-            continue
+    # Process runs grouped by commit key to minimize rebuilds
+    if not args.plot_only:
+        for commit_key, commit_runs in runs_by_commit.items():
+            logging.info("=" * 60)
+            logging.info(f"Processing commit group: {commit_key}")
+            logging.info("=" * 60)
 
-        training_results: dict[str, Any] = {}
+            # Determine the framework for this commit group (they should all be the same)
+            frameworks = {r["framework"] for r in commit_runs}
+            if len(frameworks) > 1:
+                logging.warning(f"Mixed frameworks in commit group: {frameworks}")
 
-        # Run training for each configured run for this scene
-        for run_def in runs_by_scene.get(scene_name, []):
-            framework = run_def["framework"]
-            run_key = run_def["run_key"]
-            run_dir = run_def["run_dir"]
-            opt_config_path = run_def["opt_config_path"]
-            opt_config = run_def["opt_config"]
-            framework_overrides = run_def["framework_overrides"]
+            # Get the first run's framework and commits for checkout
+            first_run = commit_runs[0]
+            framework = first_run["framework"]
+            commits = first_run["commits"]
 
-            if framework == "fvdb":
-                merged_opt = deep_merge(opt_config, framework_overrides)
-                merged_opt_path = run_dir / "opt_config.yml"
-                run_dir.mkdir(parents=True, exist_ok=True)
-                with open(merged_opt_path, "w") as f:
-                    yaml.safe_dump(merged_opt, f, default_flow_style=False, sort_keys=False)
+            # Ensure correct commits are checked out and built
+            git_info = commit_manager.ensure_commits(commits, framework)
+            logging.info(f"Repository state after checkout: {git_info}")
 
-                fvdb_results = run_fvdb_training(
+            # Now run all benchmarks for this commit group
+            for run_def in commit_runs:
+                scene_name = run_def["scene_name"]
+                run_framework = run_def["framework"]
+                run_key = run_def["run_key"]
+                run_dir = run_def["run_dir"]
+                opt_config_path = run_def["opt_config_path"]
+                opt_config = run_def["opt_config"]
+                framework_overrides = run_def["framework_overrides"]
+
+                logging.info(f"Running benchmark: {scene_name} / {run_key}")
+
+                if run_framework == "fvdb":
+                    merged_opt = deep_merge(opt_config, framework_overrides)
+                    merged_opt_path = run_dir / "opt_config.yml"
+                    run_dir.mkdir(parents=True, exist_ok=True)
+                    with open(merged_opt_path, "w") as f:
+                        yaml.safe_dump(
+                            merged_opt, f, default_flow_style=False, sort_keys=False
+                        )
+
+                    fvdb_results = run_fvdb_training(
+                        scene_name=scene_name,
+                        run_dir=run_dir,
+                        matrix_config_path=matrix_path,
+                        opt_config_path=merged_opt_path,
+                        fvdb_results_base_path=run_dir / "fvdb_results",
+                    )
+                    # Add git info to results
+                    fvdb_results["repositories"] = git_info
+                    all_training_results[scene_name][run_key] = fvdb_results
+
+                elif run_framework == "gsplat":
+                    # For GSplat, we support:
+                    # - deep-merge overrides into the opt-config for parameter extraction (e.g. max_epochs)
+                    # - append extra CLI args from opt-config + overrides
+                    gsplat_overrides_no_cli = dict(framework_overrides)
+                    gsplat_overrides_no_cli.pop("cli_args", None)
+                    merged_opt = deep_merge(opt_config, gsplat_overrides_no_cli)
+                    merged_opt_path = run_dir / "opt_config.yml"
+                    run_dir.mkdir(parents=True, exist_ok=True)
+                    with open(merged_opt_path, "w") as f:
+                        yaml.safe_dump(
+                            merged_opt, f, default_flow_style=False, sort_keys=False
+                        )
+
+                    opt_cli_args = opt_config.get("cli_args", []) or []
+                    override_cli_args = framework_overrides.get("cli_args", []) or []
+                    if not isinstance(opt_cli_args, list) or not all(
+                        isinstance(x, str) for x in opt_cli_args
+                    ):
+                        raise ValueError(
+                            f"{opt_config_path} cli_args must be a list[str]"
+                        )
+                    if not isinstance(override_cli_args, list) or not all(
+                        isinstance(x, str) for x in override_cli_args
+                    ):
+                        raise ValueError(
+                            f"Run overrides for gsplat.cli_args must be a list[str]"
+                        )
+
+                    gsplat_results = run_gsplat_training(
+                        scene_name=scene_name,
+                        run_dir=run_dir,
+                        matrix_config_path=matrix_path,
+                        opt_config_path=merged_opt_path,
+                        extra_cli_args=[*opt_cli_args, *override_cli_args],
+                    )
+                    # Add git info to results
+                    gsplat_results["repositories"] = git_info
+                    all_training_results[scene_name][run_key] = gsplat_results
+
+                else:
+                    raise ValueError(f"Unsupported framework: {run_framework}")
+
+        # Generate per-scene reports after all runs are complete
+        for scene_name in scenes:
+            training_results = all_training_results.get(scene_name, {})
+            if training_results:
+                save_report_for_run(
                     scene_name=scene_name,
-                    run_dir=run_dir,
-                    matrix_config_path=matrix_path,
-                    opt_config_path=merged_opt_path,
-                    fvdb_results_base_path=run_dir / "fvdb_results",
+                    training_results=training_results,
+                    output_directory=results_path,
                 )
-                training_results[run_key] = fvdb_results
 
-            elif framework == "gsplat":
-                # For GSplat, we support:
-                # - deep-merge overrides into the opt-config for parameter extraction (e.g. max_epochs)
-                # - append extra CLI args from opt-config + overrides
-                gsplat_overrides_no_cli = dict(framework_overrides)
-                gsplat_overrides_no_cli.pop("cli_args", None)
-                merged_opt = deep_merge(opt_config, gsplat_overrides_no_cli)
-                merged_opt_path = run_dir / "opt_config.yml"
-                run_dir.mkdir(parents=True, exist_ok=True)
-                with open(merged_opt_path, "w") as f:
-                    yaml.safe_dump(merged_opt, f, default_flow_style=False, sort_keys=False)
-
-                opt_cli_args = opt_config.get("cli_args", []) or []
-                override_cli_args = framework_overrides.get("cli_args", []) or []
-                if not isinstance(opt_cli_args, list) or not all(isinstance(x, str) for x in opt_cli_args):
-                    raise ValueError(f"{opt_config_path} cli_args must be a list[str]")
-                if not isinstance(override_cli_args, list) or not all(isinstance(x, str) for x in override_cli_args):
-                    raise ValueError(f"Run overrides for gsplat.cli_args must be a list[str]")
-
-                gsplat_results = run_gsplat_training(
+                # Generate training curves for this scene
+                save_training_curves(
                     scene_name=scene_name,
-                    run_dir=run_dir,
-                    matrix_config_path=matrix_path,
-                    opt_config_path=merged_opt_path,
-                    extra_cli_args=[*opt_cli_args, *override_cli_args],
+                    result_path=results_path,
+                    colors=all_config_colors,
+                    config_order=config_order,
                 )
-                training_results[run_key] = gsplat_results
 
-            else:
-                raise ValueError(f"Unsupported framework: {framework}")
-
-        # Generate per-scene report
-        if training_results:
-            save_report_for_run(scene_name=scene_name, training_results=training_results, output_directory=results_path)
-
-            # Generate training curves for this scene
-            save_training_curves(
-                scene_name=scene_name, result_path=results_path, colors=all_config_colors, config_order=config_order
-            )
-
-        logging.info(f"Completed benchmark for {scene_name}")
+            logging.info(f"Completed reports for {scene_name}")
 
     # Generate summary charts if multiple scenes were processed
     if args.plot_only:
@@ -829,11 +1256,16 @@ def main():
         for scene_name in scenes:
             report_file = results_path / f"{scene_name}_comparison_report.json"
             if not report_file.exists():
-                logging.warning(f"Missing comparison report for expected scene '{scene_name}': {report_file}")
+                logging.warning(
+                    f"Missing comparison report for expected scene '{scene_name}': {report_file}"
+                )
             else:
                 # Generate training curves from existing reports
                 save_training_curves(
-                    scene_name=scene_name, result_path=results_path, colors=all_config_colors, config_order=config_order
+                    scene_name=scene_name,
+                    result_path=results_path,
+                    colors=all_config_colors,
+                    config_order=config_order,
                 )
 
     save_summary_report(scenes, results_path, all_config_colors, config_order)

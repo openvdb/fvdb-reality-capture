@@ -124,7 +124,12 @@ def test_comparison_benchmark_with_stubbed_training(tmp_path: Path, monkeypatch:
             "total_time": 1.0,
             "training_time": 1.0,
             "exit_code": 0,
-            "metrics": {"psnr": 1.0, "ssim": 1.0, "final_gaussian_count": 1, "final_loss": 0.0},
+            "metrics": {
+                "psnr": 1.0,
+                "ssim": 1.0,
+                "final_gaussian_count": 1,
+                "final_loss": 0.0,
+            },
             "result_dir": str(tmp_path),
         }
 
@@ -150,7 +155,12 @@ def test_comparison_benchmark_gsplat_overrides(tmp_path: Path, monkeypatch: pyte
     module, comparative_dir = _load_comparison_benchmark_module()
 
     def _stub_gsplat_training(
-        *, scene_name: str, run_dir: Path, matrix_config_path: Path, opt_config_path: Path, extra_cli_args: list[str]
+        *,
+        scene_name: str,
+        run_dir: Path,
+        matrix_config_path: Path,
+        opt_config_path: Path,
+        extra_cli_args: list[str],
     ):
         assert scene_name == "garden"
         assert extra_cli_args == ["--strategy.cap_max", "123"]
@@ -162,7 +172,12 @@ def test_comparison_benchmark_gsplat_overrides(tmp_path: Path, monkeypatch: pyte
             "total_time": 1.0,
             "training_time": 1.0,
             "exit_code": 0,
-            "metrics": {"psnr": 1.0, "ssim": 1.0, "final_gaussian_count": 1, "final_loss": 0.0},
+            "metrics": {
+                "psnr": 1.0,
+                "ssim": 1.0,
+                "final_gaussian_count": 1,
+                "final_loss": 0.0,
+            },
             "result_dir": str(run_dir),
         }
 
@@ -250,3 +265,134 @@ def test_comparative_configs_match_contract():
         with path.open("r") as f:
             opt_cfg = yaml.safe_load(f)
         contract.validate_comparative_opt_config(opt_cfg)
+
+
+def test_get_commits_from_opt_config():
+    """Test extraction of commits from opt_config."""
+    module, _ = _load_comparison_benchmark_module()
+
+    # Test with no commits section
+    opt_config = {"framework": "fvdb", "name": "test"}
+    commits = module.get_commits_from_opt_config(opt_config)
+    assert commits["fvdb_core"] is None
+    assert commits["fvdb_reality_capture"] is None
+    assert commits["gsplat"] is None
+
+    # Test with commits section
+    opt_config = {
+        "framework": "fvdb",
+        "name": "test",
+        "commits": {
+            "fvdb_core": "abc123",
+            "fvdb_reality_capture": "def456",
+        },
+    }
+    commits = module.get_commits_from_opt_config(opt_config)
+    assert commits["fvdb_core"] == "abc123"
+    assert commits["fvdb_reality_capture"] == "def456"
+    assert commits["gsplat"] is None
+
+
+def test_get_commit_key():
+    """Test commit key generation for grouping runs."""
+    module, _ = _load_comparison_benchmark_module()
+
+    # Test with no commits
+    opt_config = {"framework": "fvdb"}
+    key = module.get_commit_key(opt_config)
+    assert key == (None, None, None)
+
+    # Test with commits
+    opt_config = {
+        "framework": "fvdb",
+        "commits": {"fvdb_core": "abc123", "fvdb_reality_capture": "def456"},
+    }
+    key = module.get_commit_key(opt_config)
+    assert key == ("abc123", "def456", None)
+
+    # Test key is hashable (can be used as dict key)
+    d = {key: "test_value"}
+    assert d[key] == "test_value"
+
+
+def test_comparison_benchmark_with_commits_in_report(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """Test that repository info is included in reports when commits are specified."""
+    module, comparative_dir = _load_comparison_benchmark_module()
+
+    def _stub_train(*_args, **_kwargs):
+        return {
+            "success": True,
+            "total_time": 1.0,
+            "training_time": 1.0,
+            "exit_code": 0,
+            "metrics": {
+                "psnr": 1.0,
+                "ssim": 1.0,
+                "final_gaussian_count": 1,
+                "final_loss": 0.0,
+            },
+            "result_dir": str(tmp_path),
+        }
+
+    monkeypatch.setattr(module, "run_fvdb_training", _stub_train)
+
+    # Mock CommitManager to avoid actual git operations
+    class MockCommitManager:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def initialize(self):
+            pass
+
+        def ensure_commits(self, required_commits, framework):
+            return {
+                "fvdb_core": {
+                    "commit": "abc123def456",
+                    "short_commit": "abc123",
+                    "branch": "main",
+                    "dirty": False,
+                }
+            }
+
+    monkeypatch.setattr(module, "CommitManager", MockCommitManager)
+
+    # Create opt_config with commits
+    opt_config_content = """
+framework: fvdb
+name: test_with_commits
+color: "#1f77b4"
+commits:
+  fvdb_core: abc123def456
+splat_optimizer: GaussianSplatOptimizer
+reconstruction_config:
+  max_epochs: 1
+training_arguments:
+  image_downsample_factor: 4
+  use_every_n_as_val: 10
+  device: cuda
+"""
+    opt_config_path = tmp_path / "opt_config_with_commits.yml"
+    opt_config_path.write_text(opt_config_content)
+
+    matrix = {
+        "name": "test_commits_matrix",
+        "paths": {"gsplat_base": "unused", "data_base": "unused"},
+        "datasets": [{"name": "garden", "path": "360_v2/garden"}],
+        "opt_configs": {"test_commits": {"path": str(opt_config_path)}},
+        "runs": [{"dataset": "garden", "opt_config": "test_commits"}],
+    }
+    matrix_path = tmp_path / "matrix.yml"
+    matrix_path.write_text(yaml.safe_dump(matrix, sort_keys=False))
+
+    args = ["comparison_benchmark.py", "--matrix", str(matrix_path)]
+    monkeypatch.setattr(sys, "argv", args)
+    module.main()
+
+    # Check that report contains repository info
+    report_path = tmp_path / "results" / "test_commits_matrix" / "garden_comparison_report.json"
+    assert report_path.exists()
+    with report_path.open() as f:
+        report = json.load(f)
+    assert "test_commits" in report
+    assert "repositories" in report["test_commits"]
+    assert "fvdb_core" in report["test_commits"]["repositories"]

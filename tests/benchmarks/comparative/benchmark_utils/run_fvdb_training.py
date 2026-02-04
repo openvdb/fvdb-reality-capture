@@ -45,7 +45,9 @@ def run_fvdb_training(
             - "metrics" (dict[str, Any]): Extracted training metrics (PSNR, SSIM, etc.)
             - "result_dir" (str): Path to the run results directory
     """
-    logging.info(f"Starting FVDB training for scene: {scene_name} with config: {opt_config_path.name}")
+    logging.info(
+        f"Starting FVDB training for scene: {scene_name} with config: {opt_config_path.name}"
+    )
 
     # Create results directory for this run
     run_dir.mkdir(parents=True, exist_ok=True)
@@ -64,7 +66,9 @@ def run_fvdb_training(
         run_config = yaml.safe_load(f)
 
     # Filter to only include the current scene
-    run_config["datasets"] = [dataset for dataset in run_config["datasets"] if dataset["name"] == scene_name]
+    run_config["datasets"] = [
+        dataset for dataset in run_config["datasets"] if dataset["name"] == scene_name
+    ]
 
     # Load the optimization config
     with open(opt_config_path, "r") as f:
@@ -92,15 +96,30 @@ def run_fvdb_training(
 
     # Run from fvdb-reality-capture repo root (contains tests/benchmarks/generate_benchmark_checkpoints.py)
     repo_root = None
+    # __file__ is at tests/benchmarks/comparative/benchmark_utils/run_fvdb_training.py
+    # So parents[4] is the repo root
     for candidate in [
-        (pathlib.Path(__file__).resolve().parents[3] if len(pathlib.Path(__file__).resolve().parents) >= 4 else None),
+        (
+            pathlib.Path(__file__).resolve().parents[4]
+            if len(pathlib.Path(__file__).resolve().parents) >= 5
+            else None
+        ),
+        (
+            pathlib.Path(__file__).resolve().parents[3]
+            if len(pathlib.Path(__file__).resolve().parents) >= 4
+            else None
+        ),
         pathlib.Path("/workspace/openvdb/fvdb-reality-capture"),
-        pathlib.Path("/workspace/benchmark").parent,  # if running from /workspace/benchmark
+        pathlib.Path(
+            "/workspace/benchmark"
+        ).parent,  # if running from /workspace/benchmark
     ]:
         if (
             candidate
             and candidate.exists()
-            and (candidate / "tests/benchmarks/generate_benchmark_checkpoints.py").exists()
+            and (
+                candidate / "tests/benchmarks/generate_benchmark_checkpoints.py"
+            ).exists()
         ):
             repo_root = candidate
             break
@@ -108,7 +127,9 @@ def run_fvdb_training(
         raise FileNotFoundError(
             "Could not locate fvdb-reality-capture repo root containing tests/benchmarks/generate_benchmark_checkpoints.py"
         )
-    exit_code, stdout, stderr = run_command(cmd, cwd=str(repo_root), log_file=str(log_file))
+    exit_code, stdout, stderr = run_command(
+        cmd, cwd=str(repo_root), log_file=str(log_file)
+    )
 
     # End timing
     end_time = time.time()
