@@ -201,7 +201,7 @@ def build_fvdb_core(repo_path: pathlib.Path, verbose: bool = True) -> bool:
             if var in os.environ:
                 env[var] = os.environ[var]
 
-        result = subprocess.run(
+        subprocess.run(
             cmd,
             cwd=repo_path,
             env=env,

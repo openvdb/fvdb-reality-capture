@@ -191,7 +191,8 @@ class CommitManager:
 
             if required and path and required != current:
                 logging.info(
-                    f"Commit mismatch for {repo}: current={current[:7] if current else 'None'}, required={required[:7]}"
+                    f"Commit mismatch for {repo}: current={current[:7] if current else 'None'}, "
+                    f"required={required[:7] if len(required) >= 7 else required}"
                 )
 
                 # Checkout the required commit
@@ -206,23 +207,31 @@ class CommitManager:
                     elif repo == "gsplat":
                         needs_gsplat_rebuild = True
                 else:
-                    logging.error(f"Failed to checkout {required} in {repo}")
+                    msg = f"Failed to checkout {required} in {repo}"
+                    logging.error(msg)
+                    raise RuntimeError(msg)
 
         # Perform rebuilds as needed
         if needs_fvdb_core_rebuild and self.repo_paths.get("fvdb_core"):
             logging.info("Rebuilding fvdb-core...")
             if not build_fvdb_core(self.repo_paths["fvdb_core"]):
-                logging.error("fvdb-core build failed!")
+                msg = "fvdb-core build failed!"
+                logging.error(msg)
+                raise RuntimeError(msg)
 
         if needs_fvdb_rc_reinstall and self.repo_paths.get("fvdb_reality_capture"):
             logging.info("Reinstalling fvdb-reality-capture...")
             if not install_python_package(self.repo_paths["fvdb_reality_capture"]):
-                logging.error("fvdb-reality-capture install failed!")
+                msg = "fvdb-reality-capture install failed!"
+                logging.error(msg)
+                raise RuntimeError(msg)
 
         if needs_gsplat_rebuild and self.repo_paths.get("gsplat"):
             logging.info("Rebuilding gsplat...")
             if not install_python_package(self.repo_paths["gsplat"]):
-                logging.error("gsplat build failed!")
+                msg = "gsplat build failed!"
+                logging.error(msg)
+                raise RuntimeError(msg)
 
         # Collect current git info for all relevant repos
         if framework == "fvdb":

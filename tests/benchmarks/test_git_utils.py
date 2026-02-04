@@ -105,8 +105,6 @@ class TestGetGitInfo(unittest.TestCase):
 
     def test_get_git_info_not_a_repo(self):
         """Test handling of path that is not a git repo."""
-        import tempfile
-
         with tempfile.TemporaryDirectory() as tmpdir:
             info = self.get_git_info(pathlib.Path(tmpdir))
 
