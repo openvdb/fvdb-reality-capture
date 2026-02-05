@@ -81,6 +81,7 @@ def extract_training_params(config: dict, scene: str) -> dict:
         "refine_start_epoch": training_config.get("refine_start_epoch", 3),
         "refine_stop_epoch": training_config.get("refine_stop_epoch", 100),
         "refine_every_epoch": training_config.get("refine_every_epoch", 0.75),
+        "increase_sh_degree_every_epoch": training_config.get("increase_sh_degree_every_epoch", 5),
         "sh_degree": training_config.get("sh_degree", 3),
         "initial_opacity": training_config.get("initial_opacity", 0.1),
         "initial_covariance_scale": training_config.get("initial_covariance_scale", 1.0),
@@ -133,6 +134,7 @@ def extract_training_params(config: dict, scene: str) -> dict:
     refine_start_steps = int(params["refine_start_epoch"] * training_images)
     refine_stop_steps = int(params["refine_stop_epoch"] * training_images)
     refine_every_steps = int(params["refine_every_epoch"] * training_images)
+    sh_degree_interval_steps = int(params["increase_sh_degree_every_epoch"] * training_images)
 
     # Add calculated step values
     params.update(
@@ -144,6 +146,7 @@ def extract_training_params(config: dict, scene: str) -> dict:
             "refine_start_steps": refine_start_steps,
             "refine_stop_steps": refine_stop_steps,
             "refine_every_steps": refine_every_steps,
+            "sh_degree_interval_steps": sh_degree_interval_steps,
             # For backward compatibility
             "num_images": total_images,
             "fvdb_training_images": training_images,

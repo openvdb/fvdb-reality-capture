@@ -30,6 +30,12 @@ GSPLAT_PARAM_MAPPING: dict[str, str] = {
     "random_bkgd": "--random_bkgd",
     "ssim_lambda": "--ssim_lambda",
     "sh_degree": "--sh_degree",
+    # Training parameters
+    "batch_size": "--batch_size",
+    # Camera pose optimization
+    "optimize_camera_poses": "--pose_opt",  # Note: different naming convention
+    "pose_opt_lr": "--pose_opt_lr",
+    "pose_opt_reg": "--pose_opt_reg",
     # Learning rates
     "means_lr": "--means_lr",
     "scales_lr": "--scales_lr",
@@ -148,6 +154,7 @@ def run_gsplat_training(
     refine_start_steps = params["refine_start_steps"]
     refine_stop_steps = params["refine_stop_steps"]
     refine_every_steps = params["refine_every_steps"]
+    sh_degree_interval_steps = params["sh_degree_interval_steps"]
 
     # Calculate reset_every_steps (convert reset_opacities_every_epoch to steps)
     reset_opacities_every_epoch = 16  # From benchmark_config.yaml
@@ -164,6 +171,7 @@ def run_gsplat_training(
     logging.info(f"  refine_stop_steps: {refine_stop_steps}")
     logging.info(f"  refine_every_steps: {refine_every_steps}")
     logging.info(f"  reset_every_steps: {reset_every_steps}")
+    logging.info(f"  sh_degree_interval_steps: {sh_degree_interval_steps}")
     logging.info(f"  Training images: {training_images}")
     logging.info(f"  Total images: {params.get('total_images', 'N/A')}")
 
@@ -214,6 +222,9 @@ def run_gsplat_training(
             str(gsplat_result_dir),
             "--max_steps",
             str(max_steps),  # Full training
+            # SH degree schedule to match FVDB
+            "--sh_degree_interval",
+            str(sh_degree_interval_steps),
             # densification parameters to match FVDB
             "--strategy.refine_start_iter",
             str(refine_start_steps),
