@@ -220,12 +220,17 @@ def build_fvdb_core(repo_path: pathlib.Path, verbose: bool = True) -> bool:
             cwd=repo_path,
             env=env,
             check=True,
+            capture_output=True,
         )
         logging.info("fvdb-core build completed successfully")
         return True
 
     except subprocess.CalledProcessError as e:
         logging.error(f"Failed to build fvdb-core: {e}")
+        if e.stdout:
+            logging.error(f"Build stdout: {e.stdout.decode('utf-8')}")
+        if e.stderr:
+            logging.error(f"Build stderr: {e.stderr.decode('utf-8')}")
         return False
 
 
@@ -250,12 +255,16 @@ def install_python_package(repo_path: pathlib.Path, editable: bool = False) -> b
         else:
             cmd.append(str(repo_path))
 
-        subprocess.run(cmd, check=True)
+        subprocess.run(cmd, check=True, capture_output=True, text=True)
         logging.info(f"Package installation from {repo_path} completed successfully")
         return True
 
     except subprocess.CalledProcessError as e:
         logging.error(f"Failed to install package from {repo_path}: {e}")
+        if e.stdout:
+            logging.error(f"Install stdout: {e.stdout}")
+        if e.stderr:
+            logging.error(f"Install stderr: {e.stderr}")
         return False
 
 

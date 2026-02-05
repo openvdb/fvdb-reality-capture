@@ -100,7 +100,7 @@ def detect_repo_paths(matrix_config: dict[str, Any], matrix_dir: pathlib.Path) -
         ],
         "gsplat": [
             pathlib.Path("/workspace/gsplat"),
-            matrix_dir / paths.get("gsplat_base", "../gsplat/examples"),
+            (matrix_dir / paths.get("gsplat_base", "../gsplat/examples")).resolve(),
         ],
     }
 
