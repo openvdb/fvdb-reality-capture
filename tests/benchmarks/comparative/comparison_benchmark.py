@@ -189,6 +189,14 @@ class CommitManager:
             current = self.current_commits.get(repo)
             path = self.repo_paths.get(repo)
 
+            # Warn if commit specified but repo path not found
+            if required and not path:
+                logging.warning(
+                    f"Commit {required[:7] if len(required) >= 7 else required} specified for {repo}, "
+                    f"but repository path was not found. Skipping checkout."
+                )
+                continue
+
             if required and path and required != current:
                 logging.info(
                     f"Commit mismatch for {repo}: current={current[:7] if current else 'None'}, "
