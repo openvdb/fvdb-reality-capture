@@ -274,6 +274,19 @@ class TestCheckoutCommit(unittest.TestCase):
 
         self.assertFalse(result)
 
+    def test_checkout_dirty_repo_raises_error(self):
+        """Test that checkout fails with RuntimeError if repo has uncommitted changes."""
+        # Make the repo dirty by modifying a file without committing
+        test_file = self.repo_path / "test.txt"
+        test_file.write_text("uncommitted changes")
+
+        # Attempting to checkout a different commit should raise RuntimeError
+        with self.assertRaises(RuntimeError) as context:
+            self.checkout_commit(self.repo_path, self.first_commit)
+
+        self.assertIn("uncommitted changes", str(context.exception))
+        self.assertIn("commit or stash", str(context.exception))
+
 
 class TestGetCommitsFromOptConfig(unittest.TestCase):
     """Tests for get_commits_from_opt_config function."""

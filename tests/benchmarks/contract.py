@@ -380,6 +380,13 @@ def validate_comparative_opt_config(config: dict[str, Any]) -> None:
         extra_commit_keys = set(commits.keys()) - allowed_commit_keys
         if extra_commit_keys:
             _raise_contract_error("Unknown commits keys", details={"extra": sorted(extra_commit_keys)})
+        # Validate that commit values are strings (or None)
+        for key, value in commits.items():
+            if value is not None and not isinstance(value, str):
+                _raise_contract_error(
+                    f"Commit value for '{key}' must be a string or null",
+                    details={"key": key, "type": type(value).__name__},
+                )
 
     if framework == "fvdb":
         recon_cfg = config.get("reconstruction_config", {})

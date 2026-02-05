@@ -20,7 +20,7 @@ framework: gsplat
 
 # Specify commit to benchmark (replace with actual commit SHA)
 commits:
-  gsplat: abc123def456789...  # Replace with actual commit SHA
+  gsplat: REPLACE_WITH_GSPLAT_COMMIT_SHA  # Replace with actual 40-char commit SHA
 
 name: gsplat_commit_example
 color: "#d62728"  # Red - to distinguish from default

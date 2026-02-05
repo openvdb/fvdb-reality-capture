@@ -23,8 +23,8 @@ framework: fvdb
 
 # Specify commits to benchmark (replace with actual commit SHAs)
 commits:
-  fvdb_core: abc123def456789...        # Replace with actual commit SHA
-  fvdb_reality_capture: xyz789abc...   # Replace with actual commit SHA
+  fvdb_core: REPLACE_WITH_FVDB_CORE_COMMIT_SHA           # Replace with actual 40-char commit SHA
+  fvdb_reality_capture: REPLACE_WITH_FRC_COMMIT_SHA      # Replace with actual 40-char commit SHA
 
 name: fvdb_commit_example
 color: "#9467bd"  # Purple - to distinguish from default

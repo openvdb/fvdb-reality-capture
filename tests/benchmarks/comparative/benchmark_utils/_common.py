@@ -140,8 +140,21 @@ def checkout_commit(repo_path: pathlib.Path, commit: str) -> bool:
 
     Returns:
         True if checkout succeeded, False otherwise.
+
+    Raises:
+        RuntimeError: If the working directory has uncommitted changes,
+            to prevent data loss.
     """
     repo_path = pathlib.Path(repo_path).resolve()
+
+    # Check for uncommitted changes before checkout - fail to prevent data loss
+    git_info = get_git_info(repo_path)
+    if git_info.get("dirty"):
+        raise RuntimeError(
+            f"Repository {repo_path} has uncommitted changes. "
+            "Please commit or stash your changes before running benchmarks "
+            "that require switching commits."
+        )
 
     try:
         # First, fetch to ensure we have the commit
@@ -154,7 +167,8 @@ def checkout_commit(repo_path: pathlib.Path, commit: str) -> bool:
         )
 
         # Checkout the commit
-        logging.info(f"Checking out commit {commit[:7]}... in {repo_path}")
+        short_commit = commit[:7] if len(commit) >= 7 else commit
+        logging.info(f"Checking out commit {short_commit}... in {repo_path}")
         subprocess.run(
             ["git", "checkout", commit],
             cwd=repo_path,
