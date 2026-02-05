@@ -20,9 +20,11 @@ GSPLAT_PARAM_MAPPING: dict[str, str] = {
     # Initialization parameters
     "initial_opacity": "--init_opa",
     "initial_covariance_scale": "--init_scale",
-    # Regularization
+    # Regularization (support both FVDB MCMC naming and legacy/GSplat naming)
     "opacity_reg": "--opacity_reg",
     "scale_reg": "--scale_reg",
+    "opacity_regularization": "--opacity_reg",  # FVDB MCMC optimizer naming
+    "scale_regularization": "--scale_reg",  # FVDB MCMC optimizer naming
     # Rendering parameters
     "near_plane": "--near_plane",
     "far_plane": "--far_plane",
@@ -67,7 +69,9 @@ def build_gsplat_cli_args(opt_config: dict[str, Any]) -> list[str]:
     for config_key, cli_flag in GSPLAT_PARAM_MAPPING.items():
         if config_key in training_config:
             value = training_config[config_key]
-            # Handle boolean flags - only add if True
+            # Handle boolean flags - only add if True.
+            # Note: All current boolean params (antialiased, random_bkgd, pose_opt) default
+            # to False in GSplat, so not passing them when False achieves the desired behavior.
             if isinstance(value, bool):
                 if value:
                     args.append(cli_flag)

@@ -10,7 +10,8 @@ training:
     # No initialization/regularization overrides needed - GSplat default mode
     # defaults match FVDB defaults (init_opa=0.1, init_scale=1.0, opacity_reg=0.0, scale_reg=0.0)
 
-    # Benchmark-specific parameters (used by benchmark system, not passed to GSplat CLI)
+    # Training parameters. Some are forwarded to GSplat CLI (batch_size, optimize_camera_poses,
+    # pose_opt_lr, pose_opt_reg), others are benchmark-system only (e.g., eps_2d, tile_size).
     batch_size: 1
     eps_2d: 0.3
     ignore_masks: false
