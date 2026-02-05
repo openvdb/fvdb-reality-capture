@@ -119,6 +119,11 @@ Allowed fields in `GaussianSplatOptimizerConfig` in benchmark configs and checkp
 """
 
 MCMC_OPTIMIZER_EXTRA_KEYS = {
+    # MCMC-specific initialization (overrides base reconstruction config defaults)
+    # These match the MCMC paper: https://arxiv.org/abs/2404.09591
+    "initial_opacity",
+    "initial_covariance_scale",
+    # MCMC-specific parameters
     "noise_lr",
     "insertion_rate",
     "binomial_coeffs_n_max",

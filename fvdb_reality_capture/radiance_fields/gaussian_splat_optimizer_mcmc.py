@@ -28,6 +28,22 @@ class GaussianSplatOptimizerMCMCConfig(GaussianSplatOptimizerConfig):
     Parameters for configuring the ``GaussianSplatOptimizerMCMC``.
     """
 
+    # Override base class defaults to match the MCMC paper:
+    # "3D Gaussian Splatting as Markov Chain Monte Carlo" (https://arxiv.org/abs/2404.09591)
+    initial_opacity: float = 0.5
+    """
+    Initial opacity of each Gaussian for MCMC optimization.
+
+    Default: ``0.5`` (matches the MCMC paper, different from base 3DGS default of 0.1).
+    """
+
+    initial_covariance_scale: float = 0.1
+    """
+    Initial scale of each Gaussian for MCMC optimization.
+
+    Default: ``0.1`` (matches the MCMC paper, different from base 3DGS default of 1.0).
+    """
+
     noise_lr: float = 5e5
     """
     The learning rate for the noise added to the positions of the Gaussians.

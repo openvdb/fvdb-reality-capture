@@ -1,4 +1,11 @@
 # The GSplat configuration for MCMC-style comparison runs.
+# Both FVDB and GSplat MCMC use defaults from the MCMC paper:
+# "3D Gaussian Splatting as Markov Chain Monte Carlo" (https://arxiv.org/abs/2404.09591)
+# - initial_opacity: 0.5
+# - initial_covariance_scale: 0.1
+# - opacity_reg: 0.01
+# - scale_reg: 0.01
+# No overrides are needed since both frameworks use these defaults.
 framework: gsplat
 name: gsplat_mcmc
 color: "#d62728"  # Red
@@ -6,33 +13,27 @@ mode: mcmc
 
 training:
   config:
-    antialias: false
+    # No initialization/regularization overrides needed - GSplat MCMC defaults
+    # match FVDB MCMC defaults (both follow the MCMC paper).
+
+    # Benchmark-specific parameters (used by benchmark system, not passed to GSplat CLI)
     batch_size: 1
     eps_2d: 0.3
-    far_plane: 10000000000.0
     ignore_masks: false
     increase_sh_degree_every_epoch: 5
-    initial_covariance_scale: 1.0
-    initial_opacity: 0.1
     lpips_net: alex
     max_epochs: 200
     min_radius_2d: 0.0
-    near_plane: 0.01
-    opacity_reg: 0.0
     optimize_camera_poses: false
     pose_opt_lr: 1.0e-05
     pose_opt_lr_decay: 1.0
     pose_opt_reg: 1.0e-06
-    random_bkgd: false
     refine_every_epoch: 0.75
     refine_start_epoch: 3
     refine_stop_epoch: 100
     refine_using_scale2d_stop_epoch: 0
     remove_gaussians_outside_scene_bbox: false
     reset_opacities_every_epoch: 16
-    scale_reg: 0.0
-    sh_degree: 3
-    ssim_lambda: 0.2
     tile_size: 16
     eval_at_percent:
       - 10

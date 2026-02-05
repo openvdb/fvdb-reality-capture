@@ -1,6 +1,7 @@
 # An fVDB run which uses a fixed threshold on the 2D gradients to refine the scene
 # at every refinement step.
 # This matches the default behavior of gsplat.
+# Note: Parameters that match FVDB code defaults are omitted.
 framework: fvdb
 name: fvdb
 color: "#1f77b4"  # Blue
@@ -24,16 +25,14 @@ reconstruction_config:
   save_at_percent:
     - 100
 
-  # Optimization parameters
+  # Most optimization parameters use FVDB code defaults:
+  # initial_opacity: 0.1, initial_covariance_scale: 1.0, sh_degree: 3,
+  # ssim_lambda: 0.2, near_plane: 0.01, far_plane: 1e10, etc.
+
   batch_size: 1
   crops_per_image: 1
-  sh_degree: 3
   increase_sh_degree_every_epoch: 5
-  initial_opacity: 0.1
-  initial_covariance_scale: 1.0
-  ssim_lambda: 0.2
   lpips_net: alex
-  random_bkgd: false
   refine_start_epoch: 3
   refine_stop_epoch: 100
   refine_every_epoch: 0.75
@@ -50,11 +49,8 @@ reconstruction_config:
   pose_opt_init_std: 1.0e-04
 
   # Gaussian rendering parameters
-  near_plane: 0.01
-  far_plane: 10000000000.0
   min_radius_2d: 0.0
   eps_2d: 0.3
-  antialias: false
   tile_size: 16
 
 training_arguments:
