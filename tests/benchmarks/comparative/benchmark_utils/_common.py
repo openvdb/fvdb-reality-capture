@@ -10,6 +10,8 @@ import subprocess
 from typing import Any
 
 import yaml
+from git import InvalidGitRepositoryError, Repo
+from git.exc import GitCommandError
 
 active_processes = []
 
@@ -47,46 +49,19 @@ def get_git_info(repo_path: pathlib.Path) -> dict[str, Any]:
         }
 
     try:
+        repo = Repo(repo_path)
+
         # Get full commit SHA
-        commit = (
-            subprocess.check_output(
-                ["git", "rev-parse", "HEAD"],
-                cwd=repo_path,
-                stderr=subprocess.DEVNULL,
-            )
-            .decode("utf-8")
-            .strip()
-        )
+        commit = repo.head.commit.hexsha
 
         # Get short commit
         short_commit = commit[:7] if commit else None
 
-        # Get current branch (returns empty string if detached HEAD)
-        try:
-            branch = (
-                subprocess.check_output(
-                    ["git", "rev-parse", "--abbrev-ref", "HEAD"],
-                    cwd=repo_path,
-                    stderr=subprocess.DEVNULL,
-                )
-                .decode("utf-8")
-                .strip()
-            )
-            if branch == "HEAD":
-                branch = None  # Detached HEAD state
-        except subprocess.CalledProcessError:
-            branch = None
+        # Get current branch (None if detached HEAD)
+        branch = None if repo.head.is_detached else repo.active_branch.name
 
         # Check if working directory is dirty
-        try:
-            subprocess.check_output(
-                ["git", "diff", "--quiet", "HEAD"],
-                cwd=repo_path,
-                stderr=subprocess.DEVNULL,
-            )
-            dirty = False
-        except subprocess.CalledProcessError:
-            dirty = True
+        dirty = repo.is_dirty()
 
         return {
             "commit": commit,
@@ -96,23 +71,23 @@ def get_git_info(repo_path: pathlib.Path) -> dict[str, Any]:
             "path": str(repo_path),
         }
 
-    except subprocess.CalledProcessError as e:
+    except InvalidGitRepositoryError:
         return {
             "commit": None,
             "short_commit": None,
             "branch": None,
             "dirty": None,
             "path": str(repo_path),
-            "error": f"Git command failed: {e}",
+            "error": f"Not a git repository: {repo_path}",
         }
-    except FileNotFoundError:
+    except Exception as e:
         return {
             "commit": None,
             "short_commit": None,
             "branch": None,
             "dirty": None,
             "path": str(repo_path),
-            "error": "Git is not installed or not in PATH",
+            "error": f"Git error: {e}",
         }
 
 
@@ -147,41 +122,41 @@ def checkout_commit(repo_path: pathlib.Path, commit: str) -> bool:
     """
     repo_path = pathlib.Path(repo_path).resolve()
 
-    # Check for uncommitted changes before checkout - fail to prevent data loss
-    git_info = get_git_info(repo_path)
-    if git_info.get("dirty"):
-        raise RuntimeError(
-            f"Repository {repo_path} has uncommitted changes. "
-            "Please commit or stash your changes before running benchmarks "
-            "that require switching commits."
-        )
-
     try:
+        repo = Repo(repo_path)
+
+        # Check for uncommitted changes before checkout - fail to prevent data loss
+        if repo.is_dirty():
+            raise RuntimeError(
+                f"Repository {repo_path} has uncommitted changes. "
+                "Please commit or stash your changes before running benchmarks "
+                "that require switching commits."
+            )
+
         # First, fetch to ensure we have the commit
         logging.info(f"Fetching latest refs in {repo_path}...")
-        subprocess.run(
-            ["git", "fetch", "--all"],
-            cwd=repo_path,
-            check=False,  # Don't fail if fetch fails (e.g., no network)
-            capture_output=True,
-        )
+        try:
+            for remote in repo.remotes:
+                remote.fetch()
+        except GitCommandError:
+            # Don't fail if fetch fails (e.g., no network)
+            logging.warning(f"Fetch failed for {repo_path}, continuing with local refs")
 
         # Checkout the commit
         short_commit = commit[:7] if len(commit) >= 7 else commit
         logging.info(f"Checking out commit {short_commit}... in {repo_path}")
-        subprocess.run(
-            ["git", "checkout", commit],
-            cwd=repo_path,
-            check=True,
-            capture_output=True,
-        )
+        repo.git.checkout(commit)
         return True
 
-    except subprocess.CalledProcessError as e:
-        logging.error(f"Failed to checkout commit {commit} in {repo_path}: {e}")
-        if e.stderr:
-            logging.error(f"Git stderr: {e.stderr.decode('utf-8')}")
+    except InvalidGitRepositoryError:
+        logging.error(f"Not a git repository: {repo_path}")
         return False
+    except GitCommandError as e:
+        logging.error(f"Failed to checkout commit {commit} in {repo_path}: {e}")
+        return False
+    except RuntimeError:
+        # Re-raise RuntimeError for dirty repo (don't catch it here)
+        raise
 
 
 def build_fvdb_core(repo_path: pathlib.Path, verbose: bool = True) -> bool:

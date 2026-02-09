@@ -6,9 +6,10 @@ Unit tests for git utilities in benchmark_utils._common.
 """
 
 import pathlib
-import subprocess
 import tempfile
 import unittest
+
+from git import Repo
 
 
 class TestGetGitInfo(unittest.TestCase):
@@ -30,40 +31,30 @@ class TestGetGitInfo(unittest.TestCase):
         self.temp_dir = tempfile.mkdtemp()
         self.repo_path = pathlib.Path(self.temp_dir)
 
-        # Initialize git repo
-        subprocess.run(["git", "init"], cwd=self.repo_path, check=True, capture_output=True)
-        subprocess.run(
-            ["git", "config", "user.email", "test@test.com"],
-            cwd=self.repo_path,
-            check=True,
-            capture_output=True,
-        )
-        subprocess.run(
-            ["git", "config", "user.name", "Test User"],
-            cwd=self.repo_path,
-            check=True,
-            capture_output=True,
-        )
+        # Initialize git repo using GitPython
+        repo = Repo.init(self.repo_path)
+        with repo.config_writer() as config:
+            config.set_value("user", "email", "test@test.com")
+            config.set_value("user", "name", "Test User")
 
         # Create initial commit
         test_file = self.repo_path / "test.txt"
         test_file.write_text("test content")
-        subprocess.run(
-            ["git", "add", "test.txt"],
-            cwd=self.repo_path,
-            check=True,
-            capture_output=True,
-        )
-        subprocess.run(
-            ["git", "commit", "-m", "Initial commit"],
-            cwd=self.repo_path,
-            check=True,
-            capture_output=True,
-        )
+        repo.index.add(["test.txt"])
+        repo.index.commit("Initial commit")
 
     def tearDown(self):
         """Clean up temporary directory."""
         import shutil
+
+        # Safety check: ensure temp_dir is within system temp directory
+        temp_dir_resolved = pathlib.Path(self.temp_dir).resolve()
+        system_temp = pathlib.Path(tempfile.gettempdir()).resolve()
+
+        if not str(temp_dir_resolved).startswith(str(system_temp)):
+            raise RuntimeError(
+                f"Refusing to delete {temp_dir_resolved}: not within system temp directory {system_temp}"
+            )
 
         shutil.rmtree(self.temp_dir, ignore_errors=True)
 
@@ -130,39 +121,30 @@ class TestGetCurrentCommit(unittest.TestCase):
         self.temp_dir = tempfile.mkdtemp()
         self.repo_path = pathlib.Path(self.temp_dir)
 
-        # Initialize git repo with a commit
-        subprocess.run(["git", "init"], cwd=self.repo_path, check=True, capture_output=True)
-        subprocess.run(
-            ["git", "config", "user.email", "test@test.com"],
-            cwd=self.repo_path,
-            check=True,
-            capture_output=True,
-        )
-        subprocess.run(
-            ["git", "config", "user.name", "Test User"],
-            cwd=self.repo_path,
-            check=True,
-            capture_output=True,
-        )
+        # Initialize git repo using GitPython
+        repo = Repo.init(self.repo_path)
+        with repo.config_writer() as config:
+            config.set_value("user", "email", "test@test.com")
+            config.set_value("user", "name", "Test User")
 
+        # Create initial commit
         test_file = self.repo_path / "test.txt"
         test_file.write_text("test content")
-        subprocess.run(
-            ["git", "add", "test.txt"],
-            cwd=self.repo_path,
-            check=True,
-            capture_output=True,
-        )
-        subprocess.run(
-            ["git", "commit", "-m", "Initial commit"],
-            cwd=self.repo_path,
-            check=True,
-            capture_output=True,
-        )
+        repo.index.add(["test.txt"])
+        repo.index.commit("Initial commit")
 
     def tearDown(self):
         """Clean up temporary directory."""
         import shutil
+
+        # Safety check: ensure temp_dir is within system temp directory
+        temp_dir_resolved = pathlib.Path(self.temp_dir).resolve()
+        system_temp = pathlib.Path(tempfile.gettempdir()).resolve()
+
+        if not str(temp_dir_resolved).startswith(str(system_temp)):
+            raise RuntimeError(
+                f"Refusing to delete {temp_dir_resolved}: not within system temp directory {system_temp}"
+            )
 
         shutil.rmtree(self.temp_dir, ignore_errors=True)
 
@@ -199,57 +181,37 @@ class TestCheckoutCommit(unittest.TestCase):
         self.temp_dir = tempfile.mkdtemp()
         self.repo_path = pathlib.Path(self.temp_dir)
 
-        # Initialize git repo
-        subprocess.run(["git", "init"], cwd=self.repo_path, check=True, capture_output=True)
-        subprocess.run(
-            ["git", "config", "user.email", "test@test.com"],
-            cwd=self.repo_path,
-            check=True,
-            capture_output=True,
-        )
-        subprocess.run(
-            ["git", "config", "user.name", "Test User"],
-            cwd=self.repo_path,
-            check=True,
-            capture_output=True,
-        )
+        # Initialize git repo using GitPython
+        repo = Repo.init(self.repo_path)
+        with repo.config_writer() as config:
+            config.set_value("user", "email", "test@test.com")
+            config.set_value("user", "name", "Test User")
 
         # Create first commit
         test_file = self.repo_path / "test.txt"
         test_file.write_text("version 1")
-        subprocess.run(
-            ["git", "add", "test.txt"],
-            cwd=self.repo_path,
-            check=True,
-            capture_output=True,
-        )
-        subprocess.run(
-            ["git", "commit", "-m", "First commit"],
-            cwd=self.repo_path,
-            check=True,
-            capture_output=True,
-        )
-        self.first_commit = self.get_current_commit(self.repo_path)
+        repo.index.add(["test.txt"])
+        first_commit_obj = repo.index.commit("First commit")
+        self.first_commit = first_commit_obj.hexsha
 
         # Create second commit
         test_file.write_text("version 2")
-        subprocess.run(
-            ["git", "add", "test.txt"],
-            cwd=self.repo_path,
-            check=True,
-            capture_output=True,
-        )
-        subprocess.run(
-            ["git", "commit", "-m", "Second commit"],
-            cwd=self.repo_path,
-            check=True,
-            capture_output=True,
-        )
-        self.second_commit = self.get_current_commit(self.repo_path)
+        repo.index.add(["test.txt"])
+        second_commit_obj = repo.index.commit("Second commit")
+        self.second_commit = second_commit_obj.hexsha
 
     def tearDown(self):
         """Clean up temporary directory."""
         import shutil
+
+        # Safety check: ensure temp_dir is within system temp directory
+        temp_dir_resolved = pathlib.Path(self.temp_dir).resolve()
+        system_temp = pathlib.Path(tempfile.gettempdir()).resolve()
+
+        if not str(temp_dir_resolved).startswith(str(system_temp)):
+            raise RuntimeError(
+                f"Refusing to delete {temp_dir_resolved}: not within system temp directory {system_temp}"
+            )
 
         shutil.rmtree(self.temp_dir, ignore_errors=True)
 
