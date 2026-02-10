@@ -124,9 +124,7 @@ def run_gsplat_training(
         run_config = yaml.safe_load(f)
 
     # Filter to only include the current scene
-    run_config["datasets"] = [
-        dataset for dataset in run_config["datasets"] if dataset["name"] == scene_name
-    ]
+    run_config["datasets"] = [dataset for dataset in run_config["datasets"] if dataset["name"] == scene_name]
     scene_path = run_config["datasets"][0]["path"]
 
     # Load the optimization config
@@ -188,9 +186,7 @@ def run_gsplat_training(
         rescaled_images_path = scene_path / f"images_{ds_factor}{suffix}"
         if not rescaled_images_path.exists():
             rescaled_images_path.symlink_to(scene_path / "images")
-            logging.info(
-                f"Created symlink to {rescaled_images_path} from {scene_path / 'images'}"
-            )
+            logging.info(f"Created symlink to {rescaled_images_path} from {scene_path / 'images'}")
         else:
             logging.info(f"Rescaled images path already exists: {rescaled_images_path}")
             logging.info(f"Skipping symlink creation")
@@ -201,9 +197,7 @@ def run_gsplat_training(
         raise ValueError(f"Unsupported gsplat mode: {gsplat_mode}")
 
     # Convert eval_at_percent to eval_steps
-    eval_at_percent = (
-        opt_config.get("training", {}).get("config", {}).get("eval_at_percent", [100])
-    )
+    eval_at_percent = opt_config.get("training", {}).get("config", {}).get("eval_at_percent", [100])
     eval_steps = [int(pct * max_steps / 100) for pct in eval_at_percent]
     logging.info(f"  Eval at percent: {eval_at_percent}")
     logging.info(f"  Eval steps: {eval_steps}")
@@ -266,9 +260,7 @@ def run_gsplat_training(
         logging.info("No additional parameters mapped from config")
 
     if extra_cli_args:
-        if not isinstance(extra_cli_args, list) or not all(
-            isinstance(x, str) for x in extra_cli_args
-        ):
+        if not isinstance(extra_cli_args, list) or not all(isinstance(x, str) for x in extra_cli_args):
             raise ValueError("extra_cli_args must be a list[str]")
         cmd.extend(extra_cli_args)
 
@@ -282,9 +274,7 @@ def run_gsplat_training(
     first_step_time: dict = {"t": None}
     stop_event = _threading.Event()
 
-    def _watch_training_start(
-        log_path: str, pattern: str, started_flag: dict, stop_evt: _threading.Event
-    ):
+    def _watch_training_start(log_path: str, pattern: str, started_flag: dict, stop_evt: _threading.Event):
         """
         Background thread that monitors the training log for the first training step.
 
@@ -331,9 +321,7 @@ def run_gsplat_training(
         "gsplat_base", "../../../../3d_gaussian_splatting/benchmark/gsplat/examples"
     )
     if not pathlib.Path(gsplat_base).exists():
-        logging.error(
-            f"GSplat base not found: {gsplat_base}. Skipping GSplat training for {scene_name}."
-        )
+        logging.error(f"GSplat base not found: {gsplat_base}. Skipping GSplat training for {scene_name}.")
         return {
             "success": False,
             "total_time": 0.0,
@@ -342,9 +330,7 @@ def run_gsplat_training(
             "metrics": {},
             "result_dir": str(gsplat_result_dir),
         }
-    exit_code, stdout, stderr = run_command(
-        cmd, cwd=gsplat_base, log_file=str(log_file)
-    )
+    exit_code, stdout, stderr = run_command(cmd, cwd=gsplat_base, log_file=str(log_file))
     stop_event.set()
     # Give watcher a brief moment to exit
     try:
@@ -361,17 +347,11 @@ def run_gsplat_training(
 
     # Always include both total (wall clock) and training times
     metrics["wall_time"] = wall_time
-    if (
-        first_step_time["t"] is not None
-        and first_step_time["t"] >= start_time
-        and first_step_time["t"] <= end_time
-    ):
+    if first_step_time["t"] is not None and first_step_time["t"] >= start_time and first_step_time["t"] <= end_time:
         training_time = end_time - first_step_time["t"]
         metrics["training_time"] = training_time
     else:
-        training_time = (
-            wall_time  # Fall back to wall time if we can't extract training time
-        )
+        training_time = wall_time  # Fall back to wall time if we can't extract training time
 
     return {
         "success": exit_code == 0,

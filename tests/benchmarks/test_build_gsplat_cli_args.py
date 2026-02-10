@@ -17,9 +17,7 @@ import pytest
 
 def _load_run_gsplat_module():
     """Load the run_gsplat_training module without triggering relative imports."""
-    benchmark_utils_dir = (
-        Path(__file__).resolve().parent / "comparative" / "benchmark_utils"
-    )
+    benchmark_utils_dir = Path(__file__).resolve().parent / "comparative" / "benchmark_utils"
     module_path = benchmark_utils_dir / "run_gsplat_training.py"
 
     # We need the parent packages on sys.path so that the relative import of
