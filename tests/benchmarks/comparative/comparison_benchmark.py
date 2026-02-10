@@ -207,7 +207,9 @@ class CommitManager:
 
                 # Checkout the required commit
                 if checkout_commit(path, required):
-                    self.current_commits[repo] = required
+                    # Normalize to the full resolved HEAD SHA so that abbreviated
+                    # SHAs or equivalent refs compare correctly on subsequent runs.
+                    self.current_commits[repo] = get_current_commit(path) or required
 
                     # Mark for rebuild
                     if repo == "fvdb_core":

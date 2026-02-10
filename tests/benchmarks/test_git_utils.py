@@ -86,11 +86,13 @@ class TestGetGitInfo(unittest.TestCase):
 
     def test_get_git_info_branch(self):
         """Test branch detection."""
-        # Should be on main/master branch after init
         info = self.get_git_info(self.repo_path)
 
-        # Branch could be 'main' or 'master' depending on git config
-        self.assertIn(info["branch"], ["main", "master"])
+        # Compare against the actual branch name from the repo rather than
+        # hardcoding, since the default initial branch is configurable.
+        repo = Repo(self.repo_path)
+        expected_branch = repo.active_branch.name
+        self.assertEqual(info["branch"], expected_branch)
 
     def test_get_git_info_nonexistent_path(self):
         """Test handling of non-existent path."""
