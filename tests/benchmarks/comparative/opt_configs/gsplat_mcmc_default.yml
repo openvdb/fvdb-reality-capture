@@ -3,8 +3,8 @@
 # "3D Gaussian Splatting as Markov Chain Monte Carlo" (https://arxiv.org/abs/2404.09591)
 # - initial_opacity: 0.5
 # - initial_covariance_scale: 0.1
-# - opacity_reg: 0.01
-# - scale_reg: 0.01
+# - opacity_regularization: 0.01
+# - scale_regularization: 0.01
 # No overrides are needed since both frameworks use these defaults.
 framework: gsplat
 name: gsplat_mcmc
