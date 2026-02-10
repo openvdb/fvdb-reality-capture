@@ -83,11 +83,8 @@ for _m in list(sys.modules):
         sys.modules.pop(_m, None)
 if "benchmark_utils" in _added_modules:
     sys.modules.pop("benchmark_utils", None)
-if _added_path is not None:
-    try:
-        sys.path.remove(_added_path)
-    except ValueError:
-        pass
+if _added_path is not None and _added_path in sys.path:
+    sys.path.remove(_added_path)
 
 
 # ---------------------------------------------------------------------------
