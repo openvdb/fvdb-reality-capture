@@ -7,6 +7,7 @@ import os
 import pathlib
 import signal
 import subprocess
+import sys
 from typing import Any
 
 import yaml
@@ -195,7 +196,7 @@ def build_fvdb_core(repo_path: pathlib.Path, verbose: bool = True) -> bool:
             cwd=repo_path,
             env=env,
             check=True,
-            capture_output=True,
+            capture_output=not verbose,
         )
         logging.info("fvdb-core build completed successfully")
         return True
@@ -224,7 +225,7 @@ def install_python_package(repo_path: pathlib.Path, editable: bool = False) -> b
 
     try:
         logging.info(f"Installing Python package from {repo_path}...")
-        cmd = ["pip", "install"]
+        cmd = [sys.executable, "-m", "pip", "install"]
         if editable:
             cmd.extend(["-e", str(repo_path)])
         else:

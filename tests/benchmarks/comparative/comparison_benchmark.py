@@ -110,6 +110,8 @@ def detect_repo_paths(matrix_config: dict[str, Any], matrix_dir: pathlib.Path) -
         explicit_path = paths.get(f"{repo}_path")
         if explicit_path:
             p = pathlib.Path(explicit_path)
+            if not p.is_absolute():
+                p = (matrix_dir / p).resolve()
             if p.exists():
                 detected[repo] = p.resolve()
                 continue
@@ -581,8 +583,12 @@ def save_summary_report(
                                     "branch": repo_info.get("branch"),
                                     "dirty": repo_info.get("dirty"),
                                 }
-            except Exception:
-                pass  # Skip if report can't be loaded
+            except Exception as exc:
+                logging.warning(
+                    "Failed to load comparison report '%s': %s",
+                    report_file,
+                    exc,
+                )
 
     output_summary = {
         "per_scene": summary_data,
@@ -1068,16 +1074,18 @@ def main():
         all_run_defs.append(run_def)
         runs_by_scene.setdefault(scene_name, []).append(run_def)
 
-    # Group runs by commit key to minimize rebuilds
+    # Group runs by (framework, commit key) to minimize rebuilds while keeping frameworks separate
     runs_by_commit: dict[tuple, list[dict[str, Any]]] = {}
     for run_def in all_run_defs:
+        framework = run_def["framework"]
         commit_key = run_def["commit_key"]
-        runs_by_commit.setdefault(commit_key, []).append(run_def)
+        group_key = (framework, commit_key)
+        runs_by_commit.setdefault(group_key, []).append(run_def)
 
     # Log commit grouping
-    logging.info(f"Found {len(runs_by_commit)} unique commit combination(s)")
-    for commit_key, commit_runs in runs_by_commit.items():
-        logging.info(f"  Commit key {commit_key}: {len(commit_runs)} run(s)")
+    logging.info(f"Found {len(runs_by_commit)} unique (framework, commit) combination(s)")
+    for group_key, commit_runs in runs_by_commit.items():
+        logging.info(f"  Group key {group_key}: {len(commit_runs)} run(s)")
 
     # Determine scenes to process (in datasets order, but only those with runs)
     scenes = [d["name"] for d in datasets if d.get("name") in runs_by_scene]
@@ -1087,11 +1095,11 @@ def main():
     # Track training results by scene (accumulated across commit groups)
     all_training_results: dict[str, dict[str, Any]] = {scene: {} for scene in scenes}
 
-    # Process runs grouped by commit key to minimize rebuilds
+    # Process runs grouped by (framework, commit key) to minimize rebuilds
     if not args.plot_only:
-        for commit_key, commit_runs in runs_by_commit.items():
+        for group_key, commit_runs in runs_by_commit.items():
             logging.info("=" * 60)
-            logging.info(f"Processing commit group: {commit_key}")
+            logging.info(f"Processing commit group: {group_key}")
             logging.info("=" * 60)
 
             # Determine the framework for this commit group (they should all be the same)

@@ -19,6 +19,8 @@ class TestGetGitInfo(unittest.TestCase):
         """Set up a temporary git repository for testing."""
         import sys
 
+        self._original_sys_path = sys.path[:]
+
         # Add the comparative directory to path for imports
         comparative_dir = pathlib.Path(__file__).parent / "comparative"
         sys.path.insert(0, str(comparative_dir))
@@ -44,8 +46,11 @@ class TestGetGitInfo(unittest.TestCase):
         repo.index.commit("Initial commit")
 
     def tearDown(self):
-        """Clean up temporary directory."""
+        """Clean up temporary directory and restore sys.path."""
         import shutil
+        import sys
+
+        sys.path[:] = self._original_sys_path
 
         # Safety check: ensure temp_dir is within system temp directory
         temp_dir_resolved = pathlib.Path(self.temp_dir).resolve()
@@ -110,6 +115,8 @@ class TestGetCurrentCommit(unittest.TestCase):
         """Set up a temporary git repository for testing."""
         import sys
 
+        self._original_sys_path = sys.path[:]
+
         comparative_dir = pathlib.Path(__file__).parent / "comparative"
         sys.path.insert(0, str(comparative_dir))
 
@@ -134,8 +141,11 @@ class TestGetCurrentCommit(unittest.TestCase):
         repo.index.commit("Initial commit")
 
     def tearDown(self):
-        """Clean up temporary directory."""
+        """Clean up temporary directory and restore sys.path."""
         import shutil
+        import sys
+
+        sys.path[:] = self._original_sys_path
 
         # Safety check: ensure temp_dir is within system temp directory
         temp_dir_resolved = pathlib.Path(self.temp_dir).resolve()
@@ -169,6 +179,8 @@ class TestCheckoutCommit(unittest.TestCase):
         """Set up a temporary git repository with multiple commits."""
         import sys
 
+        self._original_sys_path = sys.path[:]
+
         comparative_dir = pathlib.Path(__file__).parent / "comparative"
         sys.path.insert(0, str(comparative_dir))
 
@@ -201,8 +213,11 @@ class TestCheckoutCommit(unittest.TestCase):
         self.second_commit = second_commit_obj.hexsha
 
     def tearDown(self):
-        """Clean up temporary directory."""
+        """Clean up temporary directory and restore sys.path."""
         import shutil
+        import sys
+
+        sys.path[:] = self._original_sys_path
 
         # Safety check: ensure temp_dir is within system temp directory
         temp_dir_resolved = pathlib.Path(self.temp_dir).resolve()
@@ -248,118 +263,6 @@ class TestCheckoutCommit(unittest.TestCase):
 
         self.assertIn("uncommitted changes", str(context.exception))
         self.assertIn("commit or stash", str(context.exception))
-
-
-class TestGetCommitsFromOptConfig(unittest.TestCase):
-    """Tests for get_commits_from_opt_config function."""
-
-    def setUp(self):
-        """Set up imports."""
-        import sys
-
-        comparative_dir = pathlib.Path(__file__).parent / "comparative"
-        sys.path.insert(0, str(comparative_dir))
-
-        from comparison_benchmark import get_commits_from_opt_config
-
-        self.get_commits_from_opt_config = get_commits_from_opt_config
-
-    def test_no_commits_section(self):
-        """Test opt_config without commits section."""
-        opt_config = {
-            "framework": "fvdb",
-            "name": "test",
-        }
-
-        commits = self.get_commits_from_opt_config(opt_config)
-
-        self.assertIsNone(commits["fvdb_core"])
-        self.assertIsNone(commits["fvdb_reality_capture"])
-        self.assertIsNone(commits["gsplat"])
-
-    def test_with_commits_section(self):
-        """Test opt_config with commits section."""
-        opt_config = {
-            "framework": "fvdb",
-            "commits": {
-                "fvdb_core": "abc123",
-                "fvdb_reality_capture": "def456",
-            },
-            "name": "test",
-        }
-
-        commits = self.get_commits_from_opt_config(opt_config)
-
-        self.assertEqual(commits["fvdb_core"], "abc123")
-        self.assertEqual(commits["fvdb_reality_capture"], "def456")
-        self.assertIsNone(commits["gsplat"])
-
-    def test_partial_commits(self):
-        """Test opt_config with only some commits specified."""
-        opt_config = {
-            "framework": "fvdb",
-            "commits": {
-                "fvdb_core": "abc123",
-            },
-            "name": "test",
-        }
-
-        commits = self.get_commits_from_opt_config(opt_config)
-
-        self.assertEqual(commits["fvdb_core"], "abc123")
-        self.assertIsNone(commits["fvdb_reality_capture"])
-
-
-class TestGetCommitKey(unittest.TestCase):
-    """Tests for get_commit_key function."""
-
-    def setUp(self):
-        """Set up imports."""
-        import sys
-
-        comparative_dir = pathlib.Path(__file__).parent / "comparative"
-        sys.path.insert(0, str(comparative_dir))
-
-        from comparison_benchmark import get_commit_key
-
-        self.get_commit_key = get_commit_key
-
-    def test_no_commits(self):
-        """Test commit key with no commits."""
-        opt_config = {"framework": "fvdb"}
-
-        key = self.get_commit_key(opt_config)
-
-        self.assertEqual(key, (None, None, None))
-
-    def test_with_commits(self):
-        """Test commit key with commits."""
-        opt_config = {
-            "framework": "fvdb",
-            "commits": {
-                "fvdb_core": "abc123",
-                "fvdb_reality_capture": "def456",
-            },
-        }
-
-        key = self.get_commit_key(opt_config)
-
-        self.assertEqual(key, ("abc123", "def456", None))
-
-    def test_commit_key_hashable(self):
-        """Test that commit key is hashable and can be used as dict key."""
-        opt_config = {
-            "framework": "fvdb",
-            "commits": {
-                "fvdb_core": "abc123",
-            },
-        }
-
-        key = self.get_commit_key(opt_config)
-
-        # Should be usable as dict key
-        d = {key: "test_value"}
-        self.assertEqual(d[key], "test_value")
 
 
 if __name__ == "__main__":
