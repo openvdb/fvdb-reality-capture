@@ -46,18 +46,24 @@ def _load_run_gsplat_module():
             parent_spec.loader.exec_module(parent_mod)
 
     mod_name = "benchmark_utils.run_gsplat_training"
-    spec = importlib.util.spec_from_file_location(
-        mod_name,
-        module_path,
-        submodule_search_locations=[],
-    )
-    if spec is None or spec.loader is None:
-        raise RuntimeError(f"Failed to load module spec for {module_path}")
 
-    module = importlib.util.module_from_spec(spec)
-    sys.modules[mod_name] = module
-    added_modules.append(mod_name)
-    spec.loader.exec_module(module)
+    # Reuse an already-imported module to avoid overwriting a live module
+    # object and leaving the interpreter in a different state for later tests.
+    if mod_name in sys.modules:
+        module = sys.modules[mod_name]
+    else:
+        spec = importlib.util.spec_from_file_location(
+            mod_name,
+            module_path,
+            submodule_search_locations=[],
+        )
+        if spec is None or spec.loader is None:
+            raise RuntimeError(f"Failed to load module spec for {module_path}")
+
+        module = importlib.util.module_from_spec(spec)
+        sys.modules[mod_name] = module
+        added_modules.append(mod_name)
+        spec.loader.exec_module(module)
 
     return module, comparative_dir if added_to_path else None, added_modules
 
