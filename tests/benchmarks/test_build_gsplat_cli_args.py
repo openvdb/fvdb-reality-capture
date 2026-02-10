@@ -12,28 +12,24 @@ import importlib.util
 import sys
 from pathlib import Path
 
-import pytest
-
 
 def _load_run_gsplat_module():
-    """Load the run_gsplat_training module without triggering relative imports."""
+    """
+    Load the run_gsplat_training module, temporarily registering the parent
+    package so that relative imports resolve.
+
+    Returns the module *and* the keys that were added to sys.path / sys.modules
+    so callers can clean up.
+    """
     benchmark_utils_dir = Path(__file__).resolve().parent / "comparative" / "benchmark_utils"
     module_path = benchmark_utils_dir / "run_gsplat_training.py"
 
-    # We need the parent packages on sys.path so that the relative import of
-    # ._common succeeds.  The easiest way is to make ``benchmark_utils`` a
-    # top-level importable package by putting its *parent* on the path.
     comparative_dir = str(benchmark_utils_dir.parent)
-    if comparative_dir not in sys.path:
+    added_to_path = comparative_dir not in sys.path
+    if added_to_path:
         sys.path.insert(0, comparative_dir)
 
-    spec = importlib.util.spec_from_file_location(
-        "benchmark_utils.run_gsplat_training",
-        module_path,
-        submodule_search_locations=[],
-    )
-    if spec is None or spec.loader is None:
-        raise RuntimeError(f"Failed to load module spec for {module_path}")
+    added_modules: list[str] = []
 
     # Ensure the parent package exists so relative imports resolve.
     if "benchmark_utils" not in sys.modules:
@@ -46,17 +42,39 @@ def _load_run_gsplat_module():
         if parent_spec and parent_spec.loader:
             parent_mod = importlib.util.module_from_spec(parent_spec)
             sys.modules["benchmark_utils"] = parent_mod
+            added_modules.append("benchmark_utils")
             parent_spec.loader.exec_module(parent_mod)
 
+    mod_name = "benchmark_utils.run_gsplat_training"
+    spec = importlib.util.spec_from_file_location(
+        mod_name,
+        module_path,
+        submodule_search_locations=[],
+    )
+    if spec is None or spec.loader is None:
+        raise RuntimeError(f"Failed to load module spec for {module_path}")
+
     module = importlib.util.module_from_spec(spec)
-    sys.modules[spec.name] = module
+    sys.modules[mod_name] = module
+    added_modules.append(mod_name)
     spec.loader.exec_module(module)
-    return module
+
+    return module, comparative_dir if added_to_path else None, added_modules
 
 
-_mod = _load_run_gsplat_module()
+# Load once at module level and clean up sys.path / sys.modules so we don't
+# leak synthetic packages into other test modules.
+_mod, _added_path, _added_modules = _load_run_gsplat_module()
 build_gsplat_cli_args = _mod.build_gsplat_cli_args
 GSPLAT_PARAM_MAPPING = _mod.GSPLAT_PARAM_MAPPING
+
+for _m in _added_modules:
+    sys.modules.pop(_m, None)
+if _added_path is not None:
+    try:
+        sys.path.remove(_added_path)
+    except ValueError:
+        pass
 
 
 # ---------------------------------------------------------------------------
@@ -93,7 +111,7 @@ class TestBuildGsplatCliArgs:
         args = build_gsplat_cli_args(opt)
         assert args == ["--batch_size", "4"]
 
-    def test_scalar_string_parameter(self):
+    def test_scalar_int_sh_degree_parameter(self):
         opt = _make_opt_config(sh_degree=3)
         args = build_gsplat_cli_args(opt)
         assert args == ["--sh_degree", "3"]

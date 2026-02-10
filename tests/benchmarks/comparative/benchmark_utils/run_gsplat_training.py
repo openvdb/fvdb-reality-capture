@@ -284,7 +284,8 @@ def run_gsplat_training(
 
         Args:
             log_path (str): Path to the training log file to monitor.
-            pattern (str): Regex pattern to search for (e.g., r"Step\s+\d+").
+            pattern (str): Regex pattern to search for (e.g., ``r"Step\\s+\\d+"``).
+
             started_flag (dict): Dictionary with "t" key to store the training start timestamp.
                 Set to None initially, updated when pattern is found.
             stop_evt (_threading.Event): Event to signal thread to stop monitoring.
