@@ -151,6 +151,7 @@ class CommitManager:
             "fvdb_reality_capture": None,
             "gsplat": None,
         }
+        self.initial_commits: dict[str, str | None] = {}
         self._initialized = False
 
     def initialize(self) -> None:
@@ -165,6 +166,9 @@ class CommitManager:
                     f"Detected {repo} at commit {self.current_commits[repo][:7] if self.current_commits[repo] else 'unknown'}"
                 )
 
+        # Capture initial commits so we can restore them for groups that
+        # don't specify a commit (required is None).
+        self.initial_commits = dict(self.current_commits)
         self._initialized = True
 
     def ensure_commits(self, required_commits: dict[str, str | None], framework: str) -> dict[str, dict[str, Any]]:
@@ -191,15 +195,34 @@ class CommitManager:
             current = self.current_commits.get(repo)
             path = self.repo_paths.get(repo)
 
+            # When no commit is specified, restore the initial HEAD so that
+            # runs without explicit commits are not order-dependent on
+            # whatever a previous commit-group left behind.
+            if not required:
+                initial = self.initial_commits.get(repo)
+                if initial and path and initial != current:
+                    logging.info(f"Restoring {repo} to initial commit {initial[:7]}")
+                    if checkout_commit(path, initial):
+                        self.current_commits[repo] = get_current_commit(path) or initial
+                        if repo == "fvdb_core":
+                            needs_fvdb_core_rebuild = True
+                        elif repo == "fvdb_reality_capture":
+                            needs_fvdb_rc_reinstall = True
+                        elif repo == "gsplat":
+                            needs_gsplat_rebuild = True
+                    else:
+                        logging.warning(f"Failed to restore {repo} to initial commit {initial[:7]}")
+                continue
+
             # Warn if commit specified but repo path not found
-            if required and not path:
+            if not path:
                 logging.warning(
                     f"Commit {required[:7] if len(required) >= 7 else required} specified for {repo}, "
                     f"but repository path was not found. Skipping checkout."
                 )
                 continue
 
-            if required and path and required != current:
+            if required != current and path:
                 logging.info(
                     f"Commit mismatch for {repo}: current={current[:7] if current else 'None'}, "
                     f"required={required[:7] if len(required) >= 7 else required}"

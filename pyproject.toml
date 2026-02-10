@@ -25,7 +25,6 @@ dependencies = [
     "fvdb-core>=0.3.0",
     "boto3",
     "dlnr_lite",
-    "gitpython",
     "nanovdb-editor<0.2.0",
     "numpy>=2.0.0",
     "opencv-python-headless",
@@ -46,6 +45,11 @@ dependencies = [
     "usd-exchange ; platform_machine == 'aarch64'",
     "msgpack",
     "types-usd",
+]
+
+[project.optional-dependencies]
+benchmark = [
+    "gitpython",
 ]
 
 [project.scripts]
