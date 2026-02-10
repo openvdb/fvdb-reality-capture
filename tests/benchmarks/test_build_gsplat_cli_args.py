@@ -62,6 +62,11 @@ def _load_run_gsplat_module():
     return module, comparative_dir if added_to_path else None, added_modules
 
 
+# Snapshot pre-existing benchmark_utils modules so we only clean up what we added.
+_preexisting_benchmark_modules = {
+    _m for _m in sys.modules if _m == "benchmark_utils" or _m.startswith("benchmark_utils.")
+}
+
 # Load once at module level and clean up sys.path / sys.modules so we don't
 # leak synthetic packages into other test modules.
 _mod, _added_path, _added_modules = _load_run_gsplat_module()
@@ -69,16 +74,19 @@ build_gsplat_cli_args = _mod.build_gsplat_cli_args
 GSPLAT_PARAM_MAPPING = _mod.GSPLAT_PARAM_MAPPING
 
 # Remove explicitly-added modules *and* any transitive benchmark_utils.*
-# imports (e.g. benchmark_utils._common) that were pulled in as side effects.
+# imports (e.g. benchmark_utils._common) that were pulled in as side effects,
+# but do not touch benchmark_utils modules that pre-existed before this load.
 for _m in list(sys.modules):
-    if _m in _added_modules or _m.startswith("benchmark_utils."):
+    if _m in _added_modules and _m not in _preexisting_benchmark_modules:
         sys.modules.pop(_m, None)
-sys.modules.pop("benchmark_utils", None)
+    elif _m.startswith("benchmark_utils.") and _m not in _preexisting_benchmark_modules:
+        sys.modules.pop(_m, None)
+if "benchmark_utils" in _added_modules:
+    sys.modules.pop("benchmark_utils", None)
 if _added_path is not None:
     try:
         sys.path.remove(_added_path)
     except ValueError:
-        # _added_path might already have been removed from sys.path; ignore.
         pass
 
 
