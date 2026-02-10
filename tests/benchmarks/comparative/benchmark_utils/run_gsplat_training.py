@@ -275,7 +275,7 @@ def run_gsplat_training(
     stop_event = _threading.Event()
 
     def _watch_training_start(log_path: str, pattern: str, started_flag: dict, stop_evt: _threading.Event):
-        """
+        r"""
         Background thread that monitors the training log for the first training step.
 
         Watches the training log file for a line matching the given pattern (typically
@@ -284,7 +284,7 @@ def run_gsplat_training(
 
         Args:
             log_path (str): Path to the training log file to monitor.
-            pattern (str): Regex pattern to search for (e.g., ``r"Step\\s+\\d+"``).
+            pattern (str): Regex pattern to search for (e.g., ``r"Step\s+\d+"``).
 
             started_flag (dict): Dictionary with "t" key to store the training start timestamp.
                 Set to None initially, updated when pattern is found.

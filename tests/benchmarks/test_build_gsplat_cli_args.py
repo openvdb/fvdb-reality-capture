@@ -68,12 +68,17 @@ _mod, _added_path, _added_modules = _load_run_gsplat_module()
 build_gsplat_cli_args = _mod.build_gsplat_cli_args
 GSPLAT_PARAM_MAPPING = _mod.GSPLAT_PARAM_MAPPING
 
-for _m in _added_modules:
-    sys.modules.pop(_m, None)
+# Remove explicitly-added modules *and* any transitive benchmark_utils.*
+# imports (e.g. benchmark_utils._common) that were pulled in as side effects.
+for _m in list(sys.modules):
+    if _m in _added_modules or _m.startswith("benchmark_utils."):
+        sys.modules.pop(_m, None)
+sys.modules.pop("benchmark_utils", None)
 if _added_path is not None:
     try:
         sys.path.remove(_added_path)
     except ValueError:
+        # _added_path might already have been removed from sys.path; ignore.
         pass
 
 
