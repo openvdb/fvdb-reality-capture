@@ -39,6 +39,11 @@ Python files:
 - No trailing whitespace (CI enforces this; `.wlt` files are excluded).
 - Use spaces, not tabs (binary and a few config files are excluded from this check).
 
+## Style
+
+- Avoid excessive use of emoji and non-ascii characters in code and documentation except where it is helpful to user
+  experience or user interfaces.
+
 ## Testing
 
 - Run relevant tests before pushing:
@@ -48,6 +53,13 @@ Python files:
   ```
 
 - Note: tests require a GPU runner with fvdb-core installed.
+
+## Test Coverage
+
+When adding new config options or features:
+- Update `tests/benchmarks/contract.py` to validate new fields
+- Add tests in `test_comparison_benchmark.py` or appropriate test file
+- Run existing contract tests to ensure backwards compatibility
 
 ## Opening Issues
 
@@ -62,3 +74,8 @@ Python files:
 - Include a test plan with specific commands to verify the change.
 - Ensure all CI checks pass before requesting review (DCO, codestyle, tests).
 - Keep PRs focused on a single concern.
+
+**Do not commit unless directed:**
+- `.vscode/settings.json` - local IDE settings
+- `.cursor/` - local Cursor config
+- Test-specific matrices or configs with hardcoded paths
