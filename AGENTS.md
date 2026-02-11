@@ -67,6 +67,8 @@ When adding new config options or features:
 - Reference any related issues or PRs.
 - For bugs: provide clear reproduction steps, expected vs actual behavior, and
   environment details.
+- Set appropriate labels on the issue.
+- Add the issue to the fvdb-reality-capture GitHub project
 
 ## Opening Pull Requests
 
@@ -74,6 +76,8 @@ When adding new config options or features:
 - Include a test plan with specific commands to verify the change.
 - Ensure all CI checks pass before requesting review (DCO, codestyle, tests).
 - Keep PRs focused on a single concern.
+- Set appropriate labels on the PR.
+- Add the PR to the fvdb-reality-capture GitHub project
 
 **Do not commit unless directed:**
 - `.vscode/settings.json` - local IDE settings
