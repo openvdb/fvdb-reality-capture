@@ -8,9 +8,14 @@ Note: The SH interval epoch-to-step conversion (increase_sh_degree_every_epoch -
 sh_degree_interval) happens in run_gsplat_training() via extract_training_params,
 not in build_gsplat_cli_args(), so it is not tested here.
 """
+import ast
 import importlib.util
+import logging
 import sys
+import urllib.request
 from pathlib import Path
+
+import pytest
 
 
 def _load_run_gsplat_module():
@@ -205,3 +210,107 @@ class TestBuildGsplatCliArgs:
             assert isinstance(key, str), f"Key {key!r} is not a string"
             assert isinstance(value, str), f"Value {value!r} is not a string"
             assert value.startswith("--"), f"CLI flag {value!r} doesn't start with '--'"
+
+
+# ---------------------------------------------------------------------------
+# GSplat Config field validation helpers
+# ---------------------------------------------------------------------------
+
+# URL for the latest simple_trainer.py on GSplat's main branch.
+_GSPLAT_SIMPLE_TRAINER_URL = (
+    "https://raw.githubusercontent.com/nerfstudio-project/gsplat/main/examples/simple_trainer.py"
+)
+
+logger = logging.getLogger(__name__)
+
+
+def _fetch_simple_trainer_source() -> str:
+    """Fetch simple_trainer.py source from GitHub (main branch).
+
+    Returns:
+        The decoded source text of simple_trainer.py.
+
+    Raises:
+        urllib.error.URLError: On network / HTTP errors.
+    """
+    with urllib.request.urlopen(_GSPLAT_SIMPLE_TRAINER_URL, timeout=15) as resp:
+        return resp.read().decode("utf-8")
+
+
+def _parse_config_fields(source: str) -> set[str]:
+    """Parse the ``Config`` dataclass from *source* and return its field names.
+
+    Uses the :mod:`ast` module so that no GSplat dependencies are required.
+
+    Returns:
+        Set of field names defined in the ``Config`` dataclass.
+
+    Raises:
+        ValueError: If a ``Config`` class cannot be found in the source.
+    """
+    tree = ast.parse(source)
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ClassDef) and node.name == "Config":
+            fields: set[str] = set()
+            for item in node.body:
+                if isinstance(item, ast.AnnAssign) and isinstance(item.target, ast.Name):
+                    fields.add(item.target.id)
+            return fields
+    raise ValueError("Could not find 'class Config' in the provided source")
+
+
+# ---------------------------------------------------------------------------
+# Tests — GSplat Config field validation
+# ---------------------------------------------------------------------------
+
+
+class TestGsplatConfigValidation:
+    """Validate GSPLAT_PARAM_MAPPING against GSplat's actual Config dataclass.
+
+    These tests fetch simple_trainer.py from GitHub and parse the Config
+    dataclass with the ``ast`` module, so no GSplat runtime dependencies
+    are required.  They are skipped when the network is unavailable.
+    """
+
+    @staticmethod
+    def _get_config_fields() -> set[str]:
+        """Fetch and parse, converting network errors into pytest.skip()."""
+        try:
+            source = _fetch_simple_trainer_source()
+        except Exception as exc:
+            pytest.skip(f"Could not fetch simple_trainer.py from GitHub: {exc}")
+        return _parse_config_fields(source)
+
+    def test_all_mapped_cli_flags_exist_in_gsplat_config(self):
+        """Every CLI flag in GSPLAT_PARAM_MAPPING must correspond to a real
+        field in GSplat's Config dataclass."""
+        config_fields = self._get_config_fields()
+
+        missing: list[str] = []
+        for fvdb_key, cli_flag in GSPLAT_PARAM_MAPPING.items():
+            field_name = cli_flag.lstrip("-")
+            if field_name not in config_fields:
+                missing.append(f"  {fvdb_key!r} -> {cli_flag!r} (Config field {field_name!r} not found)")
+
+        assert not missing, (
+            "The following GSPLAT_PARAM_MAPPING entries reference Config fields "
+            "that do not exist in GSplat's simple_trainer.py (main branch):\n" + "\n".join(missing)
+        )
+
+    def test_gsplat_config_coverage(self):
+        """Log Config fields that have no GSPLAT_PARAM_MAPPING entry.
+
+        This is informational — many fields (data_dir, result_dir, …) are
+        intentionally unmapped.  The output helps reviewers spot new GSplat
+        parameters that *should* be mapped.
+        """
+        config_fields = self._get_config_fields()
+        mapped_fields = {cli_flag.lstrip("-") for cli_flag in GSPLAT_PARAM_MAPPING.values()}
+        unmapped = sorted(config_fields - mapped_fields)
+
+        if unmapped:
+            logger.warning(
+                "GSplat Config fields with no GSPLAT_PARAM_MAPPING entry (%d): %s",
+                len(unmapped),
+                ", ".join(unmapped),
+            )
