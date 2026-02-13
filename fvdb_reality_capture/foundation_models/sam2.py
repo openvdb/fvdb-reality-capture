@@ -165,15 +165,11 @@ class SAM2Model:
             crop_box = [0, 0, im_w, im_h]
 
         if point_coords is None:
-            grid = amg.build_all_layer_point_grids(
-                self._points_per_side, 0, 1
-            )[0]
+            grid = amg.build_all_layer_point_grids(self._points_per_side, 0, 1)[0]
             points_scale = np.array([im_w, im_h], dtype=np.float64)
             point_coords = grid * points_scale
 
-        data_all, data_s, data_m, data_l = self._process_image(
-            image, point_coords, crop_box, orig_size
-        )
+        data_all, data_s, data_m, data_l = self._process_image(image, point_coords, crop_box, orig_size)
 
         for data in (data_all, data_s, data_m, data_l):
             data.to_numpy()
@@ -212,9 +208,7 @@ class SAM2Model:
         data_l = amg.MaskData()
 
         for (points,) in amg.batch_iterator(self._points_per_batch, point_coords):
-            bd_all, bd_s, bd_m, bd_l = self._process_batch(
-                points, im_size, crop_box, orig_size
-            )
+            bd_all, bd_s, bd_m, bd_l = self._process_batch(points, im_size, crop_box, orig_size)
             data_all.cat(bd_all)
             data_s.cat(bd_s)
             data_m.cat(bd_m)
@@ -236,9 +230,7 @@ class SAM2Model:
             data.filter(keep)
             data["boxes"] = amg.uncrop_boxes_xyxy(data["boxes"], crop_box)
             data["points"] = amg.uncrop_points(data["points"], crop_box)
-            data["crop_boxes"] = torch.tensor(
-                [crop_box for _ in range(len(data["rles"]))]
-            )
+            data["crop_boxes"] = torch.tensor([crop_box for _ in range(len(data["rles"]))])
 
         return data_all, data_s, data_m, data_l
 
@@ -287,15 +279,9 @@ class SAM2Model:
         """
         orig_h, orig_w = orig_size
 
-        pts = torch.as_tensor(
-            points, dtype=torch.float32, device=self._predictor.device
-        )
-        in_points = self._predictor._transforms.transform_coords(
-            pts, normalize=True, orig_hw=im_size
-        )
-        in_labels = torch.ones(
-            in_points.shape[0], dtype=torch.int, device=pts.device
-        )
+        pts = torch.as_tensor(points, dtype=torch.float32, device=self._predictor.device)
+        in_points = self._predictor._transforms.transform_coords(pts, normalize=True, orig_hw=im_size)
+        in_labels = torch.ones(in_points.shape[0], dtype=torch.int, device=pts.device)
 
         masks, iou_preds, _ = self._predictor._predict(
             in_points[:, None, :],
@@ -334,14 +320,10 @@ class SAM2Model:
                 data.filter(keep)
             data["masks"] = data["masks"] > self._mask_threshold
             data["boxes"] = amg.batched_mask_to_box(data["masks"])
-            keep = ~amg.is_box_near_crop_edge(
-                data["boxes"], crop_box, [0, 0, orig_w, orig_h]
-            )
+            keep = ~amg.is_box_near_crop_edge(data["boxes"], crop_box, [0, 0, orig_w, orig_h])
             if not torch.all(keep):
                 data.filter(keep)
-            data["masks"] = amg.uncrop_masks(
-                data["masks"], crop_box, orig_h, orig_w
-            )
+            data["masks"] = amg.uncrop_masks(data["masks"], crop_box, orig_h, orig_w)
             data["rles"] = amg.mask_to_rle_pytorch(data["masks"])
             del data["masks"]
 
