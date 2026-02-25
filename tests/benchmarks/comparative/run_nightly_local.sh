@@ -38,7 +38,7 @@ if [[ -z "${FVDB_CORE_DIR}" ]]; then
         "${REPO_ROOT}/../fvdb-core" \
         "${REPO_ROOT}/../../fvdb-core" \
         ; do
-        if [[ -f "${candidate}/build.sh" ]] || [[ -d "${candidate}" && -f "${candidate}/build.sh" ]]; then
+        if [[ -f "${candidate}/build.sh" ]]; then
             FVDB_CORE_DIR="$(cd "${candidate}" && pwd)"
             break
         fi
@@ -147,9 +147,14 @@ GSPLAT_CLONE_CMD="$1"; shift
 EXTRA_ARGS="$*"
 
 echo "=== Setting up micromamba environment ==="
+MICROMAMBA_VERSION="2.5.0-2"
+MICROMAMBA_SHA256="c04571cfb0750e5432d530a3068b8fcd232ebed3133358e056e59a90b9852b00"
 if ! command -v micromamba &>/dev/null; then
-    curl -Ls https://micro.mamba.pm/api/micromamba/linux-64/latest \
-        | tar -xvj -C /usr/local bin/micromamba
+    curl -fsSL -o /tmp/micromamba \
+        "https://github.com/mamba-org/micromamba-releases/releases/download/${MICROMAMBA_VERSION}/micromamba-linux-64"
+    echo "${MICROMAMBA_SHA256}  /tmp/micromamba" | sha256sum -c -
+    install -m 0755 /tmp/micromamba /usr/local/bin/micromamba
+    rm -f /tmp/micromamba
 fi
 eval "$(micromamba shell hook -s bash)"
 export CONDA_OVERRIDE_CUDA=12.9

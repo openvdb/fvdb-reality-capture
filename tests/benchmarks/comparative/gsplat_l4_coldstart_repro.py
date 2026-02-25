@@ -50,7 +50,8 @@ import sys
 import textwrap
 
 
-SYNTHETIC_WORKER = textwrap.dedent(r'''
+SYNTHETIC_WORKER = textwrap.dedent(
+    r"""
 import torch
 import json
 
@@ -108,7 +109,8 @@ result = {
     "compute_cap": list(torch.cuda.get_device_capability(0)),
 }
 print("RESULT:" + json.dumps(result))
-''')
+"""
+)
 
 
 def run_subprocess(label, script):
@@ -182,14 +184,21 @@ def test_training(data_dir, gsplat_dir):
     for i, label in enumerate(["run1-cold", "run2-warm"], 1):
         result_dir = f"/tmp/gsplat_coldstart_repro_{label}"
         cmd = [
-            sys.executable, trainer_path, "default",
-            "--data_dir", data_dir,
-            "--result_dir", result_dir,
-            "--data_factor", "8",
-            "--max_steps", "50",
+            sys.executable,
+            trainer_path,
+            "default",
+            "--data_dir",
+            data_dir,
+            "--result_dir",
+            result_dir,
+            "--data_factor",
+            "8",
+            "--max_steps",
+            "50",
             "--disable_viewer",
             "--disable_video",
-            "--batch_size", "1",
+            "--batch_size",
+            "1",
         ]
         print(f"  Running {label}...")
         result = subprocess.run(cmd, capture_output=True, text=True)
@@ -225,10 +234,10 @@ def test_training(data_dir, gsplat_dir):
 def main():
     parser = argparse.ArgumentParser(description="gsplat L4 cold-start repro")
     parser.add_argument("--mode", choices=["synthetic", "training", "both"], default="synthetic")
-    parser.add_argument("--data-dir", default="/workspace/data/360_v2/bonsai",
-                        help="Path to mipnerf360 bonsai dataset")
-    parser.add_argument("--gsplat-dir", default="/workspace/gsplat",
-                        help="Path to gsplat source (for simple_trainer.py)")
+    parser.add_argument("--data-dir", default="/workspace/data/360_v2/bonsai", help="Path to mipnerf360 bonsai dataset")
+    parser.add_argument(
+        "--gsplat-dir", default="/workspace/gsplat", help="Path to gsplat source (for simple_trainer.py)"
+    )
     args = parser.parse_args()
 
     print()
