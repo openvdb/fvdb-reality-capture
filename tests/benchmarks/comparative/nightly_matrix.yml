@@ -1,18 +1,14 @@
 # Nightly comparative benchmark matrix: 3 representative scenes at 50% training
 # duration. Covers outdoor (garden, bicycle) and indoor (bonsai) with both
-# default and MCMC optimizers for fVDB.
-#
-# NOTE: gsplat configs are excluded from nightly runs for now.
+# default and MCMC optimizers for fVDB, plus gsplat default for comparison.
 #
 # gsplat has a cold-start bug on L4 GPUs: the very first gsplat training run on
 # a fresh instance produces garbage renders (PSNR ~14, loss never converges).
-# All subsequent runs in the same session work fine (PSNR ~27). The bug affects
-# whichever strategy runs first (Default or MCMC). A 500-step warmup run in the
-# nightly workflow mitigates this for any gsplat runs added here.
+# All subsequent runs in the same session work fine (PSNR ~27). A 500-step
+# warmup run in the nightly workflow mitigates this.
 # See: https://github.com/nerfstudio-project/gsplat/issues/872
 #
-# gsplat MCMC also OOMs on L4 (22GB) at high gaussian counts. Use cap_max to
-# constrain memory if adding gsplat_mcmc configs.
+# gsplat MCMC OOMs on L4 (22GB) at high gaussian counts so is excluded for now.
 #
 # The base opt_configs use max_epochs: 200 and refine_stop_epoch: 100 (50% of
 # training). We halve both here so the refinement/training ratio stays the same.
@@ -35,6 +31,8 @@ opt_configs:
     path: opt_configs/fvdb_default.yml
   fvdb_mcmc:
     path: opt_configs/fvdb_mcmc_default.yml
+  gsplat_default:
+    path: opt_configs/gsplat_default.yml
 
 runs:
   # --- garden (outdoor) ---
@@ -54,6 +52,14 @@ runs:
           refine_stop_epoch: 50
         optimization_config:
           max_gaussians: 5500000
+  - dataset: garden
+    opt_config: gsplat_default
+    overrides:
+      gsplat:
+        training:
+          config:
+            max_epochs: 100
+            refine_stop_epoch: 50
 
   # --- bonsai (indoor) ---
   - dataset: bonsai
@@ -72,6 +78,14 @@ runs:
           refine_stop_epoch: 50
         optimization_config:
           max_gaussians: 1200000
+  - dataset: bonsai
+    opt_config: gsplat_default
+    overrides:
+      gsplat:
+        training:
+          config:
+            max_epochs: 100
+            refine_stop_epoch: 50
 
   # --- bicycle (outdoor, complex) ---
   - dataset: bicycle
@@ -90,3 +104,11 @@ runs:
           refine_stop_epoch: 50
         optimization_config:
           max_gaussians: 5500000
+  - dataset: bicycle
+    opt_config: gsplat_default
+    overrides:
+      gsplat:
+        training:
+          config:
+            max_epochs: 100
+            refine_stop_epoch: 50
