@@ -536,6 +536,8 @@ jobs:
           micromamba activate benchmark
           echo "Running 500-step gsplat warmup to avoid L4 cold-start training bug."
           echo "See: https://github.com/nerfstudio-project/gsplat/issues/872"
+          echo "gsplat commit: b60e917c95afc449c5be33a634f1f457e116ff5e"
+          echo "Remove this step once the upstream issue is resolved."
           cd /workspace/gsplat/examples
           python simple_trainer.py default \
             --disable_viewer --disable_video \

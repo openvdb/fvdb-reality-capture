@@ -157,6 +157,8 @@ def run_gsplat_training(
     refine_stop_steps = params["refine_stop_steps"]
     refine_every_steps = params["refine_every_steps"]
     sh_degree_interval_steps = params["sh_degree_interval_steps"]
+    reset_every_steps = params["reset_every_steps"]
+    refine_scale2d_stop_steps = params["refine_scale2d_stop_steps"]
 
     # Save the filtered config
     with open(temp_config_path, "w") as f:
@@ -168,6 +170,8 @@ def run_gsplat_training(
     logging.info(f"  refine_stop_steps: {refine_stop_steps}")
     logging.info(f"  refine_every_steps: {refine_every_steps}")
     logging.info(f"  sh_degree_interval_steps: {sh_degree_interval_steps}")
+    logging.info(f"  reset_every_steps: {reset_every_steps}")
+    logging.info(f"  refine_scale2d_stop_steps: {refine_scale2d_stop_steps}")
     logging.info(f"  Training images: {training_images}")
     logging.info(f"  Total images: {params.get('total_images', 'N/A')}")
 
@@ -228,11 +232,21 @@ def run_gsplat_training(
             str(refine_stop_steps),
             "--strategy.refine_every",
             str(refine_every_steps),
-            "--strategy.verbose",  # Enable verbose output to see refinement info
+            "--strategy.verbose",
             "--global_scale",
             "1.0",
         ]
     )
+    if gsplat_mode == "default":
+        cmd.extend(
+            [
+                "--strategy.reset_every",
+                str(reset_every_steps),
+                "--strategy.refine_scale2d_stop_iter",
+                str(refine_scale2d_stop_steps),
+            ]
+        )
+
     # Add parameters from YAML config using the parameter mapping
     mapped_args = build_gsplat_cli_args(opt_config)
     if mapped_args:
