@@ -158,11 +158,6 @@ def run_gsplat_training(
     refine_every_steps = params["refine_every_steps"]
     sh_degree_interval_steps = params["sh_degree_interval_steps"]
 
-    # Calculate reset_every_steps (convert reset_opacities_every_epoch to steps)
-    reset_opacities_every_epoch = 16  # From benchmark_config.yaml
-    training_images = params["training_images"]
-    reset_every_steps = int(reset_opacities_every_epoch * training_images)
-
     # Save the filtered config
     with open(temp_config_path, "w") as f:
         yaml.dump(run_config, f, default_flow_style=False, sort_keys=False)
@@ -172,7 +167,6 @@ def run_gsplat_training(
     logging.info(f"  refine_start_steps: {refine_start_steps}")
     logging.info(f"  refine_stop_steps: {refine_stop_steps}")
     logging.info(f"  refine_every_steps: {refine_every_steps}")
-    logging.info(f"  reset_every_steps: {reset_every_steps}")
     logging.info(f"  sh_degree_interval_steps: {sh_degree_interval_steps}")
     logging.info(f"  Training images: {training_images}")
     logging.info(f"  Total images: {params.get('total_images', 'N/A')}")
@@ -239,21 +233,6 @@ def run_gsplat_training(
             "1.0",
         ]
     )
-    use_vanilla_strategy = opt_config.get("use_vanilla_strategy", False)
-    if gsplat_mode == "default" and not use_vanilla_strategy:
-        cmd.extend(
-            [
-                "--strategy.reset_every",
-                str(reset_every_steps),
-                "--strategy.pause_refine_after_reset",
-                "0",
-                "--strategy.refine_scale2d_stop_iter",
-                "1",  # Disable 2D scale-based splitting to match FVDB behavior
-            ]
-        )
-    elif gsplat_mode == "default" and use_vanilla_strategy:
-        logging.info("Using vanilla GSplat default strategy (no custom strategy overrides)")
-
     # Add parameters from YAML config using the parameter mapping
     mapped_args = build_gsplat_cli_args(opt_config)
     if mapped_args:
