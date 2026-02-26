@@ -186,20 +186,19 @@ class SAM1Model:
         amg = self._amg
         im_size = image.shape[:2]
 
-        with torch.autocast(device_type="cuda", dtype=torch.float16):
-            self._predictor.set_image(image)
+        self._predictor.set_image(image)
 
-            data_all = amg.MaskData()
-            data_s = amg.MaskData()
-            data_m = amg.MaskData()
-            data_l = amg.MaskData()
+        data_all = amg.MaskData()
+        data_s = amg.MaskData()
+        data_m = amg.MaskData()
+        data_l = amg.MaskData()
 
-            for (points,) in amg.batch_iterator(self._points_per_batch, point_coords):
-                bd_all, bd_s, bd_m, bd_l = self._process_batch(points, im_size, crop_box, orig_size)
-                data_all.cat(bd_all)
-                data_s.cat(bd_s)
-                data_m.cat(bd_m)
-                data_l.cat(bd_l)
+        for (points,) in amg.batch_iterator(self._points_per_batch, point_coords):
+            bd_all, bd_s, bd_m, bd_l = self._process_batch(points, im_size, crop_box, orig_size)
+            data_all.cat(bd_all)
+            data_s.cat(bd_s)
+            data_m.cat(bd_m)
+            data_l.cat(bd_l)
 
         self._predictor.reset_image()
 
