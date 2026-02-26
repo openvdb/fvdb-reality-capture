@@ -12,8 +12,8 @@ from .config import get_weights_path_for_model
 _SAM1_INSTALL_MSG = (
     "SAM1 requires the segment-anything package. Install with:\n"
     "  conda install -c conda-forge segment-anything\n"
-    "Or update your environment:\n"
-    "  conda env update -f open_vocabulary_segmentation/langsplatv2/environment.yml"
+    "or \n"
+    "  pip install 'git+https://github.com/facebookresearch/segment-anything.git'\n"
 )
 
 _SAM1_CHECKPOINTS: Dict[str, Tuple[str, str, str]] = {
@@ -185,19 +185,21 @@ class SAM1Model:
         """
         amg = self._amg
         im_size = image.shape[:2]
-        self._predictor.set_image(image)
 
-        data_all = amg.MaskData()
-        data_s = amg.MaskData()
-        data_m = amg.MaskData()
-        data_l = amg.MaskData()
+        with torch.autocast(device_type="cuda", dtype=torch.float16):
+            self._predictor.set_image(image)
 
-        for (points,) in amg.batch_iterator(self._points_per_batch, point_coords):
-            bd_all, bd_s, bd_m, bd_l = self._process_batch(points, im_size, crop_box, orig_size)
-            data_all.cat(bd_all)
-            data_s.cat(bd_s)
-            data_m.cat(bd_m)
-            data_l.cat(bd_l)
+            data_all = amg.MaskData()
+            data_s = amg.MaskData()
+            data_m = amg.MaskData()
+            data_l = amg.MaskData()
+
+            for (points,) in amg.batch_iterator(self._points_per_batch, point_coords):
+                bd_all, bd_s, bd_m, bd_l = self._process_batch(points, im_size, crop_box, orig_size)
+                data_all.cat(bd_all)
+                data_s.cat(bd_s)
+                data_m.cat(bd_m)
+                data_l.cat(bd_l)
 
         self._predictor.reset_image()
 
