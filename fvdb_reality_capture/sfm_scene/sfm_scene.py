@@ -9,6 +9,7 @@ from typing import Any, Sequence
 import numpy as np
 
 from ._load_colmap_scene import load_colmap_scene
+from .scene_attribute import REGISTERED_SCENE_ATTRIBUTES, SceneAttribute
 from .sfm_cache import SfmCache
 from .sfm_metadata import SfmCameraMetadata, SfmPosedImageMetadata
 
@@ -101,6 +102,7 @@ class SfmScene:
         scene_bbox: np.ndarray | None,
         transformation_matrix: np.ndarray | None,
         cache: SfmCache,
+        attributes: dict[str, SceneAttribute] | None = None,
     ):
         """
         Initialize an :class:`SfmScene` instance from the given components.
@@ -124,6 +126,8 @@ class SfmScene:
                 coordinate system to the scene's coordinate system. Note that this is not applied to the scene but simply
                 stored to track transformations applied to the scene (e.g. via :meth:`apply_transformation_matrix`).
                 If ``None`` is passed in, it will default to the identity matrix.
+            attributes (dict[str, SceneAttribute] | None): An optional dictionary of custom attributes to attach to the
+                scene. Each attribute is validated against the scene dimensions.
         """
         self._logger = logging.getLogger(f"{self.__class__.__module__}.{self.__class__.__name__}")
         self._cameras = cameras
@@ -134,6 +138,11 @@ class SfmScene:
         self._transformation_matrix = transformation_matrix if transformation_matrix is not None else np.eye(4)
         self._scene_bbox = scene_bbox
         self._cache = cache
+        self._attributes: dict[str, SceneAttribute] = dict(attributes) if attributes else {}
+
+        camera_ids = set(self._cameras.keys())
+        for attr_name, attr in self._attributes.items():
+            attr.validate(attr_name, len(self._points), len(self._images), camera_ids)
 
         # Validate the scene_bbox
         if self._scene_bbox is not None and np.any(np.isinf(self._scene_bbox)):
@@ -296,6 +305,10 @@ class SfmScene:
             "cache_path": self._cache.db_path.parent.absolute().as_posix(),
             "cache_name": self._cache.cache_name,
             "cache_description": self._cache.cache_description,
+            "attributes": {
+                name: {"type_name": attr.type_name(), "state": attr.state_dict()}
+                for name, attr in self._attributes.items()
+            },
         }
 
     @classmethod
@@ -354,6 +367,17 @@ class SfmScene:
             if state_dict["transformation_matrix"] is not None
             else None
         )
+        attributes = {}
+        for name, attr_dict in state_dict.get("attributes", {}).items():
+            attr_cls = REGISTERED_SCENE_ATTRIBUTES.get(attr_dict["type_name"])
+            if attr_cls is None:
+                raise ValueError(
+                    f"Attribute '{name}': unknown type '{attr_dict['type_name']}'. "
+                    f"Ensure the attribute class uses the @scene_attribute decorator and was "
+                    f"imported before calling from_state_dict."
+                )
+            attributes[name] = attr_cls.from_state_dict(attr_dict["state"])
+
         return cls(
             cameras,
             images,
@@ -363,6 +387,7 @@ class SfmScene:
             scene_bbox,
             transformation_matrix,
             cache,
+            attributes=attributes,
         )
 
     def filter_points(self, mask: np.ndarray | Sequence[bool]) -> "SfmScene":
@@ -403,6 +428,8 @@ class SfmScene:
         filtered_points_err = self._points_err[mask]
         filtered_points_rgb = self._points_rgb[mask]
 
+        new_attrs = {name: attr.on_filter_points(mask) for name, attr in self._attributes.items()}
+
         return SfmScene(
             cameras=self._cameras,
             images=filtered_images,
@@ -412,6 +439,7 @@ class SfmScene:
             scene_bbox=self._scene_bbox,
             transformation_matrix=self._transformation_matrix,
             cache=self.cache,
+            attributes=new_attrs,
         )
 
     def filter_images(self, mask: np.ndarray | Sequence[bool]) -> "SfmScene":
@@ -426,6 +454,7 @@ class SfmScene:
         """
 
         filtered_images = [img for img, keep in zip(self._images, mask) if keep]
+        new_attrs = {name: attr.on_filter_images(mask) for name, attr in self._attributes.items()}
         return SfmScene(
             cameras=self._cameras,
             images=filtered_images,
@@ -435,6 +464,7 @@ class SfmScene:
             scene_bbox=self._scene_bbox,
             transformation_matrix=self._transformation_matrix,
             cache=self.cache,
+            attributes=new_attrs,
         )
 
     def select_images(self, indices: np.ndarray | Sequence[int]) -> "SfmScene":
@@ -449,6 +479,7 @@ class SfmScene:
             SfmScene: A new :class:`SfmScene` instance with the selected images and corresponding metadata.
         """
         filtered_images = [self._images[i] for i in indices]
+        new_attrs = {name: attr.on_select_images(indices) for name, attr in self._attributes.items()}
         return SfmScene(
             cameras=self._cameras,
             images=filtered_images,
@@ -458,6 +489,7 @@ class SfmScene:
             scene_bbox=self._scene_bbox,
             transformation_matrix=self._transformation_matrix,
             cache=self.cache,
+            attributes=new_attrs,
         )
 
     def apply_transformation_matrix(self, transformation_matrix: np.ndarray) -> "SfmScene":
@@ -485,13 +517,16 @@ class SfmScene:
             raise ValueError("Transformation matrix must be a 4x4 matrix.")
 
         transformed_points = self._points @ transformation_matrix[:3, :3].T + transformation_matrix[:3, 3]
-        transformation_matrix = transformation_matrix @ self._transformation_matrix
+
+        new_attrs = {name: attr.on_spatial_transform(transformation_matrix) for name, attr in self._attributes.items()}
+
+        composed_matrix = transformation_matrix @ self._transformation_matrix
         bbox = self._scene_bbox
         if self._scene_bbox is not None:
             bbmin = self._scene_bbox[:3]
             bbmax = self._scene_bbox[3:]
-            bbmin = transformation_matrix[:3, :3] @ bbmin + transformation_matrix[:3, 3]
-            bbmax = transformation_matrix[:3, :3] @ bbmax + transformation_matrix[:3, 3]
+            bbmin = composed_matrix[:3, :3] @ bbmin + composed_matrix[:3, 3]
+            bbmax = composed_matrix[:3, :3] @ bbmax + composed_matrix[:3, 3]
             bbox = np.concatenate([bbmin, bbmax])
 
         return SfmScene(
@@ -501,8 +536,9 @@ class SfmScene:
             points_err=self._points_err,
             points_rgb=self._points_rgb,
             scene_bbox=bbox,
-            transformation_matrix=transformation_matrix,
+            transformation_matrix=composed_matrix,
             cache=self.cache,
+            attributes=new_attrs,
         )
 
     def spatial_scale(self, mode: SpatialScaleMode) -> float:
@@ -566,6 +602,45 @@ class SfmScene:
             cache (SfmCache): The :class:`SfmCache` object associated with this scene.
         """
         return self._cache
+
+    @property
+    def attributes(self) -> dict[str, SceneAttribute]:
+        """Return a shallow copy of the custom attributes dictionary."""
+        return dict(self._attributes)
+
+    def with_attributes(self, **kwargs: SceneAttribute) -> "SfmScene":
+        """Return a new SfmScene with additional/replaced attributes.
+        Validates attribute sizes against the scene."""
+        new_attrs = dict(self._attributes)
+        new_attrs.update(kwargs)
+        return self.replace(attributes=new_attrs)
+
+    def without_attributes(self, *names: str) -> "SfmScene":
+        """Return a new SfmScene with the named attributes removed."""
+        new_attrs = {k: v for k, v in self._attributes.items() if k not in names}
+        return self.replace(attributes=new_attrs)
+
+    def get_attribute(self, name: str) -> SceneAttribute:
+        """Get a custom attribute by name. Raises KeyError if not found."""
+        return self._attributes[name]
+
+    def has_attribute(self, name: str) -> bool:
+        """Check if a custom attribute exists."""
+        return name in self._attributes
+
+    def replace(self, **kwargs) -> "SfmScene":
+        """Return a new SfmScene with specified fields replaced. Unspecified fields are carried over."""
+        return SfmScene(
+            cameras=kwargs.get("cameras", self._cameras),
+            images=kwargs.get("images", self._images),
+            points=kwargs.get("points", self._points),
+            points_err=kwargs.get("points_err", self._points_err),
+            points_rgb=kwargs.get("points_rgb", self._points_rgb),
+            scene_bbox=kwargs.get("scene_bbox", self._scene_bbox),
+            transformation_matrix=kwargs.get("transformation_matrix", self._transformation_matrix),
+            cache=kwargs.get("cache", self._cache),
+            attributes=kwargs.get("attributes", self._attributes),
+        )
 
     @property
     def has_visible_point_indices(self) -> bool:

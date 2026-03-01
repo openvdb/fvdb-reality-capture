@@ -297,15 +297,19 @@ class DownsampleImages(BaseTransform):
                 f"{self._rescaled_jpeg_quality}."
             )
 
-        output_scene = SfmScene(
+        new_attrs = {}
+        for attr_name, attr in input_scene.attributes.items():
+            new_attrs[attr_name] = attr.on_downsample_images(
+                attr_name=attr_name,
+                downsample_factor=self._image_downsample_factor,
+                output_cache=output_cache,
+            )
+
+        output_scene = input_scene.replace(
             cameras=new_camera_metadata,
             images=new_image_metadata,
-            points=input_scene.points,
-            points_err=input_scene.points_err,
-            points_rgb=input_scene.points_rgb,
-            scene_bbox=input_scene.scene_bbox,
-            transformation_matrix=input_scene.transformation_matrix,
             cache=output_cache,
+            attributes=new_attrs,
         )
 
         return output_scene
