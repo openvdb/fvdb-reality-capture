@@ -23,6 +23,13 @@ def _load_comparison_benchmark_module():
     return module, comparative_dir
 
 
+def _get_build_gsplat_cli_args():
+    _load_comparison_benchmark_module()  # ensures sys.path includes comparative dir
+    from benchmark_utils.run_gsplat_training import build_gsplat_cli_args
+
+    return build_gsplat_cli_args
+
+
 def _write_minimal_report(report_path: Path, include_time_series: bool = False) -> None:
     metrics = {"psnr": 1.0, "ssim": 1.0, "final_gaussian_count": 1}
 
@@ -396,3 +403,63 @@ training_arguments:
     assert "test_commits" in report
     assert "repositories" in report["test_commits"]
     assert "fvdb_core" in report["test_commits"]["repositories"]
+
+
+# ---------------------------------------------------------------------------
+# build_gsplat_cli_args tests
+# ---------------------------------------------------------------------------
+
+
+class TestBuildGsplatCliArgs:
+    @pytest.fixture(autouse=True)
+    def _load_func(self):
+        self.build_args = _get_build_gsplat_cli_args()
+
+    def test_empty_config_returns_empty_list(self):
+        assert self.build_args({}) == []
+        assert self.build_args({"training": {}}) == []
+        assert self.build_args({"training": {"config": {}}}) == []
+
+    def test_scalar_params_mapped(self):
+        opt_config = {"training": {"config": {"near_plane": 0.01, "far_plane": 1e10}}}
+        args = self.build_args(opt_config)
+        assert "--near_plane" in args
+        assert args[args.index("--near_plane") + 1] == "0.01"
+        assert "--far_plane" in args
+        assert args[args.index("--far_plane") + 1] == "10000000000.0"
+
+    def test_boolean_true_adds_flag(self):
+        opt_config = {"training": {"config": {"antialias": True}}}
+        args = self.build_args(opt_config)
+        assert "--antialiased" in args
+
+    def test_boolean_false_omits_flag(self):
+        opt_config = {"training": {"config": {"antialias": False, "random_bkgd": False}}}
+        args = self.build_args(opt_config)
+        assert args == []
+
+    def test_unmapped_params_ignored(self):
+        opt_config = {"training": {"config": {"unknown_param": 42, "near_plane": 0.5}}}
+        args = self.build_args(opt_config)
+        assert "--near_plane" in args
+        assert len(args) == 2  # flag + value, nothing for unknown_param
+
+    def test_mixed_types(self):
+        opt_config = {
+            "training": {
+                "config": {
+                    "near_plane": 0.01,
+                    "antialias": True,
+                    "random_bkgd": False,
+                    "sh_degree": 3,
+                    "optimize_camera_poses": True,
+                }
+            }
+        }
+        args = self.build_args(opt_config)
+        assert "--near_plane" in args
+        assert "--antialiased" in args
+        assert "--random_bkgd" not in args
+        assert "--sh_degree" in args
+        assert args[args.index("--sh_degree") + 1] == "3"
+        assert "--pose_opt" in args

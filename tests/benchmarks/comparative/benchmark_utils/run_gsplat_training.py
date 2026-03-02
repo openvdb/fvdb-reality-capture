@@ -172,7 +172,7 @@ def run_gsplat_training(
     logging.info(f"  sh_degree_interval_steps: {sh_degree_interval_steps}")
     logging.info(f"  reset_every_steps: {reset_every_steps}")
     logging.info(f"  refine_scale2d_stop_steps: {refine_scale2d_stop_steps}")
-    logging.info(f"  Training images: {training_images}")
+    logging.info(f"  Training images: {params.get('training_images', 'N/A')}")
     logging.info(f"  Total images: {params.get('total_images', 'N/A')}")
 
     data_base_path = run_config.get("paths", {}).get("data_base", "/workspace/data")
