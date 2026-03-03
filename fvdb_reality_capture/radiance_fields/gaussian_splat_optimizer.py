@@ -609,7 +609,7 @@ class GaussianSplatOptimizer(BaseGaussianSplatOptimizer):
                 ret.grad = torch.cat(
                     [
                         param.grad[kept_indices],
-                        torch.zeros(num_added_gaussians, *param.shape[1:], dtype=param.dtype, device=param.device),
+                        torch.zeros(1, *param.shape[1:], dtype=param.dtype, device=param.device).expand(num_added_gaussians, *param.shape[1:]),
                     ],
                     dim=0,
                 )
@@ -631,13 +631,11 @@ class GaussianSplatOptimizer(BaseGaussianSplatOptimizer):
 
         def update_state_function(x: torch.Tensor):
             num_kept = kept_indices.shape[0]
-            total_gaussians = (
-                num_kept
-                + num_duplicated * (self._config.insertion_duplication_factor - 1)
+            num_added_gaussians = (
+                num_duplicated * (self._config.insertion_duplication_factor - 1)
                 + num_split * self._config.insertion_split_factor
             )
-            ret = torch.zeros(total_gaussians, *x.shape[1:], dtype=x.dtype, device=x.device)
-            ret[0:num_kept] = x[kept_indices]
+            ret = torch.cat([x[kept_indices], torch.zeros(1, *x.shape[1:], dtype=x.dtype, device=x.device).expand(num_added_gaussians, *x.shape[1:])], dim = 0)
             return ret
 
         self._update_optimizer_params_and_state(update_state_function)
