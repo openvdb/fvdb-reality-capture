@@ -609,7 +609,9 @@ class GaussianSplatOptimizer(BaseGaussianSplatOptimizer):
                 ret.grad = torch.cat(
                     [
                         param.grad[kept_indices],
-                        torch.zeros(1, *param.shape[1:], dtype=param.dtype, device=param.device).expand(num_added_gaussians, *param.shape[1:]),
+                        torch.zeros(1, *param.shape[1:], dtype=param.dtype, device=param.device).expand(
+                            num_added_gaussians, *param.shape[1:]
+                        ),
                     ],
                     dim=0,
                 )
@@ -635,7 +637,15 @@ class GaussianSplatOptimizer(BaseGaussianSplatOptimizer):
                 num_duplicated * (self._config.insertion_duplication_factor - 1)
                 + num_split * self._config.insertion_split_factor
             )
-            ret = torch.cat([x[kept_indices], torch.zeros(1, *x.shape[1:], dtype=x.dtype, device=x.device).expand(num_added_gaussians, *x.shape[1:])], dim = 0)
+            ret = torch.cat(
+                [
+                    x[kept_indices],
+                    torch.zeros(1, *x.shape[1:], dtype=x.dtype, device=x.device).expand(
+                        num_added_gaussians, *x.shape[1:]
+                    ),
+                ],
+                dim=0,
+            )
             return ret
 
         self._update_optimizer_params_and_state(update_state_function)
