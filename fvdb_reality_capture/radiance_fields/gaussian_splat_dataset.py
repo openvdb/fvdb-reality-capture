@@ -328,7 +328,7 @@ class SfmDataset(torch.utils.data.Dataset, Iterable):
                 if path.endswith(".npy"):
                     raster = torch.from_numpy(np.load(path))
                 elif path.endswith(".pt"):
-                    raster = torch.load(path, weights_only=False)
+                    raster = torch.load(path, map_location="cpu", weights_only=False)
                 else:
                     loaded = cv2.imread(path, cv2.IMREAD_UNCHANGED)
                     if loaded is None:
@@ -341,6 +341,11 @@ class SfmDataset(torch.utils.data.Dataset, Iterable):
                 data[attr_name] = raster
             elif isinstance(attr, PerImageValueAttribute):
                 data[attr_name] = attr.values[index]
+            else:
+                raise TypeError(
+                    f"Unsupported attribute type for '{attr_name}': {type(attr).__name__}. "
+                    f"Supported types are PerImageRasterAttribute and PerImageValueAttribute."
+                )
 
         return data
 

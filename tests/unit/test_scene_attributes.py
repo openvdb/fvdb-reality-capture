@@ -490,8 +490,12 @@ class TestPerCameraAttribute(unittest.TestCase):
 
 class TestSfmSceneAttributes(unittest.TestCase):
     def setUp(self):
-        self.tmp_dir = tempfile.mkdtemp()
+        self._tmp_dir = tempfile.TemporaryDirectory()
+        self.tmp_dir = self._tmp_dir.name
         self.scene = _make_synthetic_scene(num_points=50, num_images=10, tmp_dir=self.tmp_dir)
+
+    def tearDown(self):
+        self._tmp_dir.cleanup()
 
     def test_constructor_with_attributes(self):
         normals = np.random.randn(50, 3).astype(np.float32)

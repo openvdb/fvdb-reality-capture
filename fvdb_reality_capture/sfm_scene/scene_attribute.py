@@ -197,14 +197,21 @@ class PerPointAttribute(SceneAttribute):
 
     def state_dict(self) -> dict:
         return {
-            "data": self._data.tolist(),
+            "data": self._data,
+            "dtype": str(self._data.dtype),
             "transform_mode": self._transform_mode,
         }
 
     @staticmethod
     def from_state_dict(state_dict: dict) -> "PerPointAttribute":
+        raw = state_dict["data"]
+        dtype = state_dict.get("dtype", None)
+        if isinstance(raw, np.ndarray):
+            data = raw
+        else:
+            data = np.array(raw, dtype=dtype)
         return PerPointAttribute(
-            data=np.array(state_dict["data"]),
+            data=data,
             transform_mode=state_dict.get("transform_mode", "none"),
         )
 
@@ -311,7 +318,10 @@ class PerImageRasterAttribute(SceneAttribute):
 
         cache: SfmCache = output_cache
 
-        cache_folder_name = f"attr_{attr_name}_downsample_{downsample_factor}x"
+        cache_folder_name = (
+            f"attr_{attr_name}_downsample_{downsample_factor}x"
+            f"_{self._resize_interpolation.value}_{self._file_type}"
+        )
         attr_cache = cache.make_folder(cache_folder_name, description=f"Downsampled raster attribute '{attr_name}'")
 
         # Check if cache is valid
@@ -380,7 +390,7 @@ class PerImageRasterAttribute(SceneAttribute):
                 new_paths.append(str(meta["path"]))
 
             elif ext == ".pt":
-                data = torch.load(path, weights_only=False)
+                data = torch.load(path, map_location="cpu", weights_only=False)
                 if isinstance(data, torch.Tensor):
                     resized = self._resize_tensor(data, downsample_factor, attr_name, _INTERP_TO_TORCH)
                 elif isinstance(data, np.ndarray):
