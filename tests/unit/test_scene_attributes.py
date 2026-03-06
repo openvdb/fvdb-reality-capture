@@ -679,5 +679,102 @@ class TestComposeOrderingValidation(unittest.TestCase):
             self.assertEqual(len(stale_warnings), 0)
 
 
+# ---------------------------------------------------------------------------
+# Tier 4: SfmDataset raster attribute + patch_size cropping
+# ---------------------------------------------------------------------------
+
+
+class TestSfmDatasetRasterAttributePatchCrop(unittest.TestCase):
+    """Raster attributes must be spatially cropped to match the image when patch_size is set."""
+
+    def _make_scene_with_raster(self, tmp_dir, h=48, w=64):
+        tmp = pathlib.Path(tmp_dir)
+
+        img = np.random.randint(0, 255, (h, w, 3), dtype=np.uint8)
+        img_path = tmp / "image_0.png"
+        cv2.imwrite(str(img_path), img)
+
+        raster = np.arange(h * w, dtype=np.float32).reshape(h, w)
+        raster_path = tmp / "raster_0.npy"
+        np.save(str(raster_path), raster)
+
+        camera = _make_camera_metadata(width=w, height=h)
+        cameras = {1: camera}
+        c2w = np.eye(4, dtype=np.float64)
+        w2c = np.eye(4, dtype=np.float64)
+        images = [
+            SfmPosedImageMetadata(
+                world_to_camera_matrix=w2c,
+                camera_to_world_matrix=c2w,
+                camera_metadata=camera,
+                camera_id=1,
+                image_path=str(img_path),
+                mask_path="",
+                point_indices=None,
+                image_id=0,
+            )
+        ]
+
+        cache = SfmCache.get_cache(tmp, name="test", description="test")
+        scene = SfmScene(
+            cameras=cameras,
+            images=images,
+            points=np.random.randn(10, 3).astype(np.float32),
+            points_err=np.random.rand(10).astype(np.float32),
+            points_rgb=np.random.randint(0, 255, (10, 3), dtype=np.uint8),
+            scene_bbox=None,
+            transformation_matrix=None,
+            cache=cache,
+            attributes={"raster": PerImageRasterAttribute(paths=[str(raster_path)])},
+        )
+        return scene, raster
+
+    def test_raster_cropped_to_patch_size(self):
+        from fvdb_reality_capture.radiance_fields.gaussian_splat_dataset import SfmDataset
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            scene, full_raster = self._make_scene_with_raster(tmp_dir)
+            patch_size = 16
+            dataset = SfmDataset(sfm_scene=scene, patch_size=patch_size, load_attributes=["raster"])
+
+            np.random.seed(42)
+            datum = dataset[0]
+
+            self.assertEqual(datum["image"].shape[:2], (patch_size, patch_size))
+            self.assertEqual(tuple(datum["raster"].shape[:2]), (patch_size, patch_size))
+
+    def test_raster_content_matches_crop(self):
+        from fvdb_reality_capture.radiance_fields.gaussian_splat_dataset import SfmDataset
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            h, w = 48, 64
+            scene, full_raster = self._make_scene_with_raster(tmp_dir, h=h, w=w)
+            patch_size = 16
+            dataset = SfmDataset(sfm_scene=scene, patch_size=patch_size, load_attributes=["raster"])
+
+            np.random.seed(42)
+            x = np.random.randint(0, max(w - patch_size, 1))
+            y = np.random.randint(0, max(h - patch_size, 1))
+            expected_crop = full_raster[y : y + patch_size, x : x + patch_size]
+
+            np.random.seed(42)
+            datum = dataset[0]
+
+            np.testing.assert_array_equal(datum["raster"].numpy(), expected_crop)
+
+    def test_raster_full_resolution_without_patch_size(self):
+        from fvdb_reality_capture.radiance_fields.gaussian_splat_dataset import SfmDataset
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            h, w = 48, 64
+            scene, full_raster = self._make_scene_with_raster(tmp_dir, h=h, w=w)
+            dataset = SfmDataset(sfm_scene=scene, load_attributes=["raster"])
+
+            datum = dataset[0]
+
+            self.assertEqual(tuple(datum["raster"].shape), (h, w))
+            np.testing.assert_array_equal(datum["raster"].numpy(), full_raster)
+
+
 if __name__ == "__main__":
     unittest.main()

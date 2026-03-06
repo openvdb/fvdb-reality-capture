@@ -326,16 +326,19 @@ class SfmDataset(torch.utils.data.Dataset, Iterable):
             if isinstance(attr, PerImageRasterAttribute):
                 path = attr.paths[index]
                 if path.endswith(".npy"):
-                    data[attr_name] = torch.from_numpy(np.load(path))
+                    raster = torch.from_numpy(np.load(path))
                 elif path.endswith(".pt"):
-                    data[attr_name] = torch.load(path, weights_only=False)
+                    raster = torch.load(path, weights_only=False)
                 else:
                     loaded = cv2.imread(path, cv2.IMREAD_UNCHANGED)
                     if loaded is None:
                         raise FileNotFoundError(
                             f"Failed to load raster attribute '{attr_name}' from {path}"
                         )
-                    data[attr_name] = torch.from_numpy(loaded)
+                    raster = torch.from_numpy(loaded)
+                if self.patch_size is not None:
+                    raster = raster[y : y + self.patch_size, x : x + self.patch_size]
+                data[attr_name] = raster
             elif isinstance(attr, PerImageValueAttribute):
                 data[attr_name] = attr.values[index]
 
