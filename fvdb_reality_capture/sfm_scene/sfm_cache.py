@@ -518,7 +518,7 @@ class SfmCache:
             data_type (str): The type of data being written. Must be one of the following:
                 - "jpg": JPEG image (data should be a NumPy array representing the image)
                 - "png": PNG image (data should be a NumPy array representing the image)
-                - "pt": Any picklable object (e.g. ``torch.Tensor``, ``dict[str, Tensor]``, etc.).
+                - "pt": PyTorch-serializable object (e.g. ``torch.Tensor``, ``numpy.ndarray``).
                     Saved via ``torch.save`` and loaded via ``torch.load``.
                 - "npy": NumPy array (data should be a NumPy array)
                 - "json": JSON file (data should be a JSON-serializable Python object, e.g., dict or list)
