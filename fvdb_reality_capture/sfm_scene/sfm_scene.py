@@ -525,8 +525,8 @@ class SfmScene:
         if self._scene_bbox is not None:
             bbmin = self._scene_bbox[:3]
             bbmax = self._scene_bbox[3:]
-            bbmin = composed_matrix[:3, :3] @ bbmin + composed_matrix[:3, 3]
-            bbmax = composed_matrix[:3, :3] @ bbmax + composed_matrix[:3, 3]
+            bbmin = transformation_matrix[:3, :3] @ bbmin + transformation_matrix[:3, 3]
+            bbmax = transformation_matrix[:3, :3] @ bbmax + transformation_matrix[:3, 3]
             bbox = np.concatenate([bbmin, bbmax])
 
         return SfmScene(

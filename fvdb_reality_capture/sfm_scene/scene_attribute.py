@@ -61,13 +61,19 @@ class SceneAttribute(ABC):
 
     @abstractmethod
     def state_dict(self) -> dict:
-        """Serialize the attribute to a JSON-compatible dictionary."""
+        """Serialize the attribute to a dictionary compatible with the scene's
+        serialization mechanism (e.g. pickle / ``torch.save``).
+
+        The returned dict does not need to be JSON-serializable; it may
+        contain NumPy arrays or other objects supported by ``SfmScene``
+        serialization.
+        """
         ...
 
     @staticmethod
     @abstractmethod
     def from_state_dict(state_dict: dict) -> "SceneAttribute":
-        """Reconstruct the attribute from a state dictionary."""
+        """Reconstruct the attribute from a serialization-compatible state dictionary."""
         ...
 
     # -- Validation ----------------------------------------------------------
@@ -322,7 +328,8 @@ class PerImageRasterAttribute(SceneAttribute):
 
             if ext in (".png", ".jpg", ".jpeg"):
                 img = cv2.imread(path, cv2.IMREAD_UNCHANGED)
-                assert img is not None, f"Failed to load raster attribute '{attr_name}' from {path}"
+                if img is None:
+                    raise FileNotFoundError(f"Failed to load raster attribute '{attr_name}' from {path}")
                 h, w = img.shape[:2]
                 new_h = int(h / downsample_factor)
                 new_w = int(w / downsample_factor)
@@ -342,13 +349,16 @@ class PerImageRasterAttribute(SceneAttribute):
 
             elif ext == ".pt":
                 data = torch.load(path, weights_only=False)
-                if not isinstance(data, torch.Tensor):
+                if isinstance(data, torch.Tensor):
+                    resized = self._resize_tensor(data, downsample_factor, attr_name, _INTERP_TO_TORCH)
+                elif isinstance(data, np.ndarray):
+                    resized = self._resize_array(data, downsample_factor, attr_name, _INTERP_TO_TORCH)
+                else:
                     raise TypeError(
                         f"Cannot resize attribute '{attr_name}': loaded data is {type(data).__name__}, "
-                        f"expected a single tensor or array. Subclass PerImageRasterAttribute to "
+                        f"expected torch.Tensor or numpy.ndarray. Subclass PerImageRasterAttribute to "
                         f"handle custom data formats."
                     )
-                resized = self._resize_tensor(data, downsample_factor, attr_name, _INTERP_TO_TORCH)
                 meta = attr_cache.write_file(file_name, resized, data_type="pt")
                 new_paths.append(str(meta["path"]))
 

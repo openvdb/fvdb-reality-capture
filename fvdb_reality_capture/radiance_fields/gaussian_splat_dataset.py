@@ -331,7 +331,10 @@ class SfmDataset(torch.utils.data.Dataset, Iterable):
                     data[attr_name] = torch.load(path, weights_only=False)
                 else:
                     loaded = cv2.imread(path, cv2.IMREAD_UNCHANGED)
-                    assert loaded is not None, f"Failed to load raster attribute '{attr_name}' from {path}"
+                    if loaded is None:
+                        raise FileNotFoundError(
+                            f"Failed to load raster attribute '{attr_name}' from {path}"
+                        )
                     data[attr_name] = torch.from_numpy(loaded)
             elif isinstance(attr, PerImageValueAttribute):
                 data[attr_name] = attr.values[index]
