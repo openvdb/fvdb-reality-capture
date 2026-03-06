@@ -51,6 +51,13 @@ class SceneAttribute(ABC):
     Subclasses define how the attribute responds to scene operations via hook
     methods.  The base class provides no-op defaults for every hook so that
     new operations can be added without breaking existing attribute types.
+
+    All hook methods (``on_filter_points``, ``on_downsample_images``, etc.)
+    are designed to be overridden by subclasses that need custom behavior.
+    For example, subclass :class:`PerImageRasterAttribute` and override
+    :meth:`on_downsample_images` to implement a domain-specific
+    downsampling strategy for raster data that cannot use standard
+    interpolation.
     """
 
     @staticmethod
@@ -96,11 +103,36 @@ class SceneAttribute(ABC):
         return self
 
     # -- Transform-specific hooks --------------------------------------------
+    # Override these in subclasses to implement custom behavior (e.g. a
+    # domain-specific downsampling strategy).
 
     def on_downsample_images(self, attr_name: str, downsample_factor: int, output_cache: Any) -> "SceneAttribute":
+        """Called when images are downsampled.  Override to implement custom
+        resizing logic for attribute data that cannot use standard interpolation.
+
+        Args:
+            attr_name: Name under which this attribute is registered on the scene.
+            downsample_factor: Integer factor by which images are being reduced.
+            output_cache: The :class:`SfmCache` of the output scene, available
+                for writing downsampled files.
+
+        Returns:
+            A new (or the same) attribute instance with appropriately resized data.
+        """
         return self
 
     def on_crop_scene(self, attr_name: str, bbox: np.ndarray, output_cache: Any) -> "SceneAttribute":
+        """Called when the scene is spatially cropped.  Override to implement
+        custom crop behavior.
+
+        Args:
+            attr_name: Name under which this attribute is registered on the scene.
+            bbox: The crop bounding box as a ``(6,)`` array ``[xmin, ymin, zmin, xmax, ymax, zmax]``.
+            output_cache: The :class:`SfmCache` of the output scene.
+
+        Returns:
+            A new (or the same) attribute instance with appropriately cropped data.
+        """
         return self
 
 
