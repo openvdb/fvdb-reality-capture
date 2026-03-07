@@ -493,9 +493,9 @@ class SfmScene:
         if self._scene_bbox is not None:
             bbmin = self._scene_bbox[:3]
             bbmax = self._scene_bbox[3:]
-            bbmin = transformation_matrix[:3, :3] @ bbmin + transformation_matrix[:3, 3]
-            bbmax = transformation_matrix[:3, :3] @ bbmax + transformation_matrix[:3, 3]
-            bbox = np.concatenate([bbmin, bbmax])
+            corners = np.stack(np.meshgrid(*zip(bbmin, bbmax), indexing="ij"), axis=-1).reshape(-1, 3)
+            transformed_corners = (transformation_matrix[:3, :3] @ corners.T).T + transformation_matrix[:3, 3]
+            bbox = np.concatenate([transformed_corners.min(axis=0), transformed_corners.max(axis=0)])
 
         return self.replace(
             images=transformed_images,

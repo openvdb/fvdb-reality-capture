@@ -659,6 +659,78 @@ class TestSfmSceneAttributes(unittest.TestCase):
         expected = normals @ rot.T
         np.testing.assert_allclose(transformed.get_attribute("normals").data, expected, atol=1e-10)
 
+    def test_apply_transformation_bbox_identity(self):
+        bbox = np.array([1.0, 2.0, 3.0, 4.0, 5.0, 6.0])
+        scene = self.scene.replace(scene_bbox=bbox)
+        result = scene.apply_transformation_matrix(np.eye(4))
+        np.testing.assert_allclose(result.scene_bbox, bbox, atol=1e-12)
+
+    def test_apply_transformation_bbox_translation(self):
+        bbox = np.array([0.0, 0.0, 0.0, 1.0, 1.0, 1.0])
+        scene = self.scene.replace(scene_bbox=bbox)
+        M = np.eye(4)
+        M[:3, 3] = [10.0, 20.0, 30.0]
+        result = scene.apply_transformation_matrix(M)
+        expected = np.array([10.0, 20.0, 30.0, 11.0, 21.0, 31.0])
+        np.testing.assert_allclose(result.scene_bbox, expected, atol=1e-12)
+
+    def test_apply_transformation_bbox_uniform_scale(self):
+        bbox = np.array([-1.0, -1.0, -1.0, 1.0, 1.0, 1.0])
+        scene = self.scene.replace(scene_bbox=bbox)
+        M = np.eye(4)
+        M[:3, :3] *= 3.0
+        result = scene.apply_transformation_matrix(M)
+        expected = np.array([-3.0, -3.0, -3.0, 3.0, 3.0, 3.0])
+        np.testing.assert_allclose(result.scene_bbox, expected, atol=1e-12)
+
+    def test_apply_transformation_bbox_rotation_90(self):
+        """A 90-degree rotation about Z swaps X and Y extents of the AABB."""
+        from scipy.spatial.transform import Rotation as R
+
+        bbox = np.array([0.0, 0.0, 0.0, 2.0, 1.0, 1.0])
+        scene = self.scene.replace(scene_bbox=bbox)
+        rot = R.from_euler("z", 90, degrees=True).as_matrix()
+        M = np.eye(4)
+        M[:3, :3] = rot
+        result = scene.apply_transformation_matrix(M)
+        expected = np.array([-1.0, 0.0, 0.0, 0.0, 2.0, 1.0])
+        np.testing.assert_allclose(result.scene_bbox, expected, atol=1e-10)
+
+    def test_apply_transformation_bbox_rotation_45(self):
+        """45-degree rotation expands the AABB; the naive 2-corner approach would shrink it."""
+        from scipy.spatial.transform import Rotation as R
+
+        bbox = np.array([0.0, 0.0, 0.0, 1.0, 1.0, 0.0])
+        scene = self.scene.replace(scene_bbox=bbox)
+        rot = R.from_euler("z", 45, degrees=True).as_matrix()
+        M = np.eye(4)
+        M[:3, :3] = rot
+        result = scene.apply_transformation_matrix(M)
+        s = np.sqrt(2.0)
+        expected_min = np.array([-s / 2, 0.0, 0.0])
+        expected_max = np.array([s / 2, s, 0.0])
+        np.testing.assert_allclose(result.scene_bbox[:3], expected_min, atol=1e-10)
+        np.testing.assert_allclose(result.scene_bbox[3:], expected_max, atol=1e-10)
+
+    def test_apply_transformation_bbox_negative_scale(self):
+        """Negative scale flips the bbox; min/max must be recomputed."""
+        bbox = np.array([1.0, 2.0, 3.0, 4.0, 5.0, 6.0])
+        scene = self.scene.replace(scene_bbox=bbox)
+        M = np.eye(4)
+        M[0, 0] = -1.0  # flip X
+        result = scene.apply_transformation_matrix(M)
+        np.testing.assert_allclose(result.scene_bbox[:3], np.array([-4.0, 2.0, 3.0]), atol=1e-12)
+        np.testing.assert_allclose(result.scene_bbox[3:], np.array([-1.0, 5.0, 6.0]), atol=1e-12)
+
+    def test_apply_transformation_bbox_none_stays_unbounded(self):
+        """When scene_bbox is None (unbounded), transformation preserves that."""
+        scene = self.scene.replace(scene_bbox=None)
+        M = np.eye(4)
+        M[:3, :3] *= 2.0
+        result = scene.apply_transformation_matrix(M)
+        expected = np.array([-np.inf, -np.inf, -np.inf, np.inf, np.inf, np.inf])
+        np.testing.assert_array_equal(result.scene_bbox, expected)
+
     def test_serialization_round_trip(self):
         normals = np.random.randn(50, 3).astype(np.float32)
         values = list(range(10))
