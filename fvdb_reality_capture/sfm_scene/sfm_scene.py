@@ -142,6 +142,8 @@ class SfmScene:
 
         camera_ids = set(self._cameras.keys())
         for attr_name, attr in self._attributes.items():
+            if not isinstance(attr, SceneAttribute):
+                raise TypeError(f"Attribute '{attr_name}' must be a SceneAttribute instance, got {type(attr).__name__}")
             attr.validate(attr_name, len(self._points), len(self._images), camera_ids)
 
         # Validate the scene_bbox
