@@ -218,7 +218,7 @@ class TestPerPointAttribute(unittest.TestCase):
         data = np.array([[1.0, 2.0, 3.0]], dtype=np.float64)
         M = np.eye(4)
         M[:3, 3] = [10.0, 20.0, 30.0]
-        attr = PerPointAttribute(data, transform_mode="rigid")
+        attr = PerPointAttribute(data, transform_mode="affine")
         result = attr.on_spatial_transform(M)
         expected = data @ M[:3, :3].T + M[:3, 3]
         np.testing.assert_allclose(result.data, expected, atol=1e-10)

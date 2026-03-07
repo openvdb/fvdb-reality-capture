@@ -35,11 +35,24 @@ def scene_attribute(cls: DerivedAttribute) -> DerivedAttribute:
 
 
 class TransformMode(str, Enum):
-    """How per-point data responds to spatial transforms on the scene."""
+    """How per-point data responds to spatial transforms on the scene.
+
+    Modes
+    -----
+    NONE
+        The attribute is not affected by spatial transforms.
+    ROTATE
+        Only the rotational component of the transform is applied (scale and
+        shear are factored out via polar decomposition). Useful for normals.
+    AFFINE
+        The full 3x3 linear part (rotation, scale, shear) plus translation
+        is applied. Use for positional data that should follow the scene
+        geometry exactly.
+    """
 
     NONE = "none"
     ROTATE = "rotate"
-    RIGID = "rigid"
+    AFFINE = "affine"
 
 
 class InterpolationMode(str, Enum):
@@ -225,7 +238,7 @@ class PerPointAttribute(SceneAttribute):
             new_data = self._data @ R_pure.T
             return PerPointAttribute(new_data, transform_mode=self._transform_mode)
 
-        # "rigid" – full affine
+        # "affine" – full linear + translation
         translation = matrix[:3, 3]
         new_data = self._data @ linear.T + translation
         return PerPointAttribute(new_data, transform_mode=self._transform_mode)
@@ -387,6 +400,12 @@ class PerImageRasterAttribute(SceneAttribute):
                 h, w = img.shape[:2]
                 new_h = int(h / downsample_factor)
                 new_w = int(w / downsample_factor)
+                if new_h < 1 or new_w < 1:
+                    raise ValueError(
+                        f"Cannot downsample raster attribute '{attr_name}': downsample_factor={downsample_factor} "
+                        f"produces output size ({new_h}, {new_w}) from input ({h}, {w}). "
+                        f"Output height and width must each be at least 1."
+                    )
                 resized = cv2.resize(
                     img,
                     (new_w, new_h),
@@ -469,18 +488,29 @@ class PerImageRasterAttribute(SceneAttribute):
 
         h, w = work_tensor.shape[0], work_tensor.shape[1]
         new_h, new_w = int(h / factor), int(w / factor)
+        if new_h < 1 or new_w < 1:
+            raise ValueError(
+                f"Cannot resize attribute '{attr_name}': factor={factor} produces output size ({new_h}, {new_w}) "
+                f"from input shape {tuple(tensor.shape)}. Output height and width must each be at least 1."
+            )
         trailing = work_tensor.shape[2:]
         mode = self._resize_interpolation.to_torch_str()
+        # align_corners=False is required for bilinear/bicubic to avoid
+        # deprecation warnings and ensure consistent pixel-edge alignment
+        # across torch versions. nearest/area do not accept this parameter.
+        interp_kwargs: dict = {"size": (new_h, new_w), "mode": mode}
+        if mode in ("bilinear", "bicubic"):
+            interp_kwargs["align_corners"] = False
 
         if len(trailing) == 0:
             work_tensor = work_tensor.unsqueeze(0).unsqueeze(0)  # (1, 1, H, W)
-            resized = F.interpolate(work_tensor, size=(new_h, new_w), mode=mode)
+            resized = F.interpolate(work_tensor, **interp_kwargs)
             resized = resized.squeeze(0).squeeze(0)  # (H', W')
         else:
             flat_trailing = int(np.prod(trailing))
             work_tensor = work_tensor.reshape(h, w, flat_trailing)
             work_tensor = work_tensor.permute(2, 0, 1).unsqueeze(0)  # (1, C, H, W)
-            resized = F.interpolate(work_tensor, size=(new_h, new_w), mode=mode)
+            resized = F.interpolate(work_tensor, **interp_kwargs)
             resized = resized.squeeze(0).permute(1, 2, 0)  # (H', W', C)
             resized = resized.reshape(new_h, new_w, *trailing)
 
