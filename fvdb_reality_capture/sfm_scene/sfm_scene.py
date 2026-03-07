@@ -478,14 +478,9 @@ class SfmScene:
         if transformation_matrix.shape != (4, 4):
             raise ValueError("Transformation matrix must be a 4x4 matrix.")
 
-        camera_locations = []
         transformed_images = []
         for image in self._images:
             transformed_images.append(image.transform(transformation_matrix))
-            camera_locations.append(image.origin)
-
-        if transformation_matrix.shape != (4, 4):
-            raise ValueError("Transformation matrix must be a 4x4 matrix.")
 
         transformed_points = self._points @ transformation_matrix[:3, :3].T + transformation_matrix[:3, 3]
 
