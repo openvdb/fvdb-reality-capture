@@ -67,7 +67,7 @@ class Compose(BaseTransform):
                     f"{t} modifies scene geometry after {last_crop_transform} which caches "
                     f"coordinate-dependent masks. The cached masks may be stale. "
                     f"Consider placing {last_crop_transform} after {t}.",
-                    stacklevel=3,
+                    stacklevel=4,
                 )
 
     def __call__(self, input_scene: SfmScene) -> SfmScene:

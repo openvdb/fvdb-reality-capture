@@ -438,6 +438,11 @@ class PerImageRasterAttribute(SceneAttribute):
         Non-float32 floating-point tensors (e.g. float64) are temporarily
         cast to float32 for interpolation and cast back afterward -- minor
         precision loss may occur.
+
+        Integer tensors are also cast to float32 for nearest-neighbor
+        interpolation.  Values larger than 2^24 (~16.7 M) are not exactly
+        representable in float32, so very large label IDs may be corrupted.
+        If this is a concern, subclass and override with a float64 path.
         """
         import torch
         import torch.nn.functional as F
