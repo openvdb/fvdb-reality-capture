@@ -409,6 +409,50 @@ class TestPerImageRasterAttribute(unittest.TestCase):
                 attr.on_downsample_images("seg_scales", 2, cache)
             self.assertIn("seg_scales", str(ctx.exception))
 
+    def test_downsample_pt_numpy_array(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            cache = SfmCache.get_cache(pathlib.Path(tmp_dir), name="test", description="test")
+            arr = np.random.randn(32, 64, 2).astype(np.float32)
+            pt_path = pathlib.Path(tmp_dir) / "test_nparr.pt"
+            torch.save(arr, str(pt_path))
+
+            attr = PerImageRasterAttribute(
+                paths=[str(pt_path)],
+                resize_interpolation=InterpolationMode.BILINEAR,
+            )
+            result = attr.on_downsample_images("flow", 2, cache)
+            loaded = torch.load(result.paths[0], weights_only=False)
+            self.assertEqual(loaded.shape, (16, 32, 2))
+
+    def test_downsample_unsupported_extension_raises(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            cache = SfmCache.get_cache(pathlib.Path(tmp_dir), name="test", description="test")
+            bad_path = pathlib.Path(tmp_dir) / "test_data.xyz"
+            bad_path.write_text("dummy")
+
+            attr = PerImageRasterAttribute(
+                paths=[str(bad_path)],
+                resize_interpolation=InterpolationMode.BILINEAR,
+            )
+            with self.assertRaises(ValueError) as ctx:
+                attr.on_downsample_images("bad_attr", 2, cache)
+            self.assertIn(".xyz", str(ctx.exception))
+
+    def test_resize_tensor_higher_rank(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            cache = SfmCache.get_cache(pathlib.Path(tmp_dir), name="test", description="test")
+            tensor = torch.randn(32, 64, 3, 2)
+            pt_path = pathlib.Path(tmp_dir) / "test_4d.pt"
+            torch.save(tensor, str(pt_path))
+
+            attr = PerImageRasterAttribute(
+                paths=[str(pt_path)],
+                resize_interpolation=InterpolationMode.BILINEAR,
+            )
+            result = attr.on_downsample_images("high_rank", 2, cache)
+            loaded = torch.load(result.paths[0], weights_only=False)
+            self.assertEqual(loaded.shape, (16, 32, 3, 2))
+
     def test_downsample_cache_hit(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
             cache = SfmCache.get_cache(pathlib.Path(tmp_dir), name="test", description="test")
@@ -828,6 +872,97 @@ class TestSfmDatasetRasterAttributePatchCrop(unittest.TestCase):
 
             self.assertEqual(tuple(datum["raster"].shape), (h, w))
             np.testing.assert_array_equal(datum["raster"].numpy(), full_raster)
+
+    def test_raster_pt_loading(self):
+        from fvdb_reality_capture.radiance_fields.gaussian_splat_dataset import SfmDataset
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp = pathlib.Path(tmp_dir)
+            h, w = 48, 64
+
+            img = np.random.randint(0, 255, (h, w, 3), dtype=np.uint8)
+            img_path = tmp / "image_0.png"
+            cv2.imwrite(str(img_path), img)
+
+            raster = torch.randn(h, w, 2)
+            raster_path = tmp / "raster_0.pt"
+            torch.save(raster, str(raster_path))
+
+            camera = _make_camera_metadata(width=w, height=h)
+            c2w = np.eye(4, dtype=np.float64)
+            w2c = np.eye(4, dtype=np.float64)
+            images = [
+                SfmPosedImageMetadata(
+                    world_to_camera_matrix=w2c,
+                    camera_to_world_matrix=c2w,
+                    camera_metadata=camera,
+                    camera_id=1,
+                    image_path=str(img_path),
+                    mask_path="",
+                    point_indices=None,
+                    image_id=0,
+                )
+            ]
+            cache = SfmCache.get_cache(tmp, name="test", description="test")
+            scene = SfmScene(
+                cameras={1: camera},
+                images=images,
+                points=np.random.randn(10, 3).astype(np.float32),
+                points_err=np.random.rand(10).astype(np.float32),
+                points_rgb=np.random.randint(0, 255, (10, 3), dtype=np.uint8),
+                scene_bbox=None,
+                transformation_matrix=None,
+                cache=cache,
+                attributes={"flow": PerImageRasterAttribute(paths=[str(raster_path)])},
+            )
+            dataset = SfmDataset(sfm_scene=scene, load_attributes=["flow"])
+            datum = dataset[0]
+
+            self.assertEqual(tuple(datum["flow"].shape), (h, w, 2))
+            torch.testing.assert_close(datum["flow"], raster)
+
+    def test_per_image_value_attribute_loading(self):
+        from fvdb_reality_capture.radiance_fields.gaussian_splat_dataset import SfmDataset
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp = pathlib.Path(tmp_dir)
+            h, w = 48, 64
+
+            img = np.random.randint(0, 255, (h, w, 3), dtype=np.uint8)
+            img_path = tmp / "image_0.png"
+            cv2.imwrite(str(img_path), img)
+
+            camera = _make_camera_metadata(width=w, height=h)
+            c2w = np.eye(4, dtype=np.float64)
+            w2c = np.eye(4, dtype=np.float64)
+            images = [
+                SfmPosedImageMetadata(
+                    world_to_camera_matrix=w2c,
+                    camera_to_world_matrix=c2w,
+                    camera_metadata=camera,
+                    camera_id=1,
+                    image_path=str(img_path),
+                    mask_path="",
+                    point_indices=None,
+                    image_id=0,
+                )
+            ]
+            cache = SfmCache.get_cache(tmp, name="test", description="test")
+            scene = SfmScene(
+                cameras={1: camera},
+                images=images,
+                points=np.random.randn(10, 3).astype(np.float32),
+                points_err=np.random.rand(10).astype(np.float32),
+                points_rgb=np.random.randint(0, 255, (10, 3), dtype=np.uint8),
+                scene_bbox=None,
+                transformation_matrix=None,
+                cache=cache,
+                attributes={"exposure": PerImageValueAttribute(values=[42.5])},
+            )
+            dataset = SfmDataset(sfm_scene=scene, load_attributes=["exposure"])
+            datum = dataset[0]
+
+            self.assertEqual(datum["exposure"], 42.5)
 
 
 if __name__ == "__main__":

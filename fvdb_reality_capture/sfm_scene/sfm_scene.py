@@ -322,26 +322,21 @@ class SfmScene:
         Returns:
             scene (SfmScene): An in-memory representation of the loaded scene.
         """
-        if "images" not in state_dict:
-            raise KeyError("State dictionary is missing 'images' key.")
-        if "cameras" not in state_dict:
-            raise KeyError("State dictionary is missing 'cameras' key.")
-        if "points" not in state_dict:
-            raise KeyError("State dictionary is missing 'points' key.")
-        if "points_err" not in state_dict:
-            raise KeyError("State dictionary is missing 'points_err' key.")
-        if "points_rgb" not in state_dict:
-            raise KeyError("State dictionary is missing 'points_rgb' key.")
-        if "scene_bbox" not in state_dict:
-            raise KeyError("State dictionary is missing 'scene_bbox' key.")
-        if "transformation_matrix" not in state_dict:
-            raise KeyError("State dictionary is missing 'transformation_matrix' key.")
-        if "cache_path" not in state_dict:
-            raise KeyError("State dictionary is missing 'cache_path' key.")
-        if "cache_name" not in state_dict:
-            raise KeyError("State dictionary is missing 'cache_name' key.")
-        if "cache_description" not in state_dict:
-            raise KeyError("State dictionary is missing 'cache_description' key.")
+        _REQUIRED_KEYS = (
+            "images",
+            "cameras",
+            "points",
+            "points_err",
+            "points_rgb",
+            "scene_bbox",
+            "transformation_matrix",
+            "cache_path",
+            "cache_name",
+            "cache_description",
+        )
+        missing = [k for k in _REQUIRED_KEYS if k not in state_dict]
+        if missing:
+            raise KeyError(f"State dictionary is missing required key(s): {', '.join(repr(k) for k in missing)}")
 
         cache_path = pathlib.Path(state_dict["cache_path"])
         if not cache_path.exists():
@@ -600,8 +595,29 @@ class SfmScene:
         """Check if a custom attribute exists."""
         return name in self._attributes
 
+    _REPLACE_FIELDS = frozenset(
+        {
+            "cameras",
+            "images",
+            "points",
+            "points_err",
+            "points_rgb",
+            "scene_bbox",
+            "transformation_matrix",
+            "cache",
+            "attributes",
+        }
+    )
+
     def replace(self, **kwargs) -> "SfmScene":
-        """Return a new SfmScene with specified fields replaced. Unspecified fields are carried over."""
+        """Return a new SfmScene with specified fields replaced. Unspecified fields are carried over.
+
+        Raises:
+            TypeError: If any keyword argument does not match a known field name.
+        """
+        unknown = kwargs.keys() - self._REPLACE_FIELDS
+        if unknown:
+            raise TypeError(f"replace() got unexpected keyword arguments: {unknown}")
         return SfmScene(
             cameras=kwargs.get("cameras", self._cameras),
             images=kwargs.get("images", self._images),

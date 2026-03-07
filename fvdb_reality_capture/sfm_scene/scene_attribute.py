@@ -49,7 +49,28 @@ class InterpolationMode(str, Enum):
     BILINEAR = "bilinear"
     BICUBIC = "bicubic"
     NEAREST = "nearest"
-    LINEAR = "linear"
+
+    def to_cv2(self) -> int:
+        """Return the corresponding ``cv2.INTER_*`` constant."""
+        import cv2
+
+        _map = {
+            InterpolationMode.AREA: cv2.INTER_AREA,
+            InterpolationMode.BILINEAR: cv2.INTER_LINEAR,
+            InterpolationMode.BICUBIC: cv2.INTER_CUBIC,
+            InterpolationMode.NEAREST: cv2.INTER_NEAREST,
+        }
+        return _map[self]
+
+    def to_torch_str(self) -> str:
+        """Return the mode string accepted by :func:`torch.nn.functional.interpolate`."""
+        _map = {
+            InterpolationMode.AREA: "area",
+            InterpolationMode.BILINEAR: "bilinear",
+            InterpolationMode.BICUBIC: "bicubic",
+            InterpolationMode.NEAREST: "nearest",
+        }
+        return _map[self]
 
 
 class SceneAttribute(ABC):
@@ -99,15 +120,21 @@ class SceneAttribute(ABC):
     # -- Core hooks (dispatched by SfmScene methods) -------------------------
 
     def on_filter_points(self, mask: np.ndarray) -> "SceneAttribute":
+        """Called when points are filtered.  ``mask`` is a boolean array of
+        shape ``(N,)`` where ``True`` keeps the point.  No-op by default."""
         return self
 
     def on_filter_images(self, mask: np.ndarray) -> "SceneAttribute":
+        """Called when images are filtered.  ``mask`` is a boolean array of
+        shape ``(I,)`` where ``True`` keeps the image.  No-op by default."""
         return self
 
     def on_select_images(self, indices: np.ndarray) -> "SceneAttribute":
+        """Called when a subset of images is selected by index.  No-op by default."""
         return self
 
     def on_spatial_transform(self, matrix: np.ndarray) -> "SceneAttribute":
+        """Called when a 4x4 spatial transform is applied to the scene.  No-op by default."""
         return self
 
     # -- Transform-specific hooks --------------------------------------------
@@ -329,13 +356,12 @@ class PerImageRasterAttribute(SceneAttribute):
 
         cache_folder_name = f"attr_{attr_name}_downsample_{downsample_factor}x_{self._resize_interpolation.value}"
         attr_cache = cache.make_folder(cache_folder_name, description=f"Downsampled raster attribute '{attr_name}'")
+        num_zeropad = len(str(len(self._paths))) + 2
 
         # Check if cache is valid
         if attr_cache.num_files == len(self._paths):
-            # Assume cache is valid – return paths from cache
             new_paths = []
             all_cached = True
-            num_zeropad = len(str(len(self._paths))) + 2
             for i in range(len(self._paths)):
                 file_name = f"raster_{i:0{num_zeropad}}"
                 if not attr_cache.has_file(file_name):
@@ -349,22 +375,6 @@ class PerImageRasterAttribute(SceneAttribute):
         # Regenerate
         attr_cache.clear_current_folder()
         new_paths = []
-        num_zeropad = len(str(len(self._paths))) + 2
-
-        _INTERP_TO_CV2 = {
-            InterpolationMode.AREA: cv2.INTER_AREA,
-            InterpolationMode.BILINEAR: cv2.INTER_LINEAR,
-            InterpolationMode.BICUBIC: cv2.INTER_CUBIC,
-            InterpolationMode.NEAREST: cv2.INTER_NEAREST,
-            InterpolationMode.LINEAR: cv2.INTER_LINEAR,
-        }
-        _INTERP_TO_TORCH = {
-            InterpolationMode.AREA: "area",
-            InterpolationMode.BILINEAR: "bilinear",
-            InterpolationMode.BICUBIC: "bicubic",
-            InterpolationMode.NEAREST: "nearest",
-            InterpolationMode.LINEAR: "bilinear",
-        }
 
         for i, path in enumerate(self._paths):
             ext = pathlib.Path(path).suffix.lower()
@@ -380,7 +390,7 @@ class PerImageRasterAttribute(SceneAttribute):
                 resized = cv2.resize(
                     img,
                     (new_w, new_h),
-                    interpolation=_INTERP_TO_CV2[self._resize_interpolation],
+                    interpolation=self._resize_interpolation.to_cv2(),
                 )
                 out_type = "jpg" if ext in (".jpg", ".jpeg") else "png"
                 meta = attr_cache.write_file(file_name, resized, data_type=out_type)
@@ -388,16 +398,16 @@ class PerImageRasterAttribute(SceneAttribute):
 
             elif ext == ".npy":
                 arr = np.load(path)
-                resized = self._resize_array(arr, downsample_factor, attr_name, _INTERP_TO_TORCH)
+                resized = self._resize_array(arr, downsample_factor, attr_name)
                 meta = attr_cache.write_file(file_name, resized, data_type="npy")
                 new_paths.append(str(meta["path"]))
 
             elif ext == ".pt":
                 data = torch.load(path, map_location="cpu", weights_only=False)
                 if isinstance(data, torch.Tensor):
-                    resized = self._resize_tensor(data, downsample_factor, attr_name, _INTERP_TO_TORCH)
+                    resized = self._resize_tensor(data, downsample_factor, attr_name)
                 elif isinstance(data, np.ndarray):
-                    resized = self._resize_array(data, downsample_factor, attr_name, _INTERP_TO_TORCH)
+                    resized = self._resize_array(data, downsample_factor, attr_name)
                 else:
                     raise TypeError(
                         f"Cannot resize attribute '{attr_name}': loaded data is {type(data).__name__}, "
@@ -412,18 +422,22 @@ class PerImageRasterAttribute(SceneAttribute):
 
         return self._with_paths(new_paths)
 
-    def _resize_array(self, arr: np.ndarray, factor: int, attr_name: str, interp_map: dict) -> np.ndarray:
+    def _resize_array(self, arr: np.ndarray, factor: int, attr_name: str) -> np.ndarray:
         import torch
 
         tensor = torch.from_numpy(arr)
-        resized_tensor = self._resize_tensor(tensor, factor, attr_name, interp_map)
+        resized_tensor = self._resize_tensor(tensor, factor, attr_name)
         return resized_tensor.numpy()
 
-    def _resize_tensor(self, tensor: "torch.Tensor", factor: int, attr_name: str, interp_map: dict) -> "torch.Tensor":
+    def _resize_tensor(self, tensor: "torch.Tensor", factor: int, attr_name: str) -> "torch.Tensor":
         """Resize a tensor raster by the given downsample ``factor``.
 
         The tensor must be in ``(H, W)`` or ``(H, W, C, ...)`` layout.
         ``(C, H, W)`` layout is **not** supported; see the class docstring.
+
+        Non-float32 floating-point tensors (e.g. float64) are temporarily
+        cast to float32 for interpolation and cast back afterward -- minor
+        precision loss may occur.
         """
         import torch
         import torch.nn.functional as F
@@ -451,24 +465,17 @@ class PerImageRasterAttribute(SceneAttribute):
         h, w = work_tensor.shape[0], work_tensor.shape[1]
         new_h, new_w = int(h / factor), int(w / factor)
         trailing = work_tensor.shape[2:]
+        mode = self._resize_interpolation.to_torch_str()
 
         if len(trailing) == 0:
             work_tensor = work_tensor.unsqueeze(0).unsqueeze(0)  # (1, 1, H, W)
-            resized = F.interpolate(
-                work_tensor,
-                size=(new_h, new_w),
-                mode=interp_map[self._resize_interpolation],
-            )
+            resized = F.interpolate(work_tensor, size=(new_h, new_w), mode=mode)
             resized = resized.squeeze(0).squeeze(0)  # (H', W')
         else:
             flat_trailing = int(np.prod(trailing))
             work_tensor = work_tensor.reshape(h, w, flat_trailing)
             work_tensor = work_tensor.permute(2, 0, 1).unsqueeze(0)  # (1, C, H, W)
-            resized = F.interpolate(
-                work_tensor,
-                size=(new_h, new_w),
-                mode=interp_map[self._resize_interpolation],
-            )
+            resized = F.interpolate(work_tensor, size=(new_h, new_w), mode=mode)
             resized = resized.squeeze(0).permute(1, 2, 0)  # (H', W', C)
             resized = resized.reshape(new_h, new_w, *trailing)
 
