@@ -254,21 +254,36 @@ class PerImageValueAttribute(SceneAttribute):
 
 @scene_attribute
 class PerImageRasterAttribute(SceneAttribute):
-    """Per-image raster data stored as files on disk, spatially aligned to images."""
+    """Per-image raster data stored as files on disk, spatially aligned to images.
+
+    All rasters **must** use ``(H, W)`` or ``(H, W, C, ...)`` layout, matching
+    the convention used by OpenCV and the rest of the dataset pipeline.
+    ``(C, H, W)`` tensors are **not** supported -- callers must permute to
+    ``(H, W, C)`` before registering the attribute.
+    """
 
     def __init__(
         self,
         paths: list[str],
         resize_interpolation: InterpolationMode = InterpolationMode.AREA,
-        file_type: str = "png",
+        cache_format: str = "png",
     ):
+        """
+        Args:
+            paths: One file path per image, in the same order as the scene's image list.
+            resize_interpolation: Interpolation mode used when downsampling rasters.
+            cache_format: Output format when writing downsampled rasters to cache
+                (``"png"``, ``"npy"``, or ``"pt"``).  Input files are always
+                parsed by their actual file extension, so this only affects
+                cached downsample outputs.
+        """
         self._paths = list(paths)
         self._resize_interpolation = (
             InterpolationMode(resize_interpolation)
             if not isinstance(resize_interpolation, InterpolationMode)
             else resize_interpolation
         )
-        self._file_type = file_type
+        self._cache_format = cache_format
 
     @property
     def paths(self) -> list[str]:
@@ -279,8 +294,8 @@ class PerImageRasterAttribute(SceneAttribute):
         return self._resize_interpolation
 
     @property
-    def file_type(self) -> str:
-        return self._file_type
+    def cache_format(self) -> str:
+        return self._cache_format
 
     @staticmethod
     def type_name() -> str:
@@ -296,14 +311,14 @@ class PerImageRasterAttribute(SceneAttribute):
         return PerImageRasterAttribute(
             paths=[p for p, keep in zip(self._paths, mask) if keep],
             resize_interpolation=self._resize_interpolation,
-            file_type=self._file_type,
+            cache_format=self._cache_format,
         )
 
     def on_select_images(self, indices: np.ndarray) -> "PerImageRasterAttribute":
         return PerImageRasterAttribute(
             paths=[self._paths[i] for i in indices],
             resize_interpolation=self._resize_interpolation,
-            file_type=self._file_type,
+            cache_format=self._cache_format,
         )
 
     def on_downsample_images(
@@ -320,7 +335,7 @@ class PerImageRasterAttribute(SceneAttribute):
 
         cache_folder_name = (
             f"attr_{attr_name}_downsample_{downsample_factor}x"
-            f"_{self._resize_interpolation.value}_{self._file_type}"
+            f"_{self._resize_interpolation.value}_{self._cache_format}"
         )
         attr_cache = cache.make_folder(cache_folder_name, description=f"Downsampled raster attribute '{attr_name}'")
 
@@ -341,7 +356,7 @@ class PerImageRasterAttribute(SceneAttribute):
                 return PerImageRasterAttribute(
                     paths=new_paths,
                     resize_interpolation=self._resize_interpolation,
-                    file_type=self._file_type,
+                    cache_format=self._cache_format,
                 )
 
         # Regenerate
@@ -380,7 +395,7 @@ class PerImageRasterAttribute(SceneAttribute):
                     (new_w, new_h),
                     interpolation=_INTERP_TO_CV2[self._resize_interpolation],
                 )
-                meta = attr_cache.write_file(file_name, resized, data_type=self._file_type)
+                meta = attr_cache.write_file(file_name, resized, data_type=self._cache_format)
                 new_paths.append(str(meta["path"]))
 
             elif ext == ".npy":
@@ -410,7 +425,7 @@ class PerImageRasterAttribute(SceneAttribute):
         return PerImageRasterAttribute(
             paths=new_paths,
             resize_interpolation=self._resize_interpolation,
-            file_type=self._file_type,
+            cache_format=self._cache_format,
         )
 
     def _resize_array(self, arr: np.ndarray, factor: int, attr_name: str, interp_map: dict) -> np.ndarray:
@@ -421,13 +436,18 @@ class PerImageRasterAttribute(SceneAttribute):
         return resized_tensor.numpy()
 
     def _resize_tensor(self, tensor: "torch.Tensor", factor: int, attr_name: str, interp_map: dict) -> "torch.Tensor":
+        """Resize a tensor raster by the given downsample ``factor``.
+
+        The tensor must be in ``(H, W)`` or ``(H, W, C, ...)`` layout.
+        ``(C, H, W)`` layout is **not** supported; see the class docstring.
+        """
         import torch
         import torch.nn.functional as F
 
         if tensor.ndim < 2:
             raise ValueError(
                 f"Cannot resize attribute '{attr_name}': loaded tensor has shape {tuple(tensor.shape)} "
-                f"with < 2 spatial dimensions. PerImageRasterAttribute expects a spatial raster (H, W, ...)."
+                f"with < 2 spatial dimensions. PerImageRasterAttribute expects (H, W) or (H, W, C, ...)."
             )
 
         is_integer = not tensor.is_floating_point() and not tensor.is_complex()
@@ -438,61 +458,35 @@ class PerImageRasterAttribute(SceneAttribute):
                 f"InterpolationMode.{self._resize_interpolation.name}."
             )
 
-        # Determine spatial layout: assume (H, W, ...) unless first dim is small and last two are large
-        # Heuristic: if ndim >= 3 and shape[0] <= 16 and shape[-2] > 16, assume (C, H, W)
-        chw_layout = False
-        if tensor.ndim >= 3 and tensor.shape[0] <= 16 and tensor.shape[-2] > 16 and tensor.shape[-1] > 16:
-            chw_layout = True
-
         original_dtype = tensor.dtype
         if is_integer:
             work_tensor = tensor.float()
         else:
             work_tensor = tensor.float() if tensor.dtype != torch.float32 else tensor
 
-        if chw_layout:
-            # (C, H, W) layout
-            if work_tensor.ndim == 3:
-                work_tensor = work_tensor.unsqueeze(0)  # (1, C, H, W)
-                h, w = work_tensor.shape[2], work_tensor.shape[3]
-                new_h, new_w = int(h / factor), int(w / factor)
-                resized = F.interpolate(
-                    work_tensor,
-                    size=(new_h, new_w),
-                    mode=interp_map[self._resize_interpolation],
-                )
-                resized = resized.squeeze(0)  # (C, H', W')
-            else:
-                raise ValueError(
-                    f"Cannot resize attribute '{attr_name}': unsupported tensor shape {tuple(tensor.shape)} "
-                    f"in CHW layout."
-                )
+        h, w = work_tensor.shape[0], work_tensor.shape[1]
+        new_h, new_w = int(h / factor), int(w / factor)
+        trailing = work_tensor.shape[2:]
+
+        if len(trailing) == 0:
+            work_tensor = work_tensor.unsqueeze(0).unsqueeze(0)  # (1, 1, H, W)
+            resized = F.interpolate(
+                work_tensor,
+                size=(new_h, new_w),
+                mode=interp_map[self._resize_interpolation],
+            )
+            resized = resized.squeeze(0).squeeze(0)  # (H', W')
         else:
-            # (H, W, ...) layout
-            h, w = work_tensor.shape[0], work_tensor.shape[1]
-            new_h, new_w = int(h / factor), int(w / factor)
-            trailing = work_tensor.shape[2:]
-            if len(trailing) == 0:
-                # (H, W) -> (1, 1, H, W)
-                work_tensor = work_tensor.unsqueeze(0).unsqueeze(0)
-                resized = F.interpolate(
-                    work_tensor,
-                    size=(new_h, new_w),
-                    mode=interp_map[self._resize_interpolation],
-                )
-                resized = resized.squeeze(0).squeeze(0)
-            else:
-                # (H, W, C, ...) -> reshape to (1, prod(trailing), H, W), resize, reshape back
-                flat_trailing = int(np.prod(trailing))
-                work_tensor = work_tensor.reshape(h, w, flat_trailing)
-                work_tensor = work_tensor.permute(2, 0, 1).unsqueeze(0)  # (1, C, H, W)
-                resized = F.interpolate(
-                    work_tensor,
-                    size=(new_h, new_w),
-                    mode=interp_map[self._resize_interpolation],
-                )
-                resized = resized.squeeze(0).permute(1, 2, 0)  # (H', W', C)
-                resized = resized.reshape(new_h, new_w, *trailing)
+            flat_trailing = int(np.prod(trailing))
+            work_tensor = work_tensor.reshape(h, w, flat_trailing)
+            work_tensor = work_tensor.permute(2, 0, 1).unsqueeze(0)  # (1, C, H, W)
+            resized = F.interpolate(
+                work_tensor,
+                size=(new_h, new_w),
+                mode=interp_map[self._resize_interpolation],
+            )
+            resized = resized.squeeze(0).permute(1, 2, 0)  # (H', W', C)
+            resized = resized.reshape(new_h, new_w, *trailing)
 
         if is_integer:
             resized = resized.round().to(original_dtype)
@@ -505,7 +499,7 @@ class PerImageRasterAttribute(SceneAttribute):
         return {
             "paths": self._paths,
             "resize_interpolation": self._resize_interpolation.value,
-            "file_type": self._file_type,
+            "cache_format": self._cache_format,
         }
 
     @staticmethod
@@ -513,7 +507,7 @@ class PerImageRasterAttribute(SceneAttribute):
         return PerImageRasterAttribute(
             paths=state_dict["paths"],
             resize_interpolation=InterpolationMode(state_dict["resize_interpolation"]),
-            file_type=state_dict.get("file_type", "png"),
+            cache_format=state_dict.get("cache_format", "png"),
         )
 
 
