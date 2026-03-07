@@ -637,6 +637,67 @@ class TestSfmSceneAttributes(unittest.TestCase):
             SfmScene.from_state_dict(sd)
         self.assertIn("UnknownType", str(ctx.exception))
 
+    def test_serialization_round_trip_raster_attribute(self):
+        tmp = pathlib.Path(self.tmp_dir)
+        raster_paths = []
+        for i in range(10):
+            p = tmp / f"raster_{i}.npy"
+            np.save(str(p), np.random.randn(48, 64).astype(np.float32))
+            raster_paths.append(str(p))
+
+        scene2 = self.scene.with_attributes(
+            depth=PerImageRasterAttribute(paths=raster_paths, resize_interpolation=InterpolationMode.NEAREST),
+        )
+        sd = scene2.state_dict()
+        restored = SfmScene.from_state_dict(sd)
+
+        attr = restored.get_attribute("depth")
+        self.assertIsInstance(attr, PerImageRasterAttribute)
+        self.assertEqual(attr.paths, raster_paths)
+        self.assertEqual(attr.resize_interpolation, InterpolationMode.NEAREST)
+
+    def test_serialization_round_trip_camera_attribute(self):
+        camera_ids = list(self.scene.cameras.keys())
+        cam_values = {cid: {"gamma": 2.2, "response_curve": [1.0, 0.5]} for cid in camera_ids}
+
+        scene2 = self.scene.with_attributes(
+            cam_meta=PerCameraAttribute(values=cam_values),
+        )
+        sd = scene2.state_dict()
+        restored = SfmScene.from_state_dict(sd)
+
+        attr = restored.get_attribute("cam_meta")
+        self.assertIsInstance(attr, PerCameraAttribute)
+        self.assertEqual(attr.values, cam_values)
+
+    def test_serialization_round_trip_all_attribute_types(self):
+        tmp = pathlib.Path(self.tmp_dir)
+        raster_paths = []
+        for i in range(10):
+            p = tmp / f"raster_all_{i}.npy"
+            np.save(str(p), np.random.randn(48, 64).astype(np.float32))
+            raster_paths.append(str(p))
+
+        normals = np.random.randn(50, 3).astype(np.float32)
+        values = list(range(10))
+        camera_ids = list(self.scene.cameras.keys())
+        cam_values = {cid: 2.2 for cid in camera_ids}
+
+        scene2 = self.scene.with_attributes(
+            normals=PerPointAttribute(normals, transform_mode="rotate"),
+            timestamps=PerImageValueAttribute(values),
+            depth=PerImageRasterAttribute(paths=raster_paths),
+            cam_gamma=PerCameraAttribute(values=cam_values),
+        )
+        sd = scene2.state_dict()
+        restored = SfmScene.from_state_dict(sd)
+
+        np.testing.assert_array_almost_equal(restored.get_attribute("normals").data, normals, decimal=5)
+        self.assertEqual(restored.get_attribute("normals").transform_mode, "rotate")
+        self.assertEqual(restored.get_attribute("timestamps").values, values)
+        self.assertEqual(restored.get_attribute("depth").paths, raster_paths)
+        self.assertEqual(restored.get_attribute("cam_gamma").values, cam_values)
+
 
 # ---------------------------------------------------------------------------
 # Tier 3: Compose ordering validation

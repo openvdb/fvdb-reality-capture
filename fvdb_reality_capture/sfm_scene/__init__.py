@@ -9,6 +9,7 @@ from .scene_attribute import (
     PerImageValueAttribute,
     PerPointAttribute,
     SceneAttribute,
+    TransformMode,
     scene_attribute,
 )
 from .sfm_cache import SfmCache
@@ -28,5 +29,6 @@ __all__ = [
     "SfmScene",
     "SfmCache",
     "SpatialScaleMode",
+    "TransformMode",
     "scene_attribute",
 ]

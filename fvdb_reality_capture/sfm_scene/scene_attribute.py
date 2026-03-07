@@ -34,6 +34,14 @@ def scene_attribute(cls: DerivedAttribute) -> DerivedAttribute:
     return cls
 
 
+class TransformMode(str, Enum):
+    """How per-point data responds to spatial transforms on the scene."""
+
+    NONE = "none"
+    ROTATE = "rotate"
+    RIGID = "rigid"
+
+
 class InterpolationMode(str, Enum):
     """Interpolation modes for resizing raster data."""
 
@@ -145,18 +153,18 @@ class SceneAttribute(ABC):
 class PerPointAttribute(SceneAttribute):
     """Per-point data that varies across the scene's 3D point cloud."""
 
-    def __init__(self, data: np.ndarray, transform_mode: str = "none"):
-        if transform_mode not in ("none", "rotate", "rigid"):
-            raise ValueError(f"transform_mode must be 'none', 'rotate', or 'rigid', got '{transform_mode}'")
+    def __init__(self, data: np.ndarray, transform_mode: TransformMode | str = TransformMode.NONE):
         self._data = data
-        self._transform_mode = transform_mode
+        self._transform_mode = (
+            TransformMode(transform_mode) if not isinstance(transform_mode, TransformMode) else transform_mode
+        )
 
     @property
     def data(self) -> np.ndarray:
         return self._data
 
     @property
-    def transform_mode(self) -> str:
+    def transform_mode(self) -> TransformMode:
         return self._transform_mode
 
     @staticmethod
@@ -174,12 +182,12 @@ class PerPointAttribute(SceneAttribute):
         return PerPointAttribute(self._data[mask], transform_mode=self._transform_mode)
 
     def on_spatial_transform(self, matrix: np.ndarray) -> "PerPointAttribute":
-        if self._transform_mode == "none":
+        if self._transform_mode == TransformMode.NONE:
             return self
 
         linear = matrix[:3, :3]
 
-        if self._transform_mode == "rotate":
+        if self._transform_mode == TransformMode.ROTATE:
             # Extract pure rotation by factoring out scale via polar decomposition.
             U, _, Vt = np.linalg.svd(linear)
             R_pure = U @ Vt
@@ -199,7 +207,7 @@ class PerPointAttribute(SceneAttribute):
         return {
             "data": self._data,
             "dtype": str(self._data.dtype),
-            "transform_mode": self._transform_mode,
+            "transform_mode": self._transform_mode.value,
         }
 
     @staticmethod
@@ -212,7 +220,7 @@ class PerPointAttribute(SceneAttribute):
             data = np.array(raw, dtype=dtype)
         return PerPointAttribute(
             data=data,
-            transform_mode=state_dict.get("transform_mode", "none"),
+            transform_mode=TransformMode(state_dict.get("transform_mode", "none")),
         )
 
 
@@ -291,6 +299,10 @@ class PerImageRasterAttribute(SceneAttribute):
     def type_name() -> str:
         return "PerImageRasterAttribute"
 
+    def _with_paths(self, new_paths: list[str]) -> "PerImageRasterAttribute":
+        """Return a copy of this attribute with replaced paths."""
+        return PerImageRasterAttribute(paths=new_paths, resize_interpolation=self._resize_interpolation)
+
     def validate(self, attr_name: str, num_points: int, num_images: int, camera_ids: set[int]) -> None:
         if len(self._paths) != num_images:
             raise ValueError(
@@ -298,16 +310,10 @@ class PerImageRasterAttribute(SceneAttribute):
             )
 
     def on_filter_images(self, mask: np.ndarray) -> "PerImageRasterAttribute":
-        return PerImageRasterAttribute(
-            paths=[p for p, keep in zip(self._paths, mask) if keep],
-            resize_interpolation=self._resize_interpolation,
-        )
+        return self._with_paths([p for p, keep in zip(self._paths, mask) if keep])
 
     def on_select_images(self, indices: np.ndarray) -> "PerImageRasterAttribute":
-        return PerImageRasterAttribute(
-            paths=[self._paths[i] for i in indices],
-            resize_interpolation=self._resize_interpolation,
-        )
+        return self._with_paths([self._paths[i] for i in indices])
 
     def on_downsample_images(
         self, attr_name: str, downsample_factor: int, output_cache: Any
@@ -338,10 +344,7 @@ class PerImageRasterAttribute(SceneAttribute):
                 meta = attr_cache.get_file_metadata(file_name)
                 new_paths.append(str(meta["path"]))
             if all_cached:
-                return PerImageRasterAttribute(
-                    paths=new_paths,
-                    resize_interpolation=self._resize_interpolation,
-                )
+                return self._with_paths(new_paths)
 
         # Regenerate
         attr_cache.clear_current_folder()
@@ -407,10 +410,7 @@ class PerImageRasterAttribute(SceneAttribute):
             else:
                 raise ValueError(f"Unsupported file extension '{ext}' for attribute '{attr_name}'")
 
-        return PerImageRasterAttribute(
-            paths=new_paths,
-            resize_interpolation=self._resize_interpolation,
-        )
+        return self._with_paths(new_paths)
 
     def _resize_array(self, arr: np.ndarray, factor: int, attr_name: str, interp_map: dict) -> np.ndarray:
         import torch

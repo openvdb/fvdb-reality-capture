@@ -430,15 +430,11 @@ class SfmScene:
 
         new_attrs = {name: attr.on_filter_points(mask) for name, attr in self._attributes.items()}
 
-        return SfmScene(
-            cameras=self._cameras,
+        return self.replace(
             images=filtered_images,
             points=filtered_points,
             points_err=filtered_points_err,
             points_rgb=filtered_points_rgb,
-            scene_bbox=self._scene_bbox,
-            transformation_matrix=self._transformation_matrix,
-            cache=self.cache,
             attributes=new_attrs,
         )
 
@@ -455,17 +451,7 @@ class SfmScene:
 
         filtered_images = [img for img, keep in zip(self._images, mask) if keep]
         new_attrs = {name: attr.on_filter_images(mask) for name, attr in self._attributes.items()}
-        return SfmScene(
-            cameras=self._cameras,
-            images=filtered_images,
-            points=self._points,
-            points_err=self._points_err,
-            points_rgb=self._points_rgb,
-            scene_bbox=self._scene_bbox,
-            transformation_matrix=self._transformation_matrix,
-            cache=self.cache,
-            attributes=new_attrs,
-        )
+        return self.replace(images=filtered_images, attributes=new_attrs)
 
     def select_images(self, indices: np.ndarray | Sequence[int]) -> "SfmScene":
         """
@@ -480,17 +466,7 @@ class SfmScene:
         """
         filtered_images = [self._images[i] for i in indices]
         new_attrs = {name: attr.on_select_images(indices) for name, attr in self._attributes.items()}
-        return SfmScene(
-            cameras=self._cameras,
-            images=filtered_images,
-            points=self._points,
-            points_err=self._points_err,
-            points_rgb=self._points_rgb,
-            scene_bbox=self._scene_bbox,
-            transformation_matrix=self._transformation_matrix,
-            cache=self.cache,
-            attributes=new_attrs,
-        )
+        return self.replace(images=filtered_images, attributes=new_attrs)
 
     def apply_transformation_matrix(self, transformation_matrix: np.ndarray) -> "SfmScene":
         """
@@ -529,15 +505,11 @@ class SfmScene:
             bbmax = transformation_matrix[:3, :3] @ bbmax + transformation_matrix[:3, 3]
             bbox = np.concatenate([bbmin, bbmax])
 
-        return SfmScene(
-            cameras=self._cameras,
+        return self.replace(
             images=transformed_images,
             points=transformed_points,
-            points_err=self._points_err,
-            points_rgb=self._points_rgb,
             scene_bbox=bbox,
             transformation_matrix=composed_matrix,
-            cache=self.cache,
             attributes=new_attrs,
         )
 
