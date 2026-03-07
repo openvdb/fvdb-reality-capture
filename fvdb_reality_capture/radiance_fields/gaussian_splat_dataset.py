@@ -332,9 +332,7 @@ class SfmDataset(torch.utils.data.Dataset, Iterable):
                 else:
                     loaded = cv2.imread(path, cv2.IMREAD_UNCHANGED)
                     if loaded is None:
-                        raise FileNotFoundError(
-                            f"Failed to load raster attribute '{attr_name}' from {path}"
-                        )
+                        raise FileNotFoundError(f"Failed to load raster attribute '{attr_name}' from {path}")
                     raster = torch.from_numpy(loaded)
                 if self.patch_size is not None:
                     raster = raster[y : y + self.patch_size, x : x + self.patch_size]
