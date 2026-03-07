@@ -266,16 +266,11 @@ class PerImageRasterAttribute(SceneAttribute):
         self,
         paths: list[str],
         resize_interpolation: InterpolationMode = InterpolationMode.AREA,
-        cache_format: str = "png",
     ):
         """
         Args:
             paths: One file path per image, in the same order as the scene's image list.
             resize_interpolation: Interpolation mode used when downsampling rasters.
-            cache_format: Output format when writing downsampled rasters to cache
-                (``"png"``, ``"npy"``, or ``"pt"``).  Input files are always
-                parsed by their actual file extension, so this only affects
-                cached downsample outputs.
         """
         self._paths = list(paths)
         self._resize_interpolation = (
@@ -283,7 +278,6 @@ class PerImageRasterAttribute(SceneAttribute):
             if not isinstance(resize_interpolation, InterpolationMode)
             else resize_interpolation
         )
-        self._cache_format = cache_format
 
     @property
     def paths(self) -> list[str]:
@@ -292,10 +286,6 @@ class PerImageRasterAttribute(SceneAttribute):
     @property
     def resize_interpolation(self) -> InterpolationMode:
         return self._resize_interpolation
-
-    @property
-    def cache_format(self) -> str:
-        return self._cache_format
 
     @staticmethod
     def type_name() -> str:
@@ -311,14 +301,12 @@ class PerImageRasterAttribute(SceneAttribute):
         return PerImageRasterAttribute(
             paths=[p for p, keep in zip(self._paths, mask) if keep],
             resize_interpolation=self._resize_interpolation,
-            cache_format=self._cache_format,
         )
 
     def on_select_images(self, indices: np.ndarray) -> "PerImageRasterAttribute":
         return PerImageRasterAttribute(
             paths=[self._paths[i] for i in indices],
             resize_interpolation=self._resize_interpolation,
-            cache_format=self._cache_format,
         )
 
     def on_downsample_images(
@@ -333,10 +321,7 @@ class PerImageRasterAttribute(SceneAttribute):
 
         cache: SfmCache = output_cache
 
-        cache_folder_name = (
-            f"attr_{attr_name}_downsample_{downsample_factor}x"
-            f"_{self._resize_interpolation.value}_{self._cache_format}"
-        )
+        cache_folder_name = f"attr_{attr_name}_downsample_{downsample_factor}x_{self._resize_interpolation.value}"
         attr_cache = cache.make_folder(cache_folder_name, description=f"Downsampled raster attribute '{attr_name}'")
 
         # Check if cache is valid
@@ -356,7 +341,6 @@ class PerImageRasterAttribute(SceneAttribute):
                 return PerImageRasterAttribute(
                     paths=new_paths,
                     resize_interpolation=self._resize_interpolation,
-                    cache_format=self._cache_format,
                 )
 
         # Regenerate
@@ -395,7 +379,8 @@ class PerImageRasterAttribute(SceneAttribute):
                     (new_w, new_h),
                     interpolation=_INTERP_TO_CV2[self._resize_interpolation],
                 )
-                meta = attr_cache.write_file(file_name, resized, data_type=self._cache_format)
+                out_type = "jpg" if ext in (".jpg", ".jpeg") else "png"
+                meta = attr_cache.write_file(file_name, resized, data_type=out_type)
                 new_paths.append(str(meta["path"]))
 
             elif ext == ".npy":
@@ -425,7 +410,6 @@ class PerImageRasterAttribute(SceneAttribute):
         return PerImageRasterAttribute(
             paths=new_paths,
             resize_interpolation=self._resize_interpolation,
-            cache_format=self._cache_format,
         )
 
     def _resize_array(self, arr: np.ndarray, factor: int, attr_name: str, interp_map: dict) -> np.ndarray:
@@ -499,7 +483,6 @@ class PerImageRasterAttribute(SceneAttribute):
         return {
             "paths": self._paths,
             "resize_interpolation": self._resize_interpolation.value,
-            "cache_format": self._cache_format,
         }
 
     @staticmethod
@@ -507,7 +490,6 @@ class PerImageRasterAttribute(SceneAttribute):
         return PerImageRasterAttribute(
             paths=state_dict["paths"],
             resize_interpolation=InterpolationMode(state_dict["resize_interpolation"]),
-            cache_format=state_dict.get("cache_format", "png"),
         )
 
 

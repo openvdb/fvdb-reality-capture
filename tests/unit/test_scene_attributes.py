@@ -309,7 +309,6 @@ class TestPerImageRasterAttribute(unittest.TestCase):
             attr = PerImageRasterAttribute(
                 paths=[str(img_path)],
                 resize_interpolation=InterpolationMode.AREA,
-                cache_format="png",
             )
             result = attr.on_downsample_images("features", 2, cache)
             self.assertEqual(len(result.paths), 1)
@@ -327,7 +326,6 @@ class TestPerImageRasterAttribute(unittest.TestCase):
             attr = PerImageRasterAttribute(
                 paths=[str(arr_path)],
                 resize_interpolation=InterpolationMode.BILINEAR,
-                cache_format="npy",
             )
             result = attr.on_downsample_images("depth", 2, cache)
             self.assertEqual(len(result.paths), 1)
@@ -345,7 +343,6 @@ class TestPerImageRasterAttribute(unittest.TestCase):
             attr = PerImageRasterAttribute(
                 paths=[str(pt_path)],
                 resize_interpolation=InterpolationMode.BILINEAR,
-                cache_format="pt",
             )
             result = attr.on_downsample_images("features", 2, cache)
             loaded = torch.load(result.paths[0], weights_only=False)
@@ -361,7 +358,6 @@ class TestPerImageRasterAttribute(unittest.TestCase):
             attr = PerImageRasterAttribute(
                 paths=[str(pt_path)],
                 resize_interpolation=InterpolationMode.NEAREST,
-                cache_format="pt",
             )
             result = attr.on_downsample_images("labels", 2, cache)
             loaded = torch.load(result.paths[0], weights_only=False)
@@ -378,7 +374,6 @@ class TestPerImageRasterAttribute(unittest.TestCase):
             attr = PerImageRasterAttribute(
                 paths=[str(pt_path)],
                 resize_interpolation=InterpolationMode.AREA,
-                cache_format="pt",
             )
             with self.assertRaises(TypeError) as ctx:
                 attr.on_downsample_images("seg_mask_ids", 2, cache)
@@ -394,7 +389,6 @@ class TestPerImageRasterAttribute(unittest.TestCase):
             attr = PerImageRasterAttribute(
                 paths=[str(pt_path)],
                 resize_interpolation=InterpolationMode.BILINEAR,
-                cache_format="pt",
             )
             with self.assertRaises(TypeError) as ctx:
                 attr.on_downsample_images("seg_data", 2, cache)
@@ -410,7 +404,6 @@ class TestPerImageRasterAttribute(unittest.TestCase):
             attr = PerImageRasterAttribute(
                 paths=[str(pt_path)],
                 resize_interpolation=InterpolationMode.BILINEAR,
-                cache_format="pt",
             )
             with self.assertRaises(ValueError) as ctx:
                 attr.on_downsample_images("seg_scales", 2, cache)
@@ -426,7 +419,6 @@ class TestPerImageRasterAttribute(unittest.TestCase):
             attr = PerImageRasterAttribute(
                 paths=[str(img_path)],
                 resize_interpolation=InterpolationMode.AREA,
-                cache_format="png",
             )
             result1 = attr.on_downsample_images("features", 2, cache)
             result2 = attr.on_downsample_images("features", 2, cache)
@@ -436,13 +428,11 @@ class TestPerImageRasterAttribute(unittest.TestCase):
         attr = PerImageRasterAttribute(
             paths=["a.npy", "b.npy"],
             resize_interpolation=InterpolationMode.BICUBIC,
-            cache_format="npy",
         )
         sd = attr.state_dict()
         restored = PerImageRasterAttribute.from_state_dict(sd)
         self.assertEqual(restored.paths, ["a.npy", "b.npy"])
         self.assertEqual(restored.resize_interpolation, InterpolationMode.BICUBIC)
-        self.assertEqual(restored.cache_format, "npy")
 
     def test_validate_correct(self):
         attr = PerImageRasterAttribute(["a.png", "b.png"])
