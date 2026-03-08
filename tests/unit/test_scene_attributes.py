@@ -549,6 +549,18 @@ class TestSfmSceneAttributes(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.scene.replace(attributes={"timestamps": bad_values})
 
+    def test_validation_empty_attr_name_raises(self):
+        normals = np.random.randn(50, 3).astype(np.float32)
+        with self.assertRaises(ValueError) as ctx:
+            self.scene.replace(attributes={"": PerPointAttribute(normals)})
+        self.assertIn("non-empty", str(ctx.exception))
+
+    def test_validation_non_string_attr_name_raises(self):
+        normals = np.random.randn(50, 3).astype(np.float32)
+        with self.assertRaises(ValueError) as ctx:
+            self.scene.replace(attributes={42: PerPointAttribute(normals)})
+        self.assertIn("non-empty", str(ctx.exception))
+
     def test_with_attributes_add(self):
         normals = np.random.randn(50, 3).astype(np.float32)
         scene2 = self.scene.with_attributes(normals=PerPointAttribute(normals))
@@ -1035,6 +1047,27 @@ class TestSfmDatasetRasterAttributePatchCrop(unittest.TestCase):
             datum = dataset[0]
 
             self.assertEqual(datum["exposure"], 42.5)
+
+    def test_reserved_key_collision_raises(self):
+        from fvdb_reality_capture.radiance_fields.gaussian_splat_dataset import SfmDataset
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            scene, _ = self._make_scene_with_raster(tmp_dir)
+            for reserved in ("image", "projection", "mask", "sparse_depth"):
+                scene_with_attr = scene.replace(
+                    attributes={reserved: PerImageValueAttribute(values=[1.0])},
+                )
+                with self.assertRaises(ValueError) as ctx:
+                    SfmDataset(sfm_scene=scene_with_attr, load_attributes=[reserved])
+                self.assertIn(reserved, str(ctx.exception))
+
+    def test_non_reserved_key_accepted(self):
+        from fvdb_reality_capture.radiance_fields.gaussian_splat_dataset import SfmDataset
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            scene, _ = self._make_scene_with_raster(tmp_dir)
+            dataset = SfmDataset(sfm_scene=scene, load_attributes=["raster"])
+            self.assertIn("raster", dataset[0])
 
 
 if __name__ == "__main__":
