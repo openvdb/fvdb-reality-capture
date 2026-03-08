@@ -63,7 +63,7 @@ class SfmDataset(torch.utils.data.Dataset, Iterable):
 
         self.patch_size = patch_size
         self._return_visible_points = return_visible_points
-        self._load_attributes = load_attributes or []
+        self._load_attributes = list(load_attributes) if load_attributes is not None else []
 
         _RESERVED_KEYS = {
             "projection",
