@@ -348,7 +348,16 @@ class SfmDataset(torch.utils.data.Dataset, Iterable):
                 if path.endswith(".npy"):
                     raster = torch.from_numpy(np.load(path))
                 elif path.endswith(".pt"):
-                    raster = torch.load(path, map_location="cpu", weights_only=False)
+                    loaded_pt = torch.load(path, map_location="cpu", weights_only=False)
+                    if isinstance(loaded_pt, np.ndarray):
+                        raster = torch.from_numpy(loaded_pt)
+                    elif isinstance(loaded_pt, torch.Tensor):
+                        raster = loaded_pt
+                    else:
+                        raise TypeError(
+                            f"Raster attribute '{attr_name}' loaded from {path} is {type(loaded_pt).__name__}, "
+                            f"expected torch.Tensor or numpy.ndarray."
+                        )
                 else:
                     loaded = cv2.imread(path, cv2.IMREAD_UNCHANGED)
                     if loaded is None:

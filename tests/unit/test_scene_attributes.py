@@ -1005,6 +1005,64 @@ class TestSfmDatasetRasterAttributePatchCrop(unittest.TestCase):
             self.assertEqual(tuple(datum["flow"].shape), (h, w, 2))
             torch.testing.assert_close(datum["flow"], raster)
 
+    def _make_scene_with_pt_raster(self, tmp_dir, pt_data, attr_name="raster_pt"):
+        """Helper: build a scene where the raster attribute points to a .pt file containing ``pt_data``."""
+        from fvdb_reality_capture.radiance_fields.gaussian_splat_dataset import SfmDataset
+
+        tmp = pathlib.Path(tmp_dir)
+        h, w = 48, 64
+        img = np.random.randint(0, 255, (h, w, 3), dtype=np.uint8)
+        img_path = tmp / "image_0.png"
+        cv2.imwrite(str(img_path), img)
+
+        pt_path = tmp / "raster_0.pt"
+        torch.save(pt_data, str(pt_path))
+
+        camera = _make_camera_metadata(width=w, height=h)
+        c2w = np.eye(4, dtype=np.float64)
+        w2c = np.eye(4, dtype=np.float64)
+        images = [
+            SfmPosedImageMetadata(
+                world_to_camera_matrix=w2c,
+                camera_to_world_matrix=c2w,
+                camera_metadata=camera,
+                camera_id=1,
+                image_path=str(img_path),
+                mask_path="",
+                point_indices=None,
+                image_id=0,
+            )
+        ]
+        cache = SfmCache.get_cache(tmp, name="test", description="test")
+        scene = SfmScene(
+            cameras={1: camera},
+            images=images,
+            points=np.random.randn(10, 3).astype(np.float32),
+            points_err=np.random.rand(10).astype(np.float32),
+            points_rgb=np.random.randint(0, 255, (10, 3), dtype=np.uint8),
+            scene_bbox=None,
+            transformation_matrix=None,
+            cache=cache,
+            attributes={attr_name: PerImageRasterAttribute(paths=[str(pt_path)])},
+        )
+        return SfmDataset(sfm_scene=scene, load_attributes=[attr_name])
+
+    def test_raster_pt_numpy_loading(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            arr = np.random.randn(48, 64, 3).astype(np.float32)
+            dataset = self._make_scene_with_pt_raster(tmp_dir, arr)
+            datum = dataset[0]
+            self.assertIsInstance(datum["raster_pt"], torch.Tensor)
+            np.testing.assert_array_equal(datum["raster_pt"].numpy(), arr)
+
+    def test_raster_pt_unsupported_type_raises(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            with self.assertRaises(TypeError) as ctx:
+                dataset = self._make_scene_with_pt_raster(tmp_dir, {"bad": "data"})
+                dataset[0]
+            self.assertIn("raster_pt", str(ctx.exception))
+            self.assertIn("dict", str(ctx.exception))
+
     def test_per_image_value_attribute_loading(self):
         from fvdb_reality_capture.radiance_fields.gaussian_splat_dataset import SfmDataset
 
