@@ -612,9 +612,9 @@ class SfmScene:
         Raises:
             TypeError: If any keyword argument does not match a known field name.
         """
-        unknown = kwargs.keys() - self._REPLACE_FIELDS
+        unknown = sorted(kwargs.keys() - self._REPLACE_FIELDS)
         if unknown:
-            raise TypeError(f"replace() got unexpected keyword arguments: {unknown}")
+            raise TypeError(f"replace() got unexpected keyword arguments: {', '.join(unknown)}")
         return SfmScene(
             cameras=kwargs.get("cameras", self._cameras),
             images=kwargs.get("images", self._images),

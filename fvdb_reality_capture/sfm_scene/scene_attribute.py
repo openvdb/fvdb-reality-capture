@@ -472,7 +472,12 @@ class PerImageRasterAttribute(SceneAttribute):
                 f"with < 2 spatial dimensions. PerImageRasterAttribute expects (H, W) or (H, W, C, ...)."
             )
 
-        is_integer = not tensor.is_floating_point() and not tensor.is_complex()
+        if tensor.is_complex():
+            raise TypeError(
+                f"Cannot resize attribute '{attr_name}': complex tensors (dtype={tensor.dtype}) are not supported."
+            )
+
+        is_integer = not tensor.is_floating_point()
         if is_integer and self._resize_interpolation != InterpolationMode.NEAREST:
             raise TypeError(
                 f"Cannot resize attribute '{attr_name}': integer tensor (dtype={tensor.dtype}) "
