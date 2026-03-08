@@ -876,10 +876,17 @@ class TestCacheClearCurrentFolder(unittest.TestCase):
             self.assertEqual(folder.num_files, 2)
             self.assertTrue(folder.has_file("a"))
 
+            path_a = pathlib.Path(folder.get_file_metadata("a")["path"])
+            path_b = pathlib.Path(folder.get_file_metadata("b")["path"])
+            self.assertTrue(path_a.exists())
+            self.assertTrue(path_b.exists())
+
             folder.clear_current_folder()
             self.assertEqual(folder.num_files, 0)
             self.assertFalse(folder.has_file("a"))
             self.assertFalse(folder.has_file("b"))
+            self.assertFalse(path_a.exists())
+            self.assertFalse(path_b.exists())
 
     def test_folder_survives_clear(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
