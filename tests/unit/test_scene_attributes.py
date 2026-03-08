@@ -1195,6 +1195,16 @@ class TestSfmDatasetRasterAttributePatchCrop(unittest.TestCase):
             dataset = SfmDataset(sfm_scene=scene, load_attributes=["raster"])
             self.assertIn("raster", dataset[0])
 
+    def test_load_attributes_defensive_copy(self):
+        from fvdb_reality_capture.radiance_fields.gaussian_splat_dataset import SfmDataset
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            scene, _ = self._make_scene_with_raster(tmp_dir)
+            attrs = ["raster"]
+            dataset = SfmDataset(sfm_scene=scene, load_attributes=attrs)
+            attrs.append("nonexistent")
+            self.assertEqual(len(dataset._load_attributes), 1)
+
 
 if __name__ == "__main__":
     unittest.main()
