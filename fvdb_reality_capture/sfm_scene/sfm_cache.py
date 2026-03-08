@@ -833,15 +833,12 @@ class SfmCache:
                 cursor = conn.cursor()
                 cursor.execute(
                     f"""
-                    DELETE FROM {self._folders_table_name} WHERE id = ? AND cache_id = ?""",
-                    (self._current_folder_id, self._cache_id),
-                )
-                cursor.execute(
-                    f"""
                     DELETE FROM {self._files_table_name} WHERE folder_id = ? AND cache_id = ?""",
                     (self._current_folder_id, self._cache_id),
                 )
+                conn.commit()
             except Exception as e:
+                conn.rollback()
                 raise RuntimeError(f"Failed to clear cache folder {self.current_folder_name}") from e
             finally:
                 cursor.close()

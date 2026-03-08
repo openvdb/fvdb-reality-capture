@@ -862,7 +862,68 @@ class TestComposeOrderingValidation(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
-# Tier 4: SfmDataset raster attribute + patch_size cropping
+# Tier 4: SfmCache.clear_current_folder
+# ---------------------------------------------------------------------------
+
+
+class TestCacheClearCurrentFolder(unittest.TestCase):
+    def test_clear_removes_files(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            cache = SfmCache.get_cache(pathlib.Path(tmp_dir), name="test_clear", description="test")
+            folder = cache.make_folder("sub", description="sub")
+            folder.write_file("a", np.zeros((2, 2), dtype=np.uint8), data_type="png")
+            folder.write_file("b", np.zeros((2, 2), dtype=np.uint8), data_type="png")
+            self.assertEqual(folder.num_files, 2)
+            self.assertTrue(folder.has_file("a"))
+
+            folder.clear_current_folder()
+            self.assertEqual(folder.num_files, 0)
+            self.assertFalse(folder.has_file("a"))
+            self.assertFalse(folder.has_file("b"))
+
+    def test_folder_survives_clear(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            cache = SfmCache.get_cache(pathlib.Path(tmp_dir), name="test_survive", description="test")
+            folder = cache.make_folder("sub", description="sub")
+            folder.write_file("a", np.zeros((2, 2), dtype=np.uint8), data_type="png")
+            folder.clear_current_folder()
+
+            folder.write_file("c", np.zeros((4, 4), dtype=np.uint8), data_type="png")
+            self.assertEqual(folder.num_files, 1)
+            self.assertTrue(folder.has_file("c"))
+
+    def test_downsample_regenerates_after_count_mismatch(self):
+        """Cache with wrong file count triggers clear + regeneration."""
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp = pathlib.Path(tmp_dir)
+            cache = SfmCache.get_cache(tmp, name="test_regen", description="test")
+
+            img1_path = tmp / "img1.png"
+            img2_path = tmp / "img2.png"
+            cv2.imwrite(str(img1_path), np.zeros((8, 8, 3), dtype=np.uint8))
+            cv2.imwrite(str(img2_path), np.full((8, 8, 3), 128, dtype=np.uint8))
+
+            attr_1img = PerImageRasterAttribute(
+                paths=[str(img1_path)],
+                resize_interpolation=InterpolationMode.AREA,
+            )
+            result1 = attr_1img.on_downsample_images("regen_test", 2, cache)
+            self.assertEqual(len(result1.paths), 1)
+
+            attr_2img = PerImageRasterAttribute(
+                paths=[str(img1_path), str(img2_path)],
+                resize_interpolation=InterpolationMode.AREA,
+            )
+            result2 = attr_2img.on_downsample_images("regen_test", 2, cache)
+            self.assertEqual(len(result2.paths), 2)
+            for p in result2.paths:
+                loaded = cv2.imread(p, cv2.IMREAD_UNCHANGED)
+                self.assertIsNotNone(loaded)
+                self.assertEqual(loaded.shape[:2], (4, 4))
+
+
+# ---------------------------------------------------------------------------
+# Tier 5: SfmDataset raster attribute + patch_size cropping
 # ---------------------------------------------------------------------------
 
 
