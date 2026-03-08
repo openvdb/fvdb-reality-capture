@@ -65,6 +65,26 @@ class SfmDataset(torch.utils.data.Dataset, Iterable):
         self._return_visible_points = return_visible_points
         self._load_attributes = load_attributes or []
 
+        _RESERVED_KEYS = {
+            "projection",
+            "camera_to_world",
+            "world_to_camera",
+            "image",
+            "image_id",
+            "image_path",
+            "mask",
+            "mask_path",
+            "median_depth",
+            "sparse_depth",
+            "sparse_depth_uv",
+        }
+        for name in self._load_attributes:
+            if name in _RESERVED_KEYS:
+                raise ValueError(
+                    f"Attribute name '{name}' collides with a reserved dataset key. "
+                    f"Reserved keys: {sorted(_RESERVED_KEYS)}"
+                )
+
         # If you specified image indices, we'll filter the dataset to only include those images.
         if dataset_indices is None:
             dataset_indices = np.arange(self._sfm_scene.num_images)
