@@ -94,8 +94,8 @@ class Points(BaseCommand):
 
         model, metadata = load_splats_from_file(self.input_path, self.device)
 
-        camera_to_world_matrices, projection_matrices, image_sizes, camera_models, distortion_coeffs = load_camera_metadata(
-            metadata
+        camera_to_world_matrices, projection_matrices, image_sizes, camera_models, distortion_coeffs = (
+            load_camera_metadata(metadata)
         )
 
         near, far = near_far_for_units(

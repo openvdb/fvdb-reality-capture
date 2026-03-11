@@ -85,9 +85,7 @@ class BasicSfmSceneTransformTest(unittest.TestCase):
             self.assertEqual(camera_metadata.camera_model, scene1.cameras[camera_id].camera_model)
             self.assertEqual(camera_metadata.width, scene1.cameras[camera_id].width)
             self.assertEqual(camera_metadata.height, scene1.cameras[camera_id].height)
-            self.assertTrue(
-                np.all(camera_metadata.distortion_coeffs == scene1.cameras[camera_id].distortion_coeffs)
-            )
+            self.assertTrue(np.all(camera_metadata.distortion_coeffs == scene1.cameras[camera_id].distortion_coeffs))
 
     def test_normalize_scene_pca(self):
         transform = NormalizeScene(normalization_type="pca")
