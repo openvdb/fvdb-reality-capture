@@ -261,12 +261,80 @@ jobs:
           aws s3 cp "$ROOT_INDEX" "s3://${S3_BUCKET}/${SIMPLE_PREFIX}/index.html" --content-type text/html --only-show-errors
 
   ##############################################################################
-  # GPU VALIDATION: SMOKE TEST + UNIT TESTS
+  # GPU VALIDATION: DISCOVER FVDB-CORE VERSIONS + SMOKE TEST + UNIT TESTS
   ##############################################################################
-  start-validation-runner:
-    name: Start GPU EC2 runner for validation
+  discover-fvdb-core:
+    name: Discover fvdb-core versions from S3 staging
     needs: [pr-flags, fvdb-rc-build]
     if: ${{ !cancelled() && needs.fvdb-rc-build.result == 'success' && (needs.pr-flags.outputs.release_push == 'true' || inputs.run_validation == true) }}
+    runs-on: ubuntu-latest
+    outputs:
+      torch-version: ${{ steps.discover.outputs.torch_version }}
+      cuda-tag: ${{ steps.discover.outputs.cuda_tag }}
+      cuda-image-tag: ${{ steps.discover.outputs.cuda_image_tag }}
+      pytorch-index: ${{ steps.discover.outputs.pytorch_index }}
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::420032683002:role/openvdb-fvdb-github-actions-role
+          aws-region: us-east-2
+      - name: Discover fvdb-core versions from S3 staging
+        id: discover
+        run: |
+          set -euo pipefail
+          LISTING=$(aws s3 ls s3://fvdb-packages/simple-staging/fvdb-core/ 2>/dev/null | grep '\.whl$' | awk '{print $4}' || true)
+          if [ -z "$LISTING" ]; then
+            echo "ERROR: No fvdb-core wheels found in S3 staging" >&2
+            exit 1
+          fi
+          echo "Available wheels:"
+          echo "$LISTING"
+
+          # Pick the first wheel (any Python version) to extract version tags
+          WHEEL=$(echo "$LISTING" | head -1)
+          echo "Selected wheel: $WHEEL"
+
+          # Extract local version tag: +pt210.cu128
+          LOCAL_TAG=$(echo "$WHEEL" | grep -oP '\+pt\d+\.cu\d+' || true)
+          if [ -z "$LOCAL_TAG" ]; then
+            echo "ERROR: Could not parse local version tag from wheel: $WHEEL" >&2
+            exit 1
+          fi
+          echo "Local version tag: $LOCAL_TAG"
+
+          # Parse torch version: pt210 -> 2.10.0
+          PT_DIGITS=$(echo "$LOCAL_TAG" | grep -oP 'pt\K\d+')
+          TORCH_MAJOR=${PT_DIGITS:0:1}
+          TORCH_MINOR=${PT_DIGITS:1}
+          TORCH_VERSION="${TORCH_MAJOR}.${TORCH_MINOR}.0"
+
+          # Parse CUDA tag: cu128
+          CUDA_TAG=$(echo "$LOCAL_TAG" | grep -oP 'cu\d+')
+
+          # Map CUDA tag to container image tag
+          case "$CUDA_TAG" in
+            cu118) CUDA_IMAGE_TAG="11.8.0" ;;
+            cu121) CUDA_IMAGE_TAG="12.1.1" ;;
+            cu124) CUDA_IMAGE_TAG="12.4.1" ;;
+            cu128) CUDA_IMAGE_TAG="12.8.1" ;;
+            cu130) CUDA_IMAGE_TAG="13.0.2" ;;
+            *) echo "WARNING: Unknown CUDA tag $CUDA_TAG, defaulting to 12.8.1" >&2
+               CUDA_IMAGE_TAG="12.8.1" ;;
+          esac
+
+          PYTORCH_INDEX="https://download.pytorch.org/whl/${CUDA_TAG}"
+
+          echo "Discovered: torch=$TORCH_VERSION cuda=$CUDA_TAG image=$CUDA_IMAGE_TAG"
+          echo "torch_version=$TORCH_VERSION" >> $GITHUB_OUTPUT
+          echo "cuda_tag=$CUDA_TAG" >> $GITHUB_OUTPUT
+          echo "cuda_image_tag=$CUDA_IMAGE_TAG" >> $GITHUB_OUTPUT
+          echo "pytorch_index=$PYTORCH_INDEX" >> $GITHUB_OUTPUT
+
+  start-validation-runner:
+    name: Start GPU EC2 runner for validation
+    needs: [pr-flags, fvdb-rc-build, discover-fvdb-core]
+    if: ${{ !cancelled() && needs.discover-fvdb-core.result == 'success' }}
     runs-on: ubuntu-latest
     steps:
       - name: Configure AWS credentials
@@ -290,11 +358,11 @@ jobs:
 
   validate-smoke-test:
     name: Smoke test fvdb-core + fvdb-reality-capture
-    needs: [start-validation-runner, fvdb-rc-build, pr-flags]
+    needs: [start-validation-runner, discover-fvdb-core, fvdb-rc-build, pr-flags]
     if: ${{ !cancelled() && needs.start-validation-runner.result == 'success' }}
     runs-on: ${{ needs.start-validation-runner.outputs.label }}
     container:
-      image: nvidia/cuda:12.8.1-cudnn-runtime-ubuntu22.04
+      image: nvidia/cuda:${{ needs.discover-fvdb-core.outputs.cuda-image-tag }}-cudnn-runtime-ubuntu22.04
       env:
         PYTHONPATH: ""
       options: --rm
@@ -314,8 +382,8 @@ jobs:
       - name: Install fvdb-core from S3 staging and fvdb-reality-capture wheel
         run: |
           python3 -m pip install --no-cache-dir \
-            torch==2.8.0 \
-            --extra-index-url https://download.pytorch.org/whl/cu128
+            torch==${{ needs.discover-fvdb-core.outputs.torch-version }} \
+            --extra-index-url ${{ needs.discover-fvdb-core.outputs.pytorch-index }}
           python3 -m pip install --no-cache-dir \
             fvdb-core \
             --extra-index-url https://fvdb-packages.s3.us-east-2.amazonaws.com/simple-staging/
@@ -342,11 +410,11 @@ jobs:
 
   validate-unit-tests:
     name: Full unit tests
-    needs: [start-validation-runner, validate-smoke-test, pr-flags]
+    needs: [start-validation-runner, discover-fvdb-core, validate-smoke-test, pr-flags]
     if: ${{ !cancelled() && needs.validate-smoke-test.result == 'success' && (needs.pr-flags.outputs.release_push == 'true' || inputs.run_validation == true) }}
     runs-on: ${{ needs.start-validation-runner.outputs.label }}
     container:
-      image: nvidia/cuda:12.8.1-cudnn-runtime-ubuntu22.04
+      image: nvidia/cuda:${{ needs.discover-fvdb-core.outputs.cuda-image-tag }}-cudnn-runtime-ubuntu22.04
       env:
         PYTHONPATH: ""
       options: --rm
@@ -370,8 +438,8 @@ jobs:
       - name: Install fvdb-core from S3 staging
         run: |
           python3 -m pip install --no-cache-dir \
-            torch==2.8.0 torchvision \
-            --extra-index-url https://download.pytorch.org/whl/cu128
+            torch==${{ needs.discover-fvdb-core.outputs.torch-version }} torchvision \
+            --extra-index-url ${{ needs.discover-fvdb-core.outputs.pytorch-index }}
           python3 -m pip install --no-cache-dir \
             fvdb-core \
             --extra-index-url https://fvdb-packages.s3.us-east-2.amazonaws.com/simple-staging/
