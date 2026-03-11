@@ -1,6 +1,7 @@
 # Copyright Contributors to the OpenVDB Project
 # SPDX-License-Identifier: Apache-2.0
 #
+import warnings
 from typing import Any
 
 from fvdb_reality_capture.sfm_scene import SfmScene
@@ -49,6 +50,25 @@ class Compose(BaseTransform):
         for transform in self.transforms:
             if not isinstance(transform, BaseTransform):
                 raise TypeError(f"Expected a BaseTransform instance, got {type(transform)} instead.")
+        self._validate_ordering(self.transforms)
+
+    @staticmethod
+    def _validate_ordering(transforms):
+        from .crop_scene import CropScene, CropSceneToPoints
+        from .normalize_scene import NormalizeScene
+        from .transform_scene import TransformScene
+
+        last_crop_transform = None
+        for t in transforms:
+            if isinstance(t, (CropScene, CropSceneToPoints)):
+                last_crop_transform = t
+            if last_crop_transform is not None and isinstance(t, (NormalizeScene, TransformScene)):
+                warnings.warn(
+                    f"{t} modifies scene geometry after {last_crop_transform} which caches "
+                    f"coordinate-dependent masks. The cached masks may be stale. "
+                    f"Consider placing {last_crop_transform} after {t}.",
+                    stacklevel=3,
+                )
 
     def __call__(self, input_scene: SfmScene) -> SfmScene:
         """

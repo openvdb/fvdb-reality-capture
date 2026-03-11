@@ -236,15 +236,20 @@ def _crop_scene_to_bbox(
                 )
             )
 
-    output_scene = SfmScene(
-        cameras=masked_scene.cameras,
+    new_attrs = {}
+    for attr_name, attr in masked_scene.attributes.items():
+        new_attrs[attr_name] = attr.on_crop_scene(
+            attr_name=attr_name,
+            bbox=bbox,
+            output_cache=output_cache,
+        )
+
+    output_scene = masked_scene.replace(
         images=new_image_metadata,
-        points=masked_scene.points,
-        points_rgb=masked_scene.points_rgb,
-        points_err=masked_scene.points_err,
         scene_bbox=bbox,
         transformation_matrix=input_scene.transformation_matrix,
         cache=output_cache,
+        attributes=new_attrs,
     )
 
     return output_scene

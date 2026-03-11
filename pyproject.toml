@@ -50,6 +50,7 @@ dependencies = [
 [project.optional-dependencies]
 benchmark = [
     "gitpython",
+    "matplotlib",
 ]
 
 [project.scripts]

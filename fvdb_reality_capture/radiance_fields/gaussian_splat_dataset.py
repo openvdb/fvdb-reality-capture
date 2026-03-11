@@ -12,6 +12,8 @@ import torch.utils.data
 import torchvision
 
 from fvdb_reality_capture.sfm_scene import (
+    PerImageRasterAttribute,
+    PerImageValueAttribute,
     SfmCameraMetadata,
     SfmPosedImageMetadata,
     SfmScene,
@@ -41,6 +43,7 @@ class SfmDataset(torch.utils.data.Dataset, Iterable):
         dataset_indices: Sequence[int] | np.ndarray | torch.Tensor | None = None,
         patch_size: int | None = None,
         return_visible_points: bool = False,
+        load_attributes: list[str] | None = None,
     ):
         """
         Create a new SfmDataset instance.
@@ -50,6 +53,9 @@ class SfmDataset(torch.utils.data.Dataset, Iterable):
             dataset_indices: Indices of images to include in the dataset. If None, all images will be used.
             patch_size: If not None, images will be randomly cropped to this size.
             return_visible_points: If True, depths of visible points will be loaded and included in each datum.
+            load_attributes: Optional list of custom attribute names to load and include in each datum.
+                For :class:`PerImageRasterAttribute`, the raster file is loaded and included as a tensor.
+                For :class:`PerImageValueAttribute`, the in-memory value is included directly.
         """
         self._logger = logging.getLogger(f"{self.__class__.__module__}.{self.__class__.__name__}")
 
@@ -57,6 +63,27 @@ class SfmDataset(torch.utils.data.Dataset, Iterable):
 
         self.patch_size = patch_size
         self._return_visible_points = return_visible_points
+        self._load_attributes = list(load_attributes) if load_attributes is not None else []
+
+        _RESERVED_KEYS = {
+            "projection",
+            "camera_to_world",
+            "world_to_camera",
+            "image",
+            "image_id",
+            "image_path",
+            "mask",
+            "mask_path",
+            "median_depth",
+            "sparse_depth",
+            "sparse_depth_uv",
+        }
+        for name in self._load_attributes:
+            if name in _RESERVED_KEYS:
+                raise ValueError(
+                    f"Attribute name '{name}' collides with a reserved dataset key. "
+                    f"Reserved keys: {sorted(_RESERVED_KEYS)}"
+                )
 
         # If you specified image indices, we'll filter the dataset to only include those images.
         if dataset_indices is None:
@@ -313,6 +340,40 @@ class SfmDataset(torch.utils.data.Dataset, Iterable):
             data["median_depth"] = torch.tensor(median_depth).float()
             data["sparse_depth_uv"] = torch.from_numpy(points).float()
             data["sparse_depth"] = torch.from_numpy(depths).float()
+
+        for attr_name in self._load_attributes:
+            attr = self._sfm_scene.get_attribute(attr_name)
+            if isinstance(attr, PerImageRasterAttribute):
+                path = attr.paths[index]
+                if path.endswith(".npy"):
+                    raster = torch.from_numpy(np.load(path))
+                elif path.endswith(".pt"):
+                    loaded_pt = torch.load(path, map_location="cpu", weights_only=False)
+                    if isinstance(loaded_pt, np.ndarray):
+                        raster = torch.from_numpy(loaded_pt)
+                    elif isinstance(loaded_pt, torch.Tensor):
+                        raster = loaded_pt
+                    else:
+                        raise TypeError(
+                            f"Raster attribute '{attr_name}' loaded from {path} is {type(loaded_pt).__name__}, "
+                            f"expected torch.Tensor or numpy.ndarray."
+                        )
+                else:
+                    loaded = cv2.imread(path, cv2.IMREAD_UNCHANGED)
+                    if loaded is None:
+                        raise FileNotFoundError(f"Failed to load raster attribute '{attr_name}' from {path}")
+                    raster = torch.from_numpy(loaded)
+                if self.patch_size is not None:
+                    raster = raster[y : y + self.patch_size, x : x + self.patch_size]
+                data[attr_name] = raster
+            elif isinstance(attr, PerImageValueAttribute):
+                data[attr_name] = attr.values[index]
+            else:
+                raise TypeError(
+                    f"Unsupported attribute type for '{attr_name}': {type(attr).__name__}. "
+                    f"Supported types are PerImageRasterAttribute and PerImageValueAttribute."
+                )
+
         return data
 
 
