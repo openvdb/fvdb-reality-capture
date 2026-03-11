@@ -53,8 +53,6 @@ reconstruction_config:
   crops_per_image: 1
   sh_degree: 3
   increase_sh_degree_every_epoch: 5
-  initial_opacity: 0.1
-  initial_covariance_scale: 1.0
   ssim_lambda: 0.2
   lpips_net: alex
   random_bkgd: false
@@ -80,6 +78,10 @@ reconstruction_config:
   eps_2d: 0.3
   antialias: false
   tile_size: 16
+
+optimization_config:
+  initial_opacity: 0.1
+  initial_covariance_scale: 1.0
 
 training_arguments:
   image_downsample_factor: 4

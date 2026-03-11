@@ -3,7 +3,7 @@
 #
 import torch
 import tqdm
-from fvdb import GaussianSplat3d, Grid
+from fvdb import CameraModel, GaussianSplat3d, Grid
 from fvdb.types import (
     NumericMaxRank1,
     NumericMaxRank2,
@@ -13,7 +13,7 @@ from fvdb.types import (
     to_VecNf,
 )
 
-from ._common import validate_camera_matrices_and_image_sizes
+from ._common import validate_camera_matrices_and_image_sizes, validate_pinhole_camera_models
 
 
 @torch.no_grad()
@@ -23,6 +23,8 @@ def tsdf_from_splats(
     projection_matrices: NumericMaxRank3,
     image_sizes: NumericMaxRank2,
     truncation_margin: float,
+    camera_models: torch.Tensor | None = None,
+    distortion_coeffs: torch.Tensor | None = None,
     grid_shell_thickness: float = 3.0,
     near: NumericMaxRank1 = 0.1,
     far: NumericMaxRank1 = 1e10,
@@ -59,6 +61,13 @@ def tsdf_from_splats(
         For higher quality TSDFs, consider using :func:`fvdb_reality_capture.tools.tsdf_from_splats_dlnr`
         which uses depth maps estimated using a deep learning-based depth estimation approach instead of the raw
         depth maps rendered from the Gaussian splat model.
+
+    .. note::
+
+        Meshing currently supports only :class:`fvdb.CameraModel.PINHOLE` cameras. While the
+        rendering step can handle additional camera models, the underlying fVDB TSDF integration
+        path currently assumes perspective pinhole projection. Passing distorted or orthographic
+        cameras will raise :class:`NotImplementedError`.
 
     .. note::
 
@@ -111,6 +120,11 @@ def tsdf_from_splats(
     camera_to_world_matrices, projection_matrices, image_sizes = validate_camera_matrices_and_image_sizes(
         camera_to_world_matrices, projection_matrices, image_sizes
     )
+    camera_models = validate_pinhole_camera_models(
+        camera_models, camera_to_world_matrices.shape[0], operation_name="TSDF fusion"
+    )
+    if distortion_coeffs is None:
+        distortion_coeffs = torch.zeros((camera_to_world_matrices.shape[0], 12), dtype=torch.float32)
 
     voxel_size = truncation_margin / grid_shell_thickness
     accum_grid = Grid.from_zero_voxels(voxel_size=voxel_size, origin=0.0, device=model.device)
@@ -149,6 +163,8 @@ def tsdf_from_splats(
         cam_to_world_matrix = camera_to_world_matrices[i].to(model.device).to(dtype=torch.float32, device=device)
         world_to_cam_matrix = torch.linalg.inv(cam_to_world_matrix).contiguous().to(dtype=torch.float32, device=device)
         projection_matrix = projection_matrices[i].to(model.device).to(dtype=torch.float32, device=device)
+        camera_model = CameraModel(int(camera_models[i].item()))
+        distortion_coeffs_i = distortion_coeffs[i].to(model.device).to(dtype=torch.float32, device=device)
         image_size = image_sizes[i]
 
         # We set near and far planes to 0.0 and 1e10 respectively to avoid clipping
@@ -162,6 +178,8 @@ def tsdf_from_splats(
             image_height=int(image_size[0].item()),
             near=0.0,
             far=1e10,
+            camera_model=camera_model,
+            distortion_coeffs=distortion_coeffs_i.unsqueeze(0) if camera_model != CameraModel.PINHOLE else None,
         )
 
         if feature_dtype == torch.uint8:

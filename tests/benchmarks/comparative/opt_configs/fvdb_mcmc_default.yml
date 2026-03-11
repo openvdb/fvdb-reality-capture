@@ -24,7 +24,7 @@ reconstruction_config:
   save_at_percent:
     - 100
 
-  # MCMC optimization parameters use FVDB MCMC code defaults (from the MCMC paper):
+  # MCMC optimizer defaults (from the MCMC paper) include:
   # initial_opacity: 0.5, initial_covariance_scale: 0.1,
   # opacity_regularization: 0.01, scale_regularization: 0.01
   # Other parameters use FVDB code defaults:

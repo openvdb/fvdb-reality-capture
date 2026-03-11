@@ -4,7 +4,7 @@
 import numpy as np
 import torch
 import tqdm
-from fvdb import GaussianSplat3d
+from fvdb import CameraModel, GaussianSplat3d
 from fvdb.types import (
     NumericMaxRank1,
     NumericMaxRank2,
@@ -15,7 +15,7 @@ from fvdb.types import (
 )
 from skimage import feature, morphology
 
-from ._common import validate_camera_matrices_and_image_sizes
+from ._common import validate_camera_matrices_and_image_sizes, validate_pinhole_camera_models
 
 
 @torch.no_grad()
@@ -24,6 +24,8 @@ def point_cloud_from_splats(
     camera_to_world_matrices: NumericMaxRank3,
     projection_matrices: NumericMaxRank3,
     image_sizes: NumericMaxRank2,
+    camera_models: torch.Tensor | None = None,
+    distortion_coeffs: torch.Tensor | None = None,
     near: NumericMaxRank1 = 0.1,
     far: NumericMaxRank1 = 1e10,
     alpha_threshold: float = 0.1,
@@ -74,6 +76,13 @@ def point_cloud_from_splats(
             Default is ``torch.uint8`` which is good for RGB colors.
         show_progress (bool): Whether to show a progress bar. Default is ``True``.
 
+    .. note::
+
+        Point cloud extraction currently supports only :class:`fvdb.CameraModel.PINHOLE` cameras.
+        While the rendering step can handle additional camera models, the depth unprojection in this
+        function currently assumes a perspective pinhole projection matrix. Passing distorted or
+        orthographic cameras will raise :class:`NotImplementedError`.
+
     Returns:
         points (torch.Tensor): A ``(num_points, 3)``-shaped tensor of point positions in world space.
         colors (torch.Tensor): A ``(num_points, D)``-shaped tensor of colors/features per point where
@@ -85,6 +94,11 @@ def point_cloud_from_splats(
     camera_to_world_matrices, projection_matrices, image_sizes = validate_camera_matrices_and_image_sizes(
         camera_to_world_matrices, projection_matrices, image_sizes
     )
+    camera_models = validate_pinhole_camera_models(
+        camera_models, camera_to_world_matrices.shape[0], operation_name="Point cloud extraction"
+    )
+    if distortion_coeffs is None:
+        distortion_coeffs = torch.zeros((camera_to_world_matrices.shape[0], 12), dtype=torch.float32)
 
     points_list = []
     colors_list = []
@@ -123,6 +137,8 @@ def point_cloud_from_splats(
         cam_to_world_matrix = camera_to_world_matrices[i].to(model.device).to(dtype=torch.float32, device=device)
         world_to_cam_matrix = torch.linalg.inv(cam_to_world_matrix).contiguous().to(dtype=torch.float32, device=device)
         projection_matrix = projection_matrices[i].to(model.device).to(dtype=torch.float32, device=device)
+        camera_model = CameraModel(int(camera_models[i].item()))
+        distortion_coeffs_i = distortion_coeffs[i].to(model.device).to(dtype=torch.float32, device=device)
         inv_projection_matrix = torch.linalg.inv(projection_matrix).to(dtype=torch.float32, device=device)
         image_size = image_sizes[i]
         image_width = int(image_size[1].item())
@@ -139,6 +155,8 @@ def point_cloud_from_splats(
             image_height=image_height,
             near=0.0,
             far=1e10,
+            camera_model=camera_model,
+            distortion_coeffs=distortion_coeffs_i.unsqueeze(0) if camera_model != CameraModel.PINHOLE else None,
         )
 
         if feature_dtype == torch.uint8:

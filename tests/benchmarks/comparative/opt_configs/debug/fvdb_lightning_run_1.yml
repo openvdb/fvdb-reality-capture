@@ -5,6 +5,8 @@ color: "#76B900"
 splat_optimizer: GaussianSplatOptimizer
 
 optimization_config:
+  initial_opacity: 0.1
+  initial_covariance_scale: 1.0
   reset_opacities_every_n_refinements: 5
 
 reconstruction_config:
@@ -22,8 +24,6 @@ reconstruction_config:
   crops_per_image: 1
   sh_degree: 3
   increase_sh_degree_every_epoch: 1.25
-  initial_opacity: 0.1
-  initial_covariance_scale: 1.0
   ssim_lambda: 0.2
   lpips_net: alex
   random_bkgd: false

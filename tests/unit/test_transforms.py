@@ -70,23 +70,23 @@ class BasicSfmSceneTransformTest(unittest.TestCase):
             self.assertEqual(image_metadata.mask_path, scene1.images[i].mask_path)
             self.assertEqual(image_metadata.camera_id, scene1.images[i].camera_id)
             self.assertIsInstance(image_metadata.camera_metadata, SfmCameraMetadata)
-            self.assertEqual(image_metadata.camera_metadata.camera_type, scene1.images[i].camera_metadata.camera_type)
+            self.assertEqual(image_metadata.camera_metadata.camera_model, scene1.images[i].camera_metadata.camera_model)
             self.assertEqual(image_metadata.camera_metadata.width, scene1.images[i].camera_metadata.width)
             self.assertEqual(image_metadata.camera_metadata.height, scene1.images[i].camera_metadata.height)
             self.assertTrue(
                 np.all(
-                    image_metadata.camera_metadata.distortion_parameters
-                    == scene1.images[i].camera_metadata.distortion_parameters
+                    image_metadata.camera_metadata.distortion_coeffs
+                    == scene1.images[i].camera_metadata.distortion_coeffs
                 )
             )
         self.assertEqual(len(scene2.cameras), len(scene1.cameras))
         for camera_id, camera_metadata in scene2.cameras.items():
             self.assertIsInstance(camera_metadata, SfmCameraMetadata)
-            self.assertEqual(camera_metadata.camera_type, scene1.cameras[camera_id].camera_type)
+            self.assertEqual(camera_metadata.camera_model, scene1.cameras[camera_id].camera_model)
             self.assertEqual(camera_metadata.width, scene1.cameras[camera_id].width)
             self.assertEqual(camera_metadata.height, scene1.cameras[camera_id].height)
             self.assertTrue(
-                np.all(camera_metadata.distortion_parameters == scene1.cameras[camera_id].distortion_parameters)
+                np.all(camera_metadata.distortion_coeffs == scene1.cameras[camera_id].distortion_coeffs)
             )
 
     def test_normalize_scene_pca(self):

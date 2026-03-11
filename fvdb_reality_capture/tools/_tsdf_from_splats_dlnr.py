@@ -7,13 +7,13 @@ import tempfile
 import numpy as np
 import torch
 import tqdm
-from fvdb import GaussianSplat3d, Grid
+from fvdb import CameraModel, GaussianSplat3d, Grid
 from fvdb.types import NumericMaxRank2, NumericMaxRank3
 
 from fvdb_reality_capture.foundation_models.dlnr import DLNRModel
 from fvdb_reality_capture.sfm_scene import SfmCache
 
-from ._common import validate_camera_matrices_and_image_sizes
+from ._common import validate_camera_matrices_and_image_sizes, validate_pinhole_camera_models
 
 
 def debug_plot(
@@ -99,6 +99,8 @@ class TSDFInputDataset(torch.utils.data.Dataset):
         camera_to_world_matrices: torch.Tensor,
         projection_matrices: torch.Tensor,
         image_sizes: torch.Tensor,
+        camera_models: torch.Tensor | None,
+        distortion_coeffs: torch.Tensor | None,
         baseline: float,
         near: float,
         far: float,
@@ -144,6 +146,16 @@ class TSDFInputDataset(torch.utils.data.Dataset):
         self.reprojection_threshold = reprojection_threshold
         self.alpha_threshold = alpha_threshold
         self.dlnr_model = dlnr_model
+        self.camera_models = (
+            camera_models
+            if camera_models is not None
+            else torch.full((self.num_images,), int(CameraModel.PINHOLE), dtype=torch.int32)
+        )
+        self.distortion_coeffs = (
+            distortion_coeffs
+            if distortion_coeffs is not None
+            else torch.zeros((self.num_images, 12), dtype=torch.float32)
+        )
 
         device = model.device
 
@@ -159,12 +171,16 @@ class TSDFInputDataset(torch.utils.data.Dataset):
                 torch.linalg.inv(cam_to_world_matrix).contiguous().to(dtype=torch.float32, device=device)
             )
             projection_matrix = projection_matrices[i].to(dtype=torch.float32, device=device)
+            camera_model = CameraModel(int(self.camera_models[i].item()))
+            distortion_coeffs_i = self.distortion_coeffs[i].to(dtype=torch.float32, device=device)
             image_height, image_width = int(image_sizes[i][0].item()), int(image_sizes[i][1].item())
 
             # debug_img_name = f"debug_image_{i:04d}.png"
             rgb_image, depth_image, weight_image = self.extract_single_tsdf_input(
                 world_to_cam_matrix=world_to_cam_matrix,
                 projection_matrix=projection_matrix,
+                camera_model=camera_model,
+                distortion_coeffs=distortion_coeffs_i,
                 image_width=image_width,
                 image_height=image_height,
                 save_debug_images_to=None,  # Set to a path if you want to save debug images
@@ -178,6 +194,8 @@ class TSDFInputDataset(torch.utils.data.Dataset):
         self,
         world_to_cam_matrix: torch.Tensor,
         projection_matrix: torch.Tensor,
+        camera_model: CameraModel,
+        distortion_coeffs: torch.Tensor,
         image_width: int,
         image_height: int,
         save_debug_images_to: str | None = None,
@@ -211,6 +229,8 @@ class TSDFInputDataset(torch.utils.data.Dataset):
             baseline = self.estimate_baseline_from_depth(
                 world_to_camera_matrix=world_to_cam_matrix,
                 projection_matrix=projection_matrix,
+                camera_model=camera_model,
+                distortion_coeffs=distortion_coeffs,
                 image_width=image_width,
                 image_height=image_height,
             )
@@ -222,7 +242,13 @@ class TSDFInputDataset(torch.utils.data.Dataset):
 
         # Render the stereo pair of images and clip to [0, 1]
         image_l, image_r, alpha_mask = self.render_stereo_pair(
-            baseline, world_to_cam_matrix, projection_matrix, image_width, image_height
+            baseline,
+            world_to_cam_matrix,
+            projection_matrix,
+            camera_model,
+            distortion_coeffs,
+            image_width,
+            image_height,
         )
         image_l.clip_(min=0.0, max=1.0)
         image_r.clip_(min=0.0, max=1.0)
@@ -267,6 +293,8 @@ class TSDFInputDataset(torch.utils.data.Dataset):
         self,
         world_to_camera_matrix: torch.Tensor,
         projection_matrix: torch.Tensor,
+        camera_model: CameraModel,
+        distortion_coeffs: torch.Tensor,
         image_width: int,
         image_height: int,
     ) -> float:
@@ -294,6 +322,8 @@ class TSDFInputDataset(torch.utils.data.Dataset):
             image_height=image_height,
             near=0.0,
             far=1e10,
+            camera_model=camera_model,
+            distortion_coeffs=distortion_coeffs.unsqueeze(0) if camera_model != CameraModel.PINHOLE else None,
         )
         depth_0 = depth_0 / alpha_0.clamp(min=1e-10)
         baseline = self.baseline_fraction_of_depth_or_absolute * depth_0.mean().item()
@@ -304,6 +334,8 @@ class TSDFInputDataset(torch.utils.data.Dataset):
         baseline: float,
         world_to_camera_matrix: torch.Tensor,
         projection_matrix: torch.Tensor,
+        camera_model: CameraModel,
+        distortion_coeffs: torch.Tensor,
         image_width: int,
         image_height: int,
     ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor | None]:
@@ -344,6 +376,12 @@ class TSDFInputDataset(torch.utils.data.Dataset):
             image_height=image_height,
             near=0.0,
             far=1e10,
+            camera_model=camera_model,
+            distortion_coeffs=(
+                torch.stack([distortion_coeffs, distortion_coeffs], dim=0)
+                if camera_model != CameraModel.PINHOLE
+                else None
+            ),
         )
 
         alpha_mask = alphas[0].squeeze(-1) > self.alpha_threshold if self.alpha_threshold > 0.0 else None
@@ -450,6 +488,8 @@ def tsdf_from_splats_dlnr(
     projection_matrices: NumericMaxRank3,
     image_sizes: NumericMaxRank2,
     truncation_margin: float,
+    camera_models: torch.Tensor | None = None,
+    distortion_coeffs: torch.Tensor | None = None,
     grid_shell_thickness: float | int = 3.0,
     baseline: float = 0.07,
     near: float = 4.0,
@@ -510,6 +550,13 @@ def tsdf_from_splats_dlnr(
         between two images. The DLNR model is described in the paper
         `"High-Frequency Stereo Matching Network" <https://openaccess.thecvf.com/content/CVPR2023/papers/Zhao_High-Frequency_Stereo_Matching_Network_CVPR_2023_paper.pdf>`_.
 
+    .. note::
+
+        Meshing currently supports only :class:`fvdb.CameraModel.PINHOLE` cameras. While the
+        rendering step can handle additional camera models, the underlying fVDB TSDF integration
+        path currently assumes perspective pinhole projection. Passing distorted or orthographic
+        cameras will raise :class:`NotImplementedError`.
+
 
     Args:
         model (GaussianSplat3d): The Gaussian splat radiance field to extract a mesh from.
@@ -561,6 +608,9 @@ def tsdf_from_splats_dlnr(
     camera_to_world_matrices, projection_matrices, image_sizes = validate_camera_matrices_and_image_sizes(
         camera_to_world_matrices, projection_matrices, image_sizes
     )
+    camera_models = validate_pinhole_camera_models(
+        camera_models, camera_to_world_matrices.shape[0], operation_name="TSDF fusion"
+    )
 
     if image_downsample_factor > 1:
         image_sizes = image_sizes // image_downsample_factor
@@ -574,6 +624,8 @@ def tsdf_from_splats_dlnr(
             camera_to_world_matrices=camera_to_world_matrices,
             projection_matrices=projection_matrices,
             image_sizes=image_sizes,
+            camera_models=camera_models,
+            distortion_coeffs=distortion_coeffs,
             baseline=baseline,
             near=near,
             far=far,

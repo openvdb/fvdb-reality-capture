@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 import torch
+from fvdb import CameraModel
 from fvdb.types import (
     NumericMaxRank2,
     NumericMaxRank3,
@@ -9,6 +10,45 @@ from fvdb.types import (
     to_Mat44fBatch,
     to_Vec2iBatch,
 )
+
+
+def validate_pinhole_camera_models(
+    camera_models: torch.Tensor | None, num_cameras: int, operation_name: str
+) -> torch.Tensor:
+    """
+    Validate camera models for operations that unproject depth with a pinhole model.
+
+    Some downstream pipelines in reality-capture consume rendered depth images and then unproject
+    them using only a perspective projection matrix. Those paths currently support
+    :class:`fvdb.CameraModel.PINHOLE` cameras exclusively.
+
+    Args:
+        camera_models (torch.Tensor | None): Optional integer-encoded ``fvdb.CameraModel`` values.
+        num_cameras (int): Expected number of camera models.
+        operation_name (str): Name of the calling operation for the error message.
+
+    Returns:
+        torch.Tensor: A ``(num_cameras,)`` int32 tensor of validated camera models.
+    """
+    if camera_models is None:
+        camera_models = torch.full((num_cameras,), int(CameraModel.PINHOLE), dtype=torch.int32)
+    else:
+        camera_models = torch.as_tensor(camera_models, dtype=torch.int32).reshape(-1)
+        if camera_models.shape != (num_cameras,):
+            raise ValueError(
+                f"Expected camera_models to have shape ({num_cameras},), but got {tuple(camera_models.shape)}"
+            )
+
+    unsupported_models = torch.unique(camera_models[camera_models != int(CameraModel.PINHOLE)]).cpu().tolist()
+    if unsupported_models:
+        unsupported_names = ", ".join(CameraModel(int(model)).name for model in unsupported_models)
+        raise NotImplementedError(
+            f"{operation_name} currently only supports CameraModel.PINHOLE cameras. "
+            f"Got unsupported camera models: {unsupported_names}. "
+            "Distorted and orthographic cameras are not yet supported for this depth-unprojection path."
+        )
+
+    return camera_models
 
 
 def validate_camera_matrices_and_image_sizes(

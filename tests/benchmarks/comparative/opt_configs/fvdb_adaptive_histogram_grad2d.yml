@@ -6,6 +6,8 @@ name: fvdb_adaptive_histogram_grad2d
 splat_optimizer: GaussianSplatOptimizer
 
 optimization_config:
+  initial_opacity: 0.1
+  initial_covariance_scale: 1.0
   insertion_grad_2d_threshold_mode: percentile_every_iteration
   insertion_grad_2d_threshold: 0.9
   reset_opacities_every_n_refinements: 16
@@ -24,8 +26,6 @@ reconstruction_config:
   crops_per_image: 1
   sh_degree: 3
   increase_sh_degree_every_epoch: 5
-  initial_opacity: 0.1
-  initial_covariance_scale: 1.0
   ssim_lambda: 0.2
   lpips_net: alex
   random_bkgd: false

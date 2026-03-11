@@ -122,16 +122,12 @@ class SfmDataset(torch.utils.data.Dataset, Iterable):
         """
         Get the projection matrices mapping camera to pixel coordinates for all images in the dataset.
 
-        This returns the undistorted projection matrices as a numpy array of shape (N, 3, 3) where N is the number of images.
+        This returns the scene projection matrices as a numpy array of shape (N, 3, 3) where N is the number of images.
 
         Returns:
             np.ndarray: An Nx3x3 array of projection matrices for the cameras in the dataset.
         """
-        # in fvdb_3dgs/training/sfm_dataset.py
-        return np.stack(
-            [self._sfm_scene.images[i].camera_metadata.projection_matrix for i in self._indices],
-            axis=0,
-        )
+        return np.stack([self._sfm_scene.images[i].camera_metadata.projection_matrix for i in self._indices], axis=0)
 
     @property
     def image_sizes(self) -> np.ndarray:
@@ -144,7 +140,42 @@ class SfmDataset(torch.utils.data.Dataset, Iterable):
         Returns:
             np.ndarray: An Nx2 array of image sizes for the cameras in the dataset.
         """
-        return self.sfm_scene.image_sizes[self._indices]
+        return np.array(
+            [
+                (self._sfm_scene.images[i].camera_metadata.height, self._sfm_scene.images[i].camera_metadata.width)
+                for i in self._indices
+            ],
+            dtype=np.int32,
+        )
+
+    @property
+    def camera_models(self) -> np.ndarray:
+        """
+        Get the canonical camera model for each image in the dataset.
+
+        Returns:
+            np.ndarray: An array of integer-encoded ``fvdb.CameraModel`` values.
+        """
+        return np.array(
+            [int(self._sfm_scene.images[i].camera_metadata.camera_model) for i in self._indices],
+            dtype=np.int32,
+        )
+
+    @property
+    def distortion_coeffs(self) -> np.ndarray:
+        """
+        Get packed distortion coefficients for each image in the dataset.
+
+        Returns:
+            np.ndarray: An ``(N, 12)`` array of packed distortion coefficients, zero-filled for
+                camera models without distortion.
+        """
+        ret = np.zeros((len(self._indices), 12), dtype=np.float32)
+        for out_idx, scene_idx in enumerate(self._indices):
+            coeffs = self._sfm_scene.images[scene_idx].camera_metadata.distortion_coeffs
+            if coeffs.size != 0:
+                ret[out_idx] = coeffs
+        return ret
 
     @property
     def points(self) -> np.ndarray:
@@ -248,9 +279,7 @@ class SfmDataset(torch.utils.data.Dataset, Iterable):
 
         if image.ndim == 2:
             image = image[:, :, None]
-        image = camera_meta.undistort_image(image)
-
-        projection_matrix = camera_meta.projection_matrix.copy()  # undistorted projection matrix
+        projection_matrix = camera_meta.projection_matrix.copy()
         camera_to_world_matrix = image_meta.camera_to_world_matrix.copy()
         world_to_camera_matrix = image_meta.world_to_camera_matrix.copy()
 
@@ -267,6 +296,12 @@ class SfmDataset(torch.utils.data.Dataset, Iterable):
             "projection": torch.from_numpy(projection_matrix).float(),
             "camera_to_world": torch.from_numpy(camera_to_world_matrix).float(),
             "world_to_camera": torch.from_numpy(world_to_camera_matrix).float(),
+            "camera_model": torch.tensor(int(camera_meta.camera_model), dtype=torch.int32),
+            "distortion_coeffs": torch.from_numpy(
+                camera_meta.distortion_coeffs
+                if camera_meta.distortion_coeffs.size != 0
+                else np.zeros((12,), np.float32)
+            ).float(),
             "image": image,
             "image_id": item,  # the index of the image in the dataset
             "image_path": image_meta.image_path,

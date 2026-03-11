@@ -13,7 +13,7 @@ from pyproj import Transformer
 from scipy.interpolate import griddata
 from splats_fvdb.training import SfmDataset
 
-from fvdb import GaussianSplat3d
+from fvdb import CameraModel, GaussianSplat3d
 
 
 def lonlat2UTM(lon, lat):
@@ -325,7 +325,7 @@ def main(data_path: str, checkpoint_path: str, ortho_fn: str, npixx: int, percen
         image_height=npixx,
         near=0.01,
         far=1e10,
-        projection_type="orthographic",
+        camera_model=CameraModel.ORTHOGRAPHIC,
     )
     colors = colors[0, ..., :3].cpu().numpy()
 

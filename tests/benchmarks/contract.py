@@ -21,7 +21,7 @@ from fvdb_reality_capture.radiance_fields import (
     GaussianSplatReconstructionConfig,
 )
 
-CONTRACT_VERSION = 1
+CONTRACT_VERSION = 4
 """
 Semantic version of the benchmark contract.
 
@@ -58,8 +58,6 @@ RECONSTRUCTION_CONFIG_KEYS = {
     "crops_per_image",
     "sh_degree",
     "increase_sh_degree_every_epoch",
-    "initial_opacity",
-    "initial_covariance_scale",
     "ssim_lambda",
     "lpips_net",
     "sparse_depth_reg",
@@ -82,6 +80,8 @@ RECONSTRUCTION_CONFIG_KEYS = {
     "eps_2d",
     "antialias",
     "tile_size",
+    "render_backend",
+    "projection_method",
 }
 """
 Allowed field names for `GaussianSplatReconstructionConfig` in benchmark configs
@@ -90,6 +90,8 @@ but the contract constrains the *set* of valid keys.
 """
 
 OPTIMIZER_CONFIG_KEYS = {
+    "initial_opacity",
+    "initial_covariance_scale",
     "max_gaussians",
     "insertion_grad_2d_threshold_mode",
     "deletion_opacity_threshold",
@@ -119,12 +121,6 @@ Allowed fields in `GaussianSplatOptimizerConfig` in benchmark configs and checkp
 """
 
 MCMC_OPTIMIZER_EXTRA_KEYS = {
-    # MCMC-specific initialization (these override base reconstruction config defaults).
-    # Note: These keys also exist in RECONSTRUCTION_CONFIG_KEYS because they're inherited
-    # from the base config class. The MCMC optimizer class re-declares them with different
-    # default values to match the MCMC paper: https://arxiv.org/abs/2404.09591
-    "initial_opacity",
-    "initial_covariance_scale",
     # MCMC-specific parameters
     "noise_lr",
     "insertion_rate",

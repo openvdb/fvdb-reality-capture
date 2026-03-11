@@ -73,8 +73,15 @@ def extract_training_params(config: dict, scene: str) -> dict:
 
     logger.info(f"Processing config for scene: {scene}")
 
-    training_config = config.get("optimization_config", {}).get("training", {}).get("config", {})
-    training_params = config.get("optimization_config", {}).get("training_params", {})
+    optimization_config = config.get("optimization_config", {})
+    framework = optimization_config.get("framework")
+    if framework == "fvdb":
+        training_config = dict(optimization_config.get("reconstruction_config", {}))
+        training_config.update(optimization_config.get("optimization_config", {}))
+        training_params = optimization_config.get("training_arguments", {})
+    else:
+        training_config = optimization_config.get("training", {}).get("config", {})
+        training_params = optimization_config.get("training_params", {})
 
     # Extract key parameters
     params = {

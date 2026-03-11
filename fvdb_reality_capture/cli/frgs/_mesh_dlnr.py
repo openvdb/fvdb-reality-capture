@@ -11,13 +11,13 @@ import numpy as np
 import point_cloud_utils as pcu
 import torch
 import tyro
-from fvdb.types import to_Mat33fBatch, to_Mat44fBatch, to_Vec2iBatch, to_VecNf
+from fvdb.types import to_VecNf
 from tyro.conf import arg
 
 from fvdb_reality_capture.cli import BaseCommand
 from fvdb_reality_capture.tools import mesh_from_splats_dlnr
 
-from ._common import load_splats_from_file
+from ._common import load_camera_metadata, load_splats_from_file
 
 
 @dataclass
@@ -106,18 +106,9 @@ class MeshDLNR(BaseCommand):
 
         model, metadata = load_splats_from_file(self.input_path, self.device)
 
-        if "camera_to_world_matrices" not in metadata:
-            raise ValueError("Gaussian splats file must contain 'camera_to_world_matrices'")
-
-        if "projection_matrices" not in metadata:
-            raise ValueError("Gaussian splats file must contain 'projection_matrices'")
-
-        if "image_sizes" not in metadata:
-            raise ValueError("Gaussian splats file must contain 'image_sizes'")
-
-        camera_to_world_matrices = to_Mat44fBatch(metadata["camera_to_world_matrices"])
-        projection_matrices = to_Mat33fBatch(metadata["projection_matrices"])
-        image_sizes = to_Vec2iBatch(metadata["image_sizes"])
+        camera_to_world_matrices, projection_matrices, image_sizes, camera_models, distortion_coeffs = load_camera_metadata(
+            metadata
+        )
 
         model = model.to(self.device)
 
@@ -132,6 +123,8 @@ class MeshDLNR(BaseCommand):
             camera_to_world_matrices=camera_to_world_matrices,
             projection_matrices=projection_matrices,
             image_sizes=image_sizes,
+            camera_models=camera_models,
+            distortion_coeffs=distortion_coeffs,
             truncation_margin=self.truncation_margin,
             grid_shell_thickness=self.grid_shell_thickness,
             baseline=self.baseline,

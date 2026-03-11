@@ -54,6 +54,18 @@ class GaussianSplatOptimizerConfig:
     Parameters for configuring the ``GaussianSplatOptimizer``.
     """
 
+    initial_opacity: float = 0.1
+    """
+    Initial opacity of each Gaussian. This is the alpha value used when rendering the Gaussians at the start of
+    optimization.
+    """
+
+    initial_covariance_scale: float = 1.0
+    """
+    Initial scale of each Gaussian. This controls the initial size of the Gaussians in the scene.
+    Each Gaussian's covariance matrix will be initialized to a diagonal matrix with this value on the diagonal.
+    """
+
     max_gaussians: int = -1
     """The maximum number of Gaussians to allow in the model. If -1, no limit."""
 

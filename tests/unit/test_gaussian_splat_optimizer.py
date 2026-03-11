@@ -36,7 +36,7 @@ class GaussianSplatOptimizerTests(GettysburgGaussianSplatTestCase, unittest.Test
 
             # Run one step of the optimization and refinement
             optimizer_1.zero_grad()
-            gt_img_1, pred_img_1, _ = self.render_one_image(model_1)
+            gt_img_1, pred_img_1, _ = self._render_one_image(model_1)
             loss_1 = torch.nn.functional.l1_loss(pred_img_1, gt_img_1)
             loss_1.backward()
             optimizer_1.refine()
@@ -45,7 +45,7 @@ class GaussianSplatOptimizerTests(GettysburgGaussianSplatTestCase, unittest.Test
             num_gaussians_after_refine = model_1.num_gaussians
 
             # Compute the rendered image and loss after one step
-            gt_img_2, pred_img_2, _ = self.render_one_image(model_1)
+            gt_img_2, pred_img_2, _ = self._render_one_image(model_1)
             loss_2 = torch.nn.functional.l1_loss(pred_img_2, gt_img_2)
             # print(f"loss_2 = {loss_2.item()}")
 
@@ -57,7 +57,7 @@ class GaussianSplatOptimizerTests(GettysburgGaussianSplatTestCase, unittest.Test
             # Run one step of of optimization and refinement with the loaded optimizer and model
             # and check that the results match the previous results
             optimizer_2.zero_grad()
-            gt_img_3, pred_img_3, _ = self.render_one_image(model_2)
+            gt_img_3, pred_img_3, _ = self._render_one_image(model_2)
             self.assertTrue(torch.allclose(pred_img_1, pred_img_3))
             loss_3 = torch.nn.functional.l1_loss(pred_img_3, gt_img_3)
             self.assertAlmostEqual(loss_1.item(), loss_3.item(), places=3)
@@ -68,7 +68,7 @@ class GaussianSplatOptimizerTests(GettysburgGaussianSplatTestCase, unittest.Test
             self.assertEqual(model_2.num_gaussians, num_gaussians_after_refine)
 
             # Compute the rendered image and loss after one step and check that it matches the previous result
-            gt_img_4, pred_img_4, _ = self.render_one_image(model_2)
+            gt_img_4, pred_img_4, _ = self._render_one_image(model_2)
             self.assertTrue(torch.allclose(pred_img_2, pred_img_4, atol=1e-3))
             loss_4 = torch.nn.functional.l1_loss(pred_img_4, gt_img_4)
             self.assertAlmostEqual(loss_2.item(), loss_4.item(), places=3)
@@ -111,7 +111,7 @@ class GaussianSplatOptimizerRefinementTests(GettysburgGaussianSplatTestCase, uni
         # Run a few steps of optimization to accumulate some gradients
         for _ in range(2):
             self.optimizer.zero_grad()
-            gt_img, pred_img, _ = self.render_one_image(self.model)
+            gt_img, pred_img, _ = self._render_one_image(self.model)
             loss = torch.nn.functional.l1_loss(pred_img, gt_img)
             loss.backward()
             self.optimizer.step()

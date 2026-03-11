@@ -25,8 +25,9 @@ reconstruction_config:
   save_at_percent:
     - 100
 
-  # Most optimization parameters use FVDB code defaults:
-  # initial_opacity: 0.1, initial_covariance_scale: 1.0, sh_degree: 3,
+  # Most reconstruction parameters use FVDB code defaults.
+  # Optimizer defaults include initial_opacity: 0.1 and initial_covariance_scale: 1.0.
+  # Other defaults include sh_degree: 3,
   # ssim_lambda: 0.2, near_plane: 0.01, far_plane: 1e10, etc.
 
   batch_size: 1

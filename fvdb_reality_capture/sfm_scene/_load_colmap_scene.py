@@ -6,72 +6,48 @@ import pathlib
 
 import numpy as np
 import tqdm
+from fvdb import CameraModel
 
 from ._colmap_utils import Camera as ColmapCamera
 from ._colmap_utils import Image as ColmapImage
 from ._colmap_utils import SceneManager
 from .sfm_cache import SfmCache
-from .sfm_metadata import SfmCameraMetadata, SfmCameraType, SfmPosedImageMetadata
+from .sfm_metadata import SfmCameraMetadata, SfmPosedImageMetadata
 
 
-def _distortion_params_from_camera_type(cam: ColmapCamera) -> np.ndarray:
+def _camera_model_and_distortion_coeffs_from_colmap_camera(cam: ColmapCamera) -> tuple[CameraModel, np.ndarray]:
     """
-    Get distotion model parameters (to use with cv2.initUndistortRectifyMap) from the specified camera type.
-    We store these so we can distort images from non pinhole camera models and use a pinhole camera model.
+    Convert a COLMAP camera into the canonical FVDB camera model and packed distortion coefficients.
 
     Args:
         cam (ColmapCamera): The COLMAP camera object.
 
     Returns:
-        np.ndarray: An array of distortion parameters.
-        The shape and content of the array depend on the camera type.
-        For example, for a radial camera, it returns [k1, k2, 0.0, 0.0].
-        For an OpenCV camera, it returns [k1, k2, p1, p2].
-        For a simple pinhole camera, it returns an empty array.
-        For a pinhole camera, it also returns an empty array.
-        For a fisheye camera, it raises a NotImplementedError.
+        tuple[CameraModel, np.ndarray]: The canonical camera model and distortion coefficients in
+            FVDB packed layout ``[k1, k2, k3, k4, k5, k6, p1, p2, s1, s2, s3, s4]``.
     """
+    coeffs = np.zeros((12,), dtype=np.float32)
     if cam.camera_type == 0 or cam.camera_type == "SIMPLE_PINHOLE":
-        return np.empty(0, dtype=np.float32)
-    elif cam.camera_type == 1 or cam.camera_type == "PINHOLE":
-        return np.empty(0, dtype=np.float32)
-    elif cam.camera_type == 2 or cam.camera_type == "SIMPLE_RADIAL":
-        return np.array([cam.k1, 0.0, 0.0, 0.0], dtype=np.float32)
-    elif cam.camera_type == 3 or cam.camera_type == "RADIAL":
-        return np.array([cam.k1, cam.k2, 0.0, 0.0], dtype=np.float32)
-    elif cam.camera_type == 4 or cam.camera_type == "OPENCV":
-        return np.array([cam.k1, cam.k2, cam.p1, cam.p2], dtype=np.float32)
-    elif cam.camera_type == 5 or cam.camera_type == "OPENCV_FISHEYE":
-        raise NotImplementedError("Fisheye cameras are not currently supported")
-        return np.array([cam.k1, cam.k2, cam.k3, cam.k4], dtype=np.float32)
-    else:
-        raise ValueError(f"Unknown camera type {cam.camera_type}")
-
-
-def _colmap_camera_type_to_str(colmap_camera_type: int) -> SfmCameraType:
-    """
-    Convert a COLMAP camera type integer to an SfmCameraType enum.
-
-    Args:
-        colmap_camera_type (int): The COLMAP camera type integer.
-
-    Returns:
-        SfmCameraType: The corresponding SfmCameraType enum.
-    """
-    if colmap_camera_type == 0:
-        return SfmCameraType.SIMPLE_PINHOLE
-    elif colmap_camera_type == 1:
-        return SfmCameraType.PINHOLE
-    elif colmap_camera_type == 2:
-        return SfmCameraType.SIMPLE_RADIAL
-    elif colmap_camera_type == 3:
-        return SfmCameraType.RADIAL
-    elif colmap_camera_type == 4:
-        return SfmCameraType.OPENCV
-    elif colmap_camera_type == 5:
-        return SfmCameraType.OPENCV_FISHEYE
-    else:
-        raise ValueError(f"Unknown COLMAP camera type {colmap_camera_type}")
+        return CameraModel.PINHOLE, np.empty((0,), dtype=np.float32)
+    if cam.camera_type == 1 or cam.camera_type == "PINHOLE":
+        return CameraModel.PINHOLE, np.empty((0,), dtype=np.float32)
+    if cam.camera_type == 2 or cam.camera_type == "SIMPLE_RADIAL":
+        coeffs[0] = cam.k1
+        return CameraModel.OPENCV_RADTAN_5, coeffs
+    if cam.camera_type == 3 or cam.camera_type == "RADIAL":
+        coeffs[0] = cam.k1
+        coeffs[1] = cam.k2
+        return CameraModel.OPENCV_RADTAN_5, coeffs
+    if cam.camera_type == 4 or cam.camera_type == "OPENCV":
+        coeffs[0] = cam.k1
+        coeffs[1] = cam.k2
+        coeffs[2] = cam.k3
+        coeffs[6] = cam.p1
+        coeffs[7] = cam.p2
+        return CameraModel.OPENCV_RADTAN_5, coeffs
+    if cam.camera_type == 5 or cam.camera_type == "OPENCV_FISHEYE":
+        raise ValueError("COLMAP OPENCV_FISHEYE cameras are not supported by fvdb.CameraModel")
+    raise ValueError(f"Unknown camera type {cam.camera_type}")
 
 
 def _load_colmap_internal(colmap_path: pathlib.Path) -> SceneManager:
@@ -154,12 +130,18 @@ def load_colmap_scene(colmap_path: pathlib.Path):
 
         if colmap_image.camera_id not in loaded_cameras:
             colmap_camera: ColmapCamera = scene_manager.cameras[colmap_image.camera_id]
-            distortion_parameters = _distortion_params_from_camera_type(colmap_camera)
+            camera_model, distortion_coeffs = _camera_model_and_distortion_coeffs_from_colmap_camera(colmap_camera)
             fx, fy, cx, cy = colmap_camera.fx, colmap_camera.fy, colmap_camera.cx, colmap_camera.cy
             img_width, img_height = colmap_camera.width, colmap_camera.height
-            colmap_camera_type_enum = _colmap_camera_type_to_str(colmap_camera.camera_type)
             loaded_cameras[colmap_image.camera_id] = SfmCameraMetadata(
-                img_width, img_height, fx, fy, cx, cy, colmap_camera_type_enum, distortion_parameters
+                img_width=img_width,
+                img_height=img_height,
+                fx=fx,
+                fy=fy,
+                cx=cx,
+                cy=cy,
+                camera_model=camera_model,
+                distortion_coeffs=distortion_coeffs,
             )
 
     # Most papers use train/test splits based on sorted images so sort the images here

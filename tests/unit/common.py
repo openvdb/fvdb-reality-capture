@@ -1,7 +1,13 @@
 # Copyright Contributors to the OpenVDB Project
 # SPDX-License-Identifier: Apache-2.0
 #
+from typing import Literal
+
 import numpy as np
+import torch
+from fvdb import GaussianSplat3d
+
+import fvdb_reality_capture as frc
 
 from fvdb_reality_capture.sfm_scene import (
     SfmCameraMetadata,
@@ -69,34 +75,12 @@ def sfm_camera_metadata_match(cam1: SfmCameraMetadata, cam2: SfmCameraMetadata) 
         return False
     if not cam1.height == cam2.height:
         return False
-    if not cam1.camera_type == cam2.camera_type:
+    if not cam1.camera_model == cam2.camera_model:
         return False
     if not np.allclose(cam1.aspect, cam2.aspect):
         return False
-    if not np.allclose(cam1.distortion_parameters, cam2.distortion_parameters):
+    if not np.allclose(cam1.distortion_coeffs, cam2.distortion_coeffs):
         return False
-    if cam1.undistort_roi != cam2.undistort_roi:
-        return False
-
-    has_undistort_map_x1 = cam1.undistort_map_x is not None
-    has_undistort_map_x2 = cam2.undistort_map_x is not None
-    if has_undistort_map_x1 != has_undistort_map_x2:
-        return False
-    if has_undistort_map_x1 and has_undistort_map_x2:
-        assert cam1.undistort_map_x is not None
-        assert cam2.undistort_map_x is not None
-        if not np.allclose(cam1.undistort_map_x, cam2.undistort_map_x):
-            return False
-    has_undistort_map_y1 = cam1.undistort_map_y is not None
-    has_undistort_map_y2 = cam2.undistort_map_y is not None
-    if has_undistort_map_y1 != has_undistort_map_y2:
-        return False
-    if has_undistort_map_y1 and has_undistort_map_y2:
-        assert cam1.undistort_map_y is not None
-        assert cam2.undistort_map_y is not None
-        if not np.allclose(cam1.undistort_map_y, cam2.undistort_map_y):
-            return False
-
     return True
 
 
@@ -212,8 +196,8 @@ def compute_scene_scale(sfm_scene: "SfmScene") -> float:
 def load_gettysburg_scene_and_dataset(
     *,
     downsample_factor: int = 4,
-    normalize_mode: str = "pca",
-) -> tuple["SfmScene", "object"]:
+    normalize_mode: Literal["pca", "none", "ecef2enu", "similarity"] = "pca",
+) -> tuple["SfmScene", frc.radiance_fields.SfmDataset]:
     """
     Load the Gettysburg example scene and build an SfmDataset with standard transforms.
 
@@ -221,8 +205,6 @@ def load_gettysburg_scene_and_dataset(
         (scene, training_dataset)
     """
     import pathlib
-
-    import fvdb_reality_capture as frc
 
     dataset_path = pathlib.Path(__file__).resolve().parent.parent.parent / "data" / "gettysburg"
     if not dataset_path.exists():
@@ -238,14 +220,12 @@ def load_gettysburg_scene_and_dataset(
 
 
 def init_gaussian_splat_model(
-    device: "object",
-    training_dataset: "object",
-):
+    device: torch.device | str,
+    training_dataset: frc.radiance_fields.SfmDataset,
+) -> GaussianSplat3d:
     """
     Initialize a GaussianSplat3d from an SfmDataset, matching the optimizer unit tests.
     """
-    import torch
-    from fvdb import GaussianSplat3d
     from scipy.spatial import cKDTree  # type: ignore
 
     initial_covariance_scale = 1.0
@@ -280,35 +260,6 @@ def init_gaussian_splat_model(
     return model
 
 
-def render_one_image(
-    *,
-    training_dataset: "object",
-    device: "object",
-    model: "object",
-    index: int = 0,
-):
-    """
-    Render a single image from the dataset.
-    Returns (gt_image, pred_image, alphas).
-    """
-    import torch
-
-    data_item = training_dataset[index]
-    projection_matrix = data_item["projection"].to(device=device).unsqueeze(0)
-    world_to_camera_matrix = data_item["world_to_camera"].to(device=device).unsqueeze(0)
-    gt_image = torch.from_numpy(data_item["image"]).to(device=device).unsqueeze(0).float() / 255.0
-
-    pred_image, alphas = model.render_images(
-        world_to_camera_matrices=world_to_camera_matrix,
-        projection_matrices=projection_matrix,
-        image_width=gt_image.shape[2],
-        image_height=gt_image.shape[1],
-        near=0.1,
-        far=1e10,
-    )
-    return gt_image, pred_image, alphas
-
-
 class GettysburgGaussianSplatTestCase:  # intentionally not typed as unittest.TestCase at import time
     """
     Mixin-style base for unittest.TestCase classes that need a Gettysburg scene, dataset, and initialized model.
@@ -317,16 +268,36 @@ class GettysburgGaussianSplatTestCase:  # intentionally not typed as unittest.Te
     def setUp(self):  # type: ignore[override]
         import unittest
 
-        import torch
-
         if not isinstance(self, unittest.TestCase):
             raise TypeError("GettysburgGaussianSplatTestCase must be mixed into unittest.TestCase")
 
         scene, training_dataset = load_gettysburg_scene_and_dataset()
-        self.training_dataset = training_dataset
+        self.training_dataset: frc.radiance_fields.SfmDataset = training_dataset
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
-        self.model = init_gaussian_splat_model(self.device, self.training_dataset)
+        self.model: GaussianSplat3d = init_gaussian_splat_model(self.device, self.training_dataset)
         self.scene_scale = compute_scene_scale(scene)
 
-    def render_one_image(self, model):  # type: ignore[override]
-        return render_one_image(training_dataset=self.training_dataset, device=self.device, model=model)
+    def _render_one_image(self, model: GaussianSplat3d, index: int = 0):
+        """
+        Render a single training image and return ``(gt_image, pred_image, alphas)``.
+        """
+        from fvdb import CameraModel
+
+        data_item = self.training_dataset[index]
+        projection_matrix = data_item["projection"].to(device=self.device).unsqueeze(0)
+        world_to_camera_matrix = data_item["world_to_camera"].to(device=self.device).unsqueeze(0)
+        camera_model = CameraModel(int(data_item["camera_model"]))
+        distortion_coeffs = data_item["distortion_coeffs"].to(device=self.device).unsqueeze(0)
+        gt_image = torch.from_numpy(data_item["image"]).to(device=self.device).unsqueeze(0).float() / 255.0
+
+        pred_image, alphas = model.render_images(
+            world_to_camera_matrices=world_to_camera_matrix,
+            projection_matrices=projection_matrix,
+            image_width=gt_image.shape[2],
+            image_height=gt_image.shape[1],
+            near=0.1,
+            far=1e10,
+            camera_model=camera_model,
+            distortion_coeffs=distortion_coeffs if camera_model != CameraModel.PINHOLE else None,
+        )
+        return gt_image, pred_image, alphas

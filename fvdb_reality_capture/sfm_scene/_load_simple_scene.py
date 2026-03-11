@@ -8,9 +8,10 @@ import pathlib
 import numpy as np
 import point_cloud_utils as pcu
 import tqdm
+from fvdb import CameraModel
 
 from .sfm_cache import SfmCache
-from .sfm_metadata import SfmCameraMetadata, SfmCameraType, SfmPosedImageMetadata
+from .sfm_metadata import SfmCameraMetadata, SfmPosedImageMetadata
 
 
 def load_simple_scene(data_path: pathlib.Path):
@@ -70,7 +71,6 @@ def load_simple_scene(data_path: pathlib.Path):
             projection_matrix[0, 2],
             projection_matrix[1, 2],
         )
-        camera_type = SfmCameraType.PINHOLE
         camera_id = i + 1
         camera_metadata[camera_id] = SfmCameraMetadata(
             img_width=width,
@@ -79,8 +79,8 @@ def load_simple_scene(data_path: pathlib.Path):
             fy=fy,
             cx=cx,
             cy=cy,
-            camera_type=camera_type,
-            distortion_parameters=np.array([], dtype=np.float32),
+            camera_model=CameraModel.PINHOLE,
+            distortion_coeffs=np.array([], dtype=np.float32),
         )
 
         world_to_camera_matrix = np.array(camera["world_to_camera"]).reshape(4, 4)

@@ -6,7 +6,7 @@ import pathlib
 from typing import Literal
 
 import torch
-from fvdb import GaussianSplat3d
+from fvdb import CameraModel, GaussianSplat3d
 from fvdb.types import DeviceIdentifier, to_Mat33fBatch, to_Mat44fBatch, to_Vec2iBatch
 
 from fvdb_reality_capture.radiance_fields import GaussianSplatReconstruction
@@ -146,18 +146,22 @@ def near_far_for_units(
         raise ValueError(f"Invalid near_far_units: {near_far_units}")
 
 
-def load_camera_metadata(metadata: dict) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+def load_camera_metadata(metadata: dict) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
     """
     Load camera metadata from the given dictionary.
 
     Args:
         metadata (dict): Metadata dictionary containing camera information. Must contain the keys
-            'camera_to_world_matrices', 'projection_matrices', and 'image_sizes'.
+            'camera_to_world_matrices', 'projection_matrices', and 'image_sizes'. It may also
+            contain 'camera_models' and 'distortion_coeffs'. If those are absent, pinhole defaults
+            are returned for backwards compatibility.
 
     Returns:
         camera_to_world_matrices (torch.Tensor): Tensor of shape (N, 4, 4) containing camera-to-world matrices.
         projection_matrices (torch.Tensor): Tensor of shape (N, 3, 3) containing projection matrices.
         image_sizes (torch.Tensor): Tensor of shape (N, 2) containing image sizes.
+        camera_models (torch.Tensor): Tensor of shape (N,) containing integer-encoded camera models.
+        distortion_coeffs (torch.Tensor): Tensor of shape (N, 12) containing packed distortion coeffs.
     """
 
     if "camera_to_world_matrices" not in metadata:
@@ -172,5 +176,13 @@ def load_camera_metadata(metadata: dict) -> tuple[torch.Tensor, torch.Tensor, to
     camera_to_world_matrices = to_Mat44fBatch(metadata["camera_to_world_matrices"])
     projection_matrices = to_Mat33fBatch(metadata["projection_matrices"])
     image_sizes = to_Vec2iBatch(metadata["image_sizes"])
+    if "camera_models" in metadata:
+        camera_models = torch.as_tensor(metadata["camera_models"], dtype=torch.int32)
+    else:
+        camera_models = torch.full((camera_to_world_matrices.shape[0],), int(CameraModel.PINHOLE), dtype=torch.int32)
+    if "distortion_coeffs" in metadata:
+        distortion_coeffs = torch.as_tensor(metadata["distortion_coeffs"], dtype=torch.float32)
+    else:
+        distortion_coeffs = torch.zeros((camera_to_world_matrices.shape[0], 12), dtype=torch.float32)
 
-    return camera_to_world_matrices, projection_matrices, image_sizes
+    return camera_to_world_matrices, projection_matrices, image_sizes, camera_models, distortion_coeffs

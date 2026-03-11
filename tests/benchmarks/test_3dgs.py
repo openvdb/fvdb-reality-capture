@@ -13,6 +13,7 @@ import torch
 import torch.nn.functional as F
 import torch.utils.data
 import yaml
+from fvdb import CameraModel
 
 # Set multiprocessing start method to 'spawn' to avoid fork() warnings with PyTorch
 # This must be done before any multiprocessing operations
@@ -115,6 +116,8 @@ class Benchmark3dgs:
         self.cam_to_world_mats: torch.Tensor = minibatch["camera_to_world"].to(device)  # [B, 4, 4]
         self.world_to_cam_mats: torch.Tensor = minibatch["world_to_camera"].to(device)  # [B, 4, 4]
         self.projection_mats = minibatch["projection"].to(device)  # [B, 3, 3]
+        self.camera_model = CameraModel(int(minibatch["camera_model"].item()))
+        self.distortion_coeffs = minibatch["distortion_coeffs"].to(device)
         self.image = minibatch["image"]  # [B, H, W, 3]
         self.mask = minibatch["mask"] if "mask" in minibatch else None
         self.image_height, self.image_width = self.image.shape[1:3]
@@ -135,17 +138,18 @@ class Benchmark3dgs:
 
     def run_project_gaussians(self):
         self.projected_gaussians = self.runner.model.project_gaussians_for_images(
-            self.world_to_cam_mats,
-            self.projection_mats,
-            self.image_width,
-            self.image_height,
-            self.runner.config.near_plane,
-            self.runner.config.far_plane,
-            "perspective",
-            self.sh_degree_to_use,
-            self.runner.config.min_radius_2d,
-            self.runner.config.eps_2d,
-            self.runner.config.antialias,
+            world_to_camera_matrices=self.world_to_cam_mats,
+            projection_matrices=self.projection_mats,
+            image_width=self.image_width,
+            image_height=self.image_height,
+            near=self.runner.config.near_plane,
+            far=self.runner.config.far_plane,
+            camera_model=self.camera_model,
+            distortion_coeffs=self.distortion_coeffs if self.camera_model != CameraModel.PINHOLE else None,
+            sh_degree_to_use=self.sh_degree_to_use,
+            min_radius_2d=self.runner.config.min_radius_2d,
+            eps_2d=self.runner.config.eps_2d,
+            antialias=self.runner.config.antialias,
         )
 
     def run_render_gaussians(self):
@@ -200,7 +204,24 @@ def create_benchmark_params():
             raise ValueError(f"No checkpoint paths specified for dataset: {dataset_name}")
 
         for checkpoint_path in checkpoint_paths:
-            params.append((dataset_path, run_path, checkpoint_path))
+            checkpoint_id = f"{pathlib.Path(dataset_path).name}-{pathlib.Path(checkpoint_path).parent.name}"
+            missing_artifacts = []
+            if not pathlib.Path(dataset_path).exists():
+                missing_artifacts.append(f"dataset '{dataset_path}'")
+            if not pathlib.Path(checkpoint_path).exists():
+                missing_artifacts.append(f"checkpoint '{checkpoint_path}'")
+            if missing_artifacts:
+                params.append(
+                    pytest.param(
+                        (dataset_path, run_path, checkpoint_path),
+                        id=checkpoint_id,
+                        marks=pytest.mark.skip(
+                            reason="Missing local benchmark artifacts: " + ", ".join(missing_artifacts)
+                        ),
+                    )
+                )
+            else:
+                params.append(pytest.param((dataset_path, run_path, checkpoint_path), id=checkpoint_id))
 
     return params
 
@@ -208,7 +229,6 @@ def create_benchmark_params():
 @pytest.fixture(
     scope="module",
     params=create_benchmark_params(),
-    ids=lambda param: f"{param[0].rstrip('/').split('/')[-1]}-{param[2].rstrip('/').split('/')[-2]}",
 )
 def benchmark_3dgs(request):
     logging.basicConfig(level=logging.INFO, format="%(levelname)s : %(message)s")
@@ -230,7 +250,6 @@ def benchmark_3dgs(request):
 @pytest.fixture(
     scope="module",
     params=create_benchmark_params(),
-    ids=lambda param: f"{param[0].rstrip('/').split('/')[-1]}-{param[2].rstrip('/').split('/')[-2]}-mcmc",
 )
 def benchmark_3dgs_mcmc(request):
     """

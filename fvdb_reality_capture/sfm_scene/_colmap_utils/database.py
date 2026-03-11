@@ -225,7 +225,7 @@ def main(args):
     db.initialize_tables()
 
     #
-    # create dummy cameras
+    # create placeholder cameras
     #
 
     model1, w1, h1, params1 = 0, 1024, 768, np.array((1024.0, 512.0, 384.0))
@@ -235,7 +235,7 @@ def main(args):
     db.add_camera(model2, w2, h2, params2)
 
     #
-    # create dummy images
+    # create placeholder images
     #
 
     db.add_image("image1.png", 0)
@@ -244,7 +244,7 @@ def main(args):
     db.add_image("image4.png", 2)
 
     #
-    # create dummy keypoints; note that COLMAP supports 2D keypoints (x, y),
+    # create placeholder keypoints; note that COLMAP supports 2D keypoints (x, y),
     # 4D keypoints (x, y, theta, scale), and 6D affine keypoints
     # (x, y, a_11, a_12, a_21, a_22)
     #
@@ -261,7 +261,7 @@ def main(args):
     db.add_keypoints(4, kp4)
 
     #
-    # create dummy matches
+    # create placeholder matches
     #
 
     M = 50

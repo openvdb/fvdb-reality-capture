@@ -39,7 +39,7 @@ class GaussianSplatOptimizerMCMCTests(GettysburgGaussianSplatTestCase, unittest.
 
             # Run one step of refine + step
             optimizer_1.zero_grad()
-            gt_img_1, pred_img_1, _ = self.render_one_image(model_1)
+            gt_img_1, pred_img_1, _ = self._render_one_image(model_1)
             loss_1 = torch.nn.functional.l1_loss(pred_img_1, gt_img_1)
             loss_1.backward()
             torch.manual_seed(0)
@@ -49,7 +49,7 @@ class GaussianSplatOptimizerMCMCTests(GettysburgGaussianSplatTestCase, unittest.
             optimizer_1.zero_grad()
 
             # Post-step render
-            gt_img_2, pred_img_2, _ = self.render_one_image(model_1)
+            gt_img_2, pred_img_2, _ = self._render_one_image(model_1)
             loss_2 = torch.nn.functional.l1_loss(pred_img_2, gt_img_2)
 
             # Load model + optimizer and replay the same operations
@@ -58,7 +58,7 @@ class GaussianSplatOptimizerMCMCTests(GettysburgGaussianSplatTestCase, unittest.
             optimizer_2 = frc.radiance_fields.GaussianSplatOptimizerMCMC.from_state_dict(model_2, loaded_state_dict)
 
             optimizer_2.zero_grad()
-            gt_img_3, pred_img_3, _ = self.render_one_image(model_2)
+            gt_img_3, pred_img_3, _ = self._render_one_image(model_2)
             self.assertTrue(torch.allclose(pred_img_1, pred_img_3))
             loss_3 = torch.nn.functional.l1_loss(pred_img_3, gt_img_3)
             self.assertAlmostEqual(loss_1.item(), loss_3.item(), places=3)
@@ -69,7 +69,7 @@ class GaussianSplatOptimizerMCMCTests(GettysburgGaussianSplatTestCase, unittest.
             optimizer_2.step()
             optimizer_2.zero_grad()
 
-            gt_img_4, pred_img_4, _ = self.render_one_image(model_2)
+            gt_img_4, pred_img_4, _ = self._render_one_image(model_2)
             self.assertTrue(torch.allclose(pred_img_2, pred_img_4, atol=1e-3))
             loss_4 = torch.nn.functional.l1_loss(pred_img_4, gt_img_4)
             self.assertAlmostEqual(loss_2.item(), loss_4.item(), places=3)

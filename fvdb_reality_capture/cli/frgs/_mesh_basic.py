@@ -111,7 +111,9 @@ class MeshBasic(BaseCommand):
 
         model, metadata = load_splats_from_file(self.input_path, self.device)
 
-        camera_to_world_matrices, projection_matrices, image_sizes = load_camera_metadata(metadata)
+        camera_to_world_matrices, projection_matrices, image_sizes, camera_models, distortion_coeffs = load_camera_metadata(
+            metadata
+        )
 
         near, far = near_far_for_units(
             self.near_far_units,
@@ -131,6 +133,8 @@ class MeshBasic(BaseCommand):
             camera_to_world_matrices=camera_to_world_matrices,
             projection_matrices=projection_matrices,
             image_sizes=image_sizes,
+            camera_models=camera_models,
+            distortion_coeffs=distortion_coeffs,
             truncation_margin=self.truncation_margin,
             grid_shell_thickness=self.grid_shell_thickness,
             near=near,

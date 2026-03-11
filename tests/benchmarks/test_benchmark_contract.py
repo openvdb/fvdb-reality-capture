@@ -9,6 +9,7 @@ import numpy as np
 import point_cloud_utils as pcu
 import pytest
 import torch
+from fvdb import CameraModel
 
 from fvdb_reality_capture.radiance_fields import (
     GaussianSplatOptimizerConfig,
@@ -145,21 +146,24 @@ def test_benchmark_smoke_pipeline_on_gpu(tmp_path: pathlib.Path):
     sample = runner.training_dataset[0]
     world_to_camera = sample["world_to_camera"].unsqueeze(0).cuda()
     projection = sample["projection"].unsqueeze(0).cuda()
+    camera_model = CameraModel(int(sample["camera_model"]))
+    distortion_coeffs = sample["distortion_coeffs"].unsqueeze(0).cuda()
     image = torch.from_numpy(sample["image"]).unsqueeze(0).cuda() / 255.0
     height, width = image.shape[1:3]
 
     projected = runner.model.project_gaussians_for_images(
-        world_to_camera,
-        projection,
-        width,
-        height,
-        runner.config.near_plane,
-        runner.config.far_plane,
-        "perspective",
-        runner.config.sh_degree,
-        runner.config.min_radius_2d,
-        runner.config.eps_2d,
-        runner.config.antialias,
+        world_to_camera_matrices=world_to_camera,
+        projection_matrices=projection,
+        image_width=width,
+        image_height=height,
+        near=runner.config.near_plane,
+        far=runner.config.far_plane,
+        camera_model=camera_model,
+        distortion_coeffs=distortion_coeffs if camera_model != CameraModel.PINHOLE else None,
+        sh_degree_to_use=runner.config.sh_degree,
+        min_radius_2d=runner.config.min_radius_2d,
+        eps_2d=runner.config.eps_2d,
+        antialias=runner.config.antialias,
     )
     colors, _alphas = runner.model.render_from_projected_gaussians(
         projected,

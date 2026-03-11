@@ -8,9 +8,10 @@ import cv2
 import numpy as np
 import pye57
 import tqdm
+from fvdb import CameraModel
 from scipy.spatial.transform import Rotation
 
-from . import SfmCache, SfmCameraMetadata, SfmCameraType, SfmPosedImageMetadata
+from . import SfmCache, SfmCameraMetadata, SfmPosedImageMetadata
 
 
 def _load_e57_scan(
@@ -198,8 +199,8 @@ def _load_e57_scan(
             fy=fy,
             cx=cx,
             cy=cy,
-            camera_type=SfmCameraType.PINHOLE,
-            distortion_parameters=np.array([]),
+            camera_model=CameraModel.PINHOLE,
+            distortion_coeffs=np.array([], dtype=np.float32),
         )
 
         # Load the image data

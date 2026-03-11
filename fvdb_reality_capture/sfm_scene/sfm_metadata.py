@@ -1,52 +1,101 @@
 # Copyright Contributors to the OpenVDB Project
 # SPDX-License-Identifier: Apache-2.0
 #
-from enum import Enum
 from typing import Any
 
-import cv2
+from fvdb import CameraModel
 import numpy as np
 
 
-class SfmCameraType(Enum):
-    """
-    Enum representing different camera types used in structure-from-motion (SFM) pipelines.
-    """
+_DISTORTION_COEFFS_SHAPE = (12,)
+"""
+Shape of the canonical packed FVDB distortion coefficient vector.
 
-    PINHOLE = "PINHOLE"
-    """
-    A standard pinhole camera model with no lens distortion.
-    Uses separate focal lengths for x and y directions (fx, fy) and a principal point (cx, cy).
-    """
+The packed layout is ``[k1, k2, k3, k4, k5, k6, p1, p2, s1, s2, s3, s4]``.
+"""
 
-    SIMPLE_PINHOLE = "SIMPLE_PINHOLE"
-    """
-    A simplified pinhole camera model with a single focal length and no lens distortion. The principal point is at the image center.
-    """
 
-    SIMPLE_RADIAL = "SIMPLE_RADIAL"
+def _normalize_packed_distortion_coeffs(
+    coeffs: np.ndarray | list[float] | tuple[float, ...],
+) -> np.ndarray:
     """
-    A simplified radial distortion camera model with a single focal length and one radial distortion coefficient.
-    """
+    Normalize distortion coefficients into a NumPy array in the canonical packed FVDB layout.
 
-    RADIAL = "RADIAL"
-    """
-    A radial distortion camera model with separate focal lengths and two radial distortion coefficients.
-    """
+    This helper exists so callers can pass a convenient Python sequence or array-like object
+    while `SfmCameraMetadata` stores one canonical in-memory representation. Centralizing the
+    coercion and validation here keeps the constructor logic simple and ensures all call sites
+    produce a float32 NumPy array with a consistent packed layout.
 
-    OPENCV = "OPENCV"
-    """
-    The `OpenCV <http://opencv.org/>`_ camera model with separate focal lengths, a principal point, and five distortion coefficients ``(k1, k2, p1, p2, k3)``.
+    Args:
+        coeffs: Distortion coefficients in packed FVDB order
+            ``[k1, k2, k3, k4, k5, k6, p1, p2, s1, s2, s3, s4]`` or an empty sequence.
 
-    See `OpenCV camera documentation <https://docs.opencv.org/4.x/d9/d0c/group__calib3d.html>`_ for more details.
+    Returns:
+        np.ndarray: A float32 NumPy array containing either 12 packed coefficients or an empty array.
     """
+    coeff_array = np.asarray(coeffs, dtype=np.float32).reshape(-1)
+    if coeff_array.size == 0:
+        return np.empty((0,), dtype=np.float32)
+    if coeff_array.size != _DISTORTION_COEFFS_SHAPE[0]:
+        raise ValueError(f"distortion_coeffs must have shape {_DISTORTION_COEFFS_SHAPE}, got {coeff_array.shape}")
+    return coeff_array
 
-    OPENCV_FISHEYE = "OPENCV_FISHEYE"
-    """
-    The `OpenCV <http://opencv.org/>`_ fisheye camera model with separate focal lengths, a principal point, and four distortion coefficients ``(k1, k2, k3, k4)``.
 
-    See `OpenCV fisheye documentation <https://docs.opencv.org/4.x/db/d58/group__calib3d__fisheye.html>`_ for more details.
+def _legacy_camera_type_to_camera_model(camera_type: str) -> CameraModel:
     """
+    Map a legacy serialized ``camera_type`` string onto the canonical FVDB camera model.
+
+    This exists only to preserve backwards compatibility when loading older scene metadata
+    that predated the move from ``SfmCameraType`` to ``fvdb.CameraModel``.
+
+    Args:
+        camera_type: Legacy serialized camera type string.
+
+    Returns:
+        CameraModel: The closest matching canonical FVDB camera model.
+    """
+    if camera_type in ("PINHOLE", "SIMPLE_PINHOLE"):
+        return CameraModel.PINHOLE
+    if camera_type in ("SIMPLE_RADIAL", "RADIAL", "OPENCV"):
+        return CameraModel.OPENCV_RADTAN_5
+    raise ValueError(f"Unsupported legacy camera_type {camera_type}")
+
+
+def _legacy_distortion_parameters_to_coeffs(camera_type: str, distortion_parameters: np.ndarray) -> np.ndarray:
+    """
+    Convert legacy serialized distortion parameters into packed FVDB distortion coefficients.
+
+    Older checkpoints/scenes stored distortion using ``SfmCameraType``-specific layouts. This
+    helper translates those layouts into the canonical FVDB packed representation
+    ``[k1, k2, k3, k4, k5, k6, p1, p2, s1, s2, s3, s4]``, zero-filling unused entries.
+
+    Args:
+        camera_type: Legacy serialized camera type string.
+        distortion_parameters: Legacy distortion parameter array.
+
+    Returns:
+        np.ndarray: Packed FVDB distortion coefficients or an empty array for undistorted cameras.
+    """
+    params = np.asarray(distortion_parameters, dtype=np.float32).reshape(-1)
+    if camera_type in ("PINHOLE", "SIMPLE_PINHOLE"):
+        return np.empty((0,), dtype=np.float32)
+    coeffs = np.zeros(_DISTORTION_COEFFS_SHAPE, dtype=np.float32)
+    if camera_type == "SIMPLE_RADIAL":
+        coeffs[0] = params[0]
+        return coeffs
+    if camera_type == "RADIAL":
+        coeffs[0] = params[0]
+        coeffs[1] = params[1]
+        return coeffs
+    if camera_type == "OPENCV":
+        coeffs[0] = params[0]
+        coeffs[1] = params[1]
+        if params.size >= 5:
+            coeffs[2] = params[4]
+        coeffs[6] = params[2]
+        coeffs[7] = params[3]
+        return coeffs
+    raise ValueError(f"Unsupported legacy camera_type {camera_type}")
 
 
 class SfmCameraMetadata:
@@ -54,9 +103,9 @@ class SfmCameraMetadata:
     This class encodes metadata about a camera used to capture images in an :class:`SfmScene`.
 
     It contains information about the camera's intrinsic parameters (focal length, principal point, etc.),
-    the camera type (see :class:`SfmCameraType`) (e.g., pinhole, radial distortion), and distortion parameters if applicable.
+    the canonical :class:`fvdb.CameraModel`, and packed distortion coefficients if applicable.
 
-    The camera metadata is used to project 3D points into 2D pixel coordinates and to undistort images captured by the camera.
+    The camera metadata is used to project 3D points into 2D pixel coordinates for a single scene pixel space.
     """
 
     def __init__(
@@ -67,8 +116,8 @@ class SfmCameraMetadata:
         fy: float,
         cx: float,
         cy: float,
-        camera_type: SfmCameraType,
-        distortion_parameters: np.ndarray,
+        camera_model: CameraModel,
+        distortion_coeffs: np.ndarray,
     ):
         """
         Create a new :class:`SfmCameraMetadata` object.
@@ -80,83 +129,45 @@ class SfmCameraMetadata:
             fy (float): The focal length in the y direction in pixel units.
             cx (float): The x-coordinate of the principal point (optical center) in pixel units.
             cy (float): The y-coordinate of the principal point (optical center) in pixel units.
-            camera_type (SfmCameraType): The type of camera used to capture the image (e.g., "PINHOLE", "SIMPLE_PINHOLE", etc.). See :class:`SfmCameraType` for details.
-            distortion_parameters (np.ndarray): An array of distortion coefficients corresponding to the camera type, or an empty array if no distortion is present.
+            camera_model (CameraModel): The canonical camera model used throughout the library.
+            distortion_coeffs (np.ndarray): Distortion coefficients in FVDB packed layout
+                ``[k1, k2, k3, k4, k5, k6, p1, p2, s1, s2, s3, s4]`` or an empty
+                array if no distortion is present.
         """
 
-        # Store original (distorted) intrinsics for serialization
-        self._original_fx = fx
-        self._original_fy = fy
-        self._original_cx = cx
-        self._original_cy = cy
-        self._original_width = img_width
-        self._original_height = img_height
-        self._camera_type = camera_type
-        self._distortion_parameters = distortion_parameters
+        if img_width <= 0 or img_height <= 0:
+            raise ValueError("Image dimensions must be positive integers.")
 
-        # camera intrinsics assuming a perspective projection model
-        projection_matrix = np.array([[fx, 0, cx], [0, fy, cy], [0, 0, 1]])
-
-        if len(distortion_parameters) != 0:
-            undistorted_proj_mat, undistort_roi = cv2.getOptimalNewCameraMatrix(
-                projection_matrix, distortion_parameters, (img_width, img_height), 0
-            )
-            undistort_map_x, undistort_map_y = cv2.initUndistortRectifyMap(
-                projection_matrix, distortion_parameters, None, undistorted_proj_mat, (img_width, img_height), cv2.CV_32FC1  # type: ignore
-            )
-
-            self._undistort_roi = tuple([v for v in undistort_roi])
-            assert len(self._undistort_roi) == 4, "Undistort ROI must be a tuple of (x, y, width, height)"
-
-            self._undistort_map_x = undistort_map_x
-            self._undistort_map_y = undistort_map_y
-
-            # Adjust projection matrix for ROI crop: shift principal point by ROI offset
-            roi_x, roi_y, roi_w, roi_h = self._undistort_roi
-            adjusted_proj_mat = undistorted_proj_mat.copy()
-            adjusted_proj_mat[0, 2] -= roi_x  # cx - roi_x
-            adjusted_proj_mat[1, 2] -= roi_y  # cy - roi_y
-
-            self._projection_matrix = adjusted_proj_mat
-            self._fx = adjusted_proj_mat[0, 0]
-            self._fy = adjusted_proj_mat[1, 1]
-            self._cx = adjusted_proj_mat[0, 2]
-            self._cy = adjusted_proj_mat[1, 2]
-            self._width = roi_w
-            self._height = roi_h
-        else:
-            self._projection_matrix = projection_matrix
-            self._undistort_roi = None
-            self._undistort_map_x = None
-            self._undistort_map_y = None
-
-            self._fx = fx
-            self._fy = fy
-            self._cx = cx
-            self._cy = cy
-            self._width = img_width
-            self._height = img_height
+        self._width = img_width
+        self._height = img_height
+        self._fx = fx
+        self._fy = fy
+        self._cx = cx
+        self._cy = cy
+        self._camera_model = camera_model
+        self._distortion_coeffs = _normalize_packed_distortion_coeffs(distortion_coeffs)
+        self._projection_matrix = np.array([[fx, 0, cx], [0, fy, cy], [0, 0, 1]], dtype=np.float32)
 
     def state_dict(self) -> dict[str, Any]:
         """
         Return a state dictionary representing the camera metadata.
 
         This dictionary can be used to serialize and deserialize the camera metadata.
-        The dictionary stores the original (distorted) intrinsics so that the camera
-        can be correctly reconstructed with undistortion maps.
+        The dictionary stores the camera intrinsics for the pixel space represented by this
+        metadata object.
 
         Returns:
             state_dict (dict[str, Any]): A dictionary containing the camera metadata.
         """
         return {
-            "img_width": self._original_width,
-            "img_height": self._original_height,
-            "fx": self._original_fx,
-            "fy": self._original_fy,
-            "cx": self._original_cx,
-            "cy": self._original_cy,
-            "camera_type": self.camera_type.value,
-            "distortion_parameters": self.distortion_parameters.tolist(),
+            "img_width": self.width,
+            "img_height": self.height,
+            "fx": self.fx,
+            "fy": self.fy,
+            "cx": self.cx,
+            "cy": self.cy,
+            "camera_model": self.camera_model.name,
+            "distortion_coeffs": self.distortion_coeffs.tolist(),
         }
 
     @classmethod
@@ -182,19 +193,30 @@ class SfmCameraMetadata:
             raise KeyError("cx is missing from state_dict")
         if "cy" not in state_dict:
             raise KeyError("cy is missing from state_dict")
-        if "camera_type" not in state_dict:
-            raise KeyError("camera_type is missing from state_dict")
-        if "distortion_parameters" not in state_dict:
-            raise KeyError("distortion_parameters is missing from state_dict")
-
         img_width = int(state_dict["img_width"])
         img_height = int(state_dict["img_height"])
         fx = float(state_dict["fx"])
         fy = float(state_dict["fy"])
         cx = float(state_dict["cx"])
         cy = float(state_dict["cy"])
-        camera_type = SfmCameraType(state_dict["camera_type"])
-        distortion_parameters = np.array(state_dict["distortion_parameters"])
+        if "camera_model" in state_dict:
+            serialized_camera_model = state_dict["camera_model"]
+            if isinstance(serialized_camera_model, str):
+                camera_model = CameraModel[serialized_camera_model]
+            else:
+                camera_model = CameraModel(serialized_camera_model)
+            distortion_coeffs = np.array(state_dict.get("distortion_coeffs", []), dtype=np.float32)
+        else:
+            if "camera_type" not in state_dict:
+                raise KeyError("camera_model is missing from state_dict")
+            if "distortion_parameters" not in state_dict:
+                raise KeyError("distortion_coeffs is missing from state_dict")
+            camera_type = str(state_dict["camera_type"])
+            camera_model = _legacy_camera_type_to_camera_model(camera_type)
+            distortion_coeffs = _legacy_distortion_parameters_to_coeffs(
+                camera_type,
+                np.array(state_dict["distortion_parameters"], dtype=np.float32),
+            )
 
         return cls(
             img_width=img_width,
@@ -203,8 +225,8 @@ class SfmCameraMetadata:
             fy=fy,
             cx=cx,
             cy=cy,
-            camera_type=camera_type,
-            distortion_parameters=distortion_parameters,
+            camera_model=camera_model,
+            distortion_coeffs=distortion_coeffs,
         )
 
     @property
@@ -212,7 +234,8 @@ class SfmCameraMetadata:
         """
         Return the camera projection matrix.
 
-        The projection matrix is a 3x3 matrix that maps 3D points in camera coordinates to 2D points in pixel coordinates.
+        The projection matrix is a 3x3 matrix that maps 3D points in camera coordinates to 2D
+        points in pixel coordinates for the single pixel space represented by this metadata object.
 
         Returns:
             projection_matrix (np.ndarray): The camera projection matrix as a 3x3 numpy array.
@@ -300,40 +323,14 @@ class SfmCameraMetadata:
         return self._height
 
     @property
-    def original_width(self) -> int:
+    def camera_model(self) -> CameraModel:
         """
-        Return the original (distorted) width of the camera image in pixel units.
-
-        This is the width of the image as captured by the camera, before any undistortion
-        is applied. This is useful when working with the raw images on disk.
+        Return the canonical camera model used to capture the image.
 
         Returns:
-            original_width (int): The original width of the camera image in pixels.
+            camera_model (CameraModel): The canonical FVDB camera model.
         """
-        return self._original_width
-
-    @property
-    def original_height(self) -> int:
-        """
-        Return the original (distorted) height of the camera image in pixel units.
-
-        This is the height of the image as captured by the camera, before any undistortion
-        is applied. This is useful when working with the raw images on disk.
-
-        Returns:
-            original_height (int): The original height of the camera image in pixels.
-        """
-        return self._original_height
-
-    @property
-    def camera_type(self) -> SfmCameraType:
-        """
-        Return the type of camera used to capture the image.
-
-        Returns:
-            camera_type (SfmCameraType): The camera type (e.g., "PINHOLE", "SIMPLE_PINHOLE", etc.). See :class:`SfmCameraType` for details.
-        """
-        return self._camera_type
+        return self._camera_model
 
     @property
     def aspect(self) -> float:
@@ -348,23 +345,34 @@ class SfmCameraMetadata:
         return self.width / self.height
 
     @property
-    def distortion_parameters(self) -> np.ndarray:
+    def distortion_coeffs(self) -> np.ndarray:
         """
-        Return the distortion parameters of the camera.
+        Return the packed distortion coefficients of the camera.
 
-        The distortion parameters are used to correct lens distortion in the captured images.
+        The coefficients follow the FVDB packed layout
+        ``[k1, k2, k3, k4, k5, k6, p1, p2, s1, s2, s3, s4]``.
 
         Returns:
-            distortion_parameters (np.ndarray): An array of distortion coefficients.
+            np.ndarray: An array of distortion coefficients.
         """
-        return self._distortion_parameters
+        return self._distortion_coeffs
+
+    @property
+    def can_undistort(self) -> bool:
+        """
+        Return whether this camera can be undistorted by the current OpenCV-based transform.
+
+        Returns:
+            bool: True if this camera either has no distortion or supports the local OpenCV
+                undistortion path.
+        """
+        return self._distortion_coeffs.size == 0 or self._camera_model == CameraModel.OPENCV_RADTAN_5
 
     def resize(self, new_width: int, new_height: int) -> "SfmCameraMetadata":
         """
         Return a new :class:`SfmCameraMetadata` object with the camera parameters resized to the new image dimensions.
 
-        The resize is applied to the original (distorted) camera parameters, so that undistortion
-        will be correctly recomputed for the new resolution.
+        The resize is applied to the pixel space represented by this metadata object.
 
         Args:
             new_width (int): The new width of the camera image (must be a positive integer)
@@ -376,54 +384,23 @@ class SfmCameraMetadata:
         if new_width <= 0 or new_height <= 0:
             raise ValueError("New size must be positive integers.")
 
-        # Scale based on original (distorted) image dimensions
-        rescale_w = self._original_width / new_width
-        rescale_h = self._original_height / new_height
-        new_fx = self._original_fx / rescale_w
-        new_fy = self._original_fy / rescale_h
-        new_cx = self._original_cx / rescale_w
-        new_cy = self._original_cy / rescale_h
+        rescale_w = self.width / new_width
+        rescale_h = self.height / new_height
+        new_fx = self.fx / rescale_w
+        new_fy = self.fy / rescale_h
+        new_cx = self.cx / rescale_w
+        new_cy = self.cy / rescale_h
 
         return SfmCameraMetadata(
-            new_width, new_height, new_fx, new_fy, new_cx, new_cy, self.camera_type, self.distortion_parameters
+            new_width,
+            new_height,
+            new_fx,
+            new_fy,
+            new_cx,
+            new_cy,
+            self.camera_model,
+            self.distortion_coeffs,
         )
-
-    @property
-    def undistort_roi(self) -> tuple[int, int, int, int] | None:
-        """
-        Return the region of interest (ROI) for undistorted images.
-        The ROI is defined as a tuple of ``(x, y, width, height)`` that specifies the valid pixel range in an undistorted image.
-        If the camera does not have distortion parameters, this will be None.
-
-        Returns:
-            undistort_roi (tuple[int, int, int, int] | None): The ROI for undistorted images or None if no distortion parameters are present.
-        """
-        if self._undistort_roi is not None:
-            assert len(self._undistort_roi) == 4, "Undistort ROI must be a tuple of (x, y, width, height)"
-        return self._undistort_roi
-
-    @property
-    def undistort_map_x(self) -> np.ndarray | None:
-        """
-        Return the undistortion map for the x-coordinates of the image.
-        The undistortion map is used to remap the pixel coordinates in a distorted image to correct for lens distortion.
-        If the camera does not have distortion parameters, this will be None.
-
-        Returns:
-            undistort_map_x (np.ndarray | None): The undistortion map for the x-coordinates or None if no distortion parameters are present.
-        """
-        return self._undistort_map_x
-
-    @property
-    def undistort_map_y(self) -> np.ndarray | None:
-        """
-        Return the undistortion map for the y-coordinates of the image.
-        The undistortion map is used to remap the pixel coordinates in a distorted image to correct for lens distortion.
-        If the camera does not have distortion parameters, this will be None.
-        Returns:
-            undistort_map_y (np.ndarray | None): The undistortion map for the y-coordinates or None if no distortion parameters are present.
-        """
-        return self._undistort_map_y
 
     @staticmethod
     def _focal2fov(focal: float, pixels: float) -> float:
@@ -438,25 +415,6 @@ class SfmCameraMetadata:
             float: The field of view in radians.
         """
         return 2 * np.arctan(pixels / (2 * focal))
-
-    def undistort_image(self, image: np.ndarray) -> np.ndarray:
-        """
-        Undistort an image using the camera's distortion parameters.
-
-        Args:
-            image (np.ndarray): The distorted image to undistort.
-
-        Returns:
-            undistorted_image (np.ndarray): The undistorted image.
-        """
-
-        if self.undistort_map_x is not None and self.undistort_map_y is not None:
-            image_remap = cv2.remap(image, self.undistort_map_x, self.undistort_map_y, interpolation=cv2.INTER_LINEAR)
-            assert self.undistort_roi is not None
-            x, y, w, h = self.undistort_roi
-            return image_remap[y : y + h, x : x + w]
-        else:
-            return image
 
 
 class SfmPosedImageMetadata:
