@@ -273,6 +273,7 @@ jobs:
       cuda-tag: ${{ steps.discover.outputs.cuda_tag }}
       cuda-image-tag: ${{ steps.discover.outputs.cuda_image_tag }}
       pytorch-index: ${{ steps.discover.outputs.pytorch_index }}
+      core-wheel-url: ${{ steps.discover.outputs.core_wheel_url }}
     steps:
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
@@ -325,11 +326,21 @@ jobs:
 
           PYTORCH_INDEX="https://download.pytorch.org/whl/${CUDA_TAG}"
 
+          # Extract base version (e.g. 0.4.0) from the wheel filename
+          CORE_VERSION=$(echo "$WHEEL" | grep -oP 'fvdb_core-\K[0-9]+\.[0-9]+\.[0-9]+')
+
+          # Build direct download URL for cp312 wheel (+ must be %2B in S3 URLs)
+          S3_BASE="https://fvdb-packages.s3.us-east-2.amazonaws.com/simple-staging/fvdb-core"
+          LOCAL_TAG_CLEAN=$(echo "$LOCAL_TAG" | sed 's/^+//')
+          CORE_WHEEL_URL="${S3_BASE}/fvdb_core-${CORE_VERSION}%2B${LOCAL_TAG_CLEAN}-cp312-cp312-manylinux_2_28_x86_64.whl"
+
           echo "Discovered: torch=$TORCH_VERSION cuda=$CUDA_TAG image=$CUDA_IMAGE_TAG"
+          echo "Core wheel URL: $CORE_WHEEL_URL"
           echo "torch_version=$TORCH_VERSION" >> $GITHUB_OUTPUT
           echo "cuda_tag=$CUDA_TAG" >> $GITHUB_OUTPUT
           echo "cuda_image_tag=$CUDA_IMAGE_TAG" >> $GITHUB_OUTPUT
           echo "pytorch_index=$PYTORCH_INDEX" >> $GITHUB_OUTPUT
+          echo "core_wheel_url=$CORE_WHEEL_URL" >> $GITHUB_OUTPUT
 
   start-validation-runner:
     name: Start GPU EC2 runner for validation
@@ -362,7 +373,7 @@ jobs:
     if: ${{ !cancelled() && needs.start-validation-runner.result == 'success' }}
     runs-on: ${{ needs.start-validation-runner.outputs.label }}
     container:
-      image: nvidia/cuda:${{ needs.discover-fvdb-core.outputs.cuda-image-tag }}-cudnn-runtime-ubuntu22.04
+      image: nvidia/cuda:${{ needs.discover-fvdb-core.outputs.cuda-image-tag }}-base-rockylinux8
       env:
         PYTHONPATH: ""
       options: --rm
@@ -371,7 +382,7 @@ jobs:
         shell: bash -el {0}
     steps:
       - name: Install prerequisites
-        run: apt update && apt install -y git wget
+        run: dnf install -y git wget
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -392,8 +403,7 @@ jobs:
             torch==${{ needs.discover-fvdb-core.outputs.torch-version }} \
             --extra-index-url ${{ needs.discover-fvdb-core.outputs.pytorch-index }}
           python3 -m pip install --no-cache-dir \
-            fvdb-core \
-            --extra-index-url https://fvdb-packages.s3.us-east-2.amazonaws.com/simple-staging/
+            "${{ needs.discover-fvdb-core.outputs.core-wheel-url }}"
           python3 -m pip install dist/fvdb_reality_capture-*.whl
 
       - name: Smoke test
@@ -421,7 +431,7 @@ jobs:
     if: ${{ !cancelled() && needs.validate-smoke-test.result == 'success' && (needs.pr-flags.outputs.release_push == 'true' || inputs.run_validation == true) }}
     runs-on: ${{ needs.start-validation-runner.outputs.label }}
     container:
-      image: nvidia/cuda:${{ needs.discover-fvdb-core.outputs.cuda-image-tag }}-cudnn-runtime-ubuntu22.04
+      image: nvidia/cuda:${{ needs.discover-fvdb-core.outputs.cuda-image-tag }}-base-rockylinux8
       env:
         PYTHONPATH: ""
       options: --rm
@@ -434,7 +444,7 @@ jobs:
           fetch-depth: 0
 
       - name: Install prerequisites
-        run: apt update && apt install -y git wget
+        run: dnf install -y git wget
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -455,13 +465,19 @@ jobs:
             torch==${{ needs.discover-fvdb-core.outputs.torch-version }} torchvision \
             --extra-index-url ${{ needs.discover-fvdb-core.outputs.pytorch-index }}
           python3 -m pip install --no-cache-dir \
-            fvdb-core \
-            --extra-index-url https://fvdb-packages.s3.us-east-2.amazonaws.com/simple-staging/
+            "${{ needs.discover-fvdb-core.outputs.core-wheel-url }}"
 
       - name: Install fvdb-reality-capture with test dependencies
         run: |
-          python3 -m pip install "dist/fvdb_reality_capture-*.whl[benchmark]"
+          WHEEL=$(ls dist/fvdb_reality_capture-*.whl)
+          python3 -m pip install "${WHEEL}[benchmark]"
           python3 -m pip install pytest matplotlib
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::420032683002:role/openvdb-fvdb-github-actions-role
+          aws-region: us-east-2
 
       - name: Run unit and benchmark contract tests
         run: |
