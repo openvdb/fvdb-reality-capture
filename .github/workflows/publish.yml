@@ -67,9 +67,15 @@ jobs:
         with:
           fetch-depth: 0
 
-      - uses: actions/setup-python@v5
+      - name: Install uv
+        uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86
         with:
-          python-version: '3.12'
+          version: "0.7.5"
+
+      - name: Set up Python
+        run: |
+          uv python install 3.12
+          uv venv
 
       - name: Add post-release version for TestPyPI
         if: ${{ needs.pr-flags.outputs.s3 == 'false' }}
@@ -384,12 +390,15 @@ jobs:
       - name: Install prerequisites
         run: dnf install -y git wget
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - name: Install uv
+        uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86
         with:
-          python-version: '3.12'
-        env:
-          AGENT_TOOLSDIRECTORY: "/opt/hostedtoolcache"
+          version: "0.7.5"
+
+      - name: Set up Python
+        run: |
+          uv python install 3.12
+          uv venv
 
       - name: Download dist artifacts
         uses: actions/download-artifact@v4
@@ -446,12 +455,15 @@ jobs:
       - name: Install prerequisites
         run: dnf install -y git wget
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - name: Install uv
+        uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86
         with:
-          python-version: '3.12'
-        env:
-          AGENT_TOOLSDIRECTORY: "/opt/hostedtoolcache"
+          version: "0.7.5"
+
+      - name: Set up Python
+        run: |
+          uv python install 3.12
+          uv venv
 
       - name: Download dist artifacts
         uses: actions/download-artifact@v4
