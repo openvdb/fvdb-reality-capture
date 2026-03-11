@@ -370,8 +370,15 @@ jobs:
       run:
         shell: bash -el {0}
     steps:
-      - name: Install Python and pip
-        run: apt update && apt install -y python3.12 python3-pip
+      - name: Install prerequisites
+        run: apt update && apt install -y git wget
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+        env:
+          AGENT_TOOLSDIRECTORY: "/opt/hostedtoolcache"
 
       - name: Download dist artifacts
         uses: actions/download-artifact@v4
@@ -426,8 +433,15 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Install Python and pip
-        run: apt update && apt install -y python3.12 python3-pip git
+      - name: Install prerequisites
+        run: apt update && apt install -y git wget
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+        env:
+          AGENT_TOOLSDIRECTORY: "/opt/hostedtoolcache"
 
       - name: Download dist artifacts
         uses: actions/download-artifact@v4
