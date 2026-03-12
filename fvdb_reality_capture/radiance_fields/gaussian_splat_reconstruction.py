@@ -1001,10 +1001,9 @@ class GaussianSplatReconstruction:
         # Module to adjust camera poses during training
         pose_adjust_model = CameraPoseAdjustment(num_images, init_std=optimization_config.pose_opt_init_std).to(device)
 
-        # Increase learning rate for pose optimization and add gradient clipping
         pose_adjust_optimizer = torch.optim.Adam(
             pose_adjust_model.parameters(),
-            lr=optimization_config.pose_opt_lr * 100.0,
+            lr=optimization_config.pose_opt_lr,
             weight_decay=optimization_config.pose_opt_reg,
         )
 
