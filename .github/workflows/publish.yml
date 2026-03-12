@@ -93,8 +93,8 @@ jobs:
 
       - name: Build sdist and wheel
         run: |
-          pip install build
-          python -m build
+          uv pip install build
+          uv run python -m build
 
       - name: Upload dist artifacts
         uses: actions/upload-artifact@v4
@@ -388,7 +388,7 @@ jobs:
         shell: bash -el {0}
     steps:
       - name: Install prerequisites
-        run: dnf install -y git wget
+        run: dnf install -y git wget procps-ng findutils
 
       - name: Install uv
         uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86
@@ -408,16 +408,16 @@ jobs:
 
       - name: Install fvdb-core from S3 staging and fvdb-reality-capture wheel
         run: |
-          python3 -m pip install --no-cache-dir \
+          uv pip install --no-cache \
             torch==${{ needs.discover-fvdb-core.outputs.torch-version }} \
             --extra-index-url ${{ needs.discover-fvdb-core.outputs.pytorch-index }}
-          python3 -m pip install --no-cache-dir \
+          uv pip install --no-cache \
             "${{ needs.discover-fvdb-core.outputs.core-wheel-url }}"
-          python3 -m pip install dist/fvdb_reality_capture-*.whl
+          uv pip install dist/fvdb_reality_capture-*.whl
 
       - name: Smoke test
         run: |
-          python3 -c "
+          uv run python3 -c "
           import fvdb
           import torch
           print(f'fvdb-core version: {fvdb.__version__}')
@@ -449,7 +449,7 @@ jobs:
         shell: bash -el {0}
     steps:
       - name: Install prerequisites
-        run: dnf install -y git wget
+        run: dnf install -y git wget procps-ng findutils
 
       - uses: actions/checkout@v4
         with:
@@ -473,17 +473,17 @@ jobs:
 
       - name: Install fvdb-core from S3 staging
         run: |
-          python3 -m pip install --no-cache-dir \
+          uv pip install --no-cache \
             torch==${{ needs.discover-fvdb-core.outputs.torch-version }} torchvision \
             --extra-index-url ${{ needs.discover-fvdb-core.outputs.pytorch-index }}
-          python3 -m pip install --no-cache-dir \
+          uv pip install --no-cache \
             "${{ needs.discover-fvdb-core.outputs.core-wheel-url }}"
 
       - name: Install fvdb-reality-capture with test dependencies
         run: |
           WHEEL=$(ls dist/fvdb_reality_capture-*.whl)
-          python3 -m pip install "${WHEEL}[benchmark]"
-          python3 -m pip install pytest matplotlib
+          uv pip install "${WHEEL}[benchmark]"
+          uv pip install pytest matplotlib
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
@@ -494,7 +494,7 @@ jobs:
       - name: Run unit and benchmark contract tests
         run: |
           cd tests
-          pytest -v unit benchmarks/test_benchmark_contract.py benchmarks/test_comparison_benchmark.py
+          uv run pytest -v unit benchmarks/test_benchmark_contract.py benchmarks/test_comparison_benchmark.py
 
   stop-validation-runner:
     name: Stop GPU EC2 runner for validation
