@@ -12,7 +12,7 @@ on:
   workflow_dispatch:
     inputs:
       publish_target:
-        description: "Publish target: testpypi | s3 | none"
+        description: "Publish target: testpypi | s3 | release | none"
         required: false
         default: "testpypi"
       run_validation:
@@ -38,6 +38,8 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       s3: ${{ steps.flags.outputs.s3 }}
+      pypi: ${{ steps.flags.outputs.pypi }}
+      is_release: ${{ steps.flags.outputs.is_release }}
       release_push: ${{ steps.flags.outputs.release_push }}
     steps:
       - name: Compute publish routing flags
@@ -45,14 +47,32 @@ jobs:
         uses: actions/github-script@v7
         with:
           script: |
-            const isPush = context.eventName === 'push';
-            let s3 = '${{ inputs.publish_target }}' == 's3';
+            const eventName = context.eventName;
+            const isPush = eventName === 'push';
+            const isReleaseEvent = eventName === 'release';
+            const target = '${{ inputs.publish_target }}';
+
+            let s3 = false;
+            let pypi = false;
+            let isRelease = false;
             let releasePush = false;
-            if (isPush) {
+
+            if (isReleaseEvent || target === 'release') {
+              s3 = true;
+              pypi = true;
+              isRelease = true;
+            } else if (isPush) {
               s3 = true;
               releasePush = true;
+            } else if (target === 'testpypi') {
+              pypi = true;
+            } else if (target === 's3') {
+              s3 = true;
             }
+
             core.setOutput('s3', s3 ? 'true' : 'false');
+            core.setOutput('pypi', pypi ? 'true' : 'false');
+            core.setOutput('is_release', isRelease ? 'true' : 'false');
             core.setOutput('release_push', releasePush ? 'true' : 'false');
 
   ##############################################################################
@@ -78,7 +98,7 @@ jobs:
           uv venv
 
       - name: Add post-release version for TestPyPI
-        if: ${{ needs.pr-flags.outputs.s3 == 'false' }}
+        if: ${{ needs.pr-flags.outputs.is_release == 'false' && needs.pr-flags.outputs.pypi == 'true' }}
         run: |
           VERSION_LINE=$(grep '^version *= *"' pyproject.toml)
           VERSION=$(echo "$VERSION_LINE" | sed -E 's/^version *= *"([^"]+)".*/\1/')
@@ -109,12 +129,12 @@ jobs:
     needs:
       - pr-flags
       - fvdb-rc-build
-    if: ${{ !cancelled() && needs.fvdb-rc-build.result == 'success' && needs.pr-flags.outputs.s3 != 'true' }}
+    if: ${{ !cancelled() && needs.fvdb-rc-build.result == 'success' && needs.pr-flags.outputs.pypi == 'true' }}
     runs-on: ubuntu-latest
 
     environment:
-      name: ${{ (github.event_name == 'release' && 'pypi') || 'testpypi' }}
-      url: ${{ (github.event_name == 'release' && 'https://pypi.org/p/fvdb-reality-capture') || 'https://test.pypi.org/p/fvdb-reality-capture' }}
+      name: ${{ (needs.pr-flags.outputs.is_release == 'true' && 'pypi') || 'testpypi' }}
+      url: ${{ (needs.pr-flags.outputs.is_release == 'true' && 'https://pypi.org/p/fvdb-reality-capture') || 'https://test.pypi.org/p/fvdb-reality-capture' }}
 
     permissions:
       id-token: write
@@ -129,11 +149,11 @@ jobs:
       - name: Publish distribution
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
-          repository-url: ${{ (github.event_name == 'release' && 'https://upload.pypi.org/legacy/') || 'https://test.pypi.org/legacy/' }}
+          repository-url: ${{ (needs.pr-flags.outputs.is_release == 'true' && 'https://upload.pypi.org/legacy/') || 'https://test.pypi.org/legacy/' }}
           verbose: true
 
   ##############################################################################
-  # PUBLISH TO S3 STAGING
+  # PUBLISH TO S3 SIMPLE INDEX
   ##############################################################################
   publish-to-s3:
     name: Publish to S3 Simple Index
@@ -142,7 +162,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       S3_BUCKET: fvdb-packages
-      SIMPLE_PREFIX: ${{ github.event_name == 'release' && 'simple' || 'simple-staging' }}
+      SIMPLE_PREFIX: ${{ needs.pr-flags.outputs.is_release == 'true' && 'simple' || 'simple-staging' }}
     steps:
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
@@ -195,14 +215,14 @@ jobs:
           done <<< "$LISTING"
           echo "Pruned $DELETED old staging wheel(s)"
 
-      - name: Upload wheels and sdist to S3
+      - name: Upload wheels to S3
         run: |
           set -euo pipefail
           DEST="s3://${S3_BUCKET}/${SIMPLE_PREFIX}/${{ steps.proj.outputs.normalized }}/"
-          echo "Uploading packages to $DEST"
+          echo "Uploading wheels to $DEST"
           shopt -s nullglob
           upload_failed=0
-          for pkg in dist/*.whl dist/*.tar.gz; do
+          for pkg in dist/*.whl; do
             echo "Uploading $pkg"
             if aws s3 cp "$pkg" "$DEST"; then
               echo "Successfully uploaded $pkg"
@@ -215,7 +235,7 @@ jobs:
             echo "ERROR: One or more uploads failed"
             exit 1
           fi
-          echo "All packages uploaded successfully"
+          echo "All wheels uploaded successfully"
           sleep 2
 
       - name: Generate project index.html
@@ -225,7 +245,7 @@ jobs:
           mkdir -p "$OUTDIR"
           INDEX_FILE="$OUTDIR/index.html"
           TITLE="Links for ${{ steps.proj.outputs.project_name }}"
-          wheels=$(aws s3 ls "s3://${S3_BUCKET}/${SIMPLE_PREFIX}/${{ steps.proj.outputs.normalized }}/" | { grep -E '\.(whl|tar\.gz)$' || true; } | awk '{print $4}')
+          wheels=$(aws s3 ls "s3://${S3_BUCKET}/${SIMPLE_PREFIX}/${{ steps.proj.outputs.normalized }}/" | { grep -E '\.whl$' || true; } | awk '{print $4}')
 
           {
             echo "<!DOCTYPE html>";
