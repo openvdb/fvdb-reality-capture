@@ -263,6 +263,7 @@ jobs:
       env:
         PYTHONPATH: ""
         CPM_SOURCE_CACHE: "/__w/cpm_cache"
+        CONDA_OVERRIDE_CUDA: "13.0"
       options: --rm
     defaults:
       run:
@@ -462,6 +463,7 @@ jobs:
       env:
         PYTHONPATH: ""
         CPM_SOURCE_CACHE: "/__w/cpm_cache"
+        CONDA_OVERRIDE_CUDA: "13.0"
       options: --rm --shm-size 16gb
     defaults:
       run:

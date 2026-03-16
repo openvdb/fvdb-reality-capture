@@ -4,7 +4,7 @@ FROM condaforge/miniforge3:24.11.3-2
 # Set environment variables
 ENV DEBIAN_FRONTEND=noninteractive
 ENV CONDA_AUTO_UPDATE_CONDA=false
-ENV CONDA_OVERRIDE_CUDA=12.9
+ENV CONDA_OVERRIDE_CUDA=13.0
 ENV PATH="/opt/conda/bin:$PATH"
 
 # Install system dependencies for building
