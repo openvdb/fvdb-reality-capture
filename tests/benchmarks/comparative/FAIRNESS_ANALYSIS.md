@@ -27,7 +27,7 @@ The goal is to ensure both frameworks are compared under equivalent conditions t
 |-----------|------|--------|--------|
 | **Batch size** | `batch_size: 1` | `batch_size: 1` | ✅ **MATCH** |
 | **SH degree** | `sh_degree: 3` | `sh_degree: 3` | ✅ **MATCH** |
-| **Initial opacity** | `initial_opacity: 0.1` | `init_opa: 0.1` | ✅ **MATCH** |
+| **Initial opacity** | `initial_opacity: 0.5` | `init_opa: 0.5` | ✅ **MATCH** |
 | **SSIM lambda** | `ssim_lambda: 0.2` | `ssim_lambda: 0.2` | ✅ **MATCH** |
 | **LPIPS network** | `lpips_net: "alex"` | `lpips_net: "alex"` | ✅ **MATCH** |
 | **Random background** | `random_bkgd: false` | `random_bkgd: false` | ✅ **MATCH** |

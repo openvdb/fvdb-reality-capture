@@ -248,7 +248,7 @@ class SfmDataset(torch.utils.data.Dataset, Iterable):
          - camera_to_world: The camera to world transformation matrix.
          - world_to_camera: The world to camera transformation matrix.
          - image: The image tensor.
-         - image_id: The index of the image in the dataset.
+         - image_id: The global index of the image in the ``SfmScene``.
          - image_path: The file path of the image.
          - points (Optional): The projected points in the image (if return_visible_points is True).
          - sparse_depth (Optional): The depths of the projected points (if return_visible_points is True).
@@ -303,7 +303,7 @@ class SfmDataset(torch.utils.data.Dataset, Iterable):
                 else np.zeros((12,), np.float32)
             ).float(),
             "image": image,
-            "image_id": item,  # the index of the image in the dataset
+            "image_id": index,  # the global index of the image in the SfmScene
             "image_path": image_meta.image_path,
         }
 

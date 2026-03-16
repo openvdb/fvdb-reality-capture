@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 import pathlib
+import tempfile
 import unittest
 from typing import Any
 
@@ -11,6 +12,7 @@ import torch
 
 import fvdb_reality_capture as frc
 from fvdb_reality_capture import radiance_fields
+from fvdb_reality_capture.radiance_fields.gaussian_splat_dataset import SfmDataset
 
 
 class MockWriter(radiance_fields.GaussianSplatReconstructionBaseWriter):
@@ -101,6 +103,90 @@ class GaussianSplatReconstructionTests(unittest.TestCase):
         runner.optimize()
         n_after = runner.model.num_gaussians
         self.assertEqual(n_after, n_before)
+
+    def test_dataset_image_id_uses_global_scene_index(self):
+        dataset = SfmDataset(self.sfm_scene, dataset_indices=np.array([1, 3, 5], dtype=np.int64))
+        self.assertEqual(dataset[0]["image_id"], 1)
+        self.assertEqual(dataset[1]["image_id"], 3)
+        self.assertEqual(dataset[2]["image_id"], 5)
+
+    def test_pose_optimization_warns_with_holdout_and_uses_scene_global_pose_table(self):
+        if not torch.cuda.is_available():
+            self.skipTest("Camera pose optimization test requires CUDA")
+
+        short_config = frc.radiance_fields.GaussianSplatReconstructionConfig(
+            max_epochs=1,
+            refine_start_epoch=10_000,
+            refine_stop_epoch=10_000,
+            eval_at_percent=[],
+            save_at_percent=[],
+            optimize_camera_poses=True,
+        )
+
+        with self.assertLogs(
+            "fvdb_reality_capture.radiance_fields.gaussian_splat_reconstruction.GaussianSplatReconstruction",
+            level="WARNING",
+        ) as logs:
+            runner = frc.radiance_fields.GaussianSplatReconstruction.from_sfm_scene(
+                self.sfm_scene,
+                config=short_config,
+                use_every_n_as_val=2,
+            )
+
+        pose_adjust_model = runner.pose_adjust_model
+        self.assertIsNotNone(pose_adjust_model)
+        assert pose_adjust_model is not None
+        self.assertEqual(pose_adjust_model.num_poses, self.sfm_scene.num_images)
+        self.assertTrue(any("holdout set" in message.lower() for message in logs.output))
+
+    def test_from_state_dict_restores_cpu_loaded_legacy_pose_checkpoint_on_cuda(self):
+        if not torch.cuda.is_available():
+            self.skipTest("Legacy pose checkpoint restore test requires CUDA")
+
+        short_config = frc.radiance_fields.GaussianSplatReconstructionConfig(
+            max_epochs=1,
+            refine_start_epoch=10_000,
+            refine_stop_epoch=10_000,
+            eval_at_percent=[],
+            save_at_percent=[],
+            optimize_camera_poses=True,
+        )
+
+        runner = frc.radiance_fields.GaussianSplatReconstruction.from_sfm_scene(
+            self.sfm_scene,
+            config=short_config,
+            use_every_n_as_val=2,
+        )
+        pose_adjust_model = runner.pose_adjust_model
+        self.assertIsNotNone(pose_adjust_model)
+        assert pose_adjust_model is not None
+
+        checkpoint = runner.state_dict()
+        train_indices = torch.as_tensor(runner.training_dataset.indices, dtype=torch.long, device=runner.device)
+        legacy_pose_weights = checkpoint["pose_adjust_model"]["pose_embeddings.weight"].index_select(0, train_indices).clone()
+        checkpoint["num_training_poses"] = len(runner.training_dataset)
+        checkpoint["pose_adjust_model"]["pose_embeddings.weight"] = legacy_pose_weights
+
+        with tempfile.NamedTemporaryFile(mode="wb", suffix=".pt", delete=True) as temp_file:
+            torch.save(checkpoint, temp_file.name)
+            cpu_loaded_checkpoint = torch.load(temp_file.name, map_location="cpu", weights_only=False)
+
+        with self.assertLogs(
+            "fvdb_reality_capture.radiance_fields.gaussian_splat_reconstruction.GaussianSplatReconstruction",
+            level="WARNING",
+        ) as logs:
+            restored = frc.radiance_fields.GaussianSplatReconstruction.from_state_dict(
+                cpu_loaded_checkpoint, device="cuda"
+            )
+
+        self.assertEqual(restored.device.type, "cuda")
+        self.assertEqual(restored.model.device.type, "cuda")
+        restored_pose_adjust_model = restored.pose_adjust_model
+        self.assertIsNotNone(restored_pose_adjust_model)
+        assert restored_pose_adjust_model is not None
+        self.assertEqual(restored_pose_adjust_model.num_poses, self.sfm_scene.num_images)
+        self.assertEqual(restored_pose_adjust_model.pose_embeddings.weight.device.type, "cuda")
+        self.assertTrue(any("legacy checkpoint" in message.lower() for message in logs.output))
 
     def test_run_training_with_mcmc_optimizer_with_refine_small_epoch(self):
         """

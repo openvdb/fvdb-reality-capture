@@ -14,6 +14,11 @@ from tests.unit.common import GettysburgGaussianSplatTestCase
 
 class GaussianSplatOptimizerMCMCTests(GettysburgGaussianSplatTestCase, unittest.TestCase):
 
+    def test_defaults_match_mcmc_paper_initialization(self):
+        config = frc.radiance_fields.GaussianSplatOptimizerMCMCConfig()
+        self.assertEqual(config.initial_opacity, 0.5)
+        self.assertEqual(config.initial_covariance_scale, 0.1)
+
     def test_serialize_optimizer_mcmc(self):
         if self.device != "cuda":
             self.skipTest("GaussianSplatOptimizerMCMC uses CUDA-only ops (add_noise_to_means / relocate_gaussians)")

@@ -12,6 +12,7 @@ import numpy as np
 import torch
 import torch.nn.functional as nnf
 import torch.utils.data
+from torch.utils import _pytree
 import tqdm
 from fvdb import GaussianSplat3d
 from fvdb.utils.metrics import psnr, ssim
@@ -357,6 +358,29 @@ class GaussianSplatReconstruction:
 
     __PRIVATE__ = object()
 
+    @staticmethod
+    def _move_state_tensors_to_device(obj: Any, device: torch.device) -> Any:
+        """
+        Move all tensors in a checkpoint payload to the requested device.
+
+        Checkpoints can be loaded on CPU and later restored onto CUDA via ``from_state_dict``.
+        We detach before moving so floating-point tensors become leaf tensors again on the
+        destination device; otherwise optimizer reconstruction can fail when PyTorch rejects
+        non-leaf tensors in parameter groups.
+        """
+
+        def _move_leaf_tensor(value: Any) -> Any:
+            if not isinstance(value, torch.Tensor):
+                return value
+
+            moved = value.detach().to(device)
+            if moved.is_floating_point() or moved.is_complex():
+                moved.requires_grad_(value.requires_grad)
+            return moved
+
+        # Apply the tensor move/releaf logic to every leaf in the nested checkpoint payload.
+        return _pytree.tree_map(_move_leaf_tensor, obj)
+
     @classmethod
     def from_sfm_scene(
         cls,
@@ -419,6 +443,12 @@ class GaussianSplatReconstruction:
         logger.info(
             f"Created training and validation datasets with {len(train_dataset)} training images and {len(val_dataset)} validation images."
         )
+        if config.optimize_camera_poses and len(val_dataset) > 0:
+            logger.warning(
+                "Camera pose optimization is enabled with a holdout set. Pose deltas are learned from training images "
+                "only, while validation images continue to use their original camera poses, so validation metrics may "
+                "not reflect the train-time objective."
+            )
 
         # Initialize model
         model = GaussianSplatReconstruction._init_model(config, optimizer_config, device, train_dataset)
@@ -436,7 +466,7 @@ class GaussianSplatReconstruction:
         pose_adjust_model, pose_adjust_optimizer, pose_adjust_scheduler = None, None, None
         if config.optimize_camera_poses:
             pose_adjust_model, pose_adjust_optimizer, pose_adjust_scheduler = cls._make_pose_optimizer(
-                config, device, len(train_dataset)
+                config, device, sfm_scene.num_images
             )
 
         return GaussianSplatReconstruction(
@@ -494,6 +524,7 @@ class GaussianSplatReconstruction:
             device (str | torch.device): Device to run the reconstruction on.
         """
         logger = logging.getLogger(f"{cls.__module__}.{cls.__name__}")
+        device = torch.device(device)
 
         # Ensure this is a valid state dict
         if state_dict.get("magic", "") != cls._magic:
@@ -551,7 +582,8 @@ class GaussianSplatReconstruction:
         else:
             train_indices = np.array(state_dict["train_indices"], dtype=int)
             val_indices = np.array(state_dict["val_indices"], dtype=int)
-        model = GaussianSplat3d.from_state_dict(state_dict["model"])
+        model_state = cls._move_state_tensors_to_device(state_dict["model"], device)
+        model = GaussianSplat3d.from_state_dict(model_state)
         optimizer_state = dict(state_dict["optimizer"])
         optimizer_config_state = dict(optimizer_state.get("config", {}))
         if "initial_opacity" not in optimizer_config_state and legacy_initial_opacity is not None:
@@ -559,8 +591,9 @@ class GaussianSplatReconstruction:
         if "initial_covariance_scale" not in optimizer_config_state and legacy_initial_covariance_scale is not None:
             optimizer_config_state["initial_covariance_scale"] = legacy_initial_covariance_scale
         optimizer_state["config"] = optimizer_config_state
+        optimizer_state = cls._move_state_tensors_to_device(optimizer_state, device)
         optimizer = BaseGaussianSplatOptimizer.from_state_dict(model, optimizer_state)
-        num_training_poses = state_dict["num_training_poses"]
+        num_pose_entries = state_dict["num_training_poses"]
         pose_adjust_model, pose_adjust_optimizer, pose_adjust_scheduler = None, None, None
 
         if state_dict["pose_adjust_model"] is not None:
@@ -570,12 +603,33 @@ class GaussianSplatReconstruction:
                 raise ValueError("Checkpoint pose adjustment optimizer state is invalid.")
             if not isinstance(state_dict.get("pose_adjust_scheduler", None), dict):
                 raise ValueError("Checkpoint pose adjustment scheduler state is invalid.")
+            pose_adjust_model_state = cls._move_state_tensors_to_device(state_dict["pose_adjust_model"], device)
+            pose_adjust_optimizer_state = cls._move_state_tensors_to_device(state_dict["pose_adjust_optimizer"], device)
+            pose_adjust_scheduler_state = cls._move_state_tensors_to_device(state_dict["pose_adjust_scheduler"], device)
             pose_adjust_model, pose_adjust_optimizer, pose_adjust_scheduler = cls._make_pose_optimizer(
-                config, device, num_training_poses
+                config, device, sfm_scene.num_images
             )
-            pose_adjust_model.load_state_dict(state_dict["pose_adjust_model"])
-            pose_adjust_optimizer.load_state_dict(state_dict["pose_adjust_optimizer"])
-            pose_adjust_scheduler.load_state_dict(state_dict["pose_adjust_scheduler"])
+            pose_embedding_weights = pose_adjust_model_state["pose_embeddings.weight"]
+            if pose_embedding_weights.shape[0] == sfm_scene.num_images:
+                pose_adjust_model.load_state_dict(pose_adjust_model_state)
+                pose_adjust_optimizer.load_state_dict(pose_adjust_optimizer_state)
+                pose_adjust_scheduler.load_state_dict(pose_adjust_scheduler_state)
+            elif pose_embedding_weights.shape[0] == len(train_indices) and num_pose_entries == len(train_indices):
+                logger.warning(
+                    "Loading legacy checkpoint with training-local pose IDs. Remapping pose deltas to scene-global IDs "
+                    "and reinitializing pose optimizer state."
+                )
+                with torch.no_grad():
+                    pose_adjust_model.pose_embeddings.weight.zero_()
+                    pose_adjust_model.pose_embeddings.weight[
+                        torch.as_tensor(train_indices, dtype=torch.long, device=device)
+                    ] = (
+                        pose_embedding_weights.to(device)
+                    )
+            else:
+                raise ValueError(
+                    "Checkpoint pose adjustment table size does not match either the full scene or the training split."
+                )
 
         return GaussianSplatReconstruction(
             model=model,
@@ -717,7 +771,7 @@ class GaussianSplatReconstruction:
         * ``"optimizer"``: The state dictionary of the optimizer.
         * ``"train_indices"``: The indices of the training images in the dataset.
         * ``"val_indices"``: The indices of the validation images in the dataset.
-        * ``"num_training_poses"``: The number of training poses if pose adjustment is used, otherwise None.
+        * ``"num_training_poses"``: Legacy checkpoint key storing the number of pose entries if pose adjustment is used, otherwise None.
         * ``"pose_adjust_model"``: The state dictionary of the camera pose adjustment model if used, otherwise None.
         * ``"pose_adjust_optimizer"``: The state dictionary of the pose adjustment optimizer if used, otherwise None.
         * ``"pose_adjust_scheduler"``: The state dictionary of the pose adjustment scheduler if used, otherwise None.
@@ -790,7 +844,8 @@ class GaussianSplatReconstruction:
         )[self._training_dataset.indices]
         if self.pose_adjust_model is not None:
             training_camera_to_world_matrices = self.pose_adjust_model(
-                training_camera_to_world_matrices, torch.arange(len(self.training_dataset), device=self.device)
+                training_camera_to_world_matrices,
+                torch.as_tensor(self._training_dataset.indices, dtype=torch.long, device=self.device),
             )
 
         # Save projection parameters as a per-camera tuple (fx, fy, cx, cy, h, w)
