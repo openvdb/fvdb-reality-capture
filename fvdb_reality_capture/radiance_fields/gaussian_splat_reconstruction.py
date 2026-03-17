@@ -623,9 +623,7 @@ class GaussianSplatReconstruction:
                     pose_adjust_model.pose_embeddings.weight.zero_()
                     pose_adjust_model.pose_embeddings.weight[
                         torch.as_tensor(train_indices, dtype=torch.long, device=device)
-                    ] = (
-                        pose_embedding_weights.to(device)
-                    )
+                    ] = pose_embedding_weights.to(device)
             else:
                 raise ValueError(
                     "Checkpoint pose adjustment table size does not match either the full scene or the training split."

@@ -163,7 +163,9 @@ class GaussianSplatReconstructionTests(unittest.TestCase):
 
         checkpoint = runner.state_dict()
         train_indices = torch.as_tensor(runner.training_dataset.indices, dtype=torch.long, device=runner.device)
-        legacy_pose_weights = checkpoint["pose_adjust_model"]["pose_embeddings.weight"].index_select(0, train_indices).clone()
+        legacy_pose_weights = (
+            checkpoint["pose_adjust_model"]["pose_embeddings.weight"].index_select(0, train_indices).clone()
+        )
         checkpoint["num_training_poses"] = len(runner.training_dataset)
         checkpoint["pose_adjust_model"]["pose_embeddings.weight"] = legacy_pose_weights
 
