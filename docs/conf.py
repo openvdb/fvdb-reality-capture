@@ -20,7 +20,7 @@ copyright = "Contributors to the OpenVDB Project"
 author = "Contributors to the OpenVDB Project"
 
 # Stable fvdb-core version shown in installation examples.
-# Updated automatically by devtools/update-doc-versions.sh during release.
+# Updated automatically by fvdb-core's devtools/update-doc-versions.sh during release.
 fvdb_core_stable_version = "0.4.0"
 
 rst_prolog = f"""\
