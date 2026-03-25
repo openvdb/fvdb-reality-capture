@@ -111,6 +111,23 @@ class GaussianSplatReconstructionTests(unittest.TestCase):
         self.assertEqual(dataset[1]["image_id"], 3)
         self.assertEqual(dataset[2]["image_id"], 5)
 
+    def test_dataset_exposes_camera_model_and_distortion_coeffs(self):
+        dataset = SfmDataset(self.sfm_scene, dataset_indices=np.array([0], dtype=np.int64))
+
+        datum = dataset[0]
+        image_meta = self.sfm_scene.images[0]
+
+        self.assertEqual(int(datum["camera_model"]), int(image_meta.camera_metadata.camera_model))
+        self.assertEqual(datum["camera_model"].dtype, torch.int32)
+        self.assertEqual(tuple(datum["distortion_coeffs"].shape), (12,))
+
+        expected_distortion_coeffs = (
+            image_meta.camera_metadata.distortion_coeffs
+            if image_meta.camera_metadata.distortion_coeffs.size != 0
+            else np.zeros((12,), dtype=np.float32)
+        )
+        np.testing.assert_allclose(datum["distortion_coeffs"].numpy(), expected_distortion_coeffs)
+
     def test_pose_optimization_warns_with_holdout_and_uses_scene_global_pose_table(self):
         if not torch.cuda.is_available():
             self.skipTest("Camera pose optimization test requires CUDA")
