@@ -107,12 +107,16 @@ class LoadColmapSceneTests(unittest.TestCase):
                 13: [(42, 1), (100, 2)],
             }
 
-            with patch("fvdb_reality_capture.sfm_scene._load_colmap_scene._load_colmap_internal", return_value=scene_manager):
+            with patch(
+                "fvdb_reality_capture.sfm_scene._load_colmap_scene._load_colmap_internal", return_value=scene_manager
+            ):
                 loaded_cameras, loaded_images, points, points_err, points_rgb, cache = load_colmap_scene(colmap_path)
 
             self.assertEqual(set(loaded_cameras.keys()), {1, 2})
             self.assertEqual([image.image_id for image in loaded_images], [0, 1, 2])
-            self.assertEqual([pathlib.Path(image.image_path).name for image in loaded_images], ["a.jpg", "b.jpg", "z.jpg"])
+            self.assertEqual(
+                [pathlib.Path(image.image_path).name for image in loaded_images], ["a.jpg", "b.jpg", "z.jpg"]
+            )
             self.assertEqual([image.camera_id for image in loaded_images], [2, 1, 1])
             self.assertIs(loaded_images[1].camera_metadata, loaded_images[2].camera_metadata)
 

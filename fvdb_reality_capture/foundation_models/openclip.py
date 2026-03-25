@@ -9,6 +9,7 @@ images and text into a shared embedding space.
 The original OpenCLIP project can be found here:
     https://github.com/mlfoundations/open_clip
 """
+
 import logging
 
 import torch

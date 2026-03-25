@@ -6,7 +6,6 @@ from typing import Any
 from fvdb import CameraModel
 import numpy as np
 
-
 _DISTORTION_COEFFS_SHAPE = (12,)
 """
 Shape of the canonical packed FVDB distortion coefficient vector.

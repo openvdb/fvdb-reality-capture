@@ -117,9 +117,7 @@ class UndistortImagesTransformTests(unittest.TestCase):
             grid_x, grid_y = np.meshgrid(
                 np.arange(width, dtype=np.uint8), np.arange(height, dtype=np.uint8), indexing="xy"
             )
-            image = np.stack([grid_x * 10 + i, grid_y * 15 + i, (grid_x + grid_y) * 7 + i], axis=-1).astype(
-                np.uint8
-            )
+            image = np.stack([grid_x * 10 + i, grid_y * 15 + i, (grid_x + grid_y) * 7 + i], axis=-1).astype(np.uint8)
             mask = np.zeros((height, width), dtype=np.uint8)
             mask[2:12, 3:15] = 255
             self.assertTrue(cv2.imwrite(str(image_path), image))

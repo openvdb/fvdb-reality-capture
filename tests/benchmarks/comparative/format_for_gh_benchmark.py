@@ -20,7 +20,6 @@ import math
 import pathlib
 import sys
 
-
 QUALITY_METRICS = {
     "PSNR": "dB",
     "SSIM": "",

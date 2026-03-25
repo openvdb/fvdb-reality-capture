@@ -8,6 +8,7 @@ Note: The SH interval epoch-to-step conversion (increase_sh_degree_every_epoch -
 sh_degree_interval) happens in run_gsplat_training() via extract_training_params,
 not in build_gsplat_cli_args(), so it is not tested here.
 """
+
 import ast
 import importlib.util
 import logging

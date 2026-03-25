@@ -889,8 +889,7 @@ class SfmCache:
         cursor = conn.cursor()
 
         try:
-            cursor.execute(
-                """
+            cursor.execute("""
                 CREATE TABLE IF NOT EXISTS metadata (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     name TEXT NOT NULL UNIQUE,
@@ -898,8 +897,7 @@ class SfmCache:
                     magic INT NOT NULL,
                     version TEXT NOT NULL
                 )
-                """
-            )
+                """)
             cache_id_or_none = cursor.execute(
                 """
                 SELECT id FROM metadata WHERE name = ?
@@ -922,8 +920,7 @@ class SfmCache:
             else:
                 cache_id = cache_id_or_none[0]
 
-            cursor.execute(
-                f"""
+            cursor.execute(f"""
                 CREATE TABLE IF NOT EXISTS folders_{cache_id} (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     cache_id INTEGER NOT NULL,
@@ -933,10 +930,8 @@ class SfmCache:
                     FOREIGN KEY (cache_id) REFERENCES metadata (id),
                     FOREIGN KEY (parent_id) REFERENCES folders_{cache_id} (id)
                 )
-                """
-            )
-            cursor.execute(
-                f"""
+                """)
+            cursor.execute(f"""
                 CREATE TABLE IF NOT EXISTS files_{cache_id} (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     name TEXT NOT NULL,
@@ -947,8 +942,7 @@ class SfmCache:
                     FOREIGN KEY (folder_id) REFERENCES folders_{cache_id} (id)
                     FOREIGN KEY (cache_id) REFERENCES metadata (id)
                 )
-                """
-            )
+                """)
 
             row = cursor.execute(
                 f"""
