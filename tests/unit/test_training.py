@@ -5,6 +5,7 @@ import pathlib
 import tempfile
 import unittest
 from typing import Any
+from unittest.mock import patch
 
 import fvdb
 import numpy as np
@@ -138,6 +139,44 @@ class GaussianSplatReconstructionTests(unittest.TestCase):
         assert pose_adjust_model is not None
         self.assertEqual(pose_adjust_model.num_poses, self.sfm_scene.num_images)
         self.assertTrue(any("holdout set" in message.lower() for message in logs.output))
+
+    def test_pose_optimization_scheduler_uses_training_step_horizon(self):
+        config = frc.radiance_fields.GaussianSplatReconstructionConfig(
+            max_epochs=2,
+            refine_start_epoch=10_000,
+            refine_stop_epoch=10_000,
+            eval_at_percent=[],
+            save_at_percent=[],
+            optimize_camera_poses=True,
+            pose_opt_lr_decay=0.25,
+        )
+
+        with patch(
+            "fvdb_reality_capture.radiance_fields.gaussian_splat_reconstruction.make_render_backend"
+        ) as make_render_backend:
+            make_render_backend.return_value.validate_scene_cameras.return_value = None
+            runner = frc.radiance_fields.GaussianSplatReconstruction.from_sfm_scene(
+                self.sfm_scene,
+                config=config,
+                use_every_n_as_val=2,
+                device="cpu",
+            )
+
+        pose_adjust_model = runner.pose_adjust_model
+        pose_adjust_scheduler = runner.pose_adjust_scheduler
+        self.assertIsNotNone(pose_adjust_model)
+        self.assertIsNotNone(pose_adjust_scheduler)
+        assert pose_adjust_model is not None
+        assert pose_adjust_scheduler is not None
+
+        self.assertEqual(pose_adjust_model.num_poses, self.sfm_scene.num_images)
+
+        num_steps_per_epoch = int(np.ceil(len(runner.training_dataset) / config.batch_size))
+        expected_total_pose_steps = max(
+            1, int((config.pose_opt_stop_epoch - config.pose_opt_start_epoch) * num_steps_per_epoch)
+        )
+        expected_gamma = config.pose_opt_lr_decay ** (1.0 / expected_total_pose_steps)
+        self.assertAlmostEqual(pose_adjust_scheduler.gamma, expected_gamma)
 
     def test_from_state_dict_restores_cpu_loaded_legacy_pose_checkpoint_on_cuda(self):
         if not torch.cuda.is_available():

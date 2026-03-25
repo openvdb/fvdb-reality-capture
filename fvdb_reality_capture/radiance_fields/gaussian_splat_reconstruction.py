@@ -462,11 +462,16 @@ class GaussianSplatReconstruction:
         optimizer = optimizer_config.make_optimizer(model=model, sfm_scene=train_dataset.sfm_scene)
         optimizer.reset_learning_rates_and_decay(batch_size=config.batch_size, expected_steps=max_steps)
 
+        if config.batch_size > 1:
+            num_steps_per_epoch = int(np.ceil(len(train_dataset) / config.batch_size))
+        else:
+            num_steps_per_epoch = len(train_dataset)
+
         # Initialize pose optimizer
         pose_adjust_model, pose_adjust_optimizer, pose_adjust_scheduler = None, None, None
         if config.optimize_camera_poses:
             pose_adjust_model, pose_adjust_optimizer, pose_adjust_scheduler = cls._make_pose_optimizer(
-                config, device, sfm_scene.num_images
+                config, device, sfm_scene.num_images, num_steps_per_epoch
             )
 
         return GaussianSplatReconstruction(
@@ -606,8 +611,12 @@ class GaussianSplatReconstruction:
             pose_adjust_model_state = cls._move_state_tensors_to_device(state_dict["pose_adjust_model"], device)
             pose_adjust_optimizer_state = cls._move_state_tensors_to_device(state_dict["pose_adjust_optimizer"], device)
             pose_adjust_scheduler_state = cls._move_state_tensors_to_device(state_dict["pose_adjust_scheduler"], device)
+            if config.batch_size > 1:
+                num_steps_per_epoch = int(np.ceil(len(train_indices) / config.batch_size))
+            else:
+                num_steps_per_epoch = len(train_indices)
             pose_adjust_model, pose_adjust_optimizer, pose_adjust_scheduler = cls._make_pose_optimizer(
-                config, device, sfm_scene.num_images
+                config, device, sfm_scene.num_images, num_steps_per_epoch
             )
             pose_embedding_weights = pose_adjust_model_state["pose_embeddings.weight"]
             if pose_embedding_weights.shape[0] == sfm_scene.num_images:
@@ -1030,7 +1039,11 @@ class GaussianSplatReconstruction:
 
     @classmethod
     def _make_pose_optimizer(
-        cls, optimization_config: GaussianSplatReconstructionConfig, device: torch.device | str, num_images: int
+        cls,
+        optimization_config: GaussianSplatReconstructionConfig,
+        device: torch.device | str,
+        num_images: int,
+        num_steps_per_epoch: int,
     ) -> tuple[CameraPoseAdjustment, torch.optim.Adam, torch.optim.lr_scheduler.ExponentialLR]:
         """
         Create a camera pose adjustment model, optimizer, and scheduler if camera pose optimization is enabled in the config.
@@ -1038,7 +1051,8 @@ class GaussianSplatReconstruction:
         Args:
             optimization_config (Config): Configuration object containing optimization parameters.
             device (torch.device | str): The device to run the model on (e.g., ``"cuda"`` or ``"cpu"``).
-            num_images (int): The number of images in the dataset.
+            num_images (int): The number of scene images to allocate pose entries for.
+            num_steps_per_epoch (int): The number of optimization steps in each training epoch.
 
         Returns:
             pose_adjust_model (CameraPoseAdjustment | None):
@@ -1064,8 +1078,8 @@ class GaussianSplatReconstruction:
         torch.nn.utils.clip_grad_norm_(pose_adjust_model.parameters(), max_norm=1.0)
 
         # Add learning rate scheduler for pose optimization
-        pose_opt_start_step = int(optimization_config.pose_opt_start_epoch * num_images)
-        pose_opt_stop_step = int(optimization_config.pose_opt_stop_epoch * num_images)
+        pose_opt_start_step = int(optimization_config.pose_opt_start_epoch * num_steps_per_epoch)
+        pose_opt_stop_step = int(optimization_config.pose_opt_stop_epoch * num_steps_per_epoch)
         num_pose_opt_steps = max(1, pose_opt_stop_step - pose_opt_start_step)
         pose_adjust_scheduler = torch.optim.lr_scheduler.ExponentialLR(
             pose_adjust_optimizer, gamma=optimization_config.pose_opt_lr_decay ** (1.0 / num_pose_opt_steps)
