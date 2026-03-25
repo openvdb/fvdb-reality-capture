@@ -33,7 +33,10 @@ def _normalize_packed_distortion_coeffs(
     Returns:
         np.ndarray: A float32 NumPy array containing either 12 packed coefficients or an empty array.
     """
-    coeff_array = np.asarray(coeffs, dtype=np.float32).reshape(-1)
+    coeff_array = np.asarray(coeffs, dtype=np.float32)
+    if coeff_array.ndim > 1:
+        raise ValueError(f"distortion_coeffs must have shape {_DISTORTION_COEFFS_SHAPE}, got {coeff_array.shape}")
+    coeff_array = coeff_array.reshape(-1)
     if coeff_array.size == 0:
         return np.empty((0,), dtype=np.float32)
     if coeff_array.size != _DISTORTION_COEFFS_SHAPE[0]:

@@ -55,6 +55,12 @@ class SfmMetadataHelperTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "distortion_coeffs must have shape"):
             _normalize_packed_distortion_coeffs([0.1, 0.2])
 
+    def test_normalize_packed_distortion_coeffs_rejects_non_1d_array(self):
+        coeffs = np.arange(12, dtype=np.float32).reshape(4, 3)
+
+        with self.assertRaisesRegex(ValueError, "distortion_coeffs must have shape"):
+            _normalize_packed_distortion_coeffs(coeffs)
+
     def test_legacy_camera_type_to_camera_model(self):
         self.assertEqual(_legacy_camera_type_to_camera_model("PINHOLE"), CameraModel.PINHOLE)
         self.assertEqual(_legacy_camera_type_to_camera_model("SIMPLE_PINHOLE"), CameraModel.PINHOLE)
