@@ -174,6 +174,13 @@ class SfmCameraMetadataTests(unittest.TestCase):
         self.assertEqual(loaded.camera_model, CameraModel.OPENCV_RADTAN_5)
         np.testing.assert_allclose(loaded.distortion_coeffs, _packed_radtan5_coeffs())
 
+    def test_from_state_dict_rejects_non_1d_distortion_coeffs(self):
+        state = self._make_camera(CameraModel.OPENCV_RADTAN_5, _packed_radtan5_coeffs()).state_dict()
+        state["distortion_coeffs"] = np.arange(12, dtype=np.float32).reshape(4, 3).tolist()
+
+        with self.assertRaisesRegex(ValueError, "distortion_coeffs must have shape"):
+            SfmCameraMetadata.from_state_dict(state)
+
     def test_from_state_dict_migrates_legacy_pinhole_schema(self):
         state = {
             "img_width": 12,
