@@ -298,7 +298,7 @@ class SfmDataset(torch.utils.data.Dataset, Iterable):
             "world_to_camera": torch.from_numpy(world_to_camera_matrix).float(),
             "camera_model": torch.tensor(int(camera_meta.camera_model), dtype=torch.int32),
             "distortion_coeffs": torch.from_numpy(
-                camera_meta.distortion_coeffs
+                camera_meta.distortion_coeffs.copy()
                 if camera_meta.distortion_coeffs.size != 0
                 else np.zeros((12,), np.float32)
             ).float(),
