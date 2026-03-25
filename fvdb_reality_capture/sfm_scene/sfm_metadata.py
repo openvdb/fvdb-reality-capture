@@ -15,11 +15,11 @@ The packed layout is ``[k1, k2, k3, k4, k5, k6, p1, p2, s1, s2, s3, s4]``.
 """
 
 
-def _normalize_packed_distortion_coeffs(
+def _as_packed_distortion_coeffs(
     coeffs: np.ndarray | list[float] | tuple[float, ...],
 ) -> np.ndarray:
     """
-    Normalize distortion coefficients into a NumPy array in the canonical packed FVDB layout.
+    Coerce distortion coefficients into a NumPy array in the canonical packed FVDB layout.
 
     This helper exists so callers can pass a convenient Python sequence or array-like object
     while `SfmCameraMetadata` stores one canonical in-memory representation. Centralizing the
@@ -148,7 +148,7 @@ class SfmCameraMetadata:
         self._cx = cx
         self._cy = cy
         self._camera_model = camera_model
-        self._distortion_coeffs = _normalize_packed_distortion_coeffs(distortion_coeffs)
+        self._distortion_coeffs = _as_packed_distortion_coeffs(distortion_coeffs)
         self._projection_matrix = np.array([[fx, 0, cx], [0, fy, cy], [0, 0, 1]], dtype=np.float32)
 
     def state_dict(self) -> dict[str, Any]:
@@ -184,18 +184,9 @@ class SfmCameraMetadata:
         Returns:
             SfmCameraMetadata: A new :class:`SfmCameraMetadata` object.
         """
-        if "img_width" not in state_dict:
-            raise KeyError("img_width is missing from state_dict")
-        if "img_height" not in state_dict:
-            raise KeyError("img_height is missing from state_dict")
-        if "fx" not in state_dict:
-            raise KeyError("fx is missing from state_dict")
-        if "fy" not in state_dict:
-            raise KeyError("fy is missing from state_dict")
-        if "cx" not in state_dict:
-            raise KeyError("cx is missing from state_dict")
-        if "cy" not in state_dict:
-            raise KeyError("cy is missing from state_dict")
+        for key in ("img_width", "img_height", "fx", "fy", "cx", "cy"):
+            if key not in state_dict:
+                raise KeyError(f"{key} is missing from state_dict")
         img_width = int(state_dict["img_width"])
         img_height = int(state_dict["img_height"])
         fx = float(state_dict["fx"])
@@ -213,7 +204,7 @@ class SfmCameraMetadata:
             if "camera_type" not in state_dict:
                 raise KeyError("camera_model is missing from state_dict")
             if "distortion_parameters" not in state_dict:
-                raise KeyError("distortion_coeffs is missing from state_dict")
+                raise KeyError("distortion_parameters is missing from state_dict")
             camera_type = str(state_dict["camera_type"])
             camera_model = _legacy_camera_type_to_camera_model(camera_type)
             distortion_coeffs = _legacy_distortion_parameters_to_coeffs(
@@ -363,11 +354,11 @@ class SfmCameraMetadata:
     @property
     def can_undistort(self) -> bool:
         """
-        Return whether this camera can be undistorted by the current OpenCV-based transform.
+        Return whether :class:`UndistortImages` can handle this camera.
 
         Returns:
-            bool: True if this camera either has no distortion or supports the local OpenCV
-                undistortion path.
+            bool: True if the camera is already undistorted, in which case the transform is a
+                no-op, or if it uses the local OpenCV radtan undistortion path.
         """
         return self._distortion_coeffs.size == 0 or self._camera_model == CameraModel.OPENCV_RADTAN_5
 

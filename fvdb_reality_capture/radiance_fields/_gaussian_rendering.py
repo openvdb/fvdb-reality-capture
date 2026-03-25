@@ -334,53 +334,54 @@ class ImageSpaceRenderBackend:
             return
         seen: set[int] = set()
         projection_method = projection_method_from_config(config.projection_method)
-        for dataset_idx, scene_idx in enumerate(dataset.indices):
-            camera_model = int(dataset.sfm_scene.images[scene_idx].camera_metadata.camera_model)
-            if camera_model in seen:
-                continue
-            seen.add(camera_model)
-            datum = dataset[dataset_idx]
-            world_to_camera = datum["world_to_camera"].unsqueeze(0).to(device)
-            projection = datum["projection"].unsqueeze(0).to(device)
-            distortion_coeffs = datum["distortion_coeffs"].unsqueeze(0).to(device)
-            world_to_camera = world_to_camera.contiguous()
-            projection = projection.contiguous()
-            distortion_coeffs = distortion_coeffs.contiguous()
-            height, width = datum["image"].shape[:2]
-            camera_model_enum = CameraModel(camera_model)
-            distortion_coeffs_arg = _distortion_coeffs_for_batch(camera_model_enum, distortion_coeffs)
-            if render_depth:
-                model.project_gaussians_for_images_and_depths(
-                    world_to_camera_matrices=world_to_camera,
-                    projection_matrices=projection,
-                    image_width=width,
-                    image_height=height,
-                    near=config.near_plane,
-                    far=config.far_plane,
-                    camera_model=camera_model_enum,
-                    projection_method=projection_method,
-                    distortion_coeffs=distortion_coeffs_arg,
-                    sh_degree_to_use=0,
-                    min_radius_2d=config.min_radius_2d,
-                    eps_2d=config.eps_2d,
-                    antialias=config.antialias,
-                )
-            else:
-                model.project_gaussians_for_images(
-                    world_to_camera_matrices=world_to_camera,
-                    projection_matrices=projection,
-                    image_width=width,
-                    image_height=height,
-                    near=config.near_plane,
-                    far=config.far_plane,
-                    camera_model=camera_model_enum,
-                    projection_method=projection_method,
-                    distortion_coeffs=distortion_coeffs_arg,
-                    sh_degree_to_use=0,
-                    min_radius_2d=config.min_radius_2d,
-                    eps_2d=config.eps_2d,
-                    antialias=config.antialias,
-                )
+        with torch.no_grad():
+            for dataset_idx, scene_idx in enumerate(dataset.indices):
+                camera_model = int(dataset.sfm_scene.images[scene_idx].camera_metadata.camera_model)
+                if camera_model in seen:
+                    continue
+                seen.add(camera_model)
+                datum = dataset[dataset_idx]
+                world_to_camera = datum["world_to_camera"].unsqueeze(0).to(device)
+                projection = datum["projection"].unsqueeze(0).to(device)
+                distortion_coeffs = datum["distortion_coeffs"].unsqueeze(0).to(device)
+                world_to_camera = world_to_camera.contiguous()
+                projection = projection.contiguous()
+                distortion_coeffs = distortion_coeffs.contiguous()
+                height, width = datum["image"].shape[:2]
+                camera_model_enum = CameraModel(camera_model)
+                distortion_coeffs_arg = _distortion_coeffs_for_batch(camera_model_enum, distortion_coeffs)
+                if render_depth:
+                    model.project_gaussians_for_images_and_depths(
+                        world_to_camera_matrices=world_to_camera,
+                        projection_matrices=projection,
+                        image_width=width,
+                        image_height=height,
+                        near=config.near_plane,
+                        far=config.far_plane,
+                        camera_model=camera_model_enum,
+                        projection_method=projection_method,
+                        distortion_coeffs=distortion_coeffs_arg,
+                        sh_degree_to_use=0,
+                        min_radius_2d=config.min_radius_2d,
+                        eps_2d=config.eps_2d,
+                        antialias=config.antialias,
+                    )
+                else:
+                    model.project_gaussians_for_images(
+                        world_to_camera_matrices=world_to_camera,
+                        projection_matrices=projection,
+                        image_width=width,
+                        image_height=height,
+                        near=config.near_plane,
+                        far=config.far_plane,
+                        camera_model=camera_model_enum,
+                        projection_method=projection_method,
+                        distortion_coeffs=distortion_coeffs_arg,
+                        sh_degree_to_use=0,
+                        min_radius_2d=config.min_radius_2d,
+                        eps_2d=config.eps_2d,
+                        antialias=config.antialias,
+                    )
 
 
 class WorldSpaceRenderBackend:
@@ -414,42 +415,43 @@ class WorldSpaceRenderBackend:
             return
         seen: set[int] = set()
         projection_method = projection_method_from_config(config.projection_method)
-        for dataset_idx, scene_idx in enumerate(dataset.indices):
-            camera_model = int(dataset.sfm_scene.images[scene_idx].camera_metadata.camera_model)
-            if camera_model in seen:
-                continue
-            seen.add(camera_model)
-            datum = dataset[dataset_idx]
-            world_to_camera = datum["world_to_camera"].unsqueeze(0).to(device)
-            projection = datum["projection"].unsqueeze(0).to(device)
-            distortion_coeffs = datum["distortion_coeffs"].unsqueeze(0).to(device)
-            world_to_camera = world_to_camera.contiguous()
-            projection = projection.contiguous()
-            distortion_coeffs = distortion_coeffs.contiguous()
-            height, width = datum["image"].shape[:2]
-            camera_model_enum = CameraModel(camera_model)
-            distortion_coeffs_arg = _distortion_coeffs_for_batch(camera_model_enum, distortion_coeffs)
-            render_function = (
-                model.render_images_and_depths_from_world
-                if config.sparse_depth_reg > 0.0
-                else model.render_images_from_world
-            )
-            render_function(
-                world_to_camera_matrices=world_to_camera,
-                projection_matrices=projection,
-                image_width=width,
-                image_height=height,
-                near=config.near_plane,
-                far=config.far_plane,
-                camera_model=camera_model_enum,
-                projection_method=projection_method,
-                distortion_coeffs=distortion_coeffs_arg,
-                sh_degree_to_use=0,
-                tile_size=config.tile_size,
-                min_radius_2d=config.min_radius_2d,
-                eps_2d=config.eps_2d,
-                antialias=config.antialias,
-            )
+        with torch.no_grad():
+            for dataset_idx, scene_idx in enumerate(dataset.indices):
+                camera_model = int(dataset.sfm_scene.images[scene_idx].camera_metadata.camera_model)
+                if camera_model in seen:
+                    continue
+                seen.add(camera_model)
+                datum = dataset[dataset_idx]
+                world_to_camera = datum["world_to_camera"].unsqueeze(0).to(device)
+                projection = datum["projection"].unsqueeze(0).to(device)
+                distortion_coeffs = datum["distortion_coeffs"].unsqueeze(0).to(device)
+                world_to_camera = world_to_camera.contiguous()
+                projection = projection.contiguous()
+                distortion_coeffs = distortion_coeffs.contiguous()
+                height, width = datum["image"].shape[:2]
+                camera_model_enum = CameraModel(camera_model)
+                distortion_coeffs_arg = _distortion_coeffs_for_batch(camera_model_enum, distortion_coeffs)
+                render_function = (
+                    model.render_images_and_depths_from_world
+                    if config.sparse_depth_reg > 0.0
+                    else model.render_images_from_world
+                )
+                render_function(
+                    world_to_camera_matrices=world_to_camera,
+                    projection_matrices=projection,
+                    image_width=width,
+                    image_height=height,
+                    near=config.near_plane,
+                    far=config.far_plane,
+                    camera_model=camera_model_enum,
+                    projection_method=projection_method,
+                    distortion_coeffs=distortion_coeffs_arg,
+                    sh_degree_to_use=0,
+                    tile_size=config.tile_size,
+                    min_radius_2d=config.min_radius_2d,
+                    eps_2d=config.eps_2d,
+                    antialias=config.antialias,
+                )
 
     def forward_train(
         self,

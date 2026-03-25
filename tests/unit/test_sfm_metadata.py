@@ -9,9 +9,9 @@ from fvdb import CameraModel
 
 from fvdb_reality_capture.sfm_scene import SfmCameraMetadata
 from fvdb_reality_capture.sfm_scene.sfm_metadata import (
+    _as_packed_distortion_coeffs,
     _legacy_camera_type_to_camera_model,
     _legacy_distortion_parameters_to_coeffs,
-    _normalize_packed_distortion_coeffs,
 )
 
 
@@ -32,34 +32,34 @@ def _packed_radtan5_coeffs(
 
 
 class SfmMetadataHelperTests(unittest.TestCase):
-    def test_normalize_packed_distortion_coeffs_accepts_list_tuple_and_array(self):
+    def test_as_packed_distortion_coeffs_accepts_list_tuple_and_array(self):
         coeffs_list = [float(i) for i in range(12)]
         coeffs_tuple = tuple(coeffs_list)
         coeffs_array = np.array(coeffs_list, dtype=np.float64)
 
         for coeffs in (coeffs_list, coeffs_tuple, coeffs_array):
             with self.subTest(type=type(coeffs).__name__):
-                normalized = _normalize_packed_distortion_coeffs(coeffs)
+                normalized = _as_packed_distortion_coeffs(coeffs)
                 self.assertIsInstance(normalized, np.ndarray)
                 self.assertEqual(normalized.dtype, np.float32)
                 self.assertEqual(normalized.shape, (12,))
                 np.testing.assert_allclose(normalized, np.array(coeffs_list, dtype=np.float32))
 
-    def test_normalize_packed_distortion_coeffs_accepts_empty(self):
-        normalized = _normalize_packed_distortion_coeffs([])
+    def test_as_packed_distortion_coeffs_accepts_empty(self):
+        normalized = _as_packed_distortion_coeffs([])
         self.assertIsInstance(normalized, np.ndarray)
         self.assertEqual(normalized.dtype, np.float32)
         self.assertEqual(normalized.shape, (0,))
 
-    def test_normalize_packed_distortion_coeffs_rejects_invalid_length(self):
+    def test_as_packed_distortion_coeffs_rejects_invalid_length(self):
         with self.assertRaisesRegex(ValueError, "distortion_coeffs must have shape"):
-            _normalize_packed_distortion_coeffs([0.1, 0.2])
+            _as_packed_distortion_coeffs([0.1, 0.2])
 
-    def test_normalize_packed_distortion_coeffs_rejects_non_1d_array(self):
+    def test_as_packed_distortion_coeffs_rejects_non_1d_array(self):
         coeffs = np.arange(12, dtype=np.float32).reshape(4, 3)
 
         with self.assertRaisesRegex(ValueError, "distortion_coeffs must have shape"):
-            _normalize_packed_distortion_coeffs(coeffs)
+            _as_packed_distortion_coeffs(coeffs)
 
     def test_legacy_camera_type_to_camera_model(self):
         self.assertEqual(_legacy_camera_type_to_camera_model("PINHOLE"), CameraModel.PINHOLE)
@@ -257,6 +257,19 @@ class SfmCameraMetadataTests(unittest.TestCase):
             "distortion_parameters": [0.1, 0.2, 0.3, 0.4],
         }
         with self.assertRaisesRegex(ValueError, "Unsupported legacy camera_type"):
+            SfmCameraMetadata.from_state_dict(state)
+
+    def test_from_state_dict_requires_legacy_distortion_parameters_key(self):
+        state = {
+            "img_width": 12,
+            "img_height": 10,
+            "fx": 8.0,
+            "fy": 7.5,
+            "cx": 5.5,
+            "cy": 4.5,
+            "camera_type": "OPENCV",
+        }
+        with self.assertRaisesRegex(KeyError, "distortion_parameters is missing from state_dict"):
             SfmCameraMetadata.from_state_dict(state)
 
     def test_from_state_dict_rejects_unknown_camera_model_name(self):
