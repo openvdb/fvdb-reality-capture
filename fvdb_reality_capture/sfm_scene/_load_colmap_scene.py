@@ -41,7 +41,6 @@ def _camera_model_and_distortion_coeffs_from_colmap_camera(cam: ColmapCamera) ->
     if cam.camera_type == 4 or cam.camera_type == "OPENCV":
         coeffs[0] = cam.k1
         coeffs[1] = cam.k2
-        coeffs[2] = cam.k3
         coeffs[6] = cam.p1
         coeffs[7] = cam.p2
         return CameraModel.OPENCV_RADTAN_5, coeffs
