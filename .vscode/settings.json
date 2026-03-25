@@ -31,8 +31,4 @@
         "--profile", "black"
     ],
     "json.format.keepLines": true,
-    "cursorpyright.analysis.diagnosticSeverityOverrides": {
-        "reportPrivateImportUsage": "none"
-    },
-    "cursorpyright.analysis.typeCheckingMode": "basic",
 }
