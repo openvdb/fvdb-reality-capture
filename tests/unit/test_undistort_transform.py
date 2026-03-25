@@ -4,6 +4,7 @@
 import pathlib
 import tempfile
 import unittest
+from unittest.mock import patch
 
 import cv2
 import numpy as np
@@ -91,6 +92,63 @@ class UndistortImagesTransformTests(unittest.TestCase):
         )
         return scene, image, (mask if with_mask else None)
 
+    def _make_multi_image_scene(
+        self,
+        image_ids: list[int],
+        camera_model: CameraModel = CameraModel.OPENCV_RADTAN_5,
+        distortion_coeffs: np.ndarray | None = None,
+        with_mask: bool = True,
+    ) -> SfmScene:
+        height, width = 14, 18
+        camera_metadata = SfmCameraMetadata(
+            img_width=width,
+            img_height=height,
+            fx=11.0,
+            fy=10.5,
+            cx=8.2,
+            cy=6.7,
+            camera_model=camera_model,
+            distortion_coeffs=np.array([], dtype=np.float32) if distortion_coeffs is None else distortion_coeffs,
+        )
+        images: list[SfmPosedImageMetadata] = []
+        for i, image_id in enumerate(image_ids):
+            image_path = self.root / f"image_{image_id}.png"
+            mask_path = self.root / f"mask_{image_id}.png"
+            grid_x, grid_y = np.meshgrid(
+                np.arange(width, dtype=np.uint8), np.arange(height, dtype=np.uint8), indexing="xy"
+            )
+            image = np.stack([grid_x * 10 + i, grid_y * 15 + i, (grid_x + grid_y) * 7 + i], axis=-1).astype(
+                np.uint8
+            )
+            mask = np.zeros((height, width), dtype=np.uint8)
+            mask[2:12, 3:15] = 255
+            self.assertTrue(cv2.imwrite(str(image_path), image))
+            if with_mask:
+                self.assertTrue(cv2.imwrite(str(mask_path), mask))
+            images.append(
+                SfmPosedImageMetadata(
+                    world_to_camera_matrix=np.eye(4, dtype=np.float32),
+                    camera_to_world_matrix=np.eye(4, dtype=np.float32),
+                    camera_metadata=camera_metadata,
+                    camera_id=1,
+                    image_path=str(image_path),
+                    mask_path=str(mask_path) if with_mask else "",
+                    point_indices=np.array([], dtype=np.int64),
+                    image_id=image_id,
+                )
+            )
+        cache = SfmCache.get_cache(self.root / "cache_root", "unit_test_cache_multi", "Unit test cache")
+        return SfmScene(
+            cameras={1: camera_metadata},
+            images=images,
+            points=np.zeros((0, 3), dtype=np.float32),
+            points_err=np.zeros((0,), dtype=np.float32),
+            points_rgb=np.zeros((0, 3), dtype=np.uint8),
+            scene_bbox=None,
+            transformation_matrix=np.eye(4, dtype=np.float32),
+            cache=cache,
+        )
+
     def test_private_packed_distortion_coeffs_to_opencv_radtan5_ordering(self):
         packed = _packed_radtan5_coeffs(k1=0.1, k2=-0.2, k3=0.05, p1=0.003, p2=-0.004)
         converted = UndistortImages._packed_distortion_coeffs_to_opencv_radtan5(packed)
@@ -163,6 +221,24 @@ class UndistortImagesTransformTests(unittest.TestCase):
 
         self.assertTrue(sfm_scenes_match(first_scene, second_scene))
         self.assertEqual(first_scene.images[0].image_path, second_scene.images[0].image_path)
+
+    def test_undistort_transform_reuses_cached_outputs_for_noncontiguous_image_ids(self):
+        scene = self._make_multi_image_scene(image_ids=[1, 3], distortion_coeffs=_packed_radtan5_coeffs())
+        transform = UndistortImages()
+
+        first_scene = transform(scene)
+        with patch.object(
+            UndistortImages,
+            "_undistort_and_crop",
+            side_effect=AssertionError("cache should be reused without regenerating undistortion outputs"),
+        ):
+            second_scene = transform(scene)
+
+        self.assertTrue(sfm_scenes_match(first_scene, second_scene))
+        self.assertEqual(
+            [pathlib.Path(image.image_path).name for image in first_scene.images],
+            [pathlib.Path(image.image_path).name for image in second_scene.images],
+        )
 
     def test_undistort_transform_is_noop_for_pinhole_scenes(self):
         scene, _, _ = self._make_scene(

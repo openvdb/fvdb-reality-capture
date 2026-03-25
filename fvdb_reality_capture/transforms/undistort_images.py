@@ -216,8 +216,8 @@ class UndistortImages(BaseTransform):
             if regenerate_cache:
                 break
 
-            cache_image_filename = f"image_{image_id:0{num_zeropad}}"
             image_meta = input_scene.images[image_id]
+            cache_image_filename = f"image_{image_meta.image_id:0{num_zeropad}}"
             if not output_cache.has_file(cache_image_filename):
                 self._logger.info(
                     f"Image {cache_image_filename} not found in the cache. Clearing cache and regenerating."
