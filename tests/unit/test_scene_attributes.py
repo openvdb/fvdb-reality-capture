@@ -10,6 +10,7 @@ import warnings
 import cv2
 import numpy as np
 import torch
+from fvdb import CameraModel
 
 from fvdb_reality_capture.sfm_scene import (
     InterpolationMode,
@@ -20,7 +21,6 @@ from fvdb_reality_capture.sfm_scene import (
     SceneAttribute,
     SfmCache,
     SfmCameraMetadata,
-    SfmCameraType,
     SfmPosedImageMetadata,
     SfmScene,
     scene_attribute,
@@ -43,8 +43,8 @@ def _make_camera_metadata(width=64, height=48):
         fy=fy,
         cx=cx,
         cy=cy,
-        camera_type=SfmCameraType.PINHOLE,
-        distortion_parameters=np.zeros(0),
+        camera_model=CameraModel.PINHOLE,
+        distortion_coeffs=np.zeros(0, dtype=np.float32),
     )
 
 
