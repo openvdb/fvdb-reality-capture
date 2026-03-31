@@ -1,6 +1,7 @@
 # Copyright Contributors to the OpenVDB Project
 # SPDX-License-Identifier: Apache-2.0
 #
+from enum import Enum
 from typing import Any
 
 from fvdb import CameraModel
@@ -12,6 +13,17 @@ Shape of the canonical packed FVDB distortion coefficient vector.
 
 The packed layout is ``[k1, k2, k3, k4, k5, k6, p1, p2, s1, s2, s3, s4]``.
 """
+
+
+class SfmCameraType(Enum):
+    """Legacy camera type enum retained for backwards compatibility."""
+
+    PINHOLE = "PINHOLE"
+    SIMPLE_PINHOLE = "SIMPLE_PINHOLE"
+    SIMPLE_RADIAL = "SIMPLE_RADIAL"
+    RADIAL = "RADIAL"
+    OPENCV = "OPENCV"
+    OPENCV_FISHEYE = "OPENCV_FISHEYE"
 
 
 def _as_packed_distortion_coeffs(
@@ -100,6 +112,34 @@ def _legacy_distortion_parameters_to_coeffs(camera_type: str, distortion_paramet
     raise ValueError(f"Unsupported legacy camera_type {camera_type}")
 
 
+def _camera_model_to_legacy_camera_type(camera_model: CameraModel, distortion_coeffs: np.ndarray) -> SfmCameraType:
+    """Map the canonical camera model back to the legacy public API."""
+
+    if distortion_coeffs.size == 0:
+        return SfmCameraType.PINHOLE
+    if camera_model == CameraModel.OPENCV_RADTAN_5:
+        return SfmCameraType.OPENCV
+    raise ValueError(f"Unsupported camera_model {camera_model}")
+
+
+def _packed_coeffs_to_legacy_distortion_parameters(
+    camera_type: SfmCameraType,
+    distortion_coeffs: np.ndarray,
+) -> np.ndarray:
+    """Convert packed FVDB distortion coefficients into the legacy layouts."""
+
+    coeffs = np.asarray(distortion_coeffs, dtype=np.float32).reshape(-1)
+    if coeffs.size == 0 or camera_type in (SfmCameraType.PINHOLE, SfmCameraType.SIMPLE_PINHOLE):
+        return np.empty((0,), dtype=np.float32)
+    if camera_type == SfmCameraType.SIMPLE_RADIAL:
+        return np.array([coeffs[0]], dtype=np.float32)
+    if camera_type == SfmCameraType.RADIAL:
+        return np.array([coeffs[0], coeffs[1]], dtype=np.float32)
+    if camera_type == SfmCameraType.OPENCV:
+        return np.array([coeffs[0], coeffs[1], coeffs[6], coeffs[7], coeffs[2]], dtype=np.float32)
+    raise ValueError(f"Unsupported legacy camera_type {camera_type}")
+
+
 class SfmCameraMetadata:
     """
     This class encodes metadata about a camera used to capture images in an :class:`SfmScene`.
@@ -118,8 +158,11 @@ class SfmCameraMetadata:
         fy: float,
         cx: float,
         cy: float,
-        camera_model: CameraModel,
-        distortion_coeffs: np.ndarray,
+        camera_model: CameraModel | None = None,
+        distortion_coeffs: np.ndarray | None = None,
+        *,
+        camera_type: SfmCameraType | str | None = None,
+        distortion_parameters: np.ndarray | None = None,
     ):
         """
         Create a new :class:`SfmCameraMetadata` object.
@@ -131,14 +174,35 @@ class SfmCameraMetadata:
             fy (float): The focal length in the y direction in pixel units.
             cx (float): The x-coordinate of the principal point (optical center) in pixel units.
             cy (float): The y-coordinate of the principal point (optical center) in pixel units.
-            camera_model (CameraModel): The canonical camera model used throughout the library.
-            distortion_coeffs (np.ndarray): Distortion coefficients in FVDB packed layout
+            camera_model (CameraModel | None): The canonical camera model used throughout the library.
+            distortion_coeffs (np.ndarray | None): Distortion coefficients in FVDB packed layout
                 ``[k1, k2, k3, k4, k5, k6, p1, p2, s1, s2, s3, s4]`` or an empty
                 array if no distortion is present.
+            camera_type (SfmCameraType | str | None): Legacy camera type constructor argument.
+            distortion_parameters (np.ndarray | None): Legacy distortion parameter constructor
+                argument corresponding to ``camera_type``.
         """
 
         if img_width <= 0 or img_height <= 0:
             raise ValueError("Image dimensions must be positive integers.")
+
+        if camera_model is None:
+            if camera_type is None:
+                raise TypeError("camera_model or camera_type must be provided")
+            if isinstance(camera_type, str):
+                camera_type = SfmCameraType(camera_type)
+            camera_model = _legacy_camera_type_to_camera_model(camera_type.value)
+            legacy_params = (
+                np.asarray(distortion_parameters, dtype=np.float32)
+                if distortion_parameters is not None
+                else np.empty((0,), dtype=np.float32)
+            )
+            distortion_coeffs = _legacy_distortion_parameters_to_coeffs(camera_type.value, legacy_params)
+        elif camera_type is not None or distortion_parameters is not None:
+            raise TypeError("Use either camera_model/distortion_coeffs or camera_type/distortion_parameters, not both")
+
+        if distortion_coeffs is None:
+            distortion_coeffs = np.empty((0,), dtype=np.float32)
 
         self._width = img_width
         self._height = img_height
@@ -326,6 +390,12 @@ class SfmCameraMetadata:
         return self._camera_model
 
     @property
+    def camera_type(self) -> SfmCameraType:
+        """Return the legacy camera type view of this metadata."""
+
+        return _camera_model_to_legacy_camera_type(self._camera_model, self._distortion_coeffs)
+
+    @property
     def aspect(self) -> float:
         """
         Return the aspect ratio of the camera image.
@@ -349,6 +419,12 @@ class SfmCameraMetadata:
             np.ndarray: An array of distortion coefficients.
         """
         return self._distortion_coeffs
+
+    @property
+    def distortion_parameters(self) -> np.ndarray:
+        """Return the legacy distortion parameter layout."""
+
+        return _packed_coeffs_to_legacy_distortion_parameters(self.camera_type, self._distortion_coeffs)
 
     @property
     def can_undistort(self) -> bool:
