@@ -518,7 +518,8 @@ class SfmCache:
             data_type (str): The type of data being written. Must be one of the following:
                 - "jpg": JPEG image (data should be a NumPy array representing the image)
                 - "png": PNG image (data should be a NumPy array representing the image)
-                - "pt": PyTorch tensor (data should be a torch.Tensor)
+                - "pt": PyTorch-serializable object (e.g. ``torch.Tensor``, ``numpy.ndarray``).
+                    Saved via ``torch.save`` and loaded via ``torch.load``.
                 - "npy": NumPy array (data should be a NumPy array)
                 - "json": JSON file (data should be a JSON-serializable Python object, e.g., dict or list)
                 - "txt": Text file (data should be a string)
@@ -824,27 +825,44 @@ class SfmCache:
 
     def clear_current_folder(self) -> None:
         """
-        Clear all data in the current folder, including all subfolders and files.
+        Remove all files in the current folder from both the database and disk.
+
+        The folder row itself is preserved so that subsequent writes can still
+        resolve the on-disk path.
         """
+        conn = None
+        cursor = None
         with self._file_lock_exclusive:
             try:
                 conn = sqlite3.connect(self._db_path)
                 cursor = conn.cursor()
+
+                folder_path = self._get_path_for_folder(cursor, self._current_folder_id)
                 cursor.execute(
                     f"""
-                    DELETE FROM {self._folders_table_name} WHERE id = ? AND cache_id = ?""",
+                    SELECT name, data_type FROM {self._files_table_name}
+                    WHERE folder_id = ? AND cache_id = ?""",
                     (self._current_folder_id, self._cache_id),
                 )
+                for name, data_type in cursor.fetchall():
+                    file_path = folder_path / f"{name}.{data_type}"
+                    file_path.unlink(missing_ok=True)
+
                 cursor.execute(
                     f"""
                     DELETE FROM {self._files_table_name} WHERE folder_id = ? AND cache_id = ?""",
                     (self._current_folder_id, self._cache_id),
                 )
+                conn.commit()
             except Exception as e:
+                if conn is not None:
+                    conn.rollback()
                 raise RuntimeError(f"Failed to clear cache folder {self.current_folder_name}") from e
             finally:
-                cursor.close()
-                conn.close()
+                if cursor is not None:
+                    cursor.close()
+                if conn is not None:
+                    conn.close()
 
     def _get_path_for_folder(self, cursor: sqlite3.Cursor, folder_id: int) -> pathlib.Path:
         """

@@ -22,13 +22,11 @@ The videos below show large-scale reconstructions of complex scenes using fVDB-R
 
 
 ## Installation
-To get started, simply run
 
-```bash
-pip install fvdb-reality-capture fvdb-core==0.3.0+pt28.cu128 --extra-index-url="https://d36m13axqqhiit.cloudfront.net/simple" torch==2.8.0 --extra-index-url https://download.pytorch.org/whl/cu128
-```
+The `fvdb-reality-capture` Python package can be installed using published packages with pip or built from source.
 
-To install fvdb-reality-capture as well as the appropriate version of fvdb-core and torch.
+For the most up-to-date information on installing fVDB-Reality-Capture's pip packages, please see the
+[installation documentation](https://fvdb.ai/reality-capture/installation.html).
 
 ### Installation from source
 
