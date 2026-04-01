@@ -350,7 +350,6 @@ class SfmCameraMetadata:
         """
         return self._distortion_coeffs
 
-
     @property
     def can_undistort(self) -> bool:
         """
