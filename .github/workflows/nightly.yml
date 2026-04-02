@@ -163,6 +163,14 @@ jobs:
         if: steps.download_existing_wheel.outcome == 'success'
         run: echo "Artifact 'fvdb-wheel-${{ needs.get-fvdb-core-commit-hash.outputs.fvdb_core_commit_hash }}' exists. No need to rebuild."
 
+      - name: Upload downloaded fvdb wheel (make available to this run)
+        if: steps.download_existing_wheel.outcome == 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: fvdb-wheel-${{ needs.get-fvdb-core-commit-hash.outputs.fvdb_core_commit_hash }}
+          path: fvdb-core/dist/*.whl
+          retention-days: 30
+
       # TODO: DRY this up with an anchor
       - name: Clone fvdb-core
         if: steps.download_existing_wheel.outcome == 'failure'
@@ -288,14 +296,10 @@ jobs:
           environment-file: tests/benchmarks/comparative/docker/benchmark_environment.yml
 
       - name: Download fvdb-core wheel
-        uses: dawidd6/action-download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: fvdb-wheel-${{ needs.get-fvdb-core-commit-hash.outputs.fvdb_core_commit_hash }}
           path: ./dist
-          workflow: nightly.yml
-          workflow_conclusion: ""
-          search_artifacts: true
-          if_no_artifact_found: fail
 
       - name: Install fVDB and fvdb-reality-capture
         run: |
@@ -483,14 +487,10 @@ jobs:
           environment-file: tests/benchmarks/comparative/docker/benchmark_environment.yml
 
       - name: Download fvdb-core wheel
-        uses: dawidd6/action-download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: fvdb-wheel-${{ needs.get-fvdb-core-commit-hash.outputs.fvdb_core_commit_hash }}
           path: ./dist
-          workflow: nightly.yml
-          workflow_conclusion: ""
-          search_artifacts: true
-          if_no_artifact_found: fail
 
       - name: Install fVDB and fvdb-reality-capture
         run: |
