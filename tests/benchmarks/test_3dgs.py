@@ -178,52 +178,53 @@ def create_benchmark_params():
     """Create benchmark parameters from YAML configuration."""
     original_cwd = pathlib.Path.cwd()
     try:
-        # Change to the directory of the current test file
+        # Change to the directory of the current test file so that relative paths
+        # in benchmark_config.yaml (e.g. ../../data, results/...) resolve correctly.
         test_file_dir = os.path.dirname(os.path.abspath(__file__))
         os.chdir(test_file_dir)
         config = load_benchmark_config(config_path="benchmark_config.yaml")
+
+        params = []
+
+        data_base_path = config["paths"]["data_base"]
+
+        for dataset_config in config["datasets"]:
+            dataset_name = dataset_config["name"]
+            dataset_path = str(pathlib.Path(data_base_path) / dataset_config["path"])
+            run_path = dataset_config["run_directory"]
+
+            logger.info(f"Dataset: {dataset_name}")
+            logger.info(f"Dataset path: {dataset_path}")
+
+            if "checkpoint_paths" in dataset_config and dataset_config["checkpoint_paths"]:
+                checkpoint_paths = dataset_config["checkpoint_paths"]
+                logger.info(f"Checkpoint paths: {dataset_config['checkpoint_paths']}")
+            else:
+                raise ValueError(f"No checkpoint paths specified for dataset: {dataset_name}")
+
+            for checkpoint_path in checkpoint_paths:
+                checkpoint_id = f"{pathlib.Path(dataset_path).name}-{pathlib.Path(checkpoint_path).parent.name}"
+                missing_artifacts = []
+                if not pathlib.Path(dataset_path).exists():
+                    missing_artifacts.append(f"dataset '{dataset_path}'")
+                if not pathlib.Path(checkpoint_path).exists():
+                    missing_artifacts.append(f"checkpoint '{checkpoint_path}'")
+                if missing_artifacts:
+                    params.append(
+                        pytest.param(
+                            (dataset_path, run_path, checkpoint_path),
+                            id=checkpoint_id,
+                            marks=pytest.mark.skip(
+                                reason="Missing local benchmark artifacts: " + ", ".join(missing_artifacts)
+                            ),
+                        )
+                    )
+                else:
+                    params.append(pytest.param((dataset_path, run_path, checkpoint_path), id=checkpoint_id))
+
+        return params
     finally:
         os.chdir(original_cwd)
-
-    params = []
-
-    data_base_path = config["paths"]["data_base"]
-
-    for dataset_config in config["datasets"]:
-        dataset_name = dataset_config["name"]
-        dataset_path = str(pathlib.Path(data_base_path) / dataset_config["path"])
-        run_path = dataset_config["run_directory"]
-
-        logger.info(f"Dataset: {dataset_name}")
-        logger.info(f"Dataset path: {dataset_path}")
-
-        if "checkpoint_paths" in dataset_config and dataset_config["checkpoint_paths"]:
-            checkpoint_paths = dataset_config["checkpoint_paths"]
-            logger.info(f"Checkpoint paths: {dataset_config['checkpoint_paths']}")
-        else:
-            raise ValueError(f"No checkpoint paths specified for dataset: {dataset_name}")
-
-        for checkpoint_path in checkpoint_paths:
-            checkpoint_id = f"{pathlib.Path(dataset_path).name}-{pathlib.Path(checkpoint_path).parent.name}"
-            missing_artifacts = []
-            if not pathlib.Path(dataset_path).exists():
-                missing_artifacts.append(f"dataset '{dataset_path}'")
-            if not pathlib.Path(checkpoint_path).exists():
-                missing_artifacts.append(f"checkpoint '{checkpoint_path}'")
-            if missing_artifacts:
-                params.append(
-                    pytest.param(
-                        (dataset_path, run_path, checkpoint_path),
-                        id=checkpoint_id,
-                        marks=pytest.mark.skip(
-                            reason="Missing local benchmark artifacts: " + ", ".join(missing_artifacts)
-                        ),
-                    )
-                )
-            else:
-                params.append(pytest.param((dataset_path, run_path, checkpoint_path), id=checkpoint_id))
-
-    return params
 
 
 @pytest.fixture(
