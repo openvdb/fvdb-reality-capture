@@ -68,6 +68,72 @@ def test_checkpoint_contract_accepts_mcmc_optimizer_config():
     contract.validate_checkpoint_contract(state)
 
 
+def test_create_benchmark_params_is_cwd_independent(tmp_path: pathlib.Path):
+    """Ensure create_benchmark_params() gives consistent results regardless of caller cwd.
+
+    Regression test for a bug where path existence checks ran after os.chdir()
+    restored the original cwd, making all benchmarks skip in CI.
+    """
+    import os
+
+    from .test_3dgs import create_benchmark_params, load_benchmark_config
+
+    # Create the benchmark artifacts that the config references, so the test
+    # can distinguish "found" from "not found" rather than trivially matching
+    # two identical all-skipped results.
+    benchmarks_dir = pathlib.Path(__file__).parent
+    original_cwd = pathlib.Path.cwd()
+    try:
+        os.chdir(benchmarks_dir)
+        config = load_benchmark_config()
+    finally:
+        os.chdir(original_cwd)
+
+    data_base = config["paths"]["data_base"]
+    created = []
+    for ds in config["datasets"]:
+        dp = benchmarks_dir / data_base / ds["path"]
+        dp.mkdir(parents=True, exist_ok=True)
+        created.append(dp)
+        for cp in ds.get("checkpoint_paths", []):
+            cp_path = benchmarks_dir / cp
+            cp_path.parent.mkdir(parents=True, exist_ok=True)
+            cp_path.touch(exist_ok=True)
+            created.append(cp_path)
+
+    try:
+        # Run from two different directories and compare
+        params_from_benchmarks_dir = create_benchmark_params()
+
+        os.chdir(tmp_path)
+        try:
+            params_from_tmp = create_benchmark_params()
+        finally:
+            os.chdir(original_cwd)
+
+        assert len(params_from_benchmarks_dir) == len(params_from_tmp)
+        for a, b in zip(params_from_benchmarks_dir, params_from_tmp):
+            assert a.values == b.values
+            a_marks = [m.mark for m in a.marks]
+            b_marks = [m.mark for m in b.marks]
+            assert a_marks == b_marks
+
+        # Verify the artifacts were actually found (not trivially all-skipped)
+        non_skipped = [p for p in params_from_benchmarks_dir if not p.marks]
+        assert len(non_skipped) > 0, "Expected some non-skipped params but all were skipped"
+    finally:
+        # Clean up created artifacts (in reverse to remove children before parents)
+        for p in reversed(created):
+            if p.is_file():
+                p.unlink()
+            elif p.is_dir():
+                # Only remove if we created it (empty)
+                try:
+                    p.rmdir()
+                except OSError:
+                    pass
+
+
 def test_benchmark_config_yaml_matches_contract():
     config_path = pathlib.Path(__file__).parent / "benchmark_config.yaml"
     config = contract.load_benchmark_yaml(str(config_path))
