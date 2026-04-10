@@ -50,7 +50,9 @@ def _camera_model_from_batch(camera_models: torch.Tensor) -> CameraModel:
     return CameraModel(int(unique_camera_models.item()))
 
 
-def _distortion_coeffs_for_batch(camera_model: CameraModel, distortion_coeffs: torch.Tensor, device : torch.device) -> torch.Tensor | None:
+def _distortion_coeffs_for_batch(
+    camera_model: CameraModel, distortion_coeffs: torch.Tensor, device: torch.device
+) -> torch.Tensor | None:
     if camera_model in (CameraModel.PINHOLE, CameraModel.ORTHOGRAPHIC):
         return None
     return distortion_coeffs.to(device)
