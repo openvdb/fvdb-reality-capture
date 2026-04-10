@@ -1226,8 +1226,8 @@ class GaussianSplatReconstruction:
                     world_to_cam_mats = torch.linalg.inv(cam_to_world_mats).contiguous()
 
                 projection_mats = minibatch["projection"].to(self.device)  # [B, 3, 3]
-                camera_models = minibatch["camera_model"].to(self.device)
-                distortion_coeffs = minibatch["distortion_coeffs"].to(self.device)
+                camera_models = minibatch["camera_model"]
+                distortion_coeffs = minibatch["distortion_coeffs"]
                 image = minibatch["image"]  # [B, H, W, 3]
                 mask = minibatch["mask"] if "mask" in minibatch and not self.config.ignore_masks else None
                 image_height, image_width = image.shape[1:3]

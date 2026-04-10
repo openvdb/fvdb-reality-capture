@@ -50,10 +50,10 @@ def _camera_model_from_batch(camera_models: torch.Tensor) -> CameraModel:
     return CameraModel(int(unique_camera_models.item()))
 
 
-def _distortion_coeffs_for_batch(camera_model: CameraModel, distortion_coeffs: torch.Tensor) -> torch.Tensor | None:
+def _distortion_coeffs_for_batch(camera_model: CameraModel, distortion_coeffs: torch.Tensor, device : torch.device) -> torch.Tensor | None:
     if camera_model in (CameraModel.PINHOLE, CameraModel.ORTHOGRAPHIC):
         return None
-    return distortion_coeffs
+    return distortion_coeffs.to(device)
 
 
 class RenderBackend(Protocol):
@@ -216,11 +216,8 @@ class ImageSpaceRenderBackend:
         Returns:
             RenderOutputs: The rendered crop, alpha image, and optional depth image.
         """
-        world_to_camera_matrices = world_to_camera_matrices.contiguous()
-        projection_matrices = projection_matrices.contiguous()
-        distortion_coeffs = distortion_coeffs.contiguous()
         camera_model = _camera_model_from_batch(camera_models)
-        distortion_coeffs_arg = _distortion_coeffs_for_batch(camera_model, distortion_coeffs)
+        distortion_coeffs_arg = _distortion_coeffs_for_batch(camera_model, distortion_coeffs, model.device)
         projection_method = projection_method_from_config(config.projection_method)
         projection_function = (
             model.project_gaussians_for_images_and_depths
@@ -285,11 +282,8 @@ class ImageSpaceRenderBackend:
             RenderOutputs: The rendered image and alpha image, plus depth when provided by the
             selected render path.
         """
-        world_to_camera_matrices = world_to_camera_matrices.contiguous()
-        projection_matrices = projection_matrices.contiguous()
-        distortion_coeffs = distortion_coeffs.contiguous()
         camera_model = _camera_model_from_batch(camera_models)
-        distortion_coeffs_arg = _distortion_coeffs_for_batch(camera_model, distortion_coeffs)
+        distortion_coeffs_arg = _distortion_coeffs_for_batch(camera_model, distortion_coeffs, model.device)
         image, alpha = model.render_images(
             world_to_camera_matrices=world_to_camera_matrices,
             projection_matrices=projection_matrices,
@@ -349,7 +343,7 @@ class ImageSpaceRenderBackend:
                 distortion_coeffs = distortion_coeffs.contiguous()
                 height, width = datum["image"].shape[:2]
                 camera_model_enum = CameraModel(camera_model)
-                distortion_coeffs_arg = _distortion_coeffs_for_batch(camera_model_enum, distortion_coeffs)
+                distortion_coeffs_arg = _distortion_coeffs_for_batch(camera_model_enum, distortion_coeffs, model.device)
                 if render_depth:
                     model.project_gaussians_for_images_and_depths(
                         world_to_camera_matrices=world_to_camera,
@@ -430,7 +424,7 @@ class WorldSpaceRenderBackend:
                 distortion_coeffs = distortion_coeffs.contiguous()
                 height, width = datum["image"].shape[:2]
                 camera_model_enum = CameraModel(camera_model)
-                distortion_coeffs_arg = _distortion_coeffs_for_batch(camera_model_enum, distortion_coeffs)
+                distortion_coeffs_arg = _distortion_coeffs_for_batch(camera_model_enum, distortion_coeffs, model.device)
                 render_function = (
                     model.render_images_and_depths_from_world
                     if config.sparse_depth_reg > 0.0
@@ -488,11 +482,8 @@ class WorldSpaceRenderBackend:
         Returns:
             RenderOutputs: The rendered crop, alpha image, and optional depth image.
         """
-        world_to_camera_matrices = world_to_camera_matrices.contiguous()
-        projection_matrices = projection_matrices.contiguous()
-        distortion_coeffs = distortion_coeffs.contiguous()
         camera_model = _camera_model_from_batch(camera_models)
-        distortion_coeffs_arg = _distortion_coeffs_for_batch(camera_model, distortion_coeffs)
+        distortion_coeffs_arg = _distortion_coeffs_for_batch(camera_model, distortion_coeffs, model.device)
         render_function = (
             model.render_images_and_depths_from_world
             if config.sparse_depth_reg > 0.0
@@ -551,11 +542,8 @@ class WorldSpaceRenderBackend:
             RenderOutputs: The rendered image and alpha image, plus depth when provided by the
             selected render path.
         """
-        world_to_camera_matrices = world_to_camera_matrices.contiguous()
-        projection_matrices = projection_matrices.contiguous()
-        distortion_coeffs = distortion_coeffs.contiguous()
         camera_model = _camera_model_from_batch(camera_models)
-        distortion_coeffs_arg = _distortion_coeffs_for_batch(camera_model, distortion_coeffs)
+        distortion_coeffs_arg = _distortion_coeffs_for_batch(camera_model, distortion_coeffs, model.device)
         image, alpha = model.render_images_from_world(
             world_to_camera_matrices=world_to_camera_matrices,
             projection_matrices=projection_matrices,
