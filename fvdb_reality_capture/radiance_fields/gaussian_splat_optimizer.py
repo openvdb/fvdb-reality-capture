@@ -841,15 +841,20 @@ class GaussianSplatOptimizer(BaseGaussianSplatOptimizer):
             self._model.accumulated_gradient_step_counts is None
             or self._model.accumulated_mean_2d_gradient_norms is None
         ):
-            self._logger.warning(
-                "Gradient accumulation data is unavailable (accumulated_gradient_step_counts or "
-                "accumulated_mean_2d_gradient_norms is None). This is expected when using a projection "
-                "method that does not support gradient accumulation (e.g., Unscented Transform for "
-                "OpenCV camera models). Skipping Gaussian insertion for this refinement step."
-            )
+            if not getattr(self, "_warned_missing_gradient_accumulation", False):
+                self._logger.warning(
+                    "Gradient accumulation data is unavailable (accumulated_gradient_step_counts or "
+                    "accumulated_mean_2d_gradient_norms is None). This is expected when using a projection "
+                    "method that does not support gradient accumulation (e.g., Unscented Transform for "
+                    "OpenCV camera models). Skipping Gaussian insertion for this refinement step."
+                )
+                self._warned_missing_gradient_accumulation = True
             device = self._model.means.device
             N = self._model.num_gaussians
-            return torch.zeros(N, dtype=torch.bool, device=device), torch.zeros(N, dtype=torch.bool, device=device)
+            return (
+                torch.zeros(N, dtype=torch.bool, device=device),
+                torch.zeros(N, dtype=torch.bool, device=device),
+            )
 
         # model.accumulated_gradient_step_counts is the number of times a Gaussian has been projected
         # to an image (i.e. included in the loss gradient computation)

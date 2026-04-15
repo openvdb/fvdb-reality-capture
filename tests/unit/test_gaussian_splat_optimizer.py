@@ -128,14 +128,15 @@ class GaussianSplatOptimizerRefinementTests(GettysburgGaussianSplatTestCase, uni
         optimizer = self.optimizer
 
         # Simulate the UT projection path: set_state() resets gradient tensors to None
-        model.set_state(
-            means=model.means,
-            quats=model.quats,
-            log_scales=model.log_scales,
-            logit_opacities=model.logit_opacities,
-            sh0=model.sh0,
-            shN=model.shN,
-        )
+        with torch.no_grad():
+            model.set_state(
+                means=model.means,
+                quats=model.quats,
+                log_scales=model.log_scales,
+                logit_opacities=model.logit_opacities,
+                sh0=model.sh0,
+                shN=model.shN,
+            )
         self.assertIsNone(model.accumulated_gradient_step_counts)
         self.assertIsNone(model.accumulated_mean_2d_gradient_norms)
 
