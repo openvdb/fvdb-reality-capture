@@ -116,6 +116,34 @@ class GaussianSplatOptimizerRefinementTests(GettysburgGaussianSplatTestCase, uni
             loss.backward()
             self.optimizer.step()
 
+    def test_refinement_with_none_gradient_accumulation(self):
+        """Regression test for issue #279: refine() must not crash when gradient accumulation state is None.
+
+        When the Unscented Transform projection path is used (e.g., for OpenCV camera models),
+        fvdb-core does not initialize accumulated_gradient_step_counts or
+        accumulated_mean_2d_gradient_norms. Calling set_state() also resets them to None.
+        The optimizer must handle this gracefully by skipping insertion (duplication/splitting).
+        """
+        model = self.model
+        optimizer = self.optimizer
+
+        # Simulate the UT projection path: set_state() resets gradient tensors to None
+        model.set_state(
+            means=model.means,
+            quats=model.quats,
+            log_scales=model.log_scales,
+            logit_opacities=model.logit_opacities,
+            sh0=model.sh0,
+            shN=model.shN,
+        )
+        self.assertIsNone(model.accumulated_gradient_step_counts)
+        self.assertIsNone(model.accumulated_mean_2d_gradient_norms)
+
+        # refine() should not crash — it should skip insertion and return zero counts
+        refine_stats = optimizer.refine(zero_gradients=True)
+        self.assertEqual(refine_stats["num_duplicated"], 0)
+        self.assertEqual(refine_stats["num_split"], 0)
+
     def test_refinement_no_op(self):
         model = self.model
         optimizer = self.optimizer

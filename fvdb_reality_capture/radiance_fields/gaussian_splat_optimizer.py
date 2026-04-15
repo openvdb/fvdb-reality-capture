@@ -835,6 +835,22 @@ class GaussianSplatOptimizer(BaseGaussianSplatOptimizer):
         # We use the average norm of the gradients of the projected Gaussians with respect to the
         # loss (accumulated since the last refinement step) to decide which Gaussians to duplicate or split.
 
+        # Guard against None gradient accumulation tensors. This can happen when a projection method
+        # (e.g., Unscented Transform for OpenCV camera models) does not accumulate 2D mean gradients.
+        if (
+            self._model.accumulated_gradient_step_counts is None
+            or self._model.accumulated_mean_2d_gradient_norms is None
+        ):
+            self._logger.warning(
+                "Gradient accumulation data is unavailable (accumulated_gradient_step_counts or "
+                "accumulated_mean_2d_gradient_norms is None). This is expected when using a projection "
+                "method that does not support gradient accumulation (e.g., Unscented Transform for "
+                "OpenCV camera models). Skipping Gaussian insertion for this refinement step."
+            )
+            device = self._model.means.device
+            N = self._model.num_gaussians
+            return torch.zeros(N, dtype=torch.bool, device=device), torch.zeros(N, dtype=torch.bool, device=device)
+
         # model.accumulated_gradient_step_counts is the number of times a Gaussian has been projected
         # to an image (i.e. included in the loss gradient computation)
         # model.accumulated_mean_2d_gradient_norms is the sum of norms of the gradients of the
