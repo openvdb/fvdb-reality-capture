@@ -267,7 +267,7 @@ class NormalizeScene(BaseTransform):
         """
         if self._normalization_transform is None:
             points = input_scene.points
-            world_to_camera_matrices = input_scene.camera_to_world_matrices
+            world_to_camera_matrices = input_scene.world_to_camera_matrices
 
             if points is None or len(points) == 0:
                 self._logger.warning("No points found in the SfmScene.")
