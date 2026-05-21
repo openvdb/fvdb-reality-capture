@@ -216,12 +216,16 @@ class DepthMapAttribute(PerImageRasterAttribute):
     def load_depth(self, index: int) -> tuple[np.ndarray, np.ndarray]:
         """Load the raw depth raster at ``index`` and apply ``unit_scale`` + validity mask.
 
+        The raster must be single-channel: a ``(H, W)`` array, or ``(H, W, 1)`` which
+        is squeezed to ``(H, W)``. Any other shape (e.g. a 3-channel RGB image) raises
+        :class:`ValueError`.
+
         Returns:
-            depth (np.ndarray): float32 ``(H, W)`` (or higher-rank) array. Invalid
-                pixels are set to 0 in the returned array; consult ``valid`` to
-                distinguish them from real zero depth.
-            valid (np.ndarray): bool array of the same shape as ``depth``. ``True``
-                where the depth is valid under :attr:`missing_policy`.
+            depth (np.ndarray): float32 ``(H, W)`` array. Invalid pixels are set to 0
+                in the returned array; consult ``valid`` to distinguish them from real
+                zero depth.
+            valid (np.ndarray): bool ``(H, W)`` array, ``True`` where the depth is
+                valid under :attr:`missing_policy`.
         """
         import cv2
         import torch
@@ -314,7 +318,9 @@ class DepthMapAttribute(PerImageRasterAttribute):
 
         Call this from user code at the moment a METRIC depth attribute is attached to
         a scene to surface the most common footgun (attaching metric depths after
-        :class:`NormalizeScene` has run). The check is best-effort and only logs.
+        :class:`NormalizeScene` has run). The check is best-effort: it emits a Python
+        :class:`warning <warnings.warn>` rather than raising, and is a no-op if the
+        scene exposes no ``transformation_matrix``.
         """
         import warnings
 

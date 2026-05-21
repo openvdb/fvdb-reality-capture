@@ -791,7 +791,13 @@ class GaussianSplatReconstruction:
                 )
             from fvdb_reality_capture.sfm_scene import DepthMapAttribute
 
-            attr = sfm_scene.get_attribute(self.config.dense_depth_attribute)
+            try:
+                attr = sfm_scene.get_attribute(self.config.dense_depth_attribute)
+            except KeyError:
+                raise ValueError(
+                    f"dense_depth_attribute '{self.config.dense_depth_attribute}' is not registered on the "
+                    f"scene. Available attributes: {sorted(sfm_scene.attributes.keys())}."
+                ) from None
             if not isinstance(attr, DepthMapAttribute):
                 raise TypeError(
                     f"Scene attribute '{self.config.dense_depth_attribute}' is "

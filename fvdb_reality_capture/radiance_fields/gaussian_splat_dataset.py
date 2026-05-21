@@ -70,6 +70,8 @@ class SfmDataset(torch.utils.data.Dataset, Iterable):
             "projection",
             "camera_to_world",
             "world_to_camera",
+            "camera_model",
+            "distortion_coeffs",
             "image",
             "image_id",
             "image_path",

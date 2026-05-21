@@ -1415,7 +1415,7 @@ class TestSfmDatasetRasterAttributePatchCrop(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as tmp_dir:
             scene, _ = self._make_scene_with_raster(tmp_dir)
-            for reserved in ("image", "projection", "mask", "sparse_depth"):
+            for reserved in ("image", "projection", "mask", "sparse_depth", "camera_model", "distortion_coeffs"):
                 scene_with_attr = scene.replace(
                     attributes={reserved: PerImageValueAttribute(values=[1.0])},
                 )
