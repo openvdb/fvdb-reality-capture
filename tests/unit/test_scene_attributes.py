@@ -649,6 +649,19 @@ class TestDepthMapAttribute(unittest.TestCase):
             np.testing.assert_array_equal(valid, np.array([[True, False, True], [False, True, True]]))
             np.testing.assert_allclose(depth, np.array([[1.0, 0.0, 2.0], [0.0, 3.0, 4.0]], dtype=np.float32))
 
+    def test_load_depth_pt_requires_grad(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            # A .pt tensor saved with requires_grad=True must still load cleanly.
+            tensor = (torch.arange(6, dtype=torch.float32).reshape(2, 3) + 1.0).requires_grad_(True)
+            pt_path = pathlib.Path(tmp_dir) / "depth.pt"
+            torch.save(tensor, str(pt_path))
+
+            attr = DepthMapAttribute(paths=[str(pt_path)], missing_policy=DepthMissingPolicy.ZERO)
+            depth, valid = attr.load_depth(0)
+            self.assertEqual(depth.shape, (2, 3))
+            np.testing.assert_allclose(depth, np.arange(1, 7, dtype=np.float32).reshape(2, 3))
+            self.assertTrue(valid.all())
+
     def test_load_depth_nan_policy_rejects_integer_raster(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
             arr = np.array([[1, 2], [3, 4]], dtype=np.int32)

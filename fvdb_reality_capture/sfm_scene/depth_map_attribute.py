@@ -241,7 +241,10 @@ class DepthMapAttribute(PerImageRasterAttribute):
         elif ext == ".pt":
             loaded = torch.load(path, map_location="cpu", weights_only=False)
             if isinstance(loaded, torch.Tensor):
-                arr = loaded.numpy()
+                # detach()+cpu() so a tensor saved with requires_grad or on a non-CPU
+                # device still converts cleanly; contiguous() guards against numpy()
+                # rejecting a non-contiguous view.
+                arr = loaded.detach().cpu().contiguous().numpy()
             elif isinstance(loaded, np.ndarray):
                 arr = loaded
             else:
