@@ -61,6 +61,8 @@ RECONSTRUCTION_CONFIG_KEYS = {
     "ssim_lambda",
     "lpips_net",
     "sparse_depth_reg",
+    "dense_depth_attribute",
+    "dense_depth_reg",
     "random_bkgd",
     "refine_start_epoch",
     "refine_stop_epoch",
