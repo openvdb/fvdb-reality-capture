@@ -3,7 +3,6 @@
 #
 from __future__ import annotations
 
-import logging
 import pathlib
 from enum import Enum
 from typing import Any
@@ -107,7 +106,6 @@ class DepthMapAttribute(PerImageRasterAttribute):
                 discontinuities.
         """
         super().__init__(paths=paths, resize_interpolation=resize_interpolation)
-        self._logger = logging.getLogger(f"{self.__class__.__module__}.{self.__class__.__name__}")
 
         self._unit_scale = float(unit_scale)
         self._scale = DepthScale(scale) if not isinstance(scale, DepthScale) else scale
