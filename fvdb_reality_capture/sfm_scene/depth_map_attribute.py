@@ -250,6 +250,18 @@ class DepthMapAttribute(PerImageRasterAttribute):
         else:
             raise ValueError(f"DepthMapAttribute: unsupported file extension '{ext}' for {path}.")
 
+        # Depth maps must be single-channel. Squeeze a trailing singleton channel
+        # (H, W, 1) -> (H, W); reject genuinely multi-channel rasters such as an RGB
+        # image supplied by mistake, which would otherwise broadcast silently in the
+        # dense-depth loss.
+        if arr.ndim == 3 and arr.shape[2] == 1:
+            arr = arr[:, :, 0]
+        if arr.ndim != 2:
+            raise ValueError(
+                f"DepthMapAttribute: expected a single-channel (H, W) depth raster at {path}, "
+                f"got shape {tuple(arr.shape)}. Multi-channel images (e.g. RGB) are not valid depth maps."
+            )
+
         # Compute the validity mask on the *raw* values (before unit_scale) so that
         # SENTINEL values are matched in the same units the user specified.
         if self._missing_policy == DepthMissingPolicy.NAN:

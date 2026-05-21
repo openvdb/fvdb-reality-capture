@@ -195,7 +195,7 @@ class GaussianSplatReconstructionConfig:
     dense_depth_attribute: str | None = None
     """
     Name of a :class:`~fvdb_reality_capture.sfm_scene.DepthMapAttribute` registered on the scene to use as a
-    per-pixel ground-truth depth target. If ``None`` (and :attr:`dense_depth_reg` is non-zero, a ``ValueError`` is raised).
+    per-pixel ground-truth depth target. If ``None`` and :attr:`dense_depth_reg` is non-zero, a ``ValueError`` is raised.
 
     Default: ``None`` (no dense depth supervision).
     """

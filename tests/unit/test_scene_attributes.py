@@ -661,6 +661,26 @@ class TestDepthMapAttribute(unittest.TestCase):
             with self.assertRaises(TypeError):
                 attr.load_depth(0)
 
+    def test_load_depth_squeezes_singleton_channel(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            arr = np.array([[1.0], [2.0]], dtype=np.float32).reshape(2, 1, 1)  # (H, W, 1)
+            npy_path = pathlib.Path(tmp_dir) / "depth.npy"
+            np.save(str(npy_path), arr)
+            attr = DepthMapAttribute(paths=[str(npy_path)], missing_policy=DepthMissingPolicy.ZERO)
+            depth, valid = attr.load_depth(0)
+            self.assertEqual(depth.shape, (2, 1))
+            self.assertEqual(valid.shape, (2, 1))
+
+    def test_load_depth_multichannel_raises(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            arr = np.random.rand(4, 5, 3).astype(np.float32)  # RGB-like, not a depth map
+            npy_path = pathlib.Path(tmp_dir) / "rgb.npy"
+            np.save(str(npy_path), arr)
+            attr = DepthMapAttribute(paths=[str(npy_path)], missing_policy=DepthMissingPolicy.ZERO)
+            with self.assertRaises(ValueError) as ctx:
+                attr.load_depth(0)
+            self.assertIn("single-channel", str(ctx.exception))
+
     def test_validate_through_sfm_scene(self):
         scene = _make_synthetic_scene(num_points=20, num_images=4)
         # Wrong number of paths must be rejected by SfmScene's validate hook.
@@ -1420,6 +1440,67 @@ class TestSfmDatasetRasterAttributePatchCrop(unittest.TestCase):
             dataset = SfmDataset(sfm_scene=scene, load_attributes=attrs)
             attrs.append("nonexistent")
             self.assertEqual(len(dataset._load_attributes), 1)
+
+    def _make_scene_with_depth(self, tmp_dir, attr_names, h=48, w=64):
+        """Build a single-image scene carrying one DepthMapAttribute per name in ``attr_names``."""
+        tmp = pathlib.Path(tmp_dir)
+        img = np.random.randint(0, 255, (h, w, 3), dtype=np.uint8)
+        img_path = tmp / "image_0.png"
+        cv2.imwrite(str(img_path), img)
+
+        camera = _make_camera_metadata(width=w, height=h)
+        images = [
+            SfmPosedImageMetadata(
+                world_to_camera_matrix=np.eye(4, dtype=np.float64),
+                camera_to_world_matrix=np.eye(4, dtype=np.float64),
+                camera_metadata=camera,
+                camera_id=1,
+                image_path=str(img_path),
+                mask_path="",
+                point_indices=None,
+                image_id=0,
+            )
+        ]
+        attributes = {}
+        for name in attr_names:
+            depth = np.ones((h, w), dtype=np.float32)
+            depth_path = tmp / f"{name}_0.npy"
+            np.save(str(depth_path), depth)
+            attributes[name] = DepthMapAttribute(paths=[str(depth_path)], missing_policy=DepthMissingPolicy.ZERO)
+
+        cache = SfmCache.get_cache(tmp, name="test", description="test")
+        return SfmScene(
+            cameras={1: camera},
+            images=images,
+            points=np.random.randn(10, 3).astype(np.float32),
+            points_err=np.random.rand(10).astype(np.float32),
+            points_rgb=np.random.randint(0, 255, (10, 3), dtype=np.uint8),
+            scene_bbox=None,
+            transformation_matrix=None,
+            cache=cache,
+            attributes=attributes,
+        )
+
+    def test_depth_attribute_emits_depth_and_valid(self):
+        from fvdb_reality_capture.radiance_fields.gaussian_splat_dataset import SfmDataset
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            scene = self._make_scene_with_depth(tmp_dir, ["depth"])
+            datum = SfmDataset(sfm_scene=scene, load_attributes=["depth"])[0]
+            self.assertIn("depth", datum)
+            self.assertIn("depth_valid", datum)
+            self.assertEqual(datum["depth_valid"].dtype, torch.bool)
+
+    def test_depth_validity_sibling_collision_raises(self):
+        from fvdb_reality_capture.radiance_fields.gaussian_splat_dataset import SfmDataset
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            # "depth" emits a "depth_valid" key, which collides with the separately
+            # requested "depth_valid" depth attribute.
+            scene = self._make_scene_with_depth(tmp_dir, ["depth", "depth_valid"])
+            with self.assertRaises(ValueError) as ctx:
+                SfmDataset(sfm_scene=scene, load_attributes=["depth", "depth_valid"])
+            self.assertIn("depth_valid", str(ctx.exception))
 
 
 if __name__ == "__main__":

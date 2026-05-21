@@ -79,21 +79,29 @@ class SfmDataset(torch.utils.data.Dataset, Iterable):
             "sparse_depth",
             "sparse_depth_uv",
         }
+        # Validate that every key each attribute will emit into the datum dict is
+        # unique -- both against the reserved dataset keys and against keys emitted by
+        # other requested attributes. A DepthMapAttribute emits both `<name>` and
+        # `<name>_valid`, so e.g. requesting both "depth" and "depth_valid" would have
+        # the former clobber the latter in __getitem__.
+        emitted_by: dict[str, str] = {}
         for name in self._load_attributes:
-            if name in _RESERVED_KEYS:
-                raise ValueError(
-                    f"Attribute name '{name}' collides with a reserved dataset key. "
-                    f"Reserved keys: {sorted(_RESERVED_KEYS)}"
-                )
-            # DepthMapAttribute emits both `<name>` and `<name>_valid` keys; reject
-            # collisions on the validity sibling against the reserved set or against
-            # other attribute names being loaded in the same dataset.
-            valid_key = f"{name}_valid"
-            if valid_key in _RESERVED_KEYS:
-                raise ValueError(
-                    f"Attribute name '{name}' would emit a validity key '{valid_key}' "
-                    f"that collides with a reserved dataset key."
-                )
+            attr = self._sfm_scene.get_attribute(name)  # raises KeyError if not registered
+            keys = [name]
+            if isinstance(attr, DepthMapAttribute):
+                keys.append(f"{name}_valid")
+            for key in keys:
+                if key in _RESERVED_KEYS:
+                    raise ValueError(
+                        f"Attribute '{name}' would emit dataset key '{key}', which collides with a "
+                        f"reserved dataset key. Reserved keys: {sorted(_RESERVED_KEYS)}"
+                    )
+                if key in emitted_by:
+                    raise ValueError(
+                        f"Attribute '{name}' would emit dataset key '{key}', which is already emitted "
+                        f"by attribute '{emitted_by[key]}'. Rename one of the attributes to avoid the collision."
+                    )
+                emitted_by[key] = name
 
         # If you specified image indices, we'll filter the dataset to only include those images.
         if dataset_indices is None:
