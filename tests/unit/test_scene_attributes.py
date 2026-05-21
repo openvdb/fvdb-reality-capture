@@ -577,6 +577,25 @@ class TestDepthMapAttribute(unittest.TestCase):
         with self.assertRaises(ValueError):
             attr.on_spatial_transform(transform)
 
+    def test_spatial_transform_metric_degenerate_scale_raises(self):
+        # A rank-deficient / near-zero-scale transform must be rejected, not folded
+        # into unit_scale as s~=0 (which would zero out all depths).
+        attr = DepthMapAttribute(["a.npy"], scale=DepthScale.METRIC)
+        transform = np.zeros((4, 4))
+        transform[3, 3] = 1.0
+        with self.assertRaises(ValueError) as ctx:
+            attr.on_spatial_transform(transform)
+        self.assertIn("degenerate", str(ctx.exception))
+
+    def test_warn_handles_none_transformation_matrix(self):
+        class _NoTransform:
+            transformation_matrix = None
+
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            DepthMapAttribute.warn_if_scene_already_transformed(_NoTransform(), attr_name="depth")
+            self.assertEqual(len(caught), 0)
+
     def test_state_dict_round_trip(self):
         attr = DepthMapAttribute(
             paths=["a.npy", "b.npy"],

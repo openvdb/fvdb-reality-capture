@@ -90,6 +90,12 @@ class DepthMapAttribute(PerImageRasterAttribute):
                 Supported formats are the same as :class:`PerImageRasterAttribute`
                 (``.png``, ``.jpg``/``.jpeg``, ``.npy``, ``.pt``). 16-bit single-channel
                 PNGs are read with :func:`cv2.imread(..., cv2.IMREAD_UNCHANGED)`.
+
+                .. warning::
+                    ``.pt`` files are deserialized with :func:`torch.load`, which executes
+                    arbitrary code via pickle. Only load ``.pt`` depth maps produced by a
+                    trusted pipeline. For depth maps from untrusted sources prefer the
+                    non-executable ``.npy`` or PNG formats.
             unit_scale: Multiplier from raw stored values to scene-unit depth. For depth maps
                 stored as 16-bit PNGs in millimeters with the scene in meters, use ``0.001``.
                 For float rasters already in scene units, leave at ``1.0``. This value is
@@ -183,10 +189,17 @@ class DepthMapAttribute(PerImageRasterAttribute):
             return self
 
         linear = matrix[:3, :3]
-        svals = np.linalg.svd(linear, compute_uv=False)
+        svals = np.linalg.svd(linear, compute_uv=False)  # sorted descending
+        # Reject degenerate (rank-deficient / near-zero scale) transforms first: these
+        # would otherwise fold s~=0 into unit_scale and silently zero out every depth.
+        if svals[0] <= 1e-8:
+            raise ValueError(
+                f"DepthMapAttribute(scale=METRIC) got a degenerate spatial transform with "
+                f"near-zero scale (singular values {svals}); this would collapse all depths to zero."
+            )
         # Allow a small relative tolerance because normalize_scene builds the transform
         # in float64 from accumulated outer products.
-        if svals[0] > 0 and not np.allclose(svals, svals[0], rtol=1e-4, atol=1e-6):
+        if not np.allclose(svals, svals[0], rtol=1e-4, atol=1e-6):
             raise ValueError(
                 f"DepthMapAttribute(scale=METRIC) requires a similarity (uniform-scale) "
                 f"spatial transform; got singular values {svals}. A non-uniform 3x3 would "
@@ -325,9 +338,12 @@ class DepthMapAttribute(PerImageRasterAttribute):
         """
         import warnings
 
-        try:
-            transform = np.asarray(scene.transformation_matrix)
-        except AttributeError:
+        raw_transform = getattr(scene, "transformation_matrix", None)
+        if raw_transform is None:
+            return
+        transform = np.asarray(raw_transform)
+        if transform.shape != (4, 4):
+            # Unexpected shape -- treat as "can't tell", don't crash on a best-effort check.
             return
         if not np.allclose(transform, np.eye(4), atol=1e-6):
             warnings.warn(

@@ -61,7 +61,7 @@ def _scale_shift_invariant_l1(
     """
     assert pred.shape[0] == 1, "_scale_shift_invariant_l1 only supports batch size 1"
     v = valid[0]
-    if v.sum() == 0:
+    if not v.any():
         return pred.new_zeros(())
     p = pred[0][v]
     t = target[0][v]
@@ -782,14 +782,16 @@ class GaussianSplatReconstruction:
         # (direct L1 vs scale-shift invariant) is keyed off the attribute's DepthScale at
         # loss-evaluation time, not configured separately.
         dense_depth_load: list[str] = []
-        self._dense_depth_scale: "DepthScale | None" = None
+        # Resolve the loss form (direct L1 vs scale-shift invariant) once, here, so the
+        # training loop is a plain boolean check with no per-step import.
+        self._dense_depth_is_relative: bool = False
         if self.config.dense_depth_reg > 0.0:
             if self.config.dense_depth_attribute is None:
                 raise ValueError(
                     "dense_depth_reg > 0 requires dense_depth_attribute to name a DepthMapAttribute "
                     "registered on the scene."
                 )
-            from fvdb_reality_capture.sfm_scene import DepthMapAttribute
+            from fvdb_reality_capture.sfm_scene import DepthMapAttribute, DepthScale
 
             try:
                 attr = sfm_scene.get_attribute(self.config.dense_depth_attribute)
@@ -804,7 +806,7 @@ class GaussianSplatReconstruction:
                     f"{type(attr).__name__}, expected DepthMapAttribute."
                 )
             dense_depth_load = [self.config.dense_depth_attribute]
-            self._dense_depth_scale = attr.scale
+            self._dense_depth_is_relative = attr.scale == DepthScale.RELATIVE
 
         self._training_dataset = SfmDataset(
             sfm_scene=sfm_scene,
@@ -1419,9 +1421,7 @@ class GaussianSplatReconstruction:
                         pred_dense_depth = render_outputs.depth[..., 0] / torch.clamp(
                             render_outputs.alpha[..., 0], min=1e-6
                         )  # [B, h, w]
-                        from fvdb_reality_capture.sfm_scene import DepthScale
-
-                        if self._dense_depth_scale == DepthScale.RELATIVE:
+                        if self._dense_depth_is_relative:
                             dense_depth_loss = (
                                 _scale_shift_invariant_l1(pred_dense_depth, gt_depth_crop, gt_valid_crop)
                                 * self.config.dense_depth_reg
