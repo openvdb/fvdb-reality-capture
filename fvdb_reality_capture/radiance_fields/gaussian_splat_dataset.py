@@ -12,6 +12,7 @@ import torch.utils.data
 import torchvision
 
 from fvdb_reality_capture.sfm_scene import (
+    DepthMapAttribute,
     PerImageRasterAttribute,
     PerImageValueAttribute,
     SfmCameraMetadata,
@@ -83,6 +84,15 @@ class SfmDataset(torch.utils.data.Dataset, Iterable):
                 raise ValueError(
                     f"Attribute name '{name}' collides with a reserved dataset key. "
                     f"Reserved keys: {sorted(_RESERVED_KEYS)}"
+                )
+            # DepthMapAttribute emits both `<name>` and `<name>_valid` keys; reject
+            # collisions on the validity sibling against the reserved set or against
+            # other attribute names being loaded in the same dataset.
+            valid_key = f"{name}_valid"
+            if valid_key in _RESERVED_KEYS:
+                raise ValueError(
+                    f"Attribute name '{name}' would emit a validity key '{valid_key}' "
+                    f"that collides with a reserved dataset key."
                 )
 
         # If you specified image indices, we'll filter the dataset to only include those images.
@@ -378,7 +388,16 @@ class SfmDataset(torch.utils.data.Dataset, Iterable):
 
         for attr_name in self._load_attributes:
             attr = self._sfm_scene.get_attribute(attr_name)
-            if isinstance(attr, PerImageRasterAttribute):
+            if isinstance(attr, DepthMapAttribute):
+                depth_np, valid_np = attr.load_depth(index)
+                depth = torch.from_numpy(depth_np).contiguous()
+                valid = torch.from_numpy(valid_np).contiguous()
+                if self.patch_size is not None:
+                    depth = depth[y : y + self.patch_size, x : x + self.patch_size]
+                    valid = valid[y : y + self.patch_size, x : x + self.patch_size]
+                data[attr_name] = depth
+                data[f"{attr_name}_valid"] = valid
+            elif isinstance(attr, PerImageRasterAttribute):
                 path = attr.paths[index]
                 if path.endswith(".npy"):
                     raster = torch.from_numpy(np.load(path))

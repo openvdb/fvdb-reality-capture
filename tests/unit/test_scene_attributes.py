@@ -13,6 +13,9 @@ import torch
 from fvdb import CameraModel
 
 from fvdb_reality_capture.sfm_scene import (
+    DepthMapAttribute,
+    DepthMissingPolicy,
+    DepthScale,
     InterpolationMode,
     PerCameraAttribute,
     PerImageRasterAttribute,
@@ -487,6 +490,219 @@ class TestPerImageRasterAttribute(unittest.TestCase):
         with self.assertRaises(ValueError) as ctx:
             attr.validate("features", 10, 5, {0, 1})
         self.assertIn("features", str(ctx.exception))
+
+
+class TestDepthMapAttribute(unittest.TestCase):
+    def test_registered_in_registry(self):
+        self.assertIn("DepthMapAttribute", REGISTERED_SCENE_ATTRIBUTES)
+        self.assertIs(REGISTERED_SCENE_ATTRIBUTES["DepthMapAttribute"], DepthMapAttribute)
+
+    def test_defaults(self):
+        attr = DepthMapAttribute(["a.npy"])
+        self.assertEqual(attr.unit_scale, 1.0)
+        self.assertEqual(attr.scale, DepthScale.METRIC)
+        self.assertEqual(attr.missing_policy, DepthMissingPolicy.NAN)
+        self.assertIsNone(attr.invalid_value)
+        self.assertEqual(attr.resize_interpolation, InterpolationMode.NEAREST)
+
+    def test_sentinel_requires_invalid_value(self):
+        with self.assertRaises(ValueError):
+            DepthMapAttribute(["a.npy"], missing_policy=DepthMissingPolicy.SENTINEL)
+
+    def test_non_sentinel_rejects_invalid_value(self):
+        with self.assertRaises(ValueError):
+            DepthMapAttribute(["a.npy"], missing_policy=DepthMissingPolicy.NAN, invalid_value=-1.0)
+
+    def test_filter_images_preserves_metadata(self):
+        attr = DepthMapAttribute(
+            ["a.npy", "b.npy", "c.npy"],
+            unit_scale=0.001,
+            scale=DepthScale.METRIC,
+            missing_policy=DepthMissingPolicy.ZERO,
+        )
+        filtered = attr.on_filter_images(np.array([True, False, True]))
+        self.assertIsInstance(filtered, DepthMapAttribute)
+        self.assertEqual(filtered.paths, ["a.npy", "c.npy"])
+        self.assertEqual(filtered.unit_scale, 0.001)
+        self.assertEqual(filtered.scale, DepthScale.METRIC)
+        self.assertEqual(filtered.missing_policy, DepthMissingPolicy.ZERO)
+
+    def test_select_images_preserves_metadata(self):
+        attr = DepthMapAttribute(["a.npy", "b.npy", "c.npy"], unit_scale=2.0)
+        selected = attr.on_select_images(np.array([2, 0]))
+        self.assertIsInstance(selected, DepthMapAttribute)
+        self.assertEqual(selected.paths, ["c.npy", "a.npy"])
+        self.assertEqual(selected.unit_scale, 2.0)
+
+    def test_spatial_transform_metric_uniform_scale(self):
+        attr = DepthMapAttribute(["a.npy"], unit_scale=0.001, scale=DepthScale.METRIC)
+        transform = np.eye(4) * 3.0
+        transform[3, 3] = 1.0  # bottom-right stays 1
+        transformed = attr.on_spatial_transform(transform)
+        self.assertAlmostEqual(transformed.unit_scale, 0.001 * 3.0, places=6)
+        # Original is untouched
+        self.assertEqual(attr.unit_scale, 0.001)
+
+    def test_spatial_transform_metric_with_translation(self):
+        # Build a similarity transform: 2x scale + rotation + translation.
+        theta = 0.3
+        R = np.array([[np.cos(theta), -np.sin(theta), 0], [np.sin(theta), np.cos(theta), 0], [0, 0, 1]])
+        transform = np.eye(4)
+        transform[:3, :3] = 2.0 * R
+        transform[:3, 3] = [10.0, -5.0, 2.0]
+        attr = DepthMapAttribute(["a.npy"], unit_scale=1.0)
+        transformed = attr.on_spatial_transform(transform)
+        self.assertAlmostEqual(transformed.unit_scale, 2.0, places=6)
+
+    def test_spatial_transform_relative_is_noop(self):
+        attr = DepthMapAttribute(["a.npy"], unit_scale=2.5, scale=DepthScale.RELATIVE)
+        transform = np.eye(4) * 7.0
+        transform[3, 3] = 1.0
+        transformed = attr.on_spatial_transform(transform)
+        self.assertIs(transformed, attr)
+
+    def test_spatial_transform_metric_non_similarity_raises(self):
+        attr = DepthMapAttribute(["a.npy"], scale=DepthScale.METRIC)
+        # Non-uniform diagonal scale -> different singular values.
+        transform = np.diag([2.0, 3.0, 4.0, 1.0])
+        with self.assertRaises(ValueError) as ctx:
+            attr.on_spatial_transform(transform)
+        self.assertIn("similarity", str(ctx.exception))
+
+    def test_spatial_transform_metric_reflection_raises(self):
+        attr = DepthMapAttribute(["a.npy"], scale=DepthScale.METRIC)
+        # Pure reflection: det = -1.
+        transform = np.eye(4)
+        transform[0, 0] = -1.0
+        with self.assertRaises(ValueError):
+            attr.on_spatial_transform(transform)
+
+    def test_state_dict_round_trip(self):
+        attr = DepthMapAttribute(
+            paths=["a.npy", "b.npy"],
+            unit_scale=0.5,
+            scale=DepthScale.RELATIVE,
+            missing_policy=DepthMissingPolicy.SENTINEL,
+            invalid_value=-1.0,
+            resize_interpolation=InterpolationMode.BILINEAR,
+        )
+        sd = attr.state_dict()
+        restored = DepthMapAttribute.from_state_dict(sd)
+        self.assertEqual(restored.paths, ["a.npy", "b.npy"])
+        self.assertEqual(restored.unit_scale, 0.5)
+        self.assertEqual(restored.scale, DepthScale.RELATIVE)
+        self.assertEqual(restored.missing_policy, DepthMissingPolicy.SENTINEL)
+        self.assertEqual(restored.invalid_value, -1.0)
+        self.assertEqual(restored.resize_interpolation, InterpolationMode.BILINEAR)
+
+    def test_load_depth_zero_policy_png16(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            # 16-bit single-channel PNG with depths in millimeters; 0 marks invalid.
+            depth_mm = np.array([[0, 1000, 2000], [3000, 0, 1500]], dtype=np.uint16)
+            png_path = pathlib.Path(tmp_dir) / "depth.png"
+            cv2.imwrite(str(png_path), depth_mm)
+
+            attr = DepthMapAttribute(
+                paths=[str(png_path)],
+                unit_scale=0.001,
+                missing_policy=DepthMissingPolicy.ZERO,
+            )
+            depth, valid = attr.load_depth(0)
+            self.assertEqual(depth.dtype, np.float32)
+            self.assertEqual(depth.shape, (2, 3))
+            self.assertEqual(valid.dtype, np.bool_)
+            np.testing.assert_array_equal(valid, np.array([[False, True, True], [True, False, True]]))
+            # Valid pixels converted to meters; invalid pixels zeroed.
+            expected = np.array([[0.0, 1.0, 2.0], [3.0, 0.0, 1.5]], dtype=np.float32)
+            np.testing.assert_allclose(depth, expected, rtol=1e-6)
+
+    def test_load_depth_nan_policy_npy(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            arr = np.array([[1.5, np.nan, 2.5], [np.nan, 3.5, 4.5]], dtype=np.float32)
+            npy_path = pathlib.Path(tmp_dir) / "depth.npy"
+            np.save(str(npy_path), arr)
+
+            attr = DepthMapAttribute(
+                paths=[str(npy_path)],
+                unit_scale=2.0,
+                missing_policy=DepthMissingPolicy.NAN,
+            )
+            depth, valid = attr.load_depth(0)
+            np.testing.assert_array_equal(valid, np.array([[True, False, True], [False, True, True]]))
+            expected = np.array([[3.0, 0.0, 5.0], [0.0, 7.0, 9.0]], dtype=np.float32)
+            np.testing.assert_allclose(depth, expected, rtol=1e-6)
+            self.assertTrue(np.isfinite(depth).all())
+
+    def test_load_depth_sentinel_policy(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            arr = np.array([[1.0, -1.0, 2.0], [-1.0, 3.0, 4.0]], dtype=np.float32)
+            npy_path = pathlib.Path(tmp_dir) / "depth.npy"
+            np.save(str(npy_path), arr)
+
+            attr = DepthMapAttribute(
+                paths=[str(npy_path)],
+                unit_scale=1.0,
+                missing_policy=DepthMissingPolicy.SENTINEL,
+                invalid_value=-1.0,
+            )
+            depth, valid = attr.load_depth(0)
+            np.testing.assert_array_equal(valid, np.array([[True, False, True], [False, True, True]]))
+            np.testing.assert_allclose(depth, np.array([[1.0, 0.0, 2.0], [0.0, 3.0, 4.0]], dtype=np.float32))
+
+    def test_load_depth_nan_policy_rejects_integer_raster(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            arr = np.array([[1, 2], [3, 4]], dtype=np.int32)
+            npy_path = pathlib.Path(tmp_dir) / "depth.npy"
+            np.save(str(npy_path), arr)
+            attr = DepthMapAttribute(
+                paths=[str(npy_path)],
+                missing_policy=DepthMissingPolicy.NAN,
+            )
+            with self.assertRaises(TypeError):
+                attr.load_depth(0)
+
+    def test_validate_through_sfm_scene(self):
+        scene = _make_synthetic_scene(num_points=20, num_images=4)
+        # Wrong number of paths must be rejected by SfmScene's validate hook.
+        with self.assertRaises(ValueError):
+            scene.replace(attributes={"depth": DepthMapAttribute(["only_one.npy"])})
+        # Correct number passes.
+        scene2 = scene.replace(attributes={"depth": DepthMapAttribute([f"d{i}.npy" for i in range(4)])})
+        self.assertIsInstance(scene2.get_attribute("depth"), DepthMapAttribute)
+
+    def test_apply_transformation_matrix_folds_scale(self):
+        # End-to-end: SfmScene.apply_transformation_matrix should fold the scale into unit_scale.
+        scene = _make_synthetic_scene(num_points=20, num_images=4)
+        attr = DepthMapAttribute(
+            paths=[f"d{i}.npy" for i in range(4)],
+            unit_scale=0.001,
+            scale=DepthScale.METRIC,
+        )
+        scene = scene.replace(attributes={"depth": attr})
+        T = np.eye(4) * 4.0
+        T[3, 3] = 1.0
+        scene2 = scene.apply_transformation_matrix(T)
+        attr2 = scene2.get_attribute("depth")
+        self.assertIsInstance(attr2, DepthMapAttribute)
+        self.assertAlmostEqual(attr2.unit_scale, 0.001 * 4.0, places=6)
+
+    def test_warn_on_attaching_metric_to_transformed_scene(self):
+        scene = _make_synthetic_scene(num_points=20, num_images=4)
+        T = np.eye(4) * 2.0
+        T[3, 3] = 1.0
+        scene = scene.apply_transformation_matrix(T)
+        # scene now has non-identity transformation_matrix; helper should warn.
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            DepthMapAttribute.warn_if_scene_already_transformed(scene, attr_name="depth")
+            self.assertTrue(any("transformation_matrix is not identity" in str(w.message) for w in caught))
+
+    def test_warn_is_silent_on_identity_scene(self):
+        scene = _make_synthetic_scene(num_points=20, num_images=4)
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            DepthMapAttribute.warn_if_scene_already_transformed(scene, attr_name="depth")
+            self.assertEqual(len(caught), 0)
 
 
 class TestPerCameraAttribute(unittest.TestCase):

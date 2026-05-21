@@ -13,6 +13,10 @@ if TYPE_CHECKING:
     from .gaussian_splat_reconstruction import GaussianSplatReconstructionConfig
 
 
+def _needs_depth_render(config: "GaussianSplatReconstructionConfig") -> bool:
+    return config.sparse_depth_reg > 0.0 or config.dense_depth_reg > 0.0
+
+
 @dataclass
 class RenderOutputs:
     """
@@ -181,7 +185,7 @@ class ImageSpaceRenderBackend:
         """
         if config.batch_size > 1 and torch.unique(torch.from_numpy(dataset.camera_models)).numel() > 1:
             raise NotImplementedError("batch_size > 1 is not supported for scenes with multiple camera models")
-        self._probe(model, dataset, config, device, render_depth=config.sparse_depth_reg > 0.0)
+        self._probe(model, dataset, config, device, render_depth=_needs_depth_render(config))
 
     def forward_train(
         self,
@@ -223,7 +227,7 @@ class ImageSpaceRenderBackend:
         projection_method = projection_method_from_config(config.projection_method)
         projection_function = (
             model.project_gaussians_for_images_and_depths
-            if config.sparse_depth_reg > 0.0
+            if _needs_depth_render(config)
             else model.project_gaussians_for_images
         )
         projected_gaussians = projection_function(
@@ -429,7 +433,7 @@ class WorldSpaceRenderBackend:
                 distortion_coeffs_arg = _distortion_coeffs_for_batch(camera_model_enum, distortion_coeffs, model.device)
                 render_function = (
                     model.render_images_and_depths_from_world
-                    if config.sparse_depth_reg > 0.0
+                    if _needs_depth_render(config)
                     else model.render_images_from_world
                 )
                 render_function(
@@ -487,9 +491,7 @@ class WorldSpaceRenderBackend:
         camera_model = _camera_model_from_batch(camera_models)
         distortion_coeffs_arg = _distortion_coeffs_for_batch(camera_model, distortion_coeffs, model.device)
         render_function = (
-            model.render_images_and_depths_from_world
-            if config.sparse_depth_reg > 0.0
-            else model.render_images_from_world
+            model.render_images_and_depths_from_world if _needs_depth_render(config) else model.render_images_from_world
         )
         rendered, alpha = render_function(
             world_to_camera_matrices=world_to_camera_matrices,

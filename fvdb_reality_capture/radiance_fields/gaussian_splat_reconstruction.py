@@ -39,6 +39,41 @@ from .gaussian_splat_reconstruction_writer import (
 )
 
 
+def _scale_shift_invariant_l1(
+    pred: torch.Tensor, target: torch.Tensor, valid: torch.Tensor, eps: float = 1e-6
+) -> torch.Tensor:
+    """Scale-and-shift invariant L1 loss between ``pred`` and ``target``, per image.
+
+    Each side is independently normalized by its own median and mean-absolute-deviation
+    over valid pixels (Ranftl et al., MiDaS); the L1 of the residual is then averaged
+    over valid pixels. Restricted to batch size 1; the caller enforces this elsewhere.
+
+    Args:
+        pred (torch.Tensor): Predicted depth, shape ``(1, H, W)``.
+        target (torch.Tensor): Target depth, shape ``(1, H, W)``.
+        valid (torch.Tensor): Boolean validity mask, shape ``(1, H, W)``.
+        eps (float): Lower bound on the MAD denominator to avoid division by zero on
+            constant-depth (or near-empty) crops.
+
+    Returns:
+        loss (torch.Tensor): Scalar L1 loss in normalized depth units. Returns zero
+            when no pixels are valid.
+    """
+    assert pred.shape[0] == 1, "_scale_shift_invariant_l1 only supports batch size 1"
+    v = valid[0]
+    if v.sum() == 0:
+        return pred.new_zeros(())
+    p = pred[0][v]
+    t = target[0][v]
+    p_med = torch.median(p)
+    t_med = torch.median(t)
+    p_mad = (p - p_med).abs().mean().clamp_min(eps)
+    t_mad = (t - t_med).abs().mean().clamp_min(eps)
+    p_hat = (p - p_med) / p_mad
+    t_hat = (t - t_med) / t_mad
+    return (p_hat - t_hat).abs().mean()
+
+
 @dataclass
 class GaussianSplatReconstructionConfig:
     """
@@ -155,6 +190,28 @@ class GaussianSplatReconstructionConfig:
     Weight for sparse depth loss. If you have sparse depth measurements for some pixels in the images, you can set this weight
     to a value greater than 0 to encourage the reconstruction to match those depth measurements.
     Default: ``0.0`` (no sparse depth loss).
+    """
+
+    dense_depth_attribute: str | None = None
+    """
+    Name of a :class:`~fvdb_reality_capture.sfm_scene.DepthMapAttribute` registered on the scene to use as a
+    per-pixel ground-truth depth target. If ``None`` (and :attr:`dense_depth_reg` is non-zero, a ``ValueError`` is raised).
+
+    Default: ``None`` (no dense depth supervision).
+    """
+
+    dense_depth_reg: float = 0.0
+    """
+    Weight on the dense depth loss term. The dense loss coexists with :attr:`sparse_depth_reg`; both may be enabled
+    simultaneously. The form of the loss is selected by the :attr:`~DepthMapAttribute.scale` of the referenced attribute:
+
+    - :class:`DepthScale.METRIC` --- direct masked L1 between rendered depth (alpha-corrected) and target depth,
+      both in scene units.
+    - :class:`DepthScale.RELATIVE` --- scale-and-shift invariant L1 (each side normalized by its own per-image
+      median and mean-absolute-deviation, then L1; cf. Ranftl et al., MiDaS). Use this for monocular relative-depth
+      predictions whose absolute scale and offset are arbitrary.
+
+    Default: ``0.0`` (no dense depth loss).
     """
 
     random_bkgd: bool = False
@@ -720,10 +777,34 @@ class GaussianSplatReconstruction:
         self._render_backend = render_backend
 
         self._sfm_scene = sfm_scene
+
+        # Resolve dense-depth supervision: which attribute to load. The comparison form
+        # (direct L1 vs scale-shift invariant) is keyed off the attribute's DepthScale at
+        # loss-evaluation time, not configured separately.
+        dense_depth_load: list[str] = []
+        self._dense_depth_scale: "DepthScale | None" = None
+        if self.config.dense_depth_reg > 0.0:
+            if self.config.dense_depth_attribute is None:
+                raise ValueError(
+                    "dense_depth_reg > 0 requires dense_depth_attribute to name a DepthMapAttribute "
+                    "registered on the scene."
+                )
+            from fvdb_reality_capture.sfm_scene import DepthMapAttribute
+
+            attr = sfm_scene.get_attribute(self.config.dense_depth_attribute)
+            if not isinstance(attr, DepthMapAttribute):
+                raise TypeError(
+                    f"Scene attribute '{self.config.dense_depth_attribute}' is "
+                    f"{type(attr).__name__}, expected DepthMapAttribute."
+                )
+            dense_depth_load = [self.config.dense_depth_attribute]
+            self._dense_depth_scale = attr.scale
+
         self._training_dataset = SfmDataset(
             sfm_scene=sfm_scene,
             dataset_indices=train_indices,
             return_visible_points=(self.config.sparse_depth_reg > 0.0),
+            load_attributes=dense_depth_load,
         )
         self._validation_dataset = SfmDataset(sfm_scene=sfm_scene, dataset_indices=val_indices)
 
@@ -1243,6 +1324,14 @@ class GaussianSplatReconstruction:
                     minibatch["median_depth"].to(self.device) if "median_depth" in minibatch else None
                 )  # [B,]
 
+                dense_depth_key = self.config.dense_depth_attribute
+                if dense_depth_key is not None and dense_depth_key in minibatch:
+                    dense_depth_tgt = minibatch[dense_depth_key].to(self.device)  # [B, H, W]
+                    dense_depth_valid = minibatch[f"{dense_depth_key}_valid"].to(self.device)  # [B, H, W] bool
+                else:
+                    dense_depth_tgt = None
+                    dense_depth_valid = None
+
                 # Progressively use higher spherical harmonic degree as we optimize
                 sh_degree_to_use = min(self._global_step // increase_sh_degree_every_step, self.config.sh_degree)
                 # If you have very large images, you can iterate over disjoint crops and accumulate gradients
@@ -1312,6 +1401,38 @@ class GaussianSplatReconstruction:
 
                     loss = loss + depth_loss
 
+                    # Dense depth loss (from a DepthMapAttribute on the scene).
+                    if dense_depth_tgt is not None and self.config.dense_depth_reg > 0.0:
+                        if self.config.batch_size > 1:
+                            raise NotImplementedError("Dense depth loss is not implemented for batch_size > 1.")
+                        if render_outputs.depth is None:
+                            raise RuntimeError("Model did not render depth channel, but dense depth loss is enabled.")
+                        cx, cy, cw, ch = crop
+                        gt_depth_crop = dense_depth_tgt[:, cy : cy + ch, cx : cx + cw]
+                        gt_valid_crop = dense_depth_valid[:, cy : cy + ch, cx : cx + cw]
+                        pred_dense_depth = render_outputs.depth[..., 0] / torch.clamp(
+                            render_outputs.alpha[..., 0], min=1e-6
+                        )  # [B, h, w]
+                        from fvdb_reality_capture.sfm_scene import DepthScale
+
+                        if self._dense_depth_scale == DepthScale.RELATIVE:
+                            dense_depth_loss = (
+                                _scale_shift_invariant_l1(pred_dense_depth, gt_depth_crop, gt_valid_crop)
+                                * self.config.dense_depth_reg
+                            )
+                        else:
+                            valid_mask = gt_valid_crop.float()
+                            valid_count = valid_mask.sum().clamp(min=1.0)
+                            dense_depth_loss = (
+                                (torch.abs(pred_dense_depth - gt_depth_crop) * valid_mask).sum()
+                                / valid_count
+                                * self.config.dense_depth_reg
+                            )
+                    else:
+                        dense_depth_loss = 0.0
+
+                    loss = loss + dense_depth_loss
+
                     # If you're optimizing poses, regularize the pose parameters so the poses
                     # don't drift too far from the initial values
                     if (
@@ -1378,6 +1499,11 @@ class GaussianSplatReconstruction:
                         self._global_step,
                         f"{log_tag}/depth_loss",
                         depth_loss if isinstance(depth_loss, float) else depth_loss.item(),
+                    )
+                    self._writer.log_metric(
+                        self._global_step,
+                        f"{log_tag}/dense_depth_loss",
+                        dense_depth_loss if isinstance(dense_depth_loss, float) else dense_depth_loss.item(),
                     )
                     self._writer.log_metric(self._global_step, f"{log_tag}/num_gaussians", self.model.num_gaussians)
                     self._writer.log_metric(self._global_step, f"{log_tag}/sh_degree", sh_degree_to_use)
