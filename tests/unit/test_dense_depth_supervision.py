@@ -93,6 +93,22 @@ class TestScaleShiftInvariantL1(unittest.TestCase):
         self.assertIsNotNone(pred.grad)
         self.assertTrue(torch.isfinite(pred.grad).all())
 
+    def test_batched_matches_per_image_mean(self):
+        # Batch>1 with differing valid-pixel counts per element: result must equal the
+        # mean of the per-image losses computed independently.
+        torch.manual_seed(0)
+        pred = torch.rand(3, 8, 8) + 0.5
+        target = torch.rand(3, 8, 8) + 0.5
+        valid = torch.ones(3, 8, 8, dtype=torch.bool)
+        valid[1, :, 5:] = False  # element 1 has fewer valid pixels
+        valid[2] = False  # element 2 fully invalid -> contributes 0
+
+        batched = _scale_shift_invariant_l1(pred, target, valid).item()
+        per_image = [
+            _scale_shift_invariant_l1(pred[i : i + 1], target[i : i + 1], valid[i : i + 1]).item() for i in range(3)
+        ]
+        self.assertAlmostEqual(batched, sum(per_image) / 3.0, places=5)
+
 
 if __name__ == "__main__":
     unittest.main()

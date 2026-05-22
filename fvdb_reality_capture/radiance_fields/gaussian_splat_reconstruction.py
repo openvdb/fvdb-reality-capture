@@ -44,34 +44,41 @@ def _scale_shift_invariant_l1(
 ) -> torch.Tensor:
     """Scale-and-shift invariant L1 loss between ``pred`` and ``target``, per image.
 
-    Each side is independently normalized by its own median and mean-absolute-deviation
-    over valid pixels (Ranftl et al., MiDaS); the L1 of the residual is then averaged
-    over valid pixels. Restricted to batch size 1; the caller enforces this elsewhere.
+    Each image in the batch is independently normalized by its own median and
+    mean-absolute-deviation over its valid pixels (Ranftl et al., MiDaS); the L1 of the
+    residual is then averaged over valid pixels and over the batch.
+
+    Because the valid-pixel count differs per batch element, normalization is computed
+    per element (a short Python loop over the batch dimension rather than a single
+    vectorized reduction). Batch elements with no valid pixels contribute zero.
 
     Args:
-        pred (torch.Tensor): Predicted depth, shape ``(1, H, W)``.
-        target (torch.Tensor): Target depth, shape ``(1, H, W)``.
-        valid (torch.Tensor): Boolean validity mask, shape ``(1, H, W)``.
+        pred (torch.Tensor): Predicted depth, shape ``(B, H, W)``.
+        target (torch.Tensor): Target depth, shape ``(B, H, W)``.
+        valid (torch.Tensor): Boolean validity mask, shape ``(B, H, W)``.
         eps (float): Lower bound on the MAD denominator to avoid division by zero on
             constant-depth (or near-empty) crops.
 
     Returns:
-        loss (torch.Tensor): Scalar L1 loss in normalized depth units. Returns zero
-            when no pixels are valid.
+        loss (torch.Tensor): Scalar L1 loss in normalized depth units, averaged over the
+            batch. Returns zero when no pixels are valid anywhere.
     """
-    assert pred.shape[0] == 1, "_scale_shift_invariant_l1 only supports batch size 1"
-    v = valid[0]
-    if not v.any():
-        return pred.new_zeros(())
-    p = pred[0][v]
-    t = target[0][v]
-    p_med = torch.median(p)
-    t_med = torch.median(t)
-    p_mad = (p - p_med).abs().mean().clamp_min(eps)
-    t_mad = (t - t_med).abs().mean().clamp_min(eps)
-    p_hat = (p - p_med) / p_mad
-    t_hat = (t - t_med) / t_mad
-    return (p_hat - t_hat).abs().mean()
+    per_image_losses = []
+    for b in range(pred.shape[0]):
+        vb = valid[b]
+        if not vb.any():
+            per_image_losses.append(pred.new_zeros(()))
+            continue
+        p = pred[b][vb]
+        t = target[b][vb]
+        p_med = torch.median(p)
+        t_med = torch.median(t)
+        p_mad = (p - p_med).abs().mean().clamp_min(eps)
+        t_mad = (t - t_med).abs().mean().clamp_min(eps)
+        p_hat = (p - p_med) / p_mad
+        t_hat = (t - t_med) / t_mad
+        per_image_losses.append((p_hat - t_hat).abs().mean())
+    return torch.stack(per_image_losses).mean()
 
 
 @dataclass
@@ -210,6 +217,13 @@ class GaussianSplatReconstructionConfig:
     - :class:`DepthScale.RELATIVE` --- scale-and-shift invariant L1 (each side normalized by its own per-image
       median and mean-absolute-deviation, then L1; cf. Ranftl et al., MiDaS). Use this for monocular relative-depth
       predictions whose absolute scale and offset are arbitrary.
+
+    .. note::
+        For :class:`DepthScale.METRIC` the loss is computed in **scene units**, so a good value for
+        ``dense_depth_reg`` depends on the scale of the scene and must be retuned when the scene units change.
+        For :class:`DepthScale.RELATIVE` the loss is unitless (each image is median/MAD-normalized), so a value
+        chosen for one scene transfers across scenes. This differs from :attr:`sparse_depth_reg`, whose loss is
+        always median-normalized and therefore scene-scale independent.
 
     Default: ``0.0`` (no dense depth loss).
     """

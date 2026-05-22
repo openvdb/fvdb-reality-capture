@@ -597,22 +597,47 @@ class TestDepthMapAttribute(unittest.TestCase):
             self.assertEqual(len(caught), 0)
 
     def test_state_dict_round_trip(self):
+        # SENTINEL + invalid_value round-trip (NEAREST: the only interpolation valid with
+        # a non-NaN missing policy).
         attr = DepthMapAttribute(
             paths=["a.npy", "b.npy"],
             unit_scale=0.5,
             scale=DepthScale.RELATIVE,
             missing_policy=DepthMissingPolicy.SENTINEL,
             invalid_value=-1.0,
-            resize_interpolation=InterpolationMode.BILINEAR,
+            resize_interpolation=InterpolationMode.NEAREST,
         )
-        sd = attr.state_dict()
-        restored = DepthMapAttribute.from_state_dict(sd)
+        restored = DepthMapAttribute.from_state_dict(attr.state_dict())
         self.assertEqual(restored.paths, ["a.npy", "b.npy"])
         self.assertEqual(restored.unit_scale, 0.5)
         self.assertEqual(restored.scale, DepthScale.RELATIVE)
         self.assertEqual(restored.missing_policy, DepthMissingPolicy.SENTINEL)
         self.assertEqual(restored.invalid_value, -1.0)
-        self.assertEqual(restored.resize_interpolation, InterpolationMode.BILINEAR)
+        self.assertEqual(restored.resize_interpolation, InterpolationMode.NEAREST)
+
+        # A non-default interpolation round-trips too (paired with the NaN policy).
+        attr2 = DepthMapAttribute(
+            paths=["a.npy"],
+            missing_policy=DepthMissingPolicy.NAN,
+            resize_interpolation=InterpolationMode.BICUBIC,
+        )
+        restored2 = DepthMapAttribute.from_state_dict(attr2.state_dict())
+        self.assertEqual(restored2.resize_interpolation, InterpolationMode.BICUBIC)
+        self.assertEqual(restored2.missing_policy, DepthMissingPolicy.NAN)
+
+    def test_non_nearest_interp_with_non_nan_policy_raises(self):
+        for policy in (DepthMissingPolicy.ZERO, DepthMissingPolicy.SENTINEL):
+            kwargs = {"invalid_value": -1.0} if policy == DepthMissingPolicy.SENTINEL else {}
+            for interp in (InterpolationMode.AREA, InterpolationMode.BILINEAR, InterpolationMode.BICUBIC):
+                with self.assertRaises(ValueError) as ctx:
+                    DepthMapAttribute(paths=["a.npy"], missing_policy=policy, resize_interpolation=interp, **kwargs)
+                self.assertIn("unsafe", str(ctx.exception))
+        # NEAREST is allowed with any policy.
+        DepthMapAttribute(paths=["a.npy"], missing_policy=DepthMissingPolicy.ZERO)
+        # Averaging interpolation is allowed with the NaN policy.
+        DepthMapAttribute(
+            paths=["a.npy"], missing_policy=DepthMissingPolicy.NAN, resize_interpolation=InterpolationMode.BILINEAR
+        )
 
     def test_load_depth_zero_policy_png16(self):
         with tempfile.TemporaryDirectory() as tmp_dir:

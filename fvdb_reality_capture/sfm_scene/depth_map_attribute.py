@@ -66,9 +66,10 @@ class DepthMapAttribute(PerImageRasterAttribute):
        emit a per-pixel ``valid`` mask alongside the depth tensor.
 
     The default ``resize_interpolation`` is :class:`InterpolationMode.NEAREST`, which
-    avoids bilerping across depth discontinuities. Bilinear/bicubic are accepted for
-    callers whose depth maps are smooth (e.g. rendered ground truth), but expect
-    artifacts at occlusion boundaries.
+    avoids bilerping across depth discontinuities. Averaging modes (AREA/BILINEAR/BICUBIC)
+    are only permitted with ``missing_policy=NAN``: with a ZERO or SENTINEL policy they
+    would blend the invalid fill value into neighboring valid pixels when downsampling,
+    silently corrupting them, so that combination raises in the constructor.
 
     The class is registered with the scene-attribute registry under the type name
     ``"DepthMapAttribute"``, so an :class:`SfmScene` carrying one round-trips through
@@ -130,6 +131,22 @@ class DepthMapAttribute(PerImageRasterAttribute):
                     f"got {invalid_value!r}."
                 )
             self._invalid_value = None
+
+        # Averaging interpolation (AREA/BILINEAR/BICUBIC) mixes neighboring pixels when the
+        # raster is downsampled. With a ZERO or SENTINEL missing policy the invalid pixels
+        # hold a real finite value (0 or the sentinel), so averaging silently bleeds that
+        # value into adjacent valid pixels and the result still looks "valid". Only NEAREST
+        # avoids this. NaN-encoded invalids instead propagate to NaN under averaging, which
+        # is then correctly flagged invalid on reload -- so require NaN for non-NEAREST modes.
+        if self._resize_interpolation != InterpolationMode.NEAREST and self._missing_policy != DepthMissingPolicy.NAN:
+            raise ValueError(
+                f"DepthMapAttribute with resize_interpolation="
+                f"{self._resize_interpolation.value!r} and missing_policy="
+                f"{self._missing_policy.value!r} is unsafe: averaging interpolation would blend "
+                f"invalid {self._missing_policy.value!r} values into neighboring valid pixels when "
+                f"downsampling, silently corrupting them. Use resize_interpolation=NEAREST, or switch "
+                f"to missing_policy=NAN (NaNs propagate under interpolation and are re-flagged invalid)."
+            )
 
     @property
     def unit_scale(self) -> float:
@@ -208,9 +225,7 @@ class DepthMapAttribute(PerImageRasterAttribute):
                 f"intentionally want it to be invariant to such transforms."
             )
         if np.linalg.det(linear) < 0:
-            raise ValueError(
-                "DepthMapAttribute(scale=METRIC) does not support reflective (det<0) " "spatial transforms."
-            )
+            raise ValueError("DepthMapAttribute(scale=METRIC) does not support reflective (det<0) spatial transforms.")
 
         s = float(svals.mean())
         return DepthMapAttribute(
