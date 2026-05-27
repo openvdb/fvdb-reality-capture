@@ -46,7 +46,7 @@ Next, build and install the fVDB library
 
 ```bash
 pushd fvdb-core
-./build.sh install verbose editor_force
+./build.sh install verbose
 popd
 ```
 
