@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1779896420458,
+  "lastUpdate": 1779896423010,
   "repoUrl": "https://github.com/openvdb/fvdb-reality-capture",
   "entries": {
     "fvdb-reality-capture Benchmark with pytest-benchmark": [
@@ -18786,6 +18786,88 @@ window.BENCHMARK_DATA = {
           {
             "name": "garden/fvdb_mcmc - peak_gpu_memory_gb",
             "value": 3.6443,
+            "unit": "GB"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "Francis Williams",
+            "username": "fwilliams",
+            "email": "fwilliams@users.noreply.github.com"
+          },
+          "committer": {
+            "name": "GitHub",
+            "username": "web-flow",
+            "email": "noreply@github.com"
+          },
+          "id": "ae6ed94945901b8d99724bf64750fcc693a181b0",
+          "message": "Add DepthMapAttribute and optional dense depth supervision (#288)\n\n## Summary\n\nAdds a new `DepthMapAttribute` (subclass of `PerImageRasterAttribute`)\nfor per-image depth rasters with scale-aware semantics, and wires\noptional dense depth supervision into `GaussianSplatReconstruction`. Six\nfiles changed, +697 / −5.\n\n### `DepthMapAttribute`\n\n- **`DepthScale.METRIC`** depths track the scene's coordinate system.\nThe linear scale of any subsequent spatial transform is folded into\n`unit_scale` at attribute level rather than rewriting the rasters on\ndisk. Non-similarity or reflective transforms raise rather than silently\nproduce anisotropically deformed depth — this closes the most likely\nfootgun (running `NormalizeScene` after attaching metric depths).\n- **`DepthScale.RELATIVE`** depths (e.g. from a monocular relative-depth\nestimator) are dimensionless and immune to scene transforms.\n- **`DepthMissingPolicy.{NAN,ZERO,SENTINEL}`** controls the validity\nconvention so the loader emits a per-pixel validity mask alongside the\ndepth tensor. Default downsample interpolation is `NEAREST` to avoid\nbilerping across depth discontinuities.\n\n### Reconstructor wiring\n\n- New config fields `dense_depth_attribute` and `dense_depth_reg`. The\nloss form is keyed off `DepthMapAttribute.scale`:\n  - **METRIC** → masked L1 on absolute depths.\n- **RELATIVE** → scale-and-shift invariant L1 (each side normalized by\nits own median + MAD, per Ranftl et al., MiDaS).\n- `SfmDataset` detects `DepthMapAttribute` and emits both `data[name]`\nand `data[f\"{name}_valid\"]`.\n- `_needs_depth_render(config)` now ORs `sparse_depth_reg` and\n`dense_depth_reg` so the renderer emits the depth channel for either\npath — without this, dense-depth-only configs would silently fail with a\n`None` depth tensor.\n\n## Test plan\n\n- [x] 20 new unit tests in `TestDepthMapAttribute` cover attribute hooks\n(filter/select/spatial transform), validity policies, loader formats\n(16-bit PNG, float NPY, sentinel float NPY), state-dict round-trip,\nsimilarity-transform enforcement, and end-to-end\n`apply_transformation_matrix` scale folding. `cd tests && pytest\nunit/test_scene_attributes.py` passes all 108 tests.\n- [ ] End-to-end training-time exercise with a real scene + sensor depth\n(METRIC) and monocular depth (RELATIVE) — not yet run in CI.\n\n## Notes\n\n- `batch_size > 1` raises `NotImplementedError` for dense depth,\nsymmetric with the existing sparse-depth path.\n- Dense depth supervision is fully decoupled from `sparse_depth_reg` /\n`has_visible_point_indices` — works on any scene with a\n`DepthMapAttribute`.\n\n---------\n\nSigned-off-by: Francis Williams <francis@fwilliams.info>",
+          "timestamp": "2026-05-26T15:29:35Z",
+          "url": "https://github.com/openvdb/fvdb-reality-capture/commit/ae6ed94945901b8d99724bf64750fcc693a181b0"
+        },
+        "date": 1779896422489,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "bicycle/fvdb_default - training_time",
+            "value": 940.64,
+            "unit": "seconds"
+          },
+          {
+            "name": "bicycle/fvdb_default - peak_gpu_memory_gb",
+            "value": 4.4834,
+            "unit": "GB"
+          },
+          {
+            "name": "bicycle/fvdb_mcmc - training_time",
+            "value": 460.97,
+            "unit": "seconds"
+          },
+          {
+            "name": "bicycle/fvdb_mcmc - peak_gpu_memory_gb",
+            "value": 1.5113,
+            "unit": "GB"
+          },
+          {
+            "name": "bonsai/fvdb_default - training_time",
+            "value": 518.69,
+            "unit": "seconds"
+          },
+          {
+            "name": "bonsai/fvdb_default - peak_gpu_memory_gb",
+            "value": 1.5899,
+            "unit": "GB"
+          },
+          {
+            "name": "bonsai/fvdb_mcmc - training_time",
+            "value": 720.45,
+            "unit": "seconds"
+          },
+          {
+            "name": "bonsai/fvdb_mcmc - peak_gpu_memory_gb",
+            "value": 1.5618,
+            "unit": "GB"
+          },
+          {
+            "name": "garden/fvdb_default - training_time",
+            "value": 1053.3,
+            "unit": "seconds"
+          },
+          {
+            "name": "garden/fvdb_default - peak_gpu_memory_gb",
+            "value": 5.4951,
+            "unit": "GB"
+          },
+          {
+            "name": "garden/fvdb_mcmc - training_time",
+            "value": 869.76,
+            "unit": "seconds"
+          },
+          {
+            "name": "garden/fvdb_mcmc - peak_gpu_memory_gb",
+            "value": 3.6423,
             "unit": "GB"
           }
         ]
