@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1779378314001,
+  "lastUpdate": 1779885085389,
   "repoUrl": "https://github.com/openvdb/fvdb-reality-capture",
   "entries": {
     "fvdb-reality-capture Benchmark with pytest-benchmark": [
@@ -11075,6 +11075,133 @@ window.BENCHMARK_DATA = {
             "unit": "iter/sec",
             "range": "stddev: 0.00044491860702456916",
             "extra": "mean: 24.746411863635455 msec\nrounds: 44"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "Francis Williams",
+            "username": "fwilliams",
+            "email": "fwilliams@users.noreply.github.com"
+          },
+          "committer": {
+            "name": "GitHub",
+            "username": "web-flow",
+            "email": "noreply@github.com"
+          },
+          "id": "ae6ed94945901b8d99724bf64750fcc693a181b0",
+          "message": "Add DepthMapAttribute and optional dense depth supervision (#288)\n\n## Summary\n\nAdds a new `DepthMapAttribute` (subclass of `PerImageRasterAttribute`)\nfor per-image depth rasters with scale-aware semantics, and wires\noptional dense depth supervision into `GaussianSplatReconstruction`. Six\nfiles changed, +697 / −5.\n\n### `DepthMapAttribute`\n\n- **`DepthScale.METRIC`** depths track the scene's coordinate system.\nThe linear scale of any subsequent spatial transform is folded into\n`unit_scale` at attribute level rather than rewriting the rasters on\ndisk. Non-similarity or reflective transforms raise rather than silently\nproduce anisotropically deformed depth — this closes the most likely\nfootgun (running `NormalizeScene` after attaching metric depths).\n- **`DepthScale.RELATIVE`** depths (e.g. from a monocular relative-depth\nestimator) are dimensionless and immune to scene transforms.\n- **`DepthMissingPolicy.{NAN,ZERO,SENTINEL}`** controls the validity\nconvention so the loader emits a per-pixel validity mask alongside the\ndepth tensor. Default downsample interpolation is `NEAREST` to avoid\nbilerping across depth discontinuities.\n\n### Reconstructor wiring\n\n- New config fields `dense_depth_attribute` and `dense_depth_reg`. The\nloss form is keyed off `DepthMapAttribute.scale`:\n  - **METRIC** → masked L1 on absolute depths.\n- **RELATIVE** → scale-and-shift invariant L1 (each side normalized by\nits own median + MAD, per Ranftl et al., MiDaS).\n- `SfmDataset` detects `DepthMapAttribute` and emits both `data[name]`\nand `data[f\"{name}_valid\"]`.\n- `_needs_depth_render(config)` now ORs `sparse_depth_reg` and\n`dense_depth_reg` so the renderer emits the depth channel for either\npath — without this, dense-depth-only configs would silently fail with a\n`None` depth tensor.\n\n## Test plan\n\n- [x] 20 new unit tests in `TestDepthMapAttribute` cover attribute hooks\n(filter/select/spatial transform), validity policies, loader formats\n(16-bit PNG, float NPY, sentinel float NPY), state-dict round-trip,\nsimilarity-transform enforcement, and end-to-end\n`apply_transformation_matrix` scale folding. `cd tests && pytest\nunit/test_scene_attributes.py` passes all 108 tests.\n- [ ] End-to-end training-time exercise with a real scene + sensor depth\n(METRIC) and monocular depth (RELATIVE) — not yet run in CI.\n\n## Notes\n\n- `batch_size > 1` raises `NotImplementedError` for dense depth,\nsymmetric with the existing sparse-depth path.\n- Dense depth supervision is fully decoupled from `sparse_depth_reg` /\n`has_visible_point_indices` — works on any scene with a\n`DepthMapAttribute`.\n\n---------\n\nSigned-off-by: Francis Williams <francis@fwilliams.info>",
+          "timestamp": "2026-05-26T15:29:35Z",
+          "url": "https://github.com/openvdb/fvdb-reality-capture/commit/ae6ed94945901b8d99724bf64750fcc693a181b0"
+        },
+        "date": 1779885084533,
+        "tool": "pytest",
+        "benches": [
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_project_gaussians[garden-00000664]",
+            "value": 7385.020342480729,
+            "unit": "iter/sec",
+            "range": "stddev: 0.0000091547988830754",
+            "extra": "mean: 135.4092410887099 usec\nrounds: 6537"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_render_gaussians[garden-00000664]",
+            "value": 665.4091430736661,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00006516500558973973",
+            "extra": "mean: 1.5028347752794435 msec\nrounds: 801"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_forward[garden-00000664]",
+            "value": 613.4887050563055,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00002559082355896643",
+            "extra": "mean: 1.6300218598290586 msec\nrounds: 585"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_backward[garden-00000664]",
+            "value": 188.42141773707752,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00004281660663710392",
+            "extra": "mean: 5.307252285912612 msec\nrounds: 1434"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_project_gaussians[garden-00006640]",
+            "value": 306.42086576835004,
+            "unit": "iter/sec",
+            "range": "stddev: 0.0003557987229072218",
+            "extra": "mean: 3.263485329213795 msec\nrounds: 3317"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_render_gaussians[garden-00006640]",
+            "value": 79.665727813532,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00014216086161609017",
+            "extra": "mean: 12.552449182923805 msec\nrounds: 82"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_forward[garden-00006640]",
+            "value": 63.69714658948837,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00010976056460904598",
+            "extra": "mean: 15.699290369233353 msec\nrounds: 65"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_backward[garden-00006640]",
+            "value": 25.57039649939077,
+            "unit": "iter/sec",
+            "range": "stddev: 0.0002747412132116872",
+            "extra": "mean: 39.10772365316375 msec\nrounds: 617"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_project_gaussians[garden-00016600]",
+            "value": 249.93428111501342,
+            "unit": "iter/sec",
+            "range": "stddev: 0.0004484741196022448",
+            "extra": "mean: 4.001051778646665 msec\nrounds: 3194"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_render_gaussians[garden-00016600]",
+            "value": 47.85312506340263,
+            "unit": "iter/sec",
+            "range": "stddev: 0.0005892419937613567",
+            "extra": "mean: 20.89727679592624 msec\nrounds: 49"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_forward[garden-00016600]",
+            "value": 40.055814764098436,
+            "unit": "iter/sec",
+            "range": "stddev: 0.0002907927339491986",
+            "extra": "mean: 24.96516438098492 msec\nrounds: 42"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_backward[garden-00016600]",
+            "value": 18.839665559534208,
+            "unit": "iter/sec",
+            "range": "stddev: 0.0007499191316065906",
+            "extra": "mean: 53.079498510202 msec\nrounds: 588"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_forward_mcmc[garden-00000664]",
+            "value": 600.9486319906077,
+            "unit": "iter/sec",
+            "range": "stddev: 0.000057111167861514256",
+            "extra": "mean: 1.6640357374432446 msec\nrounds: 697"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_forward_mcmc[garden-00006640]",
+            "value": 63.13715743137778,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00023021245161537006",
+            "extra": "mean: 15.838533768120229 msec\nrounds: 69"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_forward_mcmc[garden-00016600]",
+            "value": 40.15301426718564,
+            "unit": "iter/sec",
+            "range": "stddev: 0.0003967141323948546",
+            "extra": "mean: 24.904730522740174 msec\nrounds: 44"
           }
         ]
       }
