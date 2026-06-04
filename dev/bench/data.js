@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1780415892796,
+  "lastUpdate": 1780576469216,
   "repoUrl": "https://github.com/openvdb/fvdb-reality-capture",
   "entries": {
     "fvdb-reality-capture Benchmark with pytest-benchmark": [
@@ -11456,6 +11456,133 @@ window.BENCHMARK_DATA = {
             "unit": "iter/sec",
             "range": "stddev: 0.0003069008346914062",
             "extra": "mean: 18.223969583338352 msec\nrounds: 60"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "Petra Hapalova",
+            "username": "phapalova",
+            "email": "phapalova@nvidia.com"
+          },
+          "committer": {
+            "name": "GitHub",
+            "username": "web-flow",
+            "email": "noreply@github.com"
+          },
+          "id": "9e437c23c6fba79f3ecbccdb81a8f47441b82ce3",
+          "message": "Fix installation instructions for fVDB by removing editor_force flag (#290)\n\nSigned-off-by: Petra Hapalova <phapalova@nvidia.com>",
+          "timestamp": "2026-05-28T06:35:53Z",
+          "url": "https://github.com/openvdb/fvdb-reality-capture/commit/9e437c23c6fba79f3ecbccdb81a8f47441b82ce3"
+        },
+        "date": 1780576468465,
+        "tool": "pytest",
+        "benches": [
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_project_gaussians[garden-00000664]",
+            "value": 7419.735356064174,
+            "unit": "iter/sec",
+            "range": "stddev: 0.000010181226424274808",
+            "extra": "mean: 134.7756964381077 usec\nrounds: 6091"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_render_gaussians[garden-00000664]",
+            "value": 714.8467281717749,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00004925059261939248",
+            "extra": "mean: 1.3989012757427126 msec\nrounds: 845"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_forward[garden-00000664]",
+            "value": 659.242853453319,
+            "unit": "iter/sec",
+            "range": "stddev: 0.000022963083722636114",
+            "extra": "mean: 1.5168916807542001 msec\nrounds: 639"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_backward[garden-00000664]",
+            "value": 192.64932202848686,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00003778485545331589",
+            "extra": "mean: 5.190778713730074 msec\nrounds: 1282"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_project_gaussians[garden-00006640]",
+            "value": 296.5424555805989,
+            "unit": "iter/sec",
+            "range": "stddev: 0.0003640966985338358",
+            "extra": "mean: 3.3721984194206027 msec\nrounds: 3388"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_render_gaussians[garden-00006640]",
+            "value": 109.76685205718664,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00009540616093137085",
+            "extra": "mean: 9.110218442622525 msec\nrounds: 122"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_forward[garden-00006640]",
+            "value": 80.82508039934183,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00010136425246941171",
+            "extra": "mean: 12.372397219516321 msec\nrounds: 82"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_backward[garden-00006640]",
+            "value": 27.25242113376904,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00025422869082190967",
+            "extra": "mean: 36.693987484322236 msec\nrounds: 574"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_project_gaussians[garden-00016600]",
+            "value": 242.37202712504305,
+            "unit": "iter/sec",
+            "range": "stddev: 0.0004483665722482515",
+            "extra": "mean: 4.125888667358821 msec\nrounds: 3373"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_render_gaussians[garden-00016600]",
+            "value": 72.24032326969456,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00011638122180561257",
+            "extra": "mean: 13.84268445569801 msec\nrounds: 79"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_forward[garden-00016600]",
+            "value": 56.157463620646894,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00022551106113843228",
+            "extra": "mean: 17.80707203507566 msec\nrounds: 57"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_backward[garden-00016600]",
+            "value": 20.88853484571003,
+            "unit": "iter/sec",
+            "range": "stddev: 0.0007987723024050724",
+            "extra": "mean: 47.87315182162594 msec\nrounds: 555"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_forward_mcmc[garden-00000664]",
+            "value": 639.883646570898,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00004435066528023399",
+            "extra": "mean: 1.5627841176422403 msec\nrounds: 731"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_forward_mcmc[garden-00006640]",
+            "value": 80.79785461254578,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00016299837571438335",
+            "extra": "mean: 12.376566244182508 msec\nrounds: 86"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_forward_mcmc[garden-00016600]",
+            "value": 56.41576917705894,
+            "unit": "iter/sec",
+            "range": "stddev: 0.0002936803908922698",
+            "extra": "mean: 17.72554047542159 msec\nrounds: 61"
           }
         ]
       }
