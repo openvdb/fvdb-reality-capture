@@ -21,7 +21,7 @@ The videos below show large-scale reconstructions of complex scenes using fVDB-R
 The `fvdb-reality-capture` Python package can be installed using published packages with pip or built from source.
 
 For the most up-to-date information on installing fVDB-Reality-Capture's pip packages, please see the
-[installation documentation](https://fvdb-reality-capture.readthedocs.io/installation.html).
+[installation documentation](https://fvdb-reality-capture.readthedocs.io/latest/installation.html).
 
 ### Installation from source
 
