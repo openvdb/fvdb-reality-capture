@@ -10,16 +10,11 @@ inputs, while maintaining high performance and low memory usage. *fVDB has 50% b
 The videos below show large-scale reconstructions of complex scenes using fVDB-Reality-Capture.
 
 
-  <video autoplay loop controls muted width="100%">
-     <source src="https://fvdb-data.s3.us-east-2.amazonaws.com/fvdb-reality-capture/Large_World_480p.mp4" type="video/mp4" />
-  </video>
 
-----
+---
 
 **For more information about what fVDB-Reality-Capture can do, tutorials and documentation, please see the
 [fVDB-Reality-Capture documentation](https://fvdb-reality-capture.readthedocs.io).**
-
-
 
 ## Installation
 
@@ -34,7 +29,6 @@ For the most up-to-date information on installing fVDB-Reality-Capture's pip pac
 > For more complete instructions for building `fvdb-core` from source, including setting up a build environment and
 > obtaining the necessary dependencies, see the fVDB [README](https://github.com/openvdb/fvdb-core/blob/main/README.md).
 
-
 Clone the [fvdb-core repository](https://github.com/openvdb/fvdb-core) and the [fvdb-reality-capture repository](https://github.com/openvdb/fvdb-reality-capture).
 
 ```bash
@@ -45,19 +39,18 @@ git clone git@github.com:openvdb/fvdb-reality-capture.git
 Next, build and install the fVDB library
 
 ```bash
-pushd fvdb-core
+cd fvdb-core
+conda env create -f env/dev_environment.yml
+conda activate fvdb
 ./build.sh install verbose
-popd
 ```
 
 Finally, install fVDB-Reality-Capture
 
 ```bash
-pushd fvdb-reality-capture
+cd ../fvdb-reality-capture
 pip install .
-popd
 ```
-
 
 # About fVDB-Reality-Capture
 
