@@ -40,9 +40,6 @@ RUN conda env create -f /tmp/benchmark_environment.yml
 # Install missing dependencies that might not be installed due to conflicts
 RUN conda run -n benchmark conda install -c conda-forge scikit-build-core cmake -y
 
-# Patch pycolmap after installation
-RUN conda run -n benchmark sed -i 's/INVALID_POINT3D = np.uint64(-1)/INVALID_POINT3D = np.uint64(2**64-1)/' $(conda run -n benchmark python -c 'import site; print(site.getsitepackages()[0])')/pycolmap/scene_manager.py
-
 # Initialize conda
 RUN conda init
 RUN echo "conda activate benchmark" >> ~/.bashrc
