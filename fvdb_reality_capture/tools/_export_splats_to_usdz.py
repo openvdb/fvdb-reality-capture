@@ -99,7 +99,9 @@ class _PostActivationGaussianArrays:
         return self.positions.shape[0]
 
 
-def _extract_postactivation_gaussian_arrays(model: GaussianSplat3d) -> _PostActivationGaussianArrays:
+def _extract_postactivation_gaussian_arrays(
+    model: GaussianSplat3d,
+) -> _PostActivationGaussianArrays:
     """Convert fvdb model tensors to post-activation arrays for USD ParticleField export."""
     positions = model.means.detach().cpu().numpy().astype(np.float32)
     rotations = model.quats.detach().cpu().numpy().astype(np.float32)
@@ -121,9 +123,7 @@ def _extract_postactivation_gaussian_arrays(model: GaussianSplat3d) -> _PostActi
     if specular.shape[1] != expected_specular_cols:
         padded = np.zeros((num_gaussians, expected_specular_cols), dtype=np.float32)
         if specular.shape[1] > 0:
-            padded[:, : min(specular.shape[1], expected_specular_cols)] = specular[
-                :, :expected_specular_cols
-            ]
+            padded[:, : min(specular.shape[1], expected_specular_cols)] = specular[:, :expected_specular_cols]
         specular = padded
 
     if densities.ndim == 1:
@@ -210,9 +210,7 @@ def _write_particlefield3d_gaussian_splat(
     prim = gauss_schema.GetPrim()
 
     gauss_schema.CreatePositionsAttr().Set(Vt.Vec3fArray.FromNumpy(attrs.positions))
-    quats_list = [
-        Gf.Quatf(float(q[0]), float(q[1]), float(q[2]), float(q[3])) for q in attrs.rotations
-    ]
+    quats_list = [Gf.Quatf(float(q[0]), float(q[1]), float(q[2]), float(q[3])) for q in attrs.rotations]
     gauss_schema.CreateOrientationsAttr().Set(Vt.QuatfArray(quats_list))
     gauss_schema.CreateScalesAttr().Set(Vt.Vec3fArray.FromNumpy(attrs.scales))
 
@@ -314,7 +312,12 @@ def _serialize_nurec_usd(
     # Apply normalizing transform (identity by default)
     # Default conversion matrix from 3DGRUT to USDZ
     default_conv_tf = np.array(
-        [[-1.0, 0.0, 0.0, 0.0], [0.0, 0.0, -1.0, 0.0], [0.0, -1.0, 0.0, 0.0], [0.0, 0.0, 0.0, 1.0]]
+        [
+            [-1.0, 0.0, 0.0, 0.0],
+            [0.0, 0.0, -1.0, 0.0],
+            [0.0, -1.0, 0.0, 0.0],
+            [0.0, 0.0, 0.0, 1.0],
+        ]
     )
 
     normalizing_inverse = np.linalg.inv(normalizing_transform)
@@ -454,7 +457,9 @@ def write_to_usdz(file_path: Path, model_file, gauss_usd: NamedUSDStage, default
     logger.info(f"USDZ file created successfully at {file_path}")
 
 
-def _serialize_particlefield_default_layer(gaussians_stage: NamedUSDStage) -> NamedUSDStage:
+def _serialize_particlefield_default_layer(
+    gaussians_stage: NamedUSDStage,
+) -> NamedUSDStage:
     """Create default.usda that references the gaussians payload layer."""
     stage = _initialize_particlefield_usd_stage()
 
@@ -740,8 +745,16 @@ def fill_3dgut_template(
                     "render": {"mode": "kbuffer", "k_buffer_size": k_buffer_size},
                 },
                 "name": "gaussians_primitive",
-                "appearance_embedding": {"name": "skip-appearance", "embedding_dim": 0, "device": "cuda"},
-                "background": {"name": "skip-background", "device": "cuda", "composite_in_linear_space": False},
+                "appearance_embedding": {
+                    "name": "skip-appearance",
+                    "embedding_dim": 0,
+                    "device": "cuda",
+                },
+                "background": {
+                    "name": "skip-background",
+                    "device": "cuda",
+                    "composite_in_linear_space": False,
+                },
             },
             "state_dict": {
                 "._extra_state": {"obj_track_ids": {"gaussians": []}},
@@ -768,16 +781,20 @@ def fill_3dgut_template(
 
     # Fill in the state dict tensors
     _fill_state_dict_tensors(
-        template, positions, rotations, scales, densities, features_albedo, features_specular, n_active_features
+        template,
+        positions,
+        rotations,
+        scales,
+        densities,
+        features_albedo,
+        features_specular,
+        n_active_features,
     )
 
     return template
 
 
-def _export_splats_to_usdz_legacy(
-    model: GaussianSplat3d, 
-    out_path: str | Path
-) -> None:
+def _export_splats_to_usdz_legacy(model: GaussianSplat3d, out_path: str | Path) -> None:
     """
     Export an :class:`fvdb.GaussianSplat3d` model to a USDZ file using the legacy NuRec format (UsdVol.Volume + .nurec msgpack).
 
