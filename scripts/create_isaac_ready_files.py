@@ -2,158 +2,259 @@
 # Copyright Contributors to the OpenVDB Project
 # SPDX-License-Identifier: Apache-2.0
 #
-import sys
+"""
+Prepare mesh and/or Gaussian splat assets for Isaac Sim.
+- assumes ecef2enu normalization is applied to the scene
+    - turn off with --no-scene-transform
+- Exports mesh and splat as a single aligned usdz
+- mesh is water tight so robots can walk on it and objects dont fall through
+    - turn off with --no-watertight
+- can crop scene with --bbox
+"""
+
+from __future__ import annotations
+
+import argparse
+import logging
 import pathlib
-from typing import Dict, Union, Optional
+from pathlib import Path
+from typing import Optional
+
 import numpy as np
 import point_cloud_utils as pcu
-from pathlib import Path
-from fvdb import GaussianSplat3d
 import torch
-import logging
-import argparse
-from fvdb_reality_capture.tools._export_splats_to_usdz import export_splats_to_usdz
+from fvdb import GaussianSplat3d
+from pxr import Gf, Usd, UsdGeom, UsdUtils, Vt
+
+from fvdb_reality_capture.tools._export_splats_to_usdz import (
+    NamedUSDStage,
+    USD_GAUSSIANS_ROOT_PATH,
+    _initialize_particlefield_usd_stage,
+    _write_particlefield3d_gaussian_splat,
+    _write_particlefield_usdz,
+)
+
+USD_SCENE_ROOT_PATH = "/World/Scene"
+USD_MESH_PAYLOAD_PATH = "/World/mesh"
+USD_MESH_SCENE_PATH = f"{USD_SCENE_ROOT_PATH}/mesh"
 
 
 def create_rotation_matrix_x(degrees: float) -> np.ndarray:
-    """Create rotation matrix for rotation around X axis."""
+    """Rotation matrix for +degrees about the X axis (column-vector convention)."""
     rad = np.radians(degrees)
     cos, sin = np.cos(rad), np.sin(rad)
-    return np.array([[1, 0, 0], [0, cos, -sin], [0, sin, cos]])
+    return np.array([[1, 0, 0], [0, cos, -sin], [0, sin, cos]], dtype=np.float64)
 
 
-def create_rotation_matrix_z(degrees: float) -> np.ndarray:
-    """Create rotation matrix for rotation around Z axis."""
-    rad = np.radians(degrees)
-    cos, sin = np.cos(rad), np.sin(rad)
-    return np.array([[cos, -sin, 0], [sin, cos, 0], [0, 0, 1]])
+def rotation_matrix_to_gf_matrix4d(rotation: np.ndarray) -> Gf.Matrix4d:
+    """Convert a column-vector rotation matrix to USD's Gf.Matrix4d."""
+    # NumPy uses column vectors (p' = R @ p). USD xforms use row-vector layout, so
+    # pass R.T via SetTransform — same convention as 3dgrut export.
+    r = rotation[:3, :3].astype(np.float64)
+    matrix = Gf.Matrix4d()
+    matrix.SetTransform(Gf.Matrix3d(*r.T.flatten()), Gf.Vec3d(0.0, 0.0, 0.0))
+    return matrix
 
 
-def apply_isaac_sim_mesh_transform(vertices: np.ndarray) -> np.ndarray:
+def get_isaac_scene_alignment_matrix() -> Gf.Matrix4d:
     """
-    Apply Isaac Sim alignment transform to mesh vertices.
-    This applies: X rotation 90°, then Z rotation 180°
-
-    Args:
-        vertices: Nx3 array of vertex positions
-
-    Returns:
-        Transformed Nx3 array of vertex positions
+    For ecef2enu normalized scenes (Z-up), rotate the whole USDZ -90° about X
+    so content is upright in Isaac Sim's Y-up USD stage.
     """
-    # First rotate 90° around X axis
-    rot_x = create_rotation_matrix_x(90)
-    vertices = vertices @ rot_x.T
-
-    # Then rotate 180° around Z axis
-    rot_z = create_rotation_matrix_z(180)
-    vertices = vertices @ rot_z.T
-
-    return vertices
+    rotation = create_rotation_matrix_x(-90)
+    return rotation_matrix_to_gf_matrix4d(rotation)
 
 
-def quaternion_multiply(q1: torch.Tensor, q2: torch.Tensor) -> torch.Tensor:
-    """
-    Multiply two quaternions (w, x, y, z format).
+def _crop_splat_model(
+    model: GaussianSplat3d,
+    bbox: list[float] | None,
+    logger: logging.Logger,
+) -> GaussianSplat3d:
+    if bbox is None:
+        return model
 
-    Args:
-        q1: First quaternion(s) of shape (..., 4)
-        q2: Second quaternion(s) of shape (..., 4)
-
-    Returns:
-        Product quaternion(s) of shape (..., 4)
-    """
-    w1, x1, y1, z1 = q1[..., 0], q1[..., 1], q1[..., 2], q1[..., 3]
-    w2, x2, y2, z2 = q2[..., 0], q2[..., 1], q2[..., 2], q2[..., 3]
-
-    w = w1 * w2 - x1 * x2 - y1 * y2 - z1 * z2
-    x = w1 * x2 + x1 * w2 + y1 * z2 - z1 * y2
-    y = w1 * y2 - x1 * z2 + y1 * w2 + z1 * x2
-    z = w1 * z2 + x1 * y2 - y1 * x2 + z1 * w2
-
-    return torch.stack([w, x, y, z], dim=-1)
-
-
-def rotation_matrix_to_quaternion(R: torch.Tensor) -> torch.Tensor:
-    """
-    Convert a 3x3 rotation matrix to a quaternion (w, x, y, z).
-
-    Args:
-        R: 3x3 rotation matrix
-
-    Returns:
-        Quaternion as (w, x, y, z)
-    """
-    trace = R[0, 0] + R[1, 1] + R[2, 2]
-
-    if trace > 0:
-        s = 0.5 / torch.sqrt(trace + 1.0)
-        w = 0.25 / s
-        x = (R[2, 1] - R[1, 2]) * s
-        y = (R[0, 2] - R[2, 0]) * s
-        z = (R[1, 0] - R[0, 1]) * s
-    elif R[0, 0] > R[1, 1] and R[0, 0] > R[2, 2]:
-        s = 2.0 * torch.sqrt(1.0 + R[0, 0] - R[1, 1] - R[2, 2])
-        w = (R[2, 1] - R[1, 2]) / s
-        x = 0.25 * s
-        y = (R[0, 1] + R[1, 0]) / s
-        z = (R[0, 2] + R[2, 0]) / s
-    elif R[1, 1] > R[2, 2]:
-        s = 2.0 * torch.sqrt(1.0 + R[1, 1] - R[0, 0] - R[2, 2])
-        w = (R[0, 2] - R[2, 0]) / s
-        x = (R[0, 1] + R[1, 0]) / s
-        y = 0.25 * s
-        z = (R[1, 2] + R[2, 1]) / s
-    else:
-        s = 2.0 * torch.sqrt(1.0 + R[2, 2] - R[0, 0] - R[1, 1])
-        w = (R[1, 0] - R[0, 1]) / s
-        x = (R[0, 2] + R[2, 0]) / s
-        y = (R[1, 2] + R[2, 1]) / s
-        z = 0.25 * s
-
-    return torch.tensor([w, x, y, z], dtype=R.dtype, device=R.device)
-
-
-def apply_isaac_sim_splat_transform(model: GaussianSplat3d) -> GaussianSplat3d:
-    """
-    Apply Isaac Sim alignment transform to a Gaussian splat model.
-    This applies: X rotation -90°, then X rotation 180° (total -270° or +90° then flip)
-
-    Args:
-        model: GaussianSplat3d model to transform
-
-    Returns:
-        Transformed GaussianSplat3d model (modified in-place)
-    """
-    # First: Create rotation matrix for -90° around X axis
-    rad_x1 = np.radians(-90)
-    cos_x1, sin_x1 = np.cos(rad_x1), np.sin(rad_x1)
-
-    rot_x1 = torch.tensor(
-        [[1, 0, 0], [0, cos_x1, -sin_x1], [0, sin_x1, cos_x1]], dtype=model.means.dtype, device=model.device
+    xyz = model.means.cpu().numpy()
+    min_x, min_y, min_z, max_x, max_y, max_z = bbox
+    mask = (
+        (xyz[:, 0] >= min_x)
+        & (xyz[:, 0] <= max_x)
+        & (xyz[:, 1] >= min_y)
+        & (xyz[:, 1] <= max_y)
+        & (xyz[:, 2] >= min_z)
+        & (xyz[:, 2] <= max_z)
     )
+    mask_tensor = torch.from_numpy(mask).to(model.device)
+    cropped = model[mask_tensor]
+    logger.info("Cropped splats from %d to %d points", len(xyz), len(cropped.means))
+    return cropped
 
-    # Second: Create rotation matrix for 180° around X axis to flip upside down
-    rad_x2 = np.radians(180)
-    cos_x2, sin_x2 = np.cos(rad_x2), np.sin(rad_x2)
 
-    rot_x2 = torch.tensor(
-        [[1, 0, 0], [0, cos_x2, -sin_x2], [0, sin_x2, cos_x2]], dtype=model.means.dtype, device=model.device
+def _prepare_mesh(
+    input_path: pathlib.Path,
+    bbox: list[float] | None,
+    resolution: int,
+    logger: logging.Logger,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Load, optionally crop, and watertight a mesh; vertices stay in the training frame."""
+    vertices, faces = pcu.load_mesh_vf(str(input_path))
+    logger.info("Preparing mesh from %s", input_path)
+
+    if bbox is not None:
+        min_x, min_y, min_z, max_x, max_y, max_z = bbox
+        mask = (
+            (vertices[:, 0] >= min_x)
+            & (vertices[:, 0] <= max_x)
+            & (vertices[:, 1] >= min_y)
+            & (vertices[:, 1] <= max_y)
+            & (vertices[:, 2] >= min_z)
+            & (vertices[:, 2] <= max_z)
+        )
+        keep_indices = np.where(mask)[0]
+        old_to_new = np.full(vertices.shape[0], -1)
+        old_to_new[keep_indices] = np.arange(len(keep_indices))
+        vertices = vertices[keep_indices]
+
+        valid_faces = []
+        for face in faces:
+            if all(old_to_new[idx] != -1 for idx in face):
+                valid_faces.append([old_to_new[idx] for idx in face])
+        faces = np.array(valid_faces, dtype=np.int32)
+        logger.info(
+            "Cropped mesh bounds min=%s max=%s",
+            vertices.min(axis=0),
+            vertices.max(axis=0),
+        )
+
+    vertices, faces = pcu.make_mesh_watertight(vertices, faces, resolution=resolution)
+    logger.info(
+        "Watertight mesh: %d vertices, %d faces",
+        vertices.shape[0],
+        faces.shape[0],
     )
+    return vertices.astype(np.float32), faces.astype(np.int32)
 
-    # Transform positions: first -90° X rotation, then 180° X rotation
-    model.means = model.means @ rot_x1.T
-    model.means = model.means @ rot_x2.T
 
-    # Transform quaternions
-    # Convert rotation matrices to quaternions
-    rot_quat_x1 = rotation_matrix_to_quaternion(rot_x1)
-    rot_quat_x2 = rotation_matrix_to_quaternion(rot_x2)
+def _write_mesh_obj(
+    vertices: np.ndarray, faces: np.ndarray, output_path: pathlib.Path
+) -> None:
+    """Write a plain OBJ file (training-frame coordinates)."""
+    with open(output_path, "w", encoding="utf-8") as handle:
+        for vertex in vertices:
+            handle.write(f"v {vertex[0]} {vertex[1]} {vertex[2]}\n")
+        for face in faces:
+            handle.write(f"f {face[0] + 1} {face[1] + 1} {face[2] + 1}\n")
 
-    # Apply rotations to all quaternions: q_new = rot_x2 * rot_x1 * q_old
-    model.quats = quaternion_multiply(rot_quat_x1.unsqueeze(0), model.quats)
-    model.quats = quaternion_multiply(rot_quat_x2.unsqueeze(0), model.quats)
 
-    return model
+def build_mesh_payload_stage(vertices: np.ndarray, faces: np.ndarray) -> Usd.Stage:
+    """Create a USD stage containing a single triangle mesh at /World/mesh."""
+    stage = _initialize_particlefield_usd_stage()
+    mesh = UsdGeom.Mesh.Define(stage, USD_MESH_PAYLOAD_PATH)
+    mesh.CreatePointsAttr(Vt.Vec3fArray.FromNumpy(vertices))
+    mesh.CreateFaceVertexCountsAttr(
+        Vt.IntArray.FromNumpy(np.full(len(faces), 3, dtype=np.int32))
+    )
+    mesh.CreateFaceVertexIndicesAttr(
+        Vt.IntArray.FromNumpy(faces.reshape(-1).astype(np.int32))
+    )
+    mesh.CreateSubdivisionSchemeAttr().Set(UsdGeom.Tokens.none)
+    return stage
+
+
+def build_gaussians_payload_stage(model: GaussianSplat3d) -> Usd.Stage:
+    """Create a USD stage with ParticleField gaussians in the training frame."""
+    stage = _initialize_particlefield_usd_stage()
+    UsdGeom.Xform.Define(stage, USD_GAUSSIANS_ROOT_PATH)
+    _write_particlefield3d_gaussian_splat(stage, model)
+    return stage
+
+
+def _add_scene_xform(stage: Usd.Stage, matrix: Optional[Gf.Matrix4d]) -> UsdGeom.Xform:
+    """Create /World/Scene and optionally set its transform op."""
+    scene_xform = UsdGeom.Xform.Define(stage, USD_SCENE_ROOT_PATH)
+    if matrix is not None:
+        scene_xform.AddTransformOp().Set(matrix)
+    return scene_xform
+
+
+def compose_isaac_scene_usdz(
+    output_path: pathlib.Path,
+    model: Optional[GaussianSplat3d] = None,
+    mesh_vertices: Optional[np.ndarray] = None,
+    mesh_faces: Optional[np.ndarray] = None,
+    apply_scene_transform: bool = True,
+    logger: logging.Logger = logging.getLogger(__name__),
+) -> None:
+    """
+    Package mesh and/or splats into one USDZ with scene-level transforms.
+
+    Hierarchy:
+        /World/Scene                 (Isaac alignment xform)
+          /Gaussians                 (reference -> gaussians.usdc)
+          /mesh                      (grouping xform, no extra rotation)
+            /geometry                (reference -> mesh.usdc)
+    """
+    if model is None and mesh_vertices is None:
+        raise ValueError("At least one of model or mesh_vertices must be provided")
+
+    stages: list[NamedUSDStage] = []
+    root_stage = _initialize_particlefield_usd_stage()
+
+    # Payload .usdc files are packed into the USDZ after references are authored;
+    # suppress expected "could not open asset" warnings during in-memory composition.
+    _ = UsdUtils.CoalescingDiagnosticDelegate()
+
+    scene_matrix = get_isaac_scene_alignment_matrix() if apply_scene_transform else None
+    _add_scene_xform(root_stage, scene_matrix)
+    if scene_matrix is not None:
+        logger.info("Applied Isaac scene alignment (-90° X) on %s", USD_SCENE_ROOT_PATH)
+
+    if model is not None:
+        gaussians_stage = NamedUSDStage(
+            filename="gaussians.usdc", stage=build_gaussians_payload_stage(model)
+        )
+        stages.append(gaussians_stage)
+
+        gaussians_ref = root_stage.OverridePrim(f"{USD_SCENE_ROOT_PATH}/Gaussians")
+        gaussians_ref.GetReferences().AddReference(
+            gaussians_stage.filename, USD_GAUSSIANS_ROOT_PATH
+        )
+        logger.info("Referenced gaussians payload at %s/Gaussians", USD_SCENE_ROOT_PATH)
+
+    if mesh_vertices is not None and mesh_faces is not None:
+        mesh_stage = NamedUSDStage(
+            filename="mesh.usdc",
+            stage=build_mesh_payload_stage(mesh_vertices, mesh_faces),
+        )
+        stages.append(mesh_stage)
+
+        UsdGeom.Xform.Define(root_stage, USD_MESH_SCENE_PATH)
+        mesh_ref = root_stage.OverridePrim(f"{USD_MESH_SCENE_PATH}/geometry")
+        mesh_ref.GetReferences().AddReference(
+            mesh_stage.filename, USD_MESH_PAYLOAD_PATH
+        )
+        logger.info("Referenced mesh payload at %s/geometry", USD_MESH_SCENE_PATH)
+
+    default_stage = NamedUSDStage(filename="default.usda", stage=root_stage)
+    _write_particlefield_usdz(output_path, [default_stage, *stages])
+    logger.info("Wrote Isaac scene USDZ to %s", output_path)
+
+
+def crop_and_convert_splat_to_usdz(
+    input_path: pathlib.Path,
+    output_path: pathlib.Path,
+    bbox: list[float] | None = None,
+    apply_scene_transform: bool = True,
+    logger: logging.Logger = logging.getLogger(__name__),
+) -> None:
+    """Convert a Gaussian splat PLY to USDZ with optional scene-level Isaac alignment."""
+    model, _metadata = GaussianSplat3d.from_ply(str(input_path))
+    model = _crop_splat_model(model, bbox, logger)
+    compose_isaac_scene_usdz(
+        output_path,
+        model=model,
+        apply_scene_transform=apply_scene_transform,
+        logger=logger,
+    )
 
 
 def crop_and_convert_mesh_to_obj(
@@ -162,188 +263,96 @@ def crop_and_convert_mesh_to_obj(
     bbox: list[float] | None = None,
     resolution: int = 100_000,
     logger: logging.Logger = logging.getLogger(__name__),
-):
-    """
-    Convert a mesh to watertight format, optionally cropping to a bounding box.
+) -> tuple[np.ndarray, np.ndarray]:
+    """Convert a mesh to watertight OBJ in the training coordinate frame."""
+    vertices, faces = _prepare_mesh(input_path, bbox, resolution, logger)
+    _write_mesh_obj(vertices, faces, output_path)
+    logger.info("Saved watertight mesh OBJ to %s", output_path)
+    return vertices, faces
 
-    Args:
-        input_path (pathlib.Path): Path to input mesh file (PLY format)
-        output_path (pathlib.Path): Path to save the processed mesh
-        bbox (list[float], optional): Bounding box coordinates [min_x, min_y, min_z, max_x, max_y, max_z]
-    """
-    # Load the mesh with vertices and faces
-    v, f = pcu.load_mesh_vf(str(input_path))
 
+def main() -> None:
+    logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
     logger = logging.getLogger(__name__)
-    logger.info("Converting mesh to OBJ")
-    if bbox is not None:
-        # Unpack bounding box coordinates
-        min_x, min_y, min_z, max_x, max_y, max_z = bbox
 
-        # Create mask for vertices within bbox
-        mask = (
-            (v[:, 0] >= min_x)
-            & (v[:, 0] <= max_x)
-            & (v[:, 1] >= min_y)
-            & (v[:, 1] <= max_y)
-            & (v[:, 2] >= min_z)
-            & (v[:, 2] <= max_z)
-        )
-
-        # Get indices of vertices to keep
-        keep_indices = np.where(mask)[0]
-
-        # Create mapping from old vertex indices to new ones
-        old_to_new = np.full(v.shape[0], -1)
-        old_to_new[keep_indices] = np.arange(len(keep_indices))
-
-        # Filter vertices
-        v = v[keep_indices]
-
-        # Filter faces - keep only faces where all vertices are within bounds
-        valid_faces = []
-        for face in f:
-            if all(old_to_new[idx] != -1 for idx in face):
-                # Remap vertex indices
-                new_face = [old_to_new[idx] for idx in face]
-                valid_faces.append(new_face)
-
-        f = np.array(valid_faces, dtype=np.int32)
-        # print the new bounds
-        print(f"Cropped to:")
-        print(f"  min: {v.min(axis=0)}")
-        print(f"  max: {v.max(axis=0)}")
-
-    # Make mesh watertight
-    # See https://github.com/hjwdzh/Manifold for details
-    resolution = resolution
-    v_watertight, f_watertight = pcu.make_mesh_watertight(v, f, resolution=resolution)
-    print(f"\nWatertight mesh has {v_watertight.shape[0]} vertices and {f_watertight.shape[0]} faces")
-
-    # Convert to the expected types
-    v_clean = v_watertight.astype(np.float32)
-    f_clean = f_watertight.astype(np.int32)
-
-    # Apply Isaac Sim alignment transform (X: 90°, Z: 180°)
-    logger.info("Applying Isaac Sim alignment transform to mesh")
-    v_clean = apply_isaac_sim_mesh_transform(v_clean)
-
-    # Write OBJ file
-    with open(output_path, "w") as f:
-        # Write vertices
-        for v in v_clean:
-            f.write(f"v {v[0]} {v[1]} {v[2]}\n")
-
-        # Write faces (OBJ uses 1-based indexing)
-        for face in f_clean:
-            f.write(f"f {face[0]+1} {face[1]+1} {face[2]+1}\n")
-
-    print(f"Saved watertight mesh to {output_path}")
-
-
-def crop_and_convert_splat_to_usdz(
-    input_path: pathlib.Path,
-    output_path: pathlib.Path,
-    bbox: list[float] | None = None,
-    logger: logging.Logger = logging.getLogger(__name__),
-):
-    """
-    Convert a Gaussian splat to USDZ format, optionally cropping to a bounding box.
-
-    Args:
-        input_path (pathlib.Path): Path to input splat file (PLY format)
-        output_path (pathlib.Path): Path to save the USDZ file
-        bbox (list[float], optional): Bounding box coordinates [min_x, min_y, min_z, max_x, max_y, max_z]
-        logger (logging.Logger): Logger instance for logging messages
-    """
-    model, metadata = GaussianSplat3d.from_ply(str(input_path))  # Convert Path to string
-
-    logger.info("Converting Splat to USDZ")
-
-    if bbox is not None:
-        # Get positions for cropping (before transformation)
-        xyz = model.means.cpu().numpy()
-        # Create mask for points within bbox
-        min_x, min_y, min_z, max_x, max_y, max_z = bbox
-
-        mask = (
-            (xyz[:, 0] >= min_x)
-            & (xyz[:, 0] <= max_x)
-            & (xyz[:, 1] >= min_y)
-            & (xyz[:, 1] <= max_y)
-            & (xyz[:, 2] >= min_z)
-            & (xyz[:, 2] <= max_z)
-        )
-        mask = torch.from_numpy(mask).to(model.device)
-        # Create new model with only points in bbox using mask indexing
-        model = model[mask]
-        logger.info(f"Cropped from {len(xyz)} to {len(model.means)} points")
-
-    # Apply Isaac Sim alignment transform (X: -90°, Z: 180°)
-    logger.info("Applying Isaac Sim alignment transform to splat")
-    model = apply_isaac_sim_splat_transform(model)
-
-    # Create new metadata dictionary with only compatible types
-    new_metadata: Optional[Dict[str, Union[str, int, float, torch.Tensor]]] = {
-        "sh_degree": int(model.sh_degree),  # Ensure it's an int
-    }
-
-    # Add bbox to metadata if provided
-    if bbox is not None:
-        new_metadata["bbox"] = torch.tensor(bbox, dtype=torch.float32)  # Convert to tensor
-
-    # If original metadata exists, only copy compatible values
-    if metadata is not None:
-        for key, value in metadata.items():
-            # Only copy compatible values
-            if isinstance(value, (str, int, float, torch.Tensor)):
-                new_metadata[key] = value
-
-    # Export to USDZ
-    export_splats_to_usdz(model, output_path)  # export_to_usdz already handles Path objects
-
-
-def main():
-    logger = logging.getLogger(__name__)
-    parser = argparse.ArgumentParser(description="Crop a mesh and/or splat model to a given bounding box")
-
-    # Input/Output arguments
-    parser.add_argument("--input-splat", type=Path, help="Input splat file (PLY format)")
-    parser.add_argument("--output-path", type=Path, help="Output file path (no extension)")
-    parser.add_argument("--input-mesh", type=Path, help="Input mesh file (PLY/OBJ format)")
-    # add resolution for mesh
-    parser.add_argument("--resolution", type=int, help="Resolution for mesh", required=False, default=100_000)
-    # Optional bounding box arguments
+    parser = argparse.ArgumentParser(
+        description="Crop mesh and/or splat assets and export an Isaac-ready combined USDZ",
+    )
+    parser.add_argument(
+        "--input-splat", type=Path, help="Input splat file (PLY format)"
+    )
+    parser.add_argument(
+        "--input-mesh", type=Path, help="Input mesh file (PLY/OBJ format)"
+    )
+    parser.add_argument(
+        "--output-path", type=Path, required=True, help="Output path without extension"
+    )
+    parser.add_argument(
+        "--resolution", type=int, default=100_000, help="Watertight mesh resolution"
+    )
     parser.add_argument(
         "--bbox",
         type=float,
         nargs=6,
         metavar=("MIN_X", "MIN_Y", "MIN_Z", "MAX_X", "MAX_Y", "MAX_Z"),
-        help="Optional bounding box coordinates to crop the model: min_x min_y min_z max_x max_y max_z",
-        required=False,
+        help="Optional crop bounds: min_x min_y min_z max_x max_y max_z",
+    )
+    parser.add_argument(
+        "--write-obj",
+        action="store_true",
+        help="Also write a training-frame OBJ alongside the USDZ when --input-mesh is set",
+    )
+    parser.add_argument(
+        "--no-usd-transform",
+        default=False,
+        action="store_true",
+        help="Skip rotating USDZ upright under ecef2enu convention, use if scene is not ecef2enu normalized",
+    )
+    parser.add_argument(
+        "--no-watertight",
+        action="store_true",
+        help="Skip making the mesh watertight, might cause collision issues if used in Isaac Sim",
+    )
+    parser.add_argument(
+        "--legacy-usd",
+        action="store_true",
+        help="Export legacy NuRec format instead of ParticleField3DGaussianSplat, for Isaac Sim versions prior to 6.0. \n Note: results will look better in version 6.0 and higher",
     )
 
     args = parser.parse_args()
-
-    # Validate that at least one input is provided
     if not args.input_splat and not args.input_mesh:
         parser.error("At least one of --input-splat or --input-mesh must be provided")
 
-    # Process splat if input is provided
-    if not args.output_path:
-        parser.error("--output-path is required")
-
-    # Create output paths with extensions
+    apply_scene_transform = not (args.no_usd_transform)
     usdz_output_path = args.output_path.with_suffix(".usdz")
     mesh_output_path = args.output_path.with_suffix(".obj")
 
-    # Process splat if input is provided
-    if args.input_splat:
-        crop_and_convert_splat_to_usdz(args.input_splat, usdz_output_path, args.bbox, logger)
+    model: Optional[GaussianSplat3d] = None
+    mesh_vertices: Optional[np.ndarray] = None
+    mesh_faces: Optional[np.ndarray] = None
 
-    # Process mesh if input is provided
+    if args.input_splat:
+        model, _ = GaussianSplat3d.from_ply(str(args.input_splat))
+        model = _crop_splat_model(model, args.bbox, logger)
+
     if args.input_mesh:
-        crop_and_convert_mesh_to_obj(args.input_mesh, mesh_output_path, args.bbox, args.resolution, logger)
+        mesh_vertices, mesh_faces = _prepare_mesh(
+            args.input_mesh, args.bbox, args.resolution, logger
+        )
+        if args.write_obj:
+            _write_mesh_obj(mesh_vertices, mesh_faces, mesh_output_path)
+
+    if model is None and mesh_vertices is None:
+        parser.error("No assets left after cropping")
+
+    compose_isaac_scene_usdz(
+        usdz_output_path,
+        model=model,
+        mesh_vertices=mesh_vertices,
+        mesh_faces=mesh_faces,
+        apply_scene_transform=apply_scene_transform,
+        logger=logger,
+    )
 
 
 if __name__ == "__main__":

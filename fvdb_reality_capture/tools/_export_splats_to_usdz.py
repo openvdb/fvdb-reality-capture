@@ -17,11 +17,17 @@ import msgpack
 import numpy as np
 import torch
 from fvdb import GaussianSplat3d
-from pxr import Gf, Sdf, Usd, UsdGeom, UsdUtils
+from pxr import Gf, Sdf, Usd, UsdGeom, UsdUtils, UsdVol, Vt
 
 # Set up logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
+
+DEFAULT_FRAME_RATE = 24.0
+USD_GAUSSIANS_ROOT_PATH = "/World/Gaussians"
+USD_GAUSSIANS_PRIM_PATH = USD_GAUSSIANS_ROOT_PATH + "/gaussians"
+DEFAULT_PROJECTION_MODE_HINT = "perspective"
+DEFAULT_SORTING_MODE_HINT = "cameraDistance"
 
 
 @dataclass(kw_only=True)
@@ -43,12 +49,12 @@ class NamedUSDStage:
         os.unlink(temp_file_path)
 
 
-def _initialize_usd_stage():
+def _initialize_nurec_usd_stage() -> Usd.Stage:
     """
-    Initialize a new USD stage with standard settings.
+    Initialize a new USD stage for the legacy NuRec export (Z-up).
 
     Returns:
-        Usd.Stage: A new USD stage with standard settings
+        Usd.Stage: A new USD stage with standard NuRec settings
     """
     stage = Usd.Stage.CreateInMemory()
     stage.SetMetadata("metersPerUnit", 1)
@@ -60,6 +66,175 @@ def _initialize_usd_stage():
     stage.SetMetadata("defaultPrim", world_path[1:])
 
     return stage
+
+
+def _initialize_particlefield_usd_stage() -> Usd.Stage:
+    """Initialize an in-memory Y-up USD stage for ParticleField export."""
+    stage = Usd.Stage.CreateInMemory()
+    stage.SetMetadata("metersPerUnit", 1.0)
+    stage.SetMetadata("upAxis", "Y")
+    stage.SetTimeCodesPerSecond(DEFAULT_FRAME_RATE)
+
+    world_path = "/World"
+    UsdGeom.Xform.Define(stage, world_path)
+    stage.SetMetadata("defaultPrim", world_path[1:])
+
+    return stage
+
+
+@dataclass
+class _PostActivationGaussianArrays:
+    """Gaussian splat arrays after applying scale, opacity, and rotation activations."""
+
+    positions: np.ndarray
+    rotations: np.ndarray
+    scales: np.ndarray
+    densities: np.ndarray
+    albedo: np.ndarray
+    specular: np.ndarray
+    sh_degree: int
+
+    @property
+    def num_gaussians(self) -> int:
+        return self.positions.shape[0]
+
+
+def _extract_postactivation_gaussian_arrays(model: GaussianSplat3d) -> _PostActivationGaussianArrays:
+    """Convert fvdb model tensors to post-activation arrays for USD ParticleField export."""
+    positions = model.means.detach().cpu().numpy().astype(np.float32)
+    rotations = model.quats.detach().cpu().numpy().astype(np.float32)
+    scales = torch.exp(model.log_scales).detach().cpu().numpy().astype(np.float32)
+    densities = torch.sigmoid(model.logit_opacities).detach().cpu().numpy().astype(np.float32)
+    sh0 = model.sh0.detach().cpu().numpy().astype(np.float32)
+    shN = model.shN.detach().cpu().numpy().astype(np.float32)
+    sh_degree = int(model.sh_degree)
+
+    num_gaussians = positions.shape[0]
+    num_rest_coeffs = (sh_degree + 1) ** 2 - 1
+
+    quat_norms = np.linalg.norm(rotations, axis=1, keepdims=True)
+    rotations = rotations / quat_norms
+
+    albedo = sh0[:, 0, :].reshape(num_gaussians, 3)
+    specular = shN.reshape(num_gaussians, -1)
+    expected_specular_cols = num_rest_coeffs * 3
+    if specular.shape[1] != expected_specular_cols:
+        padded = np.zeros((num_gaussians, expected_specular_cols), dtype=np.float32)
+        if specular.shape[1] > 0:
+            padded[:, : min(specular.shape[1], expected_specular_cols)] = specular[
+                :, :expected_specular_cols
+            ]
+        specular = padded
+
+    if densities.ndim == 1:
+        densities = densities[:, np.newaxis]
+
+    return _PostActivationGaussianArrays(
+        positions=positions,
+        rotations=rotations,
+        scales=scales,
+        densities=densities,
+        albedo=albedo,
+        specular=specular,
+        sh_degree=sh_degree,
+    )
+
+
+def _pack_particlefield_sh_coefficients(
+    albedo: np.ndarray,
+    specular: np.ndarray,
+    num_gaussians: int,
+    sh_degree: int,
+) -> tuple[np.ndarray, int]:
+    """
+    Pack DC and higher-order SH into a flat Vec3f array for ParticleField USD.
+
+    Layout per gaussian: (degree+1)^2 RGB triplets in basis order.
+    """
+    if sh_degree == 0:
+        return albedo.reshape(-1, 3), 1
+
+    num_sh_coeffs = (sh_degree + 1) ** 2
+    num_rest_coeffs = num_sh_coeffs - 1
+    specular_reshaped = specular.reshape((num_gaussians, num_rest_coeffs, 3))
+    albedo_expanded = albedo.reshape((num_gaussians, 1, 3))
+    all_coeffs = np.concatenate([albedo_expanded, specular_reshaped], axis=1)
+    return all_coeffs.reshape(-1, 3), num_sh_coeffs
+
+
+def _compute_gaussian_bounding_extent(positions: np.ndarray) -> Vt.Vec3fArray:
+    """Compute axis-aligned bounding box [min, max] from gaussian centers."""
+    min_bounds = np.min(positions, axis=0)
+    max_bounds = np.max(positions, axis=0)
+    return Vt.Vec3fArray(
+        [
+            Gf.Vec3f(float(min_bounds[0]), float(min_bounds[1]), float(min_bounds[2])),
+            Gf.Vec3f(float(max_bounds[0]), float(max_bounds[1]), float(max_bounds[2])),
+        ]
+    )
+
+
+def _apply_particlefield_color_space(prim: Usd.Prim, linear_srgb: bool) -> None:
+    """Tag radiance color space on the ParticleField prim via ColorSpaceAPI."""
+    color_space = "lin_rec709_scene" if linear_srgb else "srgb_rec709_display"
+    color_space_api = Usd.ColorSpaceAPI.Apply(prim)
+    color_space_api.CreateColorSpaceNameAttr().Set(color_space)
+
+
+def _write_particlefield3d_gaussian_splat(
+    stage: Usd.Stage,
+    model: GaussianSplat3d,
+    prim_path: str = USD_GAUSSIANS_PRIM_PATH,
+    linear_srgb: bool = False,
+    projection_mode_hint: str = DEFAULT_PROJECTION_MODE_HINT,
+    sorting_mode_hint: str = DEFAULT_SORTING_MODE_HINT,
+) -> Usd.Prim:
+    """Write post-activation gaussian data to a ParticleField3DGaussianSplat prim."""
+    attrs = _extract_postactivation_gaussian_arrays(model)
+    num_gaussians = attrs.num_gaussians
+    sh_degree = attrs.sh_degree
+    num_sh_coeffs = (sh_degree + 1) ** 2
+
+    logger.info(f"Creating ParticleField3DGaussianSplat at {prim_path}")
+    logger.info(f"  Gaussians: {num_gaussians:,}")
+    logger.info(f"  SH degree: {sh_degree} ({num_sh_coeffs} coeffs per gaussian)")
+
+    if sh_degree > 0:
+        shN_max = float(np.max(np.abs(attrs.specular)))
+        shN_mean = float(np.mean(np.abs(attrs.specular)))
+        logger.info(f"  shN magnitude: max={shN_max:.6f}, mean={shN_mean:.6f}")
+        if shN_max < 1e-8:
+            logger.warning("shN coefficients are all near zero — scene will look like SH degree 0")
+
+    gauss_schema = UsdVol.ParticleField3DGaussianSplat.Define(stage, prim_path)
+    prim = gauss_schema.GetPrim()
+
+    gauss_schema.CreatePositionsAttr().Set(Vt.Vec3fArray.FromNumpy(attrs.positions))
+    quats_list = [
+        Gf.Quatf(float(q[0]), float(q[1]), float(q[2]), float(q[3])) for q in attrs.rotations
+    ]
+    gauss_schema.CreateOrientationsAttr().Set(Vt.QuatfArray(quats_list))
+    gauss_schema.CreateScalesAttr().Set(Vt.Vec3fArray.FromNumpy(attrs.scales))
+
+    densities_clamped = np.clip(attrs.densities.flatten(), 0.0, 1.0)
+    gauss_schema.CreateOpacitiesAttr().Set(Vt.FloatArray.FromNumpy(densities_clamped.astype(np.float32)))
+
+    gauss_schema.CreateRadianceSphericalHarmonicsDegreeAttr().Set(sh_degree)
+    sh_coeffs_attr = gauss_schema.CreateRadianceSphericalHarmonicsCoefficientsAttr()
+    all_sh_flat, num_sh_coeffs = _pack_particlefield_sh_coefficients(
+        attrs.albedo, attrs.specular, num_gaussians, sh_degree
+    )
+    sh_coeffs_attr.Set(Vt.Vec3fArray.FromNumpy(all_sh_flat.astype(np.float32)))
+    sh_coeffs_attr.SetMetadata("elementSize", num_sh_coeffs)
+
+    gauss_schema.CreateProjectionModeHintAttr().Set(projection_mode_hint)
+    gauss_schema.CreateSortingModeHintAttr().Set(sorting_mode_hint)
+
+    _apply_particlefield_color_space(prim, linear_srgb)
+    gauss_schema.CreateExtentAttr().Set(_compute_gaussian_bounding_extent(attrs.positions))
+
+    logger.info(f"Created ParticleField3DGaussianSplat with {num_gaussians:,} Gaussians")
+    return prim
 
 
 def _serialize_usd_stage_to_bytes(stage: Usd.Stage) -> bytes:
@@ -113,7 +288,7 @@ def _serialize_nurec_usd(
     max_list = [max_x, max_y, max_z]
 
     # Initialize the USD stage with standard settings
-    stage = _initialize_usd_stage()
+    stage = _initialize_nurec_usd_stage()
 
     # Set up render settings
     render_settings = {
@@ -236,10 +411,10 @@ def serialize_usd_default_layer(gauss_stage: NamedUSDStage) -> NamedUSDStage:
     Returns:
         NamedUSDStage: The default USD stage with the gauss reference
     """
-    stage = _initialize_usd_stage()
+    stage = _initialize_nurec_usd_stage()
 
     # The delegate captures all errors about dangling references, effectively silencing them.
-    delegate = UsdUtils.CoalescingDiagnosticDelegate()
+    _ = UsdUtils.CoalescingDiagnosticDelegate()
 
     # Create a reference to the gauss stage
     prim = stage.OverridePrim(f"/World/{Path(gauss_stage.filename).stem}")
@@ -275,6 +450,29 @@ def write_to_usdz(file_path: Path, model_file, gauss_usd: NamedUSDStage, default
         # Save the model file and gauss USD stage
         model_file.save_to_zip(zip_file)
         gauss_usd.save_to_zip(zip_file)
+
+    logger.info(f"USDZ file created successfully at {file_path}")
+
+
+def _serialize_particlefield_default_layer(gaussians_stage: NamedUSDStage) -> NamedUSDStage:
+    """Create default.usda that references the gaussians payload layer."""
+    stage = _initialize_particlefield_usd_stage()
+
+    filename_stem = Path(gaussians_stage.filename).stem
+    prim_path = f"/World/{filename_stem}"
+    prim = stage.OverridePrim(prim_path)
+    prim.GetReferences().AddReference(gaussians_stage.filename)
+
+    return NamedUSDStage(filename="default.usda", stage=stage)
+
+
+def _write_particlefield_usdz(file_path: Path, stages: list[NamedUSDStage]) -> None:
+    """Write a USDZ archive from one or more in-memory USD stages (default.usda first)."""
+    file_path.parent.mkdir(parents=True, exist_ok=True)
+
+    with zipfile.ZipFile(file_path, "w", compression=zipfile.ZIP_STORED) as zip_file:
+        for stage in stages:
+            stage.save_to_zip(zip_file)
 
     logger.info(f"USDZ file created successfully at {file_path}")
 
@@ -510,20 +708,18 @@ def fill_3dgut_template(
     return template
 
 
-@torch.no_grad()
-def export_splats_to_usdz(
-    model: GaussianSplat3d,
-    out_path: str | Path,
+def _export_splats_to_usdz_legacy(
+    model: GaussianSplat3d, 
+    out_path: str | Path
 ) -> None:
     """
-    Export an :class:`fvdb.GaussianSplat3d` model to a USDZ file.
+    Export an :class:`fvdb.GaussianSplat3d` model to a USDZ file using the legacy NuRec format (UsdVol.Volume + .nurec msgpack).
 
     Args:
         model (fvdb.GaussianSplat3d): The Gaussian Splat model to save to a usdz file
         out_path (str | Path): The output path for the usdz file. If the file extension is not ``.usdz``,
             it will be added. *e.g.*, ``./scene`` will save to ``./scene.usdz``.
     """
-
     if isinstance(out_path, str):
         out_path = Path(out_path)
     out_path = out_path.with_suffix(".usdz")
@@ -567,7 +763,6 @@ def export_splats_to_usdz(
 
     template = fill_3dgut_template(**usdz_params)
 
-    # Compress the data
     buffer = io.BytesIO()
     with gzip.GzipFile(fileobj=buffer, mode="wb", compresslevel=0) as f:
         packed = msgpack.packb(template)
@@ -575,9 +770,74 @@ def export_splats_to_usdz(
 
     model_file = NamedSerialized(filename=out_path.stem + ".nurec", serialized=buffer.getvalue())
 
-    # Create USD representations
     gauss_usd = _serialize_nurec_usd(model_file, means, np.eye(4))
     default_usd = serialize_usd_default_layer(gauss_usd)
 
-    # Write the final USDZ file
     write_to_usdz(out_path, model_file, gauss_usd, default_usd)
+
+
+def _export_splats_to_usdz_particlefield(
+    model: GaussianSplat3d,
+    out_path: Path,
+    linear_srgb: bool = False,
+    sorting_mode_hint: str = DEFAULT_SORTING_MODE_HINT,
+    projection_mode_hint: str = DEFAULT_PROJECTION_MODE_HINT,
+) -> None:
+    """Export using the OpenUSD ParticleField3DGaussianSplat schema."""
+    logger.info("Creating USD file with ParticleField3DGaussianSplat schema")
+    logger.info("Using post-activation gaussian attributes")
+
+    stage = _initialize_particlefield_usd_stage()
+    UsdGeom.Xform.Define(stage, USD_GAUSSIANS_ROOT_PATH)
+    _write_particlefield3d_gaussian_splat(
+        stage,
+        model,
+        linear_srgb=linear_srgb,
+        sorting_mode_hint=sorting_mode_hint,
+        projection_mode_hint=projection_mode_hint,
+    )
+
+    gaussians_stage = NamedUSDStage(filename="gaussians.usdc", stage=stage)
+    default_stage = _serialize_particlefield_default_layer(gaussians_stage)
+    _write_particlefield_usdz(out_path, [default_stage, gaussians_stage])
+
+
+@torch.no_grad()
+def export_splats_to_usdz(
+    model: GaussianSplat3d,
+    out_path: str | Path,
+    legacy: bool = False,
+    linear_srgb: bool = False,
+    sorting_mode_hint: str = DEFAULT_SORTING_MODE_HINT,
+    projection_mode_hint: str = DEFAULT_PROJECTION_MODE_HINT,
+) -> None:
+    """
+    Export an :class:`fvdb.GaussianSplat3d` model to a USDZ file.
+
+    Args:
+        model (fvdb.GaussianSplat3d): The Gaussian Splat model to save to a usdz file
+        out_path (str | Path): The output path for the usdz file. If the file extension is not ``.usdz``,
+            it will be added. *e.g.*, ``./scene`` will save to ``./scene.usdz``.
+        legacy (bool): If True, export using the legacy NuRec format
+            (UsdVol.Volume + .nurec msgpack). If False (default), export using the
+            OpenUSD ParticleField3DGaussianSplat schema.
+        linear_srgb (bool): ParticleField export only. Tags ``ColorSpaceAPI`` on the prim.
+            fvdb trains against ``image / 255`` (gamma-encoded sRGB), so ``False`` (default)
+            matches training; use ``True`` only if your training pipeline optimizes in linear space.
+        sorting_mode_hint (str): ParticleField sorting hint (default: ``cameraDistance``).
+        projection_mode_hint (str): ParticleField projection hint (default: ``perspective``).
+    """
+    if isinstance(out_path, str):
+        out_path = Path(out_path)
+    out_path = out_path.with_suffix(".usdz")
+
+    if legacy:
+        _export_splats_to_usdz_legacy(model, out_path)
+    else:
+        _export_splats_to_usdz_particlefield(
+            model,
+            out_path,
+            linear_srgb=linear_srgb,
+            sorting_mode_hint=sorting_mode_hint,
+            projection_mode_hint=projection_mode_hint,
+        )

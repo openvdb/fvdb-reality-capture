@@ -41,7 +41,7 @@ dependencies = [
     "torchvision",
     "tqdm",
     "tyro",
-    "usd-core ; platform_machine != 'aarch64'",
+    "usd-core>=26.3 ; platform_machine != 'aarch64'",
     "usd-exchange ; platform_machine == 'aarch64'",
     "msgpack",
     "types-usd",
