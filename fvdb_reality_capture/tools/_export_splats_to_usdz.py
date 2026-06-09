@@ -458,6 +458,9 @@ def _serialize_particlefield_default_layer(gaussians_stage: NamedUSDStage) -> Na
     """Create default.usda that references the gaussians payload layer."""
     stage = _initialize_particlefield_usd_stage()
 
+    # gaussians.usdc is written to the USDZ after references are authored.
+    _ = UsdUtils.CoalescingDiagnosticDelegate()
+
     filename_stem = Path(gaussians_stage.filename).stem
     prim_path = f"/World/{filename_stem}"
     prim = stage.OverridePrim(prim_path)
@@ -466,15 +469,78 @@ def _serialize_particlefield_default_layer(gaussians_stage: NamedUSDStage) -> Na
     return NamedUSDStage(filename="default.usda", stage=stage)
 
 
-def _write_particlefield_usdz(file_path: Path, stages: list[NamedUSDStage]) -> None:
-    """Write a USDZ archive from one or more in-memory USD stages (default.usda first)."""
+def _write_particlefield_usdz(
+    file_path: Path,
+    stages: list[NamedUSDStage],
+    extra_files: list["NamedSerialized"] | None = None,
+) -> None:
+    """Write a USDZ archive from in-memory USD stages (default.usda first) and optional sidecars."""
     file_path.parent.mkdir(parents=True, exist_ok=True)
 
     with zipfile.ZipFile(file_path, "w", compression=zipfile.ZIP_STORED) as zip_file:
         for stage in stages:
             stage.save_to_zip(zip_file)
+        for extra in extra_files or []:
+            extra.save_to_zip(zip_file)
 
     logger.info(f"USDZ file created successfully at {file_path}")
+
+
+LEGACY_GAUSS_PRIM_PATH = "/World/gauss"
+
+
+def build_legacy_gaussians_payload(
+    model: GaussianSplat3d,
+    archive_stem: str,
+) -> tuple[NamedUSDStage, "NamedSerialized"]:
+    """Build gauss.usda + .nurec payload layers for composition into a larger USDZ."""
+    means = model.means.cpu().numpy()
+    quats = model.quats.cpu().numpy()
+    log_scales = model.log_scales.cpu().numpy()
+    logit_opacities = model.logit_opacities.cpu().numpy()
+    sh0 = model.sh0.cpu().numpy()
+    shN = model.shN.cpu().numpy()
+    n_sh_coeffs = model.num_sh_bases
+
+    usdz_params = {
+        "positions": means,
+        "rotations": quats,
+        "scales": log_scales,
+        "densities": logit_opacities,
+        "features_albedo": sh0,
+        "features_specular": shN,
+        "n_active_features": n_sh_coeffs,
+        "density_kernel_degree": 2,
+        "density_activation": "sigmoid",
+        "scale_activation": "exp",
+        "rotation_activation": "normalize",
+        "density_kernel_density_clamping": True,
+        "density_kernel_min_response": 0.0113,
+        "radiance_sph_degree": 3,
+        "transmittance_threshold": 0.0001,
+        "global_z_order": True,
+        "n_rolling_shutter_iterations": 5,
+        "ut_alpha": 1.0,
+        "ut_beta": 2.0,
+        "ut_kappa": 0.0,
+        "ut_require_all_sigma_points": False,
+        "image_margin_factor": 0.1,
+        "rect_bounding": True,
+        "tight_opacity_bounding": True,
+        "tile_based_culling": True,
+        "k_buffer_size": 0,
+    }
+
+    template = fill_3dgut_template(**usdz_params)
+
+    buffer = io.BytesIO()
+    with gzip.GzipFile(fileobj=buffer, mode="wb", compresslevel=0) as f:
+        packed = msgpack.packb(template)
+        f.write(packed)  # type: ignore
+
+    model_file = NamedSerialized(filename=f"{archive_stem}.nurec", serialized=buffer.getvalue())
+    gauss_stage = _serialize_nurec_usd(model_file, means, np.eye(4))
+    return gauss_stage, model_file
 
 
 @dataclass(kw_only=True)
@@ -723,56 +789,9 @@ def _export_splats_to_usdz_legacy(
     if isinstance(out_path, str):
         out_path = Path(out_path)
     out_path = out_path.with_suffix(".usdz")
-    means = model.means.cpu().numpy()
-    quats = model.quats.cpu().numpy()
-    log_scales = model.log_scales.cpu().numpy()
-    logit_opacities = model.logit_opacities.cpu().numpy()
-    sh0 = model.sh0.cpu().numpy()
-    shN = model.shN.cpu().numpy()
-    n_sh_coeffs = model.num_sh_bases
 
-    usdz_params = {
-        "positions": means,
-        "rotations": quats,
-        "scales": log_scales,
-        "densities": logit_opacities,
-        "features_albedo": sh0,
-        "features_specular": shN,
-        "n_active_features": n_sh_coeffs,
-        "density_kernel_degree": 2,
-        # Common renderer configuration parameters
-        "density_activation": "sigmoid",
-        "scale_activation": "exp",
-        "rotation_activation": "normalize",  # Always normalize for rotations
-        "density_kernel_density_clamping": True,
-        "density_kernel_min_response": 0.0113,
-        "radiance_sph_degree": 3,  # TODO: Adapt to actual number of SH coeffs
-        "transmittance_threshold": 0.0001,
-        "global_z_order": True,
-        "n_rolling_shutter_iterations": 5,
-        "ut_alpha": 1.0,
-        "ut_beta": 2.0,
-        "ut_kappa": 0.0,
-        "ut_require_all_sigma_points": False,
-        "image_margin_factor": 0.1,
-        "rect_bounding": True,
-        "tight_opacity_bounding": True,
-        "tile_based_culling": True,
-        "k_buffer_size": 0,
-    }
-
-    template = fill_3dgut_template(**usdz_params)
-
-    buffer = io.BytesIO()
-    with gzip.GzipFile(fileobj=buffer, mode="wb", compresslevel=0) as f:
-        packed = msgpack.packb(template)
-        f.write(packed)  # type: ignore
-
-    model_file = NamedSerialized(filename=out_path.stem + ".nurec", serialized=buffer.getvalue())
-
-    gauss_usd = _serialize_nurec_usd(model_file, means, np.eye(4))
+    gauss_usd, model_file = build_legacy_gaussians_payload(model, out_path.stem)
     default_usd = serialize_usd_default_layer(gauss_usd)
-
     write_to_usdz(out_path, model_file, gauss_usd, default_usd)
 
 
