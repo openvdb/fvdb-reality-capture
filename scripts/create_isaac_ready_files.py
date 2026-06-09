@@ -213,7 +213,6 @@ def compose_isaac_scene_usdz(
             filename="gaussians.usdc", stage=build_gaussians_payload_stage(model)
         )
         stages.append(gaussians_stage)
-
         gaussians_ref = root_stage.OverridePrim(f"{USD_SCENE_ROOT_PATH}/Gaussians")
         gaussians_ref.GetReferences().AddReference(
             gaussians_stage.filename, USD_GAUSSIANS_ROOT_PATH
@@ -313,12 +312,6 @@ def main() -> None:
         action="store_true",
         help="Skip making the mesh watertight, might cause collision issues if used in Isaac Sim",
     )
-    parser.add_argument(
-        "--legacy-usd",
-        action="store_true",
-        help="Export legacy NuRec format instead of ParticleField3DGaussianSplat, for Isaac Sim versions prior to 6.0. \n Note: results will look better in version 6.0 and higher",
-    )
-
     args = parser.parse_args()
     if not args.input_splat and not args.input_mesh:
         parser.error("At least one of --input-splat or --input-mesh must be provided")
