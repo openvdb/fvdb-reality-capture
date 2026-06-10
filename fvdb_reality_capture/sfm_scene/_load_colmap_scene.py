@@ -9,7 +9,7 @@ import numpy as np
 import pycolmap
 import tqdm
 
-from .adapter import Adapter, COLMAPAdapter
+from .adapter import COLMAPAdapter
 from .sfm_cache import SfmCache
 from .sfm_metadata import SfmPosedImageMetadata
 
@@ -46,7 +46,7 @@ def _load_colmap_internal(colmap_path: pathlib.Path) -> pycolmap.Reconstruction:
     return pycolmap.Reconstruction(colmap_sparse_path)
 
 
-def load_colmap_scene(colmap_path: pathlib.Path, adapter: type[Adapter] = COLMAPAdapter):
+def load_colmap_scene(colmap_path: pathlib.Path):
     """
     Load cameras, posed-images, and points (with a cache to store derived quantities) from the output
     of a COLMAP structure-from-motion (SfM) pipeline. COLMAP produces a directory of images, a set of
@@ -56,12 +56,12 @@ def load_colmap_scene(colmap_path: pathlib.Path, adapter: type[Adapter] = COLMAP
 
     Args:
         colmap_path (pathlib.Path): The path to the output of a COLMAP run.
-        adapter (type[Adapter]): Adapter class used to translate source conventions.
 
     Returns:
         sfm_scene (SfmScene): An in-memory representation of the SfmScene for the output of the COLMAP run.
     """
     reconstruction = _load_colmap_internal(colmap_path)
+    adapter = COLMAPAdapter()
     colmap_image_ids = adapter.registered_image_ids(reconstruction)
     num_images = len(colmap_image_ids)
 
