@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 import pathlib
+from abc import ABC, abstractmethod
 
 import numpy as np
 import pycolmap
@@ -10,41 +11,47 @@ from fvdb import CameraModel
 from .sfm_metadata import SfmCameraMetadata
 
 
-class Adapter:
+class Adapter(ABC):
     """
     Base class for translating source-specific scene conventions into FVDB scene conventions.
     """
 
+    @abstractmethod
     def camera_metadata(self, camera_id: int) -> SfmCameraMetadata:
         """
         Return camera metadata for a source camera ID.
         """
         raise NotImplementedError
 
+    @abstractmethod
     def image_camera_id(self, image_id: int) -> int:
         """
         Return the source camera ID for a source image ID.
         """
         raise NotImplementedError
 
+    @abstractmethod
     def image_name(self, image_id: int) -> str:
         """
         Return the source image file name for a source image ID.
         """
         raise NotImplementedError
 
+    @abstractmethod
     def world_to_camera_matrix(self, image_id: int) -> np.ndarray:
         """
         Return a 4x4 world-to-camera matrix for a source image ID.
         """
         raise NotImplementedError
 
+    @abstractmethod
     def registered_image_ids(self) -> list[int]:
         """
         Return source image IDs that should be loaded into the scene.
         """
         raise NotImplementedError
 
+    @abstractmethod
     def points_from_scene(
         self,
     ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, dict[int, int], dict[int, np.ndarray]]:
@@ -54,6 +61,7 @@ class Adapter:
         raise NotImplementedError
 
     @property
+    @abstractmethod
     def visibility_cache_loader(self) -> str:
         """
         Return the loader identifier stored in visible-points cache metadata.
