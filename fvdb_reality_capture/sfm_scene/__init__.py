@@ -3,6 +3,7 @@
 #
 
 from .depth_map_attribute import DepthMapAttribute, DepthMissingPolicy, DepthScale
+from .adapter import Adapter, COLMAPAdapter
 from .scene_attribute import (
     InterpolationMode,
     PerCameraAttribute,
@@ -27,6 +28,8 @@ __all__ = [
     "PerImageValueAttribute",
     "PerPointAttribute",
     "SceneAttribute",
+    "Adapter",
+    "COLMAPAdapter",
     "SfmCameraMetadata",
     "SfmPosedImageMetadata",
     "SfmScene",

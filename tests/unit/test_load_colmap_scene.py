@@ -11,7 +11,7 @@ from unittest.mock import patch
 import numpy as np
 from fvdb import CameraModel
 
-from fvdb_reality_capture.sfm_scene._load_colmap_scene import _camera_model_and_distortion_coeffs_from_colmap_camera
+from fvdb_reality_capture.sfm_scene.adapter import COLMAPAdapter
 from fvdb_reality_capture.sfm_scene._load_colmap_scene import load_colmap_scene
 
 
@@ -116,7 +116,7 @@ class LoadColmapSceneTests(unittest.TestCase):
             with self.subTest(camera_type=camera_type):
                 cam = FakeCamera(camera_type, width=640, height=480, params=params)
 
-                camera_model, distortion_coeffs = _camera_model_and_distortion_coeffs_from_colmap_camera(cam)
+                camera_model, distortion_coeffs = COLMAPAdapter.camera_model_and_distortion_coeffs(cam)
 
                 self.assertEqual(camera_model, expected_model)
                 np.testing.assert_allclose(distortion_coeffs, expected_coeffs)
@@ -130,7 +130,7 @@ class LoadColmapSceneTests(unittest.TestCase):
         )
 
         with self.assertRaisesRegex(ValueError, "OPENCV_FISHEYE cameras are not supported"):
-            _camera_model_and_distortion_coeffs_from_colmap_camera(cam)
+            COLMAPAdapter.camera_model_and_distortion_coeffs(cam)
 
     def test_load_colmap_scene_preserves_sorted_images_camera_reuse_masks_and_visible_points(self):
         with tempfile.TemporaryDirectory() as tmpdir:
