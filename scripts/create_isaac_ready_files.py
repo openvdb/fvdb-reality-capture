@@ -128,9 +128,7 @@ def _prepare_mesh(
         )
 
     if watertight:
-        vertices, faces = pcu.make_mesh_watertight(
-            vertices, faces, resolution=resolution
-        )
+        vertices, faces = pcu.make_mesh_watertight(vertices, faces, resolution=resolution)
         logger.info(
             "Watertight mesh: %d vertices, %d faces",
             vertices.shape[0],
@@ -145,9 +143,7 @@ def _prepare_mesh(
     return vertices.astype(np.float32), faces.astype(np.int32)
 
 
-def _write_mesh_obj(
-    vertices: np.ndarray, faces: np.ndarray, output_path: pathlib.Path
-) -> None:
+def _write_mesh_obj(vertices: np.ndarray, faces: np.ndarray, output_path: pathlib.Path) -> None:
     """Write a plain OBJ file (training-frame coordinates)."""
     with open(output_path, "w", encoding="utf-8") as handle:
         for vertex in vertices:
@@ -161,12 +157,8 @@ def build_mesh_payload_stage(vertices: np.ndarray, faces: np.ndarray) -> Usd.Sta
     stage = _initialize_particlefield_usd_stage()
     mesh = UsdGeom.Mesh.Define(stage, USD_MESH_PAYLOAD_PATH)
     mesh.CreatePointsAttr(Vt.Vec3fArray.FromNumpy(vertices))
-    mesh.CreateFaceVertexCountsAttr(
-        Vt.IntArray.FromNumpy(np.full(len(faces), 3, dtype=np.int32))
-    )
-    mesh.CreateFaceVertexIndicesAttr(
-        Vt.IntArray.FromNumpy(faces.reshape(-1).astype(np.int32))
-    )
+    mesh.CreateFaceVertexCountsAttr(Vt.IntArray.FromNumpy(np.full(len(faces), 3, dtype=np.int32)))
+    mesh.CreateFaceVertexIndicesAttr(Vt.IntArray.FromNumpy(faces.reshape(-1).astype(np.int32)))
     mesh.CreateSubdivisionSchemeAttr().Set(UsdGeom.Tokens.none)
     return stage
 
@@ -220,14 +212,10 @@ def compose_isaac_scene_usdz(
         logger.info("Applied Isaac scene alignment (-90° X) on %s", USD_SCENE_ROOT_PATH)
 
     if model is not None:
-        gaussians_stage = NamedUSDStage(
-            filename="gaussians.usdc", stage=build_gaussians_payload_stage(model)
-        )
+        gaussians_stage = NamedUSDStage(filename="gaussians.usdc", stage=build_gaussians_payload_stage(model))
         stages.append(gaussians_stage)
         gaussians_ref = root_stage.OverridePrim(f"{USD_SCENE_ROOT_PATH}/Gaussians")
-        gaussians_ref.GetReferences().AddReference(
-            gaussians_stage.filename, USD_GAUSSIANS_ROOT_PATH
-        )
+        gaussians_ref.GetReferences().AddReference(gaussians_stage.filename, USD_GAUSSIANS_ROOT_PATH)
         logger.info("Referenced gaussians payload at %s/Gaussians", USD_SCENE_ROOT_PATH)
 
     if mesh_vertices is not None and mesh_faces is not None:
@@ -239,9 +227,7 @@ def compose_isaac_scene_usdz(
 
         UsdGeom.Xform.Define(root_stage, USD_MESH_SCENE_PATH)
         mesh_ref = root_stage.OverridePrim(f"{USD_MESH_SCENE_PATH}/geometry")
-        mesh_ref.GetReferences().AddReference(
-            mesh_stage.filename, USD_MESH_PAYLOAD_PATH
-        )
+        mesh_ref.GetReferences().AddReference(mesh_stage.filename, USD_MESH_PAYLOAD_PATH)
         logger.info("Referenced mesh payload at %s/geometry", USD_MESH_SCENE_PATH)
 
     default_stage = NamedUSDStage(filename="default.usda", stage=root_stage)
@@ -277,9 +263,7 @@ def crop_and_convert_mesh_to_obj(
     logger: logging.Logger = logging.getLogger(__name__),
 ) -> tuple[np.ndarray, np.ndarray]:
     """Convert a mesh to OBJ in the training coordinate frame."""
-    vertices, faces = _prepare_mesh(
-        input_path, bbox, resolution, logger, watertight=watertight
-    )
+    vertices, faces = _prepare_mesh(input_path, bbox, resolution, logger, watertight=watertight)
     _write_mesh_obj(vertices, faces, output_path)
     logger.info("Saved mesh OBJ to %s", output_path)
     return vertices, faces
@@ -292,18 +276,10 @@ def main() -> None:
     parser = argparse.ArgumentParser(
         description="Crop mesh and/or splat assets and export an Isaac-ready combined USDZ",
     )
-    parser.add_argument(
-        "--input-splat", type=Path, help="Input splat file (PLY format)"
-    )
-    parser.add_argument(
-        "--input-mesh", type=Path, help="Input mesh file (PLY/OBJ format)"
-    )
-    parser.add_argument(
-        "--output-path", type=Path, required=True, help="Output path without extension"
-    )
-    parser.add_argument(
-        "--resolution", type=int, default=100_000, help="Watertight mesh resolution"
-    )
+    parser.add_argument("--input-splat", type=Path, help="Input splat file (PLY format)")
+    parser.add_argument("--input-mesh", type=Path, help="Input mesh file (PLY/OBJ format)")
+    parser.add_argument("--output-path", type=Path, required=True, help="Output path without extension")
+    parser.add_argument("--resolution", type=int, default=100_000, help="Watertight mesh resolution")
     parser.add_argument(
         "--bbox",
         type=float,
