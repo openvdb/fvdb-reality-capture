@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1781105208251,
+  "lastUpdate": 1781105212074,
   "repoUrl": "https://github.com/openvdb/fvdb-reality-capture",
   "entries": {
     "fvdb-reality-capture Benchmark with pytest-benchmark": [
@@ -20241,6 +20241,88 @@ window.BENCHMARK_DATA = {
           {
             "name": "garden/fvdb_mcmc - peak_gpu_memory_gb",
             "value": 3.6426,
+            "unit": "GB"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "Mark Harris",
+            "username": "harrism",
+            "email": "mharris@nvidia.com"
+          },
+          "committer": {
+            "name": "GitHub",
+            "username": "web-flow",
+            "email": "noreply@github.com"
+          },
+          "id": "6c2ede66e07b458537abd69898665524263685bb",
+          "message": "Sync benchmark env to PyTorch 2.11 to match fvdb-core build (#296)\n\nFixes #295\n\n## What\n\nBump the comparative benchmark conda env to `pytorch-gpu=2.11.0` to\nmatch\n`fvdb-core/env/build_environment.yml` (PyTorch 2.11 since fvdb-core\n`bd2c4de`),\nand drop the unused `torchsparse` / `torchsparse_20` / `torch_scatter`\npt210\nwheels.\n\n## Why\n\nThe nightly builds the fvdb-core wheel against torch 2.11 and installs\nit into\nthis env, which was still pinned to torch 2.10 -> undefined CUDA symbol\nat\n`import fvdb` (which crashes the \"Download mipnerf360 dataset\" step, the\nfirst\nthing that imports fvdb via `frgs`). Full diagnosis in #295.\n\n## Test plan\n\nThis is a conda env pin; the validating test is the nightly benchmark\nworkflow\nitself, which requires a GPU runner with fvdb-core installed (per\nAGENTS.md the\nlocal benchmark tests need that runner). After merge, the Comparative\nand Unit\nbenchmark jobs should get past the fvdb import and run.\n\nThe dropped sparse libraries are confirmed unused:\n`grep -rn \"torchsparse\\|torch_scatter\" --include=\"*.py\"` returns 0 hits\nacross\nthe repo.\n\nSigned-off-by: Mark Harris <mharris@nvidia.com>\nCo-authored-by: Claude Opus 4.8 <noreply@anthropic.com>",
+          "timestamp": "2026-06-10T04:29:53Z",
+          "url": "https://github.com/openvdb/fvdb-reality-capture/commit/6c2ede66e07b458537abd69898665524263685bb"
+        },
+        "date": 1781105211583,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "bicycle/fvdb_default - training_time",
+            "value": 757.45,
+            "unit": "seconds"
+          },
+          {
+            "name": "bicycle/fvdb_default - peak_gpu_memory_gb",
+            "value": 4.559,
+            "unit": "GB"
+          },
+          {
+            "name": "bicycle/fvdb_mcmc - training_time",
+            "value": 374.11,
+            "unit": "seconds"
+          },
+          {
+            "name": "bicycle/fvdb_mcmc - peak_gpu_memory_gb",
+            "value": 1.4532,
+            "unit": "GB"
+          },
+          {
+            "name": "bonsai/fvdb_default - training_time",
+            "value": 470.51,
+            "unit": "seconds"
+          },
+          {
+            "name": "bonsai/fvdb_default - peak_gpu_memory_gb",
+            "value": 1.6086,
+            "unit": "GB"
+          },
+          {
+            "name": "bonsai/fvdb_mcmc - training_time",
+            "value": 650.48,
+            "unit": "seconds"
+          },
+          {
+            "name": "bonsai/fvdb_mcmc - peak_gpu_memory_gb",
+            "value": 1.5619,
+            "unit": "GB"
+          },
+          {
+            "name": "garden/fvdb_default - training_time",
+            "value": 932.58,
+            "unit": "seconds"
+          },
+          {
+            "name": "garden/fvdb_default - peak_gpu_memory_gb",
+            "value": 5.5751,
+            "unit": "GB"
+          },
+          {
+            "name": "garden/fvdb_mcmc - training_time",
+            "value": 754.92,
+            "unit": "seconds"
+          },
+          {
+            "name": "garden/fvdb_mcmc - peak_gpu_memory_gb",
+            "value": 3.6421,
             "unit": "GB"
           }
         ]
