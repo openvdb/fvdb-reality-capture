@@ -175,7 +175,8 @@ class LoadColmapSceneTests(unittest.TestCase):
             )
 
             with patch(
-                "fvdb_reality_capture.sfm_scene._load_colmap_scene._load_colmap_internal", return_value=reconstruction
+                "fvdb_reality_capture.sfm_scene.adapter.COLMAPAdapter._load_reconstruction",
+                return_value=reconstruction,
             ):
                 loaded_cameras, loaded_images, points, points_err, points_rgb, cache = load_colmap_scene(colmap_path)
 

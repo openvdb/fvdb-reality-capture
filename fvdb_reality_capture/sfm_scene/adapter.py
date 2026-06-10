@@ -1,7 +1,7 @@
 # Copyright Contributors to the OpenVDB Project
 # SPDX-License-Identifier: Apache-2.0
 #
-from typing import Any
+import pathlib
 
 import numpy as np
 import pycolmap
@@ -15,67 +15,48 @@ class Adapter:
     Base class for translating source-specific scene conventions into FVDB scene conventions.
     """
 
-    @classmethod
-    def camera_metadata(cls, source_camera: Any) -> SfmCameraMetadata:
+    def camera_metadata(self, camera_id: int) -> SfmCameraMetadata:
         """
-        Convert source-specific camera data into :class:`SfmCameraMetadata`.
-        """
-        camera_model, distortion_coeffs = cls.camera_model_and_distortion_coeffs(source_camera)
-        fx, fy, cx, cy = cls.camera_intrinsics(source_camera)
-        img_width, img_height = cls.camera_image_size(source_camera)
-        return SfmCameraMetadata(
-            img_width=img_width,
-            img_height=img_height,
-            fx=fx,
-            fy=fy,
-            cx=cx,
-            cy=cy,
-            camera_model=camera_model,
-            distortion_coeffs=distortion_coeffs,
-        )
-
-    @classmethod
-    def camera_image_size(cls, source_camera: Any) -> tuple[int, int]:
-        """
-        Return source camera image size as ``(width, height)`` in pixels.
+        Return camera metadata for a source camera ID.
         """
         raise NotImplementedError
 
-    @classmethod
-    def camera_intrinsics(cls, source_camera: Any) -> tuple[float, float, float, float]:
+    def image_camera_id(self, image_id: int) -> int:
         """
-        Return source camera intrinsics as ``(fx, fy, cx, cy)`` in pixel units.
-        """
-        raise NotImplementedError
-
-    @classmethod
-    def camera_model_and_distortion_coeffs(cls, source_camera: Any) -> tuple[CameraModel, np.ndarray]:
-        """
-        Return the FVDB camera model and packed FVDB distortion coefficients for a source camera.
+        Return the source camera ID for a source image ID.
         """
         raise NotImplementedError
 
-    @classmethod
-    def world_to_camera_matrix(cls, source_image: Any) -> np.ndarray:
+    def image_name(self, image_id: int) -> str:
         """
-        Return a 4x4 world-to-camera matrix for a source posed image.
+        Return the source image file name for a source image ID.
         """
         raise NotImplementedError
 
-    @classmethod
-    def registered_image_ids(cls, source_scene: Any) -> list[int]:
+    def world_to_camera_matrix(self, image_id: int) -> np.ndarray:
+        """
+        Return a 4x4 world-to-camera matrix for a source image ID.
+        """
+        raise NotImplementedError
+
+    def registered_image_ids(self) -> list[int]:
         """
         Return source image IDs that should be loaded into the scene.
         """
         raise NotImplementedError
 
-    @classmethod
     def points_from_scene(
-        cls,
-        source_scene: Any,
+        self,
     ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, dict[int, int], dict[int, np.ndarray]]:
         """
         Return source scene points and visibility data in the layout expected by the scene loader.
+        """
+        raise NotImplementedError
+
+    @property
+    def visibility_cache_loader(self) -> str:
+        """
+        Return the loader identifier stored in visible-points cache metadata.
         """
         raise NotImplementedError
 
@@ -93,6 +74,54 @@ class COLMAPAdapter(Adapter):
         4: "OPENCV",
         5: "OPENCV_FISHEYE",
     }
+    VISIBILITY_CACHE_LOADER = "pycolmap"
+
+    def __init__(self, colmap_path: pathlib.Path):
+        self._reconstruction = self._load_reconstruction(colmap_path)
+
+    @staticmethod
+    def _load_reconstruction(colmap_path: pathlib.Path) -> pycolmap.Reconstruction:
+        """
+        Load raw COLMAP data into a pycolmap reconstruction.
+        """
+        if not colmap_path.exists():
+            raise FileNotFoundError(f"COLMAP directory {colmap_path} does not exist.")
+
+        colmap_sparse_path = colmap_path / "sparse" / "0"
+        if not colmap_sparse_path.exists():
+            colmap_sparse_path = colmap_path / "sparse"
+        if not colmap_sparse_path.exists():
+            raise FileNotFoundError(f"COLMAP directory {colmap_sparse_path} does not exist.")
+
+        return pycolmap.Reconstruction(colmap_sparse_path)
+
+    def _camera(self, camera_id: int) -> pycolmap.Camera:
+        return self._reconstruction.cameras[camera_id]
+
+    def _image(self, image_id: int) -> pycolmap.Image:
+        return self._reconstruction.images[image_id]
+
+    def camera_metadata(self, camera_id: int) -> SfmCameraMetadata:
+        source_camera = self._camera(camera_id)
+        camera_model, distortion_coeffs = self.camera_model_and_distortion_coeffs(source_camera)
+        fx, fy, cx, cy = self.camera_intrinsics(source_camera)
+        img_width, img_height = self.camera_image_size(source_camera)
+        return SfmCameraMetadata(
+            img_width=img_width,
+            img_height=img_height,
+            fx=fx,
+            fy=fy,
+            cx=cx,
+            cy=cy,
+            camera_model=camera_model,
+            distortion_coeffs=distortion_coeffs,
+        )
+
+    def image_camera_id(self, image_id: int) -> int:
+        return int(self._image(image_id).camera_id)
+
+    def image_name(self, image_id: int) -> str:
+        return str(self._image(image_id).name)
 
     @classmethod
     def camera_model_name(cls, cam: pycolmap.Camera) -> str:
@@ -181,24 +210,23 @@ class COLMAPAdapter(Adapter):
             raise ValueError("COLMAP OPENCV_FISHEYE cameras are not supported by fvdb.CameraModel")
         raise ValueError(f"Unsupported COLMAP camera model {camera_model}")
 
-    @classmethod
-    def world_to_camera_matrix(cls, source_image: pycolmap.Image) -> np.ndarray:
+    def world_to_camera_matrix(self, image_id: int) -> np.ndarray:
+        source_image = self._image(image_id)
         world_to_camera = np.asarray(source_image.cam_from_world().matrix(), dtype=np.float64)
         return np.vstack([world_to_camera, np.array([0.0, 0.0, 0.0, 1.0], dtype=np.float64)])
 
-    @classmethod
-    def registered_image_ids(cls, source_scene: pycolmap.Reconstruction) -> list[int]:
+    def registered_image_ids(self) -> list[int]:
         try:
-            return [int(image_id) for image_id in source_scene.reg_image_ids()]
+            return [int(image_id) for image_id in self._reconstruction.reg_image_ids()]
         except AttributeError:
-            return [int(image_id) for image_id, image in source_scene.images.items() if image.has_pose]
+            return [int(image_id) for image_id, image in self._reconstruction.images.items() if image.has_pose]
 
-    @classmethod
     def points_from_scene(
-        cls,
-        source_scene: pycolmap.Reconstruction,
+        self,
     ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, dict[int, int], dict[int, np.ndarray]]:
-        point3D_items = sorted((int(point3D_id), point3D) for point3D_id, point3D in source_scene.points3D.items())
+        point3D_items = sorted(
+            (int(point3D_id), point3D) for point3D_id, point3D in self._reconstruction.points3D.items()
+        )
         num_points = len(point3D_items)
 
         point3D_ids = np.empty(num_points, dtype=np.uint64)
@@ -227,3 +255,7 @@ class COLMAPAdapter(Adapter):
             point3D_id_to_point3D_idx,
             point3D_id_to_images,
         )
+
+    @property
+    def visibility_cache_loader(self) -> str:
+        return self.VISIBILITY_CACHE_LOADER

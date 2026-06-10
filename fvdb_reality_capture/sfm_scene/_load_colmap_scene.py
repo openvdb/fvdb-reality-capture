@@ -6,7 +6,6 @@ import logging
 import pathlib
 
 import numpy as np
-import pycolmap
 import tqdm
 
 from .adapter import COLMAPAdapter
@@ -14,36 +13,9 @@ from .sfm_cache import SfmCache
 from .sfm_metadata import SfmPosedImageMetadata
 
 
-_VISIBLE_POINTS_CACHE_LOADER = "pycolmap"
-
-
 def _point_id_order_hash(point3D_ids: np.ndarray) -> str:
     point3D_ids = np.ascontiguousarray(point3D_ids, dtype=np.uint64)
     return hashlib.sha1(point3D_ids.view(np.uint8)).hexdigest()
-
-
-def _load_colmap_internal(colmap_path: pathlib.Path) -> pycolmap.Reconstruction:
-    """
-    Internal call to load colmap data into a `pycolmap.Reconstruction` which encodes the raw colmap information
-    before we extract an `SfmScene` from it.
-
-    Args:
-        colmap_path (pathlib.Path): The path to the COLMAP dataset directory.
-
-    Returns:
-        reconstruction (pycolmap.Reconstruction): An internal object holding metadata about a COLMAP run.
-    """
-
-    if not colmap_path.exists():
-        raise FileNotFoundError(f"COLMAP directory {colmap_path} does not exist.")
-
-    colmap_sparse_path = colmap_path / "sparse" / "0"
-    if not colmap_sparse_path.exists():
-        colmap_sparse_path = colmap_path / "sparse"
-    if not colmap_sparse_path.exists():
-        raise FileNotFoundError(f"COLMAP directory {colmap_sparse_path} does not exist.")
-
-    return pycolmap.Reconstruction(colmap_sparse_path)
 
 
 def load_colmap_scene(colmap_path: pathlib.Path):
@@ -60,9 +32,8 @@ def load_colmap_scene(colmap_path: pathlib.Path):
     Returns:
         sfm_scene (SfmScene): An in-memory representation of the SfmScene for the output of the COLMAP run.
     """
-    reconstruction = _load_colmap_internal(colmap_path)
-    adapter = COLMAPAdapter()
-    colmap_image_ids = adapter.registered_image_ids(reconstruction)
+    adapter = COLMAPAdapter(colmap_path)
+    colmap_image_ids = adapter.registered_image_ids()
     num_images = len(colmap_image_ids)
 
     (
@@ -72,7 +43,7 @@ def load_colmap_scene(colmap_path: pathlib.Path):
         point3D_errors,
         point3D_id_to_point3D_idx,
         point3D_id_to_images,
-    ) = adapter.points_from_scene(reconstruction)
+    ) = adapter.points_from_scene()
     point3D_id_order_hash = _point_id_order_hash(point3D_ids)
 
     cache = SfmCache.get_cache(colmap_path / "_cache", "sfm_dataset_cache", "Cache for SFM dataset")
@@ -89,16 +60,16 @@ def load_colmap_scene(colmap_path: pathlib.Path):
     colmap_images_path = colmap_path / "images"
     colmap_masks_path = colmap_path / "masks"
     for colmap_image_id in colmap_image_ids:
-        colmap_image = reconstruction.images[colmap_image_id]
-        colmap_camera_id = int(colmap_image.camera_id)
-        image_world_to_cam_mats.append(adapter.world_to_camera_matrix(colmap_image))
+        colmap_camera_id = adapter.image_camera_id(colmap_image_id)
+        image_file_name = adapter.image_name(colmap_image_id)
+        image_world_to_cam_mats.append(adapter.world_to_camera_matrix(colmap_image_id))
         image_camera_ids.append(colmap_camera_id)
         image_colmap_ids.append(colmap_image_id)
-        image_file_names.append(colmap_image.name)
-        image_absolute_paths.append(colmap_images_path / colmap_image.name)
+        image_file_names.append(image_file_name)
+        image_absolute_paths.append(colmap_images_path / image_file_name)
 
         if colmap_masks_path.exists():
-            image_mask_path = colmap_masks_path / colmap_image.name
+            image_mask_path = colmap_masks_path / image_file_name
             if image_mask_path.exists():
                 image_mask_absolute_paths.append(str(image_mask_path.absolute()))
             elif image_mask_path.with_suffix(".png").exists():
@@ -109,8 +80,7 @@ def load_colmap_scene(colmap_path: pathlib.Path):
             image_mask_absolute_paths.append("")
 
         if colmap_camera_id not in loaded_cameras:
-            colmap_camera = reconstruction.cameras[colmap_camera_id]
-            loaded_cameras[colmap_camera_id] = adapter.camera_metadata(colmap_camera)
+            loaded_cameras[colmap_camera_id] = adapter.camera_metadata(colmap_camera_id)
 
     # Most papers use train/test splits based on sorted images so sort the images here
     sort_indices = np.argsort(image_file_names)
@@ -129,7 +99,7 @@ def load_colmap_scene(colmap_path: pathlib.Path):
             key_meta.get("data_type", "pt") != "pt"
             or value_meta.get("num_points", 0) != len(points3D)
             or value_meta.get("num_images", 0) != num_images
-            or value_meta.get("loader") != _VISIBLE_POINTS_CACHE_LOADER
+            or value_meta.get("loader") != adapter.visibility_cache_loader
             or value_meta.get("point3D_id_order_hash") != point3D_id_order_hash
         ):
             logger.info("Cached visible points per image do not match current scene. Recomputing...")
@@ -155,7 +125,7 @@ def load_colmap_scene(colmap_path: pathlib.Path):
             metadata={
                 "num_points": len(points3D),
                 "num_images": num_images,
-                "loader": _VISIBLE_POINTS_CACHE_LOADER,
+                "loader": adapter.visibility_cache_loader,
                 "point3D_id_order_hash": point3D_id_order_hash,
             },
             data_type="pt",
