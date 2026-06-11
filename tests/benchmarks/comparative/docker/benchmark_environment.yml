@@ -42,6 +42,7 @@ dependencies:
   - psutil
   - pybind11
   - py-opencv>=4.10[build=headless*]
+  - pycolmap>=3.11
   - pytest-benchmark
   - python=3.12
   - pytorch-gpu=2.11.0
@@ -74,6 +75,5 @@ dependencies:
     - piexif
     - splines
     - nerfview @ git+https://github.com/nerfstudio-project/nerfview@4538024fe0d15fd1a0e4d760f3695fc44ca72787
-    - pycolmap>=3.11
     - torchmetrics
     - sam2==1.1.0
