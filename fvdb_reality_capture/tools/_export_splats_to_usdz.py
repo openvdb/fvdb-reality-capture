@@ -3,6 +3,12 @@
 #
 
 # pip install msgpack numpy usd-core types-usd
+
+"""
+Isaac Sim version prior to 6.0 use a format created before the current Splat USD standard
+https://openusd.org/dev/user_guides/schemas/usdVol/ParticleField3DGaussianSplat.html
+If using a version of Isaac sim prior to 6.0, use the legacy format with --legacy flag. Newer versions should use the default particle field format.
+"""
 import gzip
 import io
 import logging
@@ -20,7 +26,9 @@ from fvdb import GaussianSplat3d
 from pxr import Gf, Sdf, Usd, UsdGeom, UsdUtils, UsdVol, Vt
 
 # Set up logging
-logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
+logging.basicConfig(
+    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+)
 logger = logging.getLogger(__name__)
 
 USD_GAUSSIANS_ROOT_PATH = "/World/Gaussians"
@@ -39,7 +47,9 @@ class NamedUSDStage:
         self.stage.Export(str(out_dir / self.filename))
 
     def save_to_zip(self, zip_file: zipfile.ZipFile):
-        with tempfile.NamedTemporaryFile(mode="wb", suffix=self.filename, delete=False) as temp_file:
+        with tempfile.NamedTemporaryFile(
+            mode="wb", suffix=self.filename, delete=False
+        ) as temp_file:
             temp_file_path = temp_file.name
         self.stage.GetRootLayer().Export(temp_file_path)
         with open(temp_file_path, "rb") as file:
@@ -121,7 +131,9 @@ def _extract_postactivation_gaussian_arrays(
     positions = model.means.detach().cpu().numpy().astype(np.float32)
     rotations = model.quats.detach().cpu().numpy().astype(np.float32)
     scales = torch.exp(model.log_scales).detach().cpu().numpy().astype(np.float32)
-    densities = torch.sigmoid(model.logit_opacities).detach().cpu().numpy().astype(np.float32)
+    densities = (
+        torch.sigmoid(model.logit_opacities).detach().cpu().numpy().astype(np.float32)
+    )
     sh0 = model.sh0.detach().cpu().numpy().astype(np.float32)
     shN = model.shN.detach().cpu().numpy().astype(np.float32)
     sh_degree = int(model.sh_degree)
@@ -138,7 +150,9 @@ def _extract_postactivation_gaussian_arrays(
     if specular.shape[1] != expected_specular_cols:
         padded = np.zeros((num_gaussians, expected_specular_cols), dtype=np.float32)
         if specular.shape[1] > 0:
-            padded[:, : min(specular.shape[1], expected_specular_cols)] = specular[:, :expected_specular_cols]
+            padded[:, : min(specular.shape[1], expected_specular_cols)] = specular[
+                :, :expected_specular_cols
+            ]
         specular = padded
 
     if densities.ndim == 1:
@@ -259,18 +273,25 @@ def _write_particlefield3d_gaussian_splat(
         shN_mean = float(np.mean(np.abs(attrs.specular)))
         logger.info(f"  shN magnitude: max={shN_max:.6f}, mean={shN_mean:.6f}")
         if shN_max < 1e-8:
-            logger.warning("shN coefficients are all near zero — scene will look like SH degree 0")
+            logger.warning(
+                "shN coefficients are all near zero — scene will look like SH degree 0"
+            )
 
     gauss_schema = UsdVol.ParticleField3DGaussianSplat.Define(stage, prim_path)
     prim = gauss_schema.GetPrim()
 
     gauss_schema.CreatePositionsAttr().Set(Vt.Vec3fArray.FromNumpy(attrs.positions))
-    quats_list = [Gf.Quatf(float(q[0]), float(q[1]), float(q[2]), float(q[3])) for q in attrs.rotations]
+    quats_list = [
+        Gf.Quatf(float(q[0]), float(q[1]), float(q[2]), float(q[3]))
+        for q in attrs.rotations
+    ]
     gauss_schema.CreateOrientationsAttr().Set(Vt.QuatfArray(quats_list))
     gauss_schema.CreateScalesAttr().Set(Vt.Vec3fArray.FromNumpy(attrs.scales))
 
     densities_clamped = np.clip(attrs.densities.flatten(), 0.0, 1.0)
-    gauss_schema.CreateOpacitiesAttr().Set(Vt.FloatArray.FromNumpy(densities_clamped.astype(np.float32)))
+    gauss_schema.CreateOpacitiesAttr().Set(
+        Vt.FloatArray.FromNumpy(densities_clamped.astype(np.float32))
+    )
 
     gauss_schema.CreateRadianceSphericalHarmonicsDegreeAttr().Set(sh_degree)
     sh_coeffs_attr = gauss_schema.CreateRadianceSphericalHarmonicsCoefficientsAttr()
@@ -284,9 +305,13 @@ def _write_particlefield3d_gaussian_splat(
     gauss_schema.CreateSortingModeHintAttr().Set(sorting_mode_hint)
 
     _apply_particlefield3d_color_space(prim, linear_srgb)
-    gauss_schema.CreateExtentAttr().Set(_compute_gaussian_bounding_extent(attrs.positions))
+    gauss_schema.CreateExtentAttr().Set(
+        _compute_gaussian_bounding_extent(attrs.positions)
+    )
 
-    logger.info(f"Created ParticleField3DGaussianSplat with {num_gaussians:,} Gaussians")
+    logger.info(
+        f"Created ParticleField3DGaussianSplat with {num_gaussians:,} Gaussians"
+    )
     return prim
 
 
@@ -361,8 +386,12 @@ def _build_mesh_payload_stage(
     stage = _initialize_particlefield3d_usd_stage()
     mesh = UsdGeom.Mesh.Define(stage, mesh_prim_path)
     mesh.CreatePointsAttr(Vt.Vec3fArray.FromNumpy(vertices))
-    mesh.CreateFaceVertexCountsAttr(Vt.IntArray.FromNumpy(np.full(len(faces), 3, dtype=np.int32)))
-    mesh.CreateFaceVertexIndicesAttr(Vt.IntArray.FromNumpy(faces.reshape(-1).astype(np.int32)))
+    mesh.CreateFaceVertexCountsAttr(
+        Vt.IntArray.FromNumpy(np.full(len(faces), 3, dtype=np.int32))
+    )
+    mesh.CreateFaceVertexIndicesAttr(
+        Vt.IntArray.FromNumpy(faces.reshape(-1).astype(np.int32))
+    )
     mesh.CreateSubdivisionSchemeAttr().Set(UsdGeom.Tokens.none)
     return stage
 
@@ -435,7 +464,9 @@ def _compose_isaac_scene_usdz(
     # suppress expected "could not open asset" warnings during in-memory composition.
     _ = UsdUtils.CoalescingDiagnosticDelegate()
 
-    scene_matrix = _get_isaac_scene_alignment_matrix() if apply_ecef2enu_rotation else None
+    scene_matrix = (
+        _get_isaac_scene_alignment_matrix() if apply_ecef2enu_rotation else None
+    )
     _add_isaac_scene_xform(root_stage, scene_root_path, scene_matrix)
     if scene_matrix is not None:
         logger.info("Applied Isaac scene alignment (-90° X) on %s", scene_root_path)
@@ -449,14 +480,18 @@ def _compose_isaac_scene_usdz(
         )
         payload_stages.append(gaussians_stage)
         gaussians_ref = root_stage.OverridePrim(f"{scene_root_path}/Gaussians")
-        gaussians_ref.GetReferences().AddReference(gaussians_stage.filename, USD_GAUSSIANS_ROOT_PATH)
+        gaussians_ref.GetReferences().AddReference(
+            gaussians_stage.filename, USD_GAUSSIANS_ROOT_PATH
+        )
         logger.info("Referenced gaussians payload at %s/Gaussians", scene_root_path)
 
     has_mesh = mesh_vertices is not None and mesh_faces is not None
     if has_mesh:
         mesh_stage = NamedUSDStage(
             filename="mesh.usdc",
-            stage=_build_mesh_payload_stage(mesh_vertices, mesh_faces, mesh_payload_path),
+            stage=_build_mesh_payload_stage(
+                mesh_vertices, mesh_faces, mesh_payload_path
+            ),
         )
         payload_stages.append(mesh_stage)
 
@@ -539,10 +574,14 @@ def _serialize_nurec_usd(
     matrix_op.Set(Gf.Matrix4d(*corrected_matrix.flatten()))
 
     # Define nurec volume properties
-    gauss_prim.CreateAttribute("omni:nurec:isNuRecVolume", Sdf.ValueTypeNames.Bool).Set(True)
+    gauss_prim.CreateAttribute("omni:nurec:isNuRecVolume", Sdf.ValueTypeNames.Bool).Set(
+        True
+    )
 
     # Enable transform of UsdVol::Volume to take effect
-    gauss_prim.CreateAttribute("omni:nurec:useProxyTransform", Sdf.ValueTypeNames.Bool).Set(False)
+    gauss_prim.CreateAttribute(
+        "omni:nurec:useProxyTransform", Sdf.ValueTypeNames.Bool
+    ).Set(False)
 
     # Define field assets and link to volumetric Gaussians prim
     density_field_path = gauss_path + "/density_field"
@@ -550,44 +589,64 @@ def _serialize_nurec_usd(
     gauss_volume.CreateFieldRelationship("density", density_field_path)
 
     emissive_color_field_path = gauss_path + "/emissive_color_field"
-    emissive_color_field = stage.DefinePrim(emissive_color_field_path, "OmniNuRecFieldAsset")
+    emissive_color_field = stage.DefinePrim(
+        emissive_color_field_path, "OmniNuRecFieldAsset"
+    )
     gauss_volume.CreateFieldRelationship("emissiveColor", emissive_color_field_path)
 
     # Set file paths for field assets
     nurec_relative_path = "./" + model_file.filename
-    density_field.CreateAttribute("filePath", Sdf.ValueTypeNames.Asset).Set(nurec_relative_path)
+    density_field.CreateAttribute("filePath", Sdf.ValueTypeNames.Asset).Set(
+        nurec_relative_path
+    )
     density_field.CreateAttribute("fieldName", Sdf.ValueTypeNames.Token).Set("density")
-    density_field.CreateAttribute("fieldDataType", Sdf.ValueTypeNames.Token).Set("float")
+    density_field.CreateAttribute("fieldDataType", Sdf.ValueTypeNames.Token).Set(
+        "float"
+    )
     density_field.CreateAttribute("fieldRole", Sdf.ValueTypeNames.Token).Set("density")
 
-    emissive_color_field.CreateAttribute("filePath", Sdf.ValueTypeNames.Asset).Set(nurec_relative_path)
-    emissive_color_field.CreateAttribute("fieldName", Sdf.ValueTypeNames.Token).Set("emissiveColor")
-    emissive_color_field.CreateAttribute("fieldDataType", Sdf.ValueTypeNames.Token).Set("float3")
-    emissive_color_field.CreateAttribute("fieldRole", Sdf.ValueTypeNames.Token).Set("emissiveColor")
+    emissive_color_field.CreateAttribute("filePath", Sdf.ValueTypeNames.Asset).Set(
+        nurec_relative_path
+    )
+    emissive_color_field.CreateAttribute("fieldName", Sdf.ValueTypeNames.Token).Set(
+        "emissiveColor"
+    )
+    emissive_color_field.CreateAttribute("fieldDataType", Sdf.ValueTypeNames.Token).Set(
+        "float3"
+    )
+    emissive_color_field.CreateAttribute("fieldRole", Sdf.ValueTypeNames.Token).Set(
+        "emissiveColor"
+    )
 
     # Set identity color correction matrix
-    emissive_color_field.CreateAttribute("omni:nurec:ccmR", Sdf.ValueTypeNames.Float4).Set(
-        Gf.Vec4f([1.0, 0.0, 0.0, 0.0])
-    )
-    emissive_color_field.CreateAttribute("omni:nurec:ccmG", Sdf.ValueTypeNames.Float4).Set(
-        Gf.Vec4f([0.0, 1.0, 0.0, 0.0])
-    )
-    emissive_color_field.CreateAttribute("omni:nurec:ccmB", Sdf.ValueTypeNames.Float4).Set(
-        Gf.Vec4f([0.0, 0.0, 1.0, 0.0])
-    )
+    emissive_color_field.CreateAttribute(
+        "omni:nurec:ccmR", Sdf.ValueTypeNames.Float4
+    ).Set(Gf.Vec4f([1.0, 0.0, 0.0, 0.0]))
+    emissive_color_field.CreateAttribute(
+        "omni:nurec:ccmG", Sdf.ValueTypeNames.Float4
+    ).Set(Gf.Vec4f([0.0, 1.0, 0.0, 0.0]))
+    emissive_color_field.CreateAttribute(
+        "omni:nurec:ccmB", Sdf.ValueTypeNames.Float4
+    ).Set(Gf.Vec4f([0.0, 0.0, 1.0, 0.0]))
 
     # Set extent and crop boundaries
     gauss_prim.GetAttribute("extent").Set([min_list, max_list])
 
     # Set zero offset
     gauss_offset = [0.0, 0.0, 0.0]
-    gauss_prim.CreateAttribute("omni:nurec:offset", Sdf.ValueTypeNames.Float3).Set(Gf.Vec3d(gauss_offset))
+    gauss_prim.CreateAttribute("omni:nurec:offset", Sdf.ValueTypeNames.Float3).Set(
+        Gf.Vec3d(gauss_offset)
+    )
 
     # Set crop bounds
     min_vec = Gf.Vec3d(min_x, min_y, min_z)
     max_vec = Gf.Vec3d(max_x, max_y, max_z)
-    gauss_prim.CreateAttribute("omni:nurec:crop:minBounds", Sdf.ValueTypeNames.Float3).Set(min_vec)
-    gauss_prim.CreateAttribute("omni:nurec:crop:maxBounds", Sdf.ValueTypeNames.Float3).Set(max_vec)
+    gauss_prim.CreateAttribute(
+        "omni:nurec:crop:minBounds", Sdf.ValueTypeNames.Float3
+    ).Set(min_vec)
+    gauss_prim.CreateAttribute(
+        "omni:nurec:crop:maxBounds", Sdf.ValueTypeNames.Float3
+    ).Set(max_vec)
 
     # Create empty proxy mesh relationship for forward compatibility
     gauss_prim.CreateRelationship("proxy")
@@ -607,12 +666,16 @@ def update_render_settings(stage: Usd.Stage, referenced_layer: Sdf.Layer) -> Non
         return  # Do nothing if render settings are not present in the referenced layer
 
     new_render_settings = referenced_layer.customLayerData["renderSettings"]
-    current_render_settings = stage.GetRootLayer().customLayerData.get("renderSettings", {})
+    current_render_settings = stage.GetRootLayer().customLayerData.get(
+        "renderSettings", {}
+    )
     if current_render_settings is None:
         current_render_settings = {}
 
     current_render_settings.update(new_render_settings)
-    stage.SetMetadataByDictKey("customLayerData", "renderSettings", current_render_settings)
+    stage.SetMetadataByDictKey(
+        "customLayerData", "renderSettings", current_render_settings
+    )
 
 
 def serialize_usd_default_layer(gauss_stage: NamedUSDStage) -> NamedUSDStage:
@@ -644,7 +707,9 @@ def serialize_usd_default_layer(gauss_stage: NamedUSDStage) -> NamedUSDStage:
     return NamedUSDStage(filename="default.usda", stage=stage)
 
 
-def write_to_usdz(file_path: Path, model_file, gauss_usd: NamedUSDStage, default_usd: NamedUSDStage) -> None:
+def write_to_usdz(
+    file_path: Path, model_file, gauss_usd: NamedUSDStage, default_usd: NamedUSDStage
+) -> None:
     """
     Write the USDZ file containing the model data and USD stages.
 
@@ -775,7 +840,9 @@ def build_legacy_gaussians_payload(
         packed = msgpack.packb(template)
         f.write(packed)  # type: ignore
 
-    model_file = NamedSerialized(filename=f"{archive_stem}.nurec", serialized=buffer.getvalue())
+    model_file = NamedSerialized(
+        filename=f"{archive_stem}.nurec", serialized=buffer.getvalue()
+    )
     gauss_stage = _serialize_nurec_usd(model_file, means, np.eye(4))
     return gauss_stage, model_file
 
@@ -825,37 +892,63 @@ def _fill_state_dict_tensors(
         dtype: Data type to convert to (default: np.float16)
     """
     # Convert data to specified format for efficiency
-    template["nre_data"]["state_dict"][".gaussians_nodes.gaussians.positions"] = positions.astype(dtype).tobytes()
-    template["nre_data"]["state_dict"][".gaussians_nodes.gaussians.rotations"] = rotations.astype(dtype).tobytes()
-    template["nre_data"]["state_dict"][".gaussians_nodes.gaussians.scales"] = scales.astype(dtype).tobytes()
-    template["nre_data"]["state_dict"][".gaussians_nodes.gaussians.densities"] = densities.astype(dtype).tobytes()
-    template["nre_data"]["state_dict"][".gaussians_nodes.gaussians.features_albedo"] = features_albedo.astype(
-        dtype
-    ).tobytes()
-    template["nre_data"]["state_dict"][".gaussians_nodes.gaussians.features_specular"] = features_specular.astype(
-        dtype
-    ).tobytes()
+    template["nre_data"]["state_dict"][".gaussians_nodes.gaussians.positions"] = (
+        positions.astype(dtype).tobytes()
+    )
+    template["nre_data"]["state_dict"][".gaussians_nodes.gaussians.rotations"] = (
+        rotations.astype(dtype).tobytes()
+    )
+    template["nre_data"]["state_dict"][".gaussians_nodes.gaussians.scales"] = (
+        scales.astype(dtype).tobytes()
+    )
+    template["nre_data"]["state_dict"][".gaussians_nodes.gaussians.densities"] = (
+        densities.astype(dtype).tobytes()
+    )
+    template["nre_data"]["state_dict"][".gaussians_nodes.gaussians.features_albedo"] = (
+        features_albedo.astype(dtype).tobytes()
+    )
+    template["nre_data"]["state_dict"][
+        ".gaussians_nodes.gaussians.features_specular"
+    ] = features_specular.astype(dtype).tobytes()
 
     # Create empty extra_signal tensor
     extra_signal = np.zeros((positions.shape[0], 0), dtype=dtype)
-    template["nre_data"]["state_dict"][".gaussians_nodes.gaussians.extra_signal"] = extra_signal.tobytes()
+    template["nre_data"]["state_dict"][
+        ".gaussians_nodes.gaussians.extra_signal"
+    ] = extra_signal.tobytes()
 
     # Store n_active_features as binary data (64-bit integer)
     n_active_features_binary = np.array([n_active_features], dtype=np.int64).tobytes()
-    template["nre_data"]["state_dict"][".gaussians_nodes.gaussians.n_active_features"] = n_active_features_binary
+    template["nre_data"]["state_dict"][
+        ".gaussians_nodes.gaussians.n_active_features"
+    ] = n_active_features_binary
 
     # Store shapes
-    template["nre_data"]["state_dict"][".gaussians_nodes.gaussians.positions.shape"] = list(positions.shape)
-    template["nre_data"]["state_dict"][".gaussians_nodes.gaussians.rotations.shape"] = list(rotations.shape)
-    template["nre_data"]["state_dict"][".gaussians_nodes.gaussians.scales.shape"] = list(scales.shape)
-    template["nre_data"]["state_dict"][".gaussians_nodes.gaussians.densities.shape"] = list(densities.shape)
-    template["nre_data"]["state_dict"][".gaussians_nodes.gaussians.features_albedo.shape"] = list(features_albedo.shape)
-    template["nre_data"]["state_dict"][".gaussians_nodes.gaussians.features_specular.shape"] = list(
-        features_specular.shape
+    template["nre_data"]["state_dict"][".gaussians_nodes.gaussians.positions.shape"] = (
+        list(positions.shape)
     )
-    template["nre_data"]["state_dict"][".gaussians_nodes.gaussians.extra_signal.shape"] = list(extra_signal.shape)
+    template["nre_data"]["state_dict"][".gaussians_nodes.gaussians.rotations.shape"] = (
+        list(rotations.shape)
+    )
+    template["nre_data"]["state_dict"][".gaussians_nodes.gaussians.scales.shape"] = (
+        list(scales.shape)
+    )
+    template["nre_data"]["state_dict"][".gaussians_nodes.gaussians.densities.shape"] = (
+        list(densities.shape)
+    )
+    template["nre_data"]["state_dict"][
+        ".gaussians_nodes.gaussians.features_albedo.shape"
+    ] = list(features_albedo.shape)
+    template["nre_data"]["state_dict"][
+        ".gaussians_nodes.gaussians.features_specular.shape"
+    ] = list(features_specular.shape)
+    template["nre_data"]["state_dict"][
+        ".gaussians_nodes.gaussians.extra_signal.shape"
+    ] = list(extra_signal.shape)
     # Empty array for scalar value
-    template["nre_data"]["state_dict"][".gaussians_nodes.gaussians.n_active_features.shape"] = []
+    template["nre_data"]["state_dict"][
+        ".gaussians_nodes.gaussians.n_active_features.shape"
+    ] = []
 
 
 def fill_3dgut_template(
@@ -1098,7 +1191,7 @@ def export_splats_to_usdz(
         mesh_faces: Optional mesh face indices. Required when ``mesh_vertices`` is set.
         apply_ecef2enu_rotation: When True, package under ``/World/Scene`` and apply the
             -90° X upright rotation for ecef2enu-normalized scenes. Splats-only or with mesh.
-        legacy (bool): If True, export using the legacy NuRec format
+        legacy (bool): If True, export using the legacy NuRec format (isaac sim versions prior to 6.0)
             (UsdVol.Volume + .nurec msgpack). If False (default), export using the
             OpenUSD ParticleField3DGaussianSplat schema. Incompatible with mesh export.
         linear_srgb (bool): ParticleField3DGaussianSplat export only. Sets ``ColorSpaceAPI`` to
@@ -1118,7 +1211,9 @@ def export_splats_to_usdz(
     if legacy and mesh_vertices is not None:
         raise ValueError("legacy export does not support mesh export")
     if model is None and mesh_vertices is None:
-        raise ValueError("A Gaussian Splat model, mesh (vertices and faces), or both must be provided")
+        raise ValueError(
+            "A Gaussian Splat model, mesh (vertices and faces), or both must be provided"
+        )
     if mesh_vertices is not None and mesh_faces is None:
         raise ValueError("mesh_faces is required when mesh_vertices is provided")
 
