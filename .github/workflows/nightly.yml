@@ -502,7 +502,7 @@ jobs:
         run: |
           micromamba activate benchmark
           mkdir -p /workspace
-          GSPLAT_COMMIT="b60e917c95afc449c5be33a634f1f457e116ff5e"  # HEAD of main, includes DefaultStrategy opacity-reset fix (6e8c837)
+          GSPLAT_COMMIT="d28ee0c42264a540b8b17388cf793ad31bc20b53"  # HEAD of main, includes DefaultStrategy opacity-reset fix (6e8c837)
           git clone https://github.com/nerfstudio-project/gsplat.git /workspace/gsplat
           cd /workspace/gsplat && git checkout "${GSPLAT_COMMIT}" && git submodule update --init --recursive
           echo "GSplat pinned to commit: $(git rev-parse HEAD)"
@@ -526,19 +526,12 @@ jobs:
           mkdir -p /workspace/data
           frgs download mipnerf360 --download-path /workspace/data
 
-      - name: Patch pycolmap
-        run: |
-          micromamba activate benchmark
-          SITE=$(python -c 'import site; print(site.getsitepackages()[0])')
-          sed -i 's/INVALID_POINT3D = np.uint64(-1)/INVALID_POINT3D = np.uint64(2**64-1)/' \
-            "$SITE/pycolmap/scene_manager.py" || true
-
       - name: GSplat L4 warmup
         run: |
           micromamba activate benchmark
           echo "Running 500-step gsplat warmup to avoid L4 cold-start training bug."
           echo "See: https://github.com/nerfstudio-project/gsplat/issues/872"
-          echo "gsplat commit: b60e917c95afc449c5be33a634f1f457e116ff5e"
+          echo "gsplat commit: d28ee0c42264a540b8b17388cf793ad31bc20b53"
           echo "Remove this step once the upstream issue is resolved."
           cd /workspace/gsplat/examples
           python simple_trainer.py default \
