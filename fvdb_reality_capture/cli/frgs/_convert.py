@@ -6,6 +6,7 @@ import logging
 import pathlib
 from dataclasses import dataclass
 
+import point_cloud_utils as pcu
 import torch
 import tyro
 from fvdb import GaussianSplat3d
@@ -23,23 +24,42 @@ class Convert(BaseCommand):
         - Checkpoint to USDZ
         - PLY to PLY (copy)
         - Checkpoint to PLY (export)
+        - PLY or checkpoint to USDZ with optional mesh and ecef2enu upright rotation
 
 
     Example usage:
 
         # Convert a PLY file to a USDZ file
-        frgs frgs convert input.ply output.usdz
+        frgs convert input.ply output.usdz
 
         # Convert a Checkpoint file to a USDZ file
-        frgs frgs convert input.pt output.usdz
+        frgs convert input.pt output.usdz
+
+        # Splats only, rotated for ecef2enu-normalized scenes
+        frgs convert input.ply output.usdz --ecef2enu-rotation
+
+        # Splats + mesh for Isaac Sim, rotated for ecef2enu-normalized scenes
+        frgs convert input.ply output.usdz --mesh-path mesh.ply --ecef2enu-rotation
+
+        # Legacy NuRec USDZ for Isaac Sim 5.x
+        frgs convert input.ply output.usdz --legacy
 
     """
 
     # Path to the input file. Must be a .ply file or Checkpoint (.pt or .pth) file.
     in_path: tyro.conf.Positional[pathlib.Path]
 
-    # Path to the output file. Must be a .ply file, Checkpoint (.pt or .pth) file, or .usdz file.
+    # Path to the output file. Must be a .ply file or .usdz file.
     out_path: tyro.conf.Positional[pathlib.Path]
+
+    # USDZ export only. Optional mesh file (PLY/OBJ) under /World/Scene/mesh.
+    mesh_path: pathlib.Path | None = None
+
+    # USDZ export only. Apply -90° X upright rotation on /World/Scene for ecef2enu-normalized scenes.
+    ecef2enu_rotation: bool = False
+
+    # USDZ export only. Export legacy NuRec format (UsdVol.Volume + .nurec) for Isaac Sim 5.x.
+    legacy: bool = False
 
     @torch.no_grad()
     def execute(self) -> None:
@@ -66,6 +86,17 @@ class Convert(BaseCommand):
                 f"Conversion from {in_file_type} to {out_file_type} is not supported. "
                 f"Supported output types for {in_file_type} are: {valid_conversions[in_file_type]}"
             )
+        if self.mesh_path is not None and out_file_type != ".usdz":
+            raise ValueError("--mesh-path is only supported for USDZ export (output file must end in .usdz)")
+        if self.ecef2enu_rotation and out_file_type != ".usdz":
+            raise ValueError("--ecef2enu-rotation is only supported for USDZ export (output file must end in .usdz)")
+        if self.legacy and out_file_type != ".usdz":
+            raise ValueError("--legacy is only supported for USDZ export (output file must end in .usdz)")
+        if self.legacy and self.mesh_path is not None:
+            raise ValueError("--legacy cannot be used with --mesh-path")
+        if self.legacy and self.ecef2enu_rotation:
+            raise ValueError("--legacy cannot be used with --ecef2enu-rotation")
+
         if in_file_type == ".ply":
             model, metadata = GaussianSplat3d.from_ply(self.in_path)
             logger.info(f"Loaded Gaussian Splat model with {model.num_gaussians} splats from {self.in_path}")
@@ -76,9 +107,50 @@ class Convert(BaseCommand):
             metadata = runner.reconstruction_metadata
             logger.info(f"Loaded Gaussian Splat model with {model.num_gaussians} splats from {self.in_path}")
 
+        mesh_vertices = None
+        mesh_faces = None
+        if self.mesh_path is not None:
+            if not self.mesh_path.is_file():
+                raise FileNotFoundError(f"Mesh file not found: {self.mesh_path}")
+            vertices, faces = pcu.load_mesh_vf(str(self.mesh_path))
+            mesh_vertices = vertices.astype("float32")
+            mesh_faces = faces.astype("int32")
+            logger.info(
+                "Loaded mesh with %d vertices and %d faces from %s",
+                mesh_vertices.shape[0],
+                mesh_faces.shape[0],
+                self.mesh_path,
+            )
+
         if out_file_type == ".ply":
             model.save_ply(self.out_path, metadata=metadata)
             logger.info(f"Saved Gaussian Splat model with {model.num_gaussians} splats to {self.out_path}")
         elif out_file_type == ".usdz":
-            export_splats_to_usdz(model, self.out_path)
-            logger.info(f"Exported Gaussian Splat model with {model.num_gaussians} splats to {self.out_path}")
+            export_splats_to_usdz(
+                model,
+                self.out_path,
+                mesh_vertices=mesh_vertices,
+                mesh_faces=mesh_faces,
+                apply_ecef2enu_rotation=self.ecef2enu_rotation,
+                legacy=self.legacy,
+            )
+            if self.legacy:
+                logger.info(
+                    "Exported legacy NuRec Gaussian Splat model with %d splats to %s",
+                    model.num_gaussians,
+                    self.out_path,
+                )
+            elif mesh_vertices is not None:
+                logger.info(
+                    "Exported Gaussian Splat model with %d splats and mesh to %s",
+                    model.num_gaussians,
+                    self.out_path,
+                )
+            elif self.ecef2enu_rotation:
+                logger.info(
+                    "Exported Gaussian Splat model with %d splats and ecef2enu rotation to %s",
+                    model.num_gaussians,
+                    self.out_path,
+                )
+            else:
+                logger.info(f"Exported Gaussian Splat model with {model.num_gaussians} splats to {self.out_path}")

@@ -5,7 +5,7 @@
 """
 Prepare mesh and/or Gaussian splat assets for Isaac Sim.
 - assumes ecef2enu normalization is applied to the scene
-    - turn off with --no-usd-transform
+    - turn off upright rotation with --no-ecef2enu-rotation
 - Exports mesh and splat as a single aligned usdz
 - mesh is water tight so robots can walk on it and objects dont fall through
     - turn off with --no-watertight
@@ -24,45 +24,8 @@ import numpy as np
 import point_cloud_utils as pcu
 import torch
 from fvdb import GaussianSplat3d
-from pxr import Gf, Usd, UsdGeom, UsdUtils, Vt
 
-from fvdb_reality_capture.tools._export_splats_to_usdz import (
-    NamedUSDStage,
-    USD_GAUSSIANS_ROOT_PATH,
-    _initialize_particlefield_usd_stage,
-    _write_particlefield3d_gaussian_splat,
-    _write_particlefield_usdz,
-)
-
-USD_SCENE_ROOT_PATH = "/World/Scene"
-USD_MESH_PAYLOAD_PATH = "/World/mesh"
-USD_MESH_SCENE_PATH = f"{USD_SCENE_ROOT_PATH}/mesh"
-
-
-def create_rotation_matrix_x(degrees: float) -> np.ndarray:
-    """Rotation matrix for +degrees about the X axis (column-vector convention)."""
-    rad = np.radians(degrees)
-    cos, sin = np.cos(rad), np.sin(rad)
-    return np.array([[1, 0, 0], [0, cos, -sin], [0, sin, cos]], dtype=np.float64)
-
-
-def rotation_matrix_to_gf_matrix4d(rotation: np.ndarray) -> Gf.Matrix4d:
-    """Convert a column-vector rotation matrix to USD's Gf.Matrix4d."""
-    # NumPy uses column vectors (p' = R @ p). USD xforms use row-vector layout, so
-    # pass R.T via SetTransform — same convention as 3dgrut export.
-    r = rotation[:3, :3].astype(np.float64)
-    matrix = Gf.Matrix4d()
-    matrix.SetTransform(Gf.Matrix3d(*r.T.flatten()), Gf.Vec3d(0.0, 0.0, 0.0))
-    return matrix
-
-
-def get_isaac_scene_alignment_matrix() -> Gf.Matrix4d:
-    """
-    For ecef2enu normalized scenes (Z-up), rotate the whole USDZ -90° about X
-    so content is upright in Isaac Sim's Y-up USD stage.
-    """
-    rotation = create_rotation_matrix_x(-90)
-    return rotation_matrix_to_gf_matrix4d(rotation)
+from fvdb_reality_capture.tools import export_splats_to_usdz
 
 
 def _crop_splat_model(
@@ -152,104 +115,20 @@ def _write_mesh_obj(vertices: np.ndarray, faces: np.ndarray, output_path: pathli
             handle.write(f"f {face[0] + 1} {face[1] + 1} {face[2] + 1}\n")
 
 
-def build_mesh_payload_stage(vertices: np.ndarray, faces: np.ndarray) -> Usd.Stage:
-    """Create a USD stage containing a single triangle mesh at /World/mesh."""
-    stage = _initialize_particlefield_usd_stage()
-    mesh = UsdGeom.Mesh.Define(stage, USD_MESH_PAYLOAD_PATH)
-    mesh.CreatePointsAttr(Vt.Vec3fArray.FromNumpy(vertices))
-    mesh.CreateFaceVertexCountsAttr(Vt.IntArray.FromNumpy(np.full(len(faces), 3, dtype=np.int32)))
-    mesh.CreateFaceVertexIndicesAttr(Vt.IntArray.FromNumpy(faces.reshape(-1).astype(np.int32)))
-    mesh.CreateSubdivisionSchemeAttr().Set(UsdGeom.Tokens.none)
-    return stage
-
-
-def build_gaussians_payload_stage(model: GaussianSplat3d) -> Usd.Stage:
-    """Create a USD stage with ParticleField gaussians in the training frame."""
-    stage = _initialize_particlefield_usd_stage()
-    UsdGeom.Xform.Define(stage, USD_GAUSSIANS_ROOT_PATH)
-    _write_particlefield3d_gaussian_splat(stage, model)
-    return stage
-
-
-def _add_scene_xform(stage: Usd.Stage, matrix: Optional[Gf.Matrix4d]) -> UsdGeom.Xform:
-    """Create /World/Scene and optionally set its transform op."""
-    scene_xform = UsdGeom.Xform.Define(stage, USD_SCENE_ROOT_PATH)
-    if matrix is not None:
-        scene_xform.AddTransformOp().Set(matrix)
-    return scene_xform
-
-
-def compose_isaac_scene_usdz(
-    output_path: pathlib.Path,
-    model: Optional[GaussianSplat3d] = None,
-    mesh_vertices: Optional[np.ndarray] = None,
-    mesh_faces: Optional[np.ndarray] = None,
-    apply_scene_transform: bool = True,
-    logger: logging.Logger = logging.getLogger(__name__),
-) -> None:
-    """
-    Package mesh and/or splats into one USDZ with scene-level transforms.
-
-    Hierarchy:
-        /World/Scene                 (Isaac alignment xform)
-          /Gaussians                 (reference -> gaussians.usdc)
-          /mesh                      (grouping xform, no extra rotation)
-            /geometry                (reference -> mesh.usdc)
-    """
-    if model is None and mesh_vertices is None:
-        raise ValueError("At least one of model or mesh_vertices must be provided")
-
-    stages: list[NamedUSDStage] = []
-    root_stage = _initialize_particlefield_usd_stage()
-
-    # Payload .usdc files are packed into the USDZ after references are authored;
-    # suppress expected "could not open asset" warnings during in-memory composition.
-    _ = UsdUtils.CoalescingDiagnosticDelegate()
-
-    scene_matrix = get_isaac_scene_alignment_matrix() if apply_scene_transform else None
-    _add_scene_xform(root_stage, scene_matrix)
-    if scene_matrix is not None:
-        logger.info("Applied Isaac scene alignment (-90° X) on %s", USD_SCENE_ROOT_PATH)
-
-    if model is not None:
-        gaussians_stage = NamedUSDStage(filename="gaussians.usdc", stage=build_gaussians_payload_stage(model))
-        stages.append(gaussians_stage)
-        gaussians_ref = root_stage.OverridePrim(f"{USD_SCENE_ROOT_PATH}/Gaussians")
-        gaussians_ref.GetReferences().AddReference(gaussians_stage.filename, USD_GAUSSIANS_ROOT_PATH)
-        logger.info("Referenced gaussians payload at %s/Gaussians", USD_SCENE_ROOT_PATH)
-
-    if mesh_vertices is not None and mesh_faces is not None:
-        mesh_stage = NamedUSDStage(
-            filename="mesh.usdc",
-            stage=build_mesh_payload_stage(mesh_vertices, mesh_faces),
-        )
-        stages.append(mesh_stage)
-
-        UsdGeom.Xform.Define(root_stage, USD_MESH_SCENE_PATH)
-        mesh_ref = root_stage.OverridePrim(f"{USD_MESH_SCENE_PATH}/geometry")
-        mesh_ref.GetReferences().AddReference(mesh_stage.filename, USD_MESH_PAYLOAD_PATH)
-        logger.info("Referenced mesh payload at %s/geometry", USD_MESH_SCENE_PATH)
-
-    default_stage = NamedUSDStage(filename="default.usda", stage=root_stage)
-    _write_particlefield_usdz(output_path, [default_stage, *stages])
-    logger.info("Wrote Isaac scene USDZ to %s", output_path)
-
-
 def crop_and_convert_splat_to_usdz(
     input_path: pathlib.Path,
     output_path: pathlib.Path,
     bbox: list[float] | None = None,
-    apply_scene_transform: bool = True,
+    apply_ecef2enu_rotation: bool = True,
     logger: logging.Logger = logging.getLogger(__name__),
 ) -> None:
     """Convert a Gaussian splat PLY to USDZ with optional scene-level Isaac alignment."""
     model, _metadata = GaussianSplat3d.from_ply(str(input_path))
     model = _crop_splat_model(model, bbox, logger)
-    compose_isaac_scene_usdz(
+    export_splats_to_usdz(
+        model,
         output_path,
-        model=model,
-        apply_scene_transform=apply_scene_transform,
-        logger=logger,
+        apply_ecef2enu_rotation=apply_ecef2enu_rotation,
     )
 
 
@@ -293,10 +172,10 @@ def main() -> None:
         help="Also write a training-frame OBJ alongside the USDZ when --input-mesh is set",
     )
     parser.add_argument(
-        "--no-usd-transform",
+        "--no-ecef2enu-rotation",
         default=False,
         action="store_true",
-        help="Skip rotating USDZ upright under ecef2enu convention, use if scene is not ecef2enu normalized",
+        help="Skip -90° X upright rotation for ecef2enu-normalized scenes",
     )
     parser.add_argument(
         "--no-watertight",
@@ -307,7 +186,7 @@ def main() -> None:
     if not args.input_splat and not args.input_mesh:
         parser.error("At least one of --input-splat or --input-mesh must be provided")
 
-    apply_scene_transform = not (args.no_usd_transform)
+    apply_ecef2enu_rotation = not args.no_ecef2enu_rotation
     usdz_output_path = args.output_path.with_suffix(".usdz")
     mesh_output_path = args.output_path.with_suffix(".obj")
 
@@ -333,13 +212,12 @@ def main() -> None:
     if model is None and mesh_vertices is None:
         parser.error("No assets left after cropping")
 
-    compose_isaac_scene_usdz(
+    export_splats_to_usdz(
+        model,
         usdz_output_path,
-        model=model,
         mesh_vertices=mesh_vertices,
         mesh_faces=mesh_faces,
-        apply_scene_transform=apply_scene_transform,
-        logger=logger,
+        apply_ecef2enu_rotation=apply_ecef2enu_rotation,
     )
 
 
