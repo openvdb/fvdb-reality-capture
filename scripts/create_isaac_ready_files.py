@@ -10,6 +10,7 @@ Prepare mesh and/or Gaussian splat assets for Isaac Sim.
 - mesh is water tight so robots can walk on it and objects dont fall through
     - turn off with --no-watertight
 - can crop scene with --bbox
+- can center assets at the origin with --center (after crop; rotation still applied at export)
 """
 
 from __future__ import annotations
@@ -52,6 +53,49 @@ def _crop_splat_model(
     return cropped
 
 
+def _compute_center_offset(
+    model: GaussianSplat3d | None,
+    mesh_vertices: np.ndarray | None,
+) -> np.ndarray:
+    """Return the mean position of all splat centers and mesh vertices."""
+    points: list[np.ndarray] = []
+    if model is not None:
+        points.append(model.means.detach().cpu().numpy())
+    if mesh_vertices is not None and len(mesh_vertices) > 0:
+        points.append(np.asarray(mesh_vertices))
+    if not points:
+        return np.zeros(3, dtype=np.float64)
+    return np.vstack(points).mean(axis=0)
+
+
+def _center_splat_model(model: GaussianSplat3d, offset: np.ndarray) -> GaussianSplat3d:
+    """Return a copy of ``model`` with Gaussian means translated by ``-offset``."""
+    offset_t = torch.tensor(offset, dtype=model.means.dtype, device=model.device)
+    centered = model.detach()
+    centered.means = centered.means - offset_t
+    return centered
+
+
+def _center_mesh_vertices(vertices: np.ndarray, offset: np.ndarray) -> np.ndarray:
+    """Return mesh vertices translated by ``-offset``."""
+    return (np.asarray(vertices) - offset).astype(np.float32)
+
+
+def _apply_centering(
+    model: GaussianSplat3d | None,
+    mesh_vertices: np.ndarray | None,
+    logger: logging.Logger,
+) -> tuple[GaussianSplat3d | None, np.ndarray | None]:
+    """Translate splats and mesh so their combined centroid is at the origin."""
+    offset = _compute_center_offset(model, mesh_vertices)
+    logger.info("Centering assets at origin (offset=%s)", offset)
+    if model is not None:
+        model = _center_splat_model(model, offset)
+    if mesh_vertices is not None:
+        mesh_vertices = _center_mesh_vertices(mesh_vertices, offset)
+    return model, mesh_vertices
+
+
 def _prepare_mesh(
     input_path: pathlib.Path,
     bbox: list[float] | None,
@@ -91,7 +135,9 @@ def _prepare_mesh(
         )
 
     if watertight:
-        vertices, faces = pcu.make_mesh_watertight(vertices, faces, resolution=resolution)
+        vertices, faces = pcu.make_mesh_watertight(
+            vertices, faces, resolution=resolution
+        )
         logger.info(
             "Watertight mesh: %d vertices, %d faces",
             vertices.shape[0],
@@ -106,7 +152,9 @@ def _prepare_mesh(
     return vertices.astype(np.float32), faces.astype(np.int32)
 
 
-def _write_mesh_obj(vertices: np.ndarray, faces: np.ndarray, output_path: pathlib.Path) -> None:
+def _write_mesh_obj(
+    vertices: np.ndarray, faces: np.ndarray, output_path: pathlib.Path
+) -> None:
     """Write a plain OBJ file (training-frame coordinates)."""
     with open(output_path, "w", encoding="utf-8") as handle:
         for vertex in vertices:
@@ -120,11 +168,14 @@ def crop_and_convert_splat_to_usdz(
     output_path: pathlib.Path,
     bbox: list[float] | None = None,
     apply_ecef2enu_rotation: bool = True,
+    center: bool = False,
     logger: logging.Logger = logging.getLogger(__name__),
 ) -> None:
     """Convert a Gaussian splat PLY to USDZ with optional scene-level Isaac alignment."""
     model, _metadata = GaussianSplat3d.from_ply(str(input_path))
     model = _crop_splat_model(model, bbox, logger)
+    if center:
+        model, _ = _apply_centering(model, None, logger)
     export_splats_to_usdz(
         model,
         output_path,
@@ -142,7 +193,9 @@ def crop_and_convert_mesh_to_obj(
     logger: logging.Logger = logging.getLogger(__name__),
 ) -> tuple[np.ndarray, np.ndarray]:
     """Convert a mesh to OBJ in the training coordinate frame."""
-    vertices, faces = _prepare_mesh(input_path, bbox, resolution, logger, watertight=watertight)
+    vertices, faces = _prepare_mesh(
+        input_path, bbox, resolution, logger, watertight=watertight
+    )
     _write_mesh_obj(vertices, faces, output_path)
     logger.info("Saved mesh OBJ to %s", output_path)
     return vertices, faces
@@ -155,10 +208,23 @@ def main() -> None:
     parser = argparse.ArgumentParser(
         description="Crop mesh and/or splat assets and export an Isaac-ready combined USDZ",
     )
-    parser.add_argument("--input-splat", type=Path, help="Input splat file (PLY format)")
-    parser.add_argument("--input-mesh", type=Path, help="Input mesh file (PLY/OBJ format)")
-    parser.add_argument("--output-path", type=Path, required=True, help="Output path without extension")
-    parser.add_argument("--resolution", type=int, default=100_000, help="Watertight mesh resolution")
+    parser.add_argument(
+        "--input-splat", type=Path, help="Input splat file (PLY format)"
+    )
+    parser.add_argument(
+        "--input-mesh", type=Path, help="Input mesh file (PLY/OBJ format)"
+    )
+    parser.add_argument(
+        "--output-path", type=Path, required=True, help="Output path without extension"
+    )
+    parser.add_argument(
+        "--resolution", type=int, default=100_000, help="Watertight mesh resolution"
+    )
+    parser.add_argument(
+        "--center",
+        action="store_true",
+        help="Translate splats and mesh so their combined centroid is at the origin before export",
+    )
     parser.add_argument(
         "--bbox",
         type=float,
@@ -175,7 +241,7 @@ def main() -> None:
         "--no-ecef2enu-rotation",
         default=False,
         action="store_true",
-        help="Skip -90° X upright rotation for ecef2enu-normalized scenes",
+        help="Skip rotating USDZ upright under ecef2enu convention, use if scene is not ecef2enu normalized",
     )
     parser.add_argument(
         "--no-watertight",
@@ -206,8 +272,14 @@ def main() -> None:
             logger,
             watertight=not args.no_watertight,
         )
-        if args.write_obj:
-            _write_mesh_obj(mesh_vertices, mesh_faces, mesh_output_path)
+
+    if args.center:
+        model, mesh_vertices = _apply_centering(model, mesh_vertices, logger)
+
+    if args.input_mesh and args.write_obj:
+        if mesh_vertices is None or mesh_faces is None:
+            parser.error("--write-obj requires --input-mesh")
+        _write_mesh_obj(mesh_vertices, mesh_faces, mesh_output_path)
 
     if model is None and mesh_vertices is None:
         parser.error("No assets left after cropping")

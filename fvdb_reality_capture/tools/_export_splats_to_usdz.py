@@ -31,10 +31,41 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-USD_GAUSSIANS_ROOT_PATH = "/World/Gaussians"
-USD_GAUSSIANS_PRIM_PATH = USD_GAUSSIANS_ROOT_PATH + "/gaussians"
 DEFAULT_PROJECTION_MODE_HINT = "perspective"
 DEFAULT_SORTING_MODE_HINT = "cameraDistance"
+GAUSSIANS_PAYLOAD_PRIM = "/gaussians"
+MESH_PAYLOAD_PRIM = "/mesh"
+
+
+def _usd_asset_name_from_path(out_path: Path) -> str:
+    """Derive a valid USD prim name from the output ``.usdz`` file stem."""
+    stem = out_path.stem
+    name = "".join(c if c.isalnum() or c == "_" else "_" for c in stem)
+    if not name:
+        return "gaussians"
+    if name[0].isdigit():
+        name = f"asset_{name}"
+    return name
+
+
+def _asset_scene_paths(asset_name: str) -> tuple[str, str, str]:
+    """Return ``(asset_xform, gaussians, mesh)`` prim paths under ``/World``."""
+    asset_path = f"/World/{asset_name}"
+    return asset_path, f"{asset_path}/gaussians", f"{asset_path}/mesh"
+
+
+def _initialize_asset_root_stage(_asset_name: str) -> Usd.Stage:
+    """Y-up root stage with ``/World`` as ``defaultPrim`` (Isaac scene convention)."""
+    return _initialize_particlefield3d_usd_stage()
+
+
+def _initialize_payload_stage(default_prim_name: str) -> Usd.Stage:
+    """In-memory Y-up stage for a single payload prim (no ``/World`` wrapper)."""
+    stage = Usd.Stage.CreateInMemory()
+    stage.SetMetadata("metersPerUnit", 1.0)
+    stage.SetMetadata("upAxis", "Y")
+    stage.SetMetadata("defaultPrim", default_prim_name)
+    return stage
 
 
 @dataclass(kw_only=True)
@@ -251,7 +282,7 @@ def _write_particlefield3d_gaussian_splat(
     Args:
         stage: USD stage to author the prim on.
         model: Gaussian splat model to export.
-        prim_path: Absolute prim path (e.g. ``/World/Gaussians/gaussians``).
+        prim_path: Absolute prim path (e.g. ``/World/ambulance/gaussians``).
         linear_srgb: Color space flag passed to ColorSpaceAPI (see 3dgrut convention).
         projection_mode_hint: ParticleField3DGaussianSplat projection hint.
         sorting_mode_hint: ParticleField3DGaussianSplat sorting hint.
@@ -323,7 +354,9 @@ def _build_particlefield3d_gaussians_payload(
     projection_mode_hint: str = DEFAULT_PROJECTION_MODE_HINT,
 ) -> NamedUSDStage:
     """
-    Build a ``gaussians.usdc`` payload stage with ParticleField3DGaussianSplat data.
+    Build a ``gaussians.usdc`` payload with a single generic ``/gaussians`` prim.
+
+    Asset naming (e.g. ``/World/ambulance``) is applied only in ``default.usda``.
 
     Args:
         model: Gaussian splat model to export.
@@ -334,12 +367,11 @@ def _build_particlefield3d_gaussians_payload(
     Returns:
         NamedUSDStage with filename ``gaussians.usdc`` and an in-memory stage.
     """
-    stage = _initialize_particlefield3d_usd_stage()
-    UsdGeom.Xform.Define(stage, USD_GAUSSIANS_ROOT_PATH)
+    stage = _initialize_payload_stage("gaussians")
     _write_particlefield3d_gaussian_splat(
         stage,
         model,
-        USD_GAUSSIANS_PRIM_PATH,
+        GAUSSIANS_PAYLOAD_PRIM,
         linear_srgb=linear_srgb,
         sorting_mode_hint=sorting_mode_hint,
         projection_mode_hint=projection_mode_hint,
@@ -378,12 +410,12 @@ def _build_mesh_payload_stage(
     Args:
         vertices: Mesh vertex positions, shape (V, 3).
         faces: Triangle face indices, shape (F, 3).
-        mesh_prim_path: Absolute prim path for the mesh (e.g. ``/World/mesh``).
+        mesh_prim_path: Absolute prim path for the mesh (e.g. ``/mesh`` in a payload).
 
     Returns:
         In-memory stage with one ``UsdGeom.Mesh`` at ``mesh_prim_path``.
     """
-    stage = _initialize_particlefield3d_usd_stage()
+    stage = _initialize_payload_stage(Path(mesh_prim_path).name)
     mesh = UsdGeom.Mesh.Define(stage, mesh_prim_path)
     mesh.CreatePointsAttr(Vt.Vec3fArray.FromNumpy(vertices))
     mesh.CreateFaceVertexCountsAttr(
@@ -396,26 +428,26 @@ def _build_mesh_payload_stage(
     return stage
 
 
-def _add_isaac_scene_xform(
+def _define_asset_xform(
     stage: Usd.Stage,
-    scene_root_path: str,
+    asset_path: str,
     matrix: Gf.Matrix4d | None,
 ) -> UsdGeom.Xform:
     """
-    Create the Isaac scene root xform and optionally set its transform op.
+    Create an asset root xform and optionally set its transform op.
 
     Args:
         stage: Root ``default.usda`` stage.
-        scene_root_path: Path for the scene grouping xform (e.g. ``/World/Scene``).
-        matrix: Optional alignment transform; omitted when ``apply_ecef2enu_rotation`` is False.
+        asset_path: Path for the asset grouping xform (e.g. ``/World/ambulance``).
+        matrix: Optional alignment transform (ecef2enu upright rotation).
 
     Returns:
-        The scene root ``UsdGeom.Xform``.
+        The asset root ``UsdGeom.Xform``.
     """
-    scene_xform = UsdGeom.Xform.Define(stage, scene_root_path)
+    asset_xform = UsdGeom.Xform.Define(stage, asset_path)
     if matrix is not None:
-        scene_xform.AddTransformOp().Set(matrix)
-    return scene_xform
+        asset_xform.AddTransformOp().Set(matrix)
+    return asset_xform
 
 
 def _compose_isaac_scene_usdz(
@@ -430,17 +462,20 @@ def _compose_isaac_scene_usdz(
     projection_mode_hint: str,
 ) -> None:
     """
-    Package mesh and/or splats into one Isaac-ready USDZ with scene-level transforms.
+    Package mesh and/or splats into one Isaac-ready USDZ under a single asset xform.
 
-    Gaussian and mesh payload stages are authored only when the corresponding inputs
-    are provided (``model`` for splats; both ``mesh_vertices`` and ``mesh_faces`` for mesh).
+    Hierarchy (e.g. output ``ambulance.usdz``)::
+
+        /World/ambulance          (asset xform; optional ecef2enu rotation)
+            gaussians               (ParticleField3DGaussianSplat)
+            mesh                    (collision mesh, when provided)
 
     Args:
         out_path: Output ``.usdz`` path.
         model: Optional Gaussian splat model.
         mesh_vertices: Optional mesh vertex positions.
         mesh_faces: Optional mesh face indices; required when ``mesh_vertices`` is set.
-        apply_ecef2enu_rotation: Apply -90° X upright rotation for ecef2enu-normalized scenes.
+        apply_ecef2enu_rotation: Apply -90° X upright rotation on the asset xform.
         linear_srgb: Color space flag for ParticleField3DGaussianSplat export.
         sorting_mode_hint: ParticleField3DGaussianSplat sorting hint.
         projection_mode_hint: ParticleField3DGaussianSplat projection hint.
@@ -453,12 +488,12 @@ def _compose_isaac_scene_usdz(
     if mesh_vertices is not None and mesh_faces is None:
         raise ValueError("mesh_faces is required when mesh_vertices is provided")
 
-    scene_root_path = "/World/Scene"
-    mesh_payload_path = "/World/mesh"
-    mesh_scene_path = f"{scene_root_path}/mesh"
+    mesh_payload_path = MESH_PAYLOAD_PRIM
+    asset_name = _usd_asset_name_from_path(out_path)
+    asset_path, gaussians_scene_path, mesh_scene_path = _asset_scene_paths(asset_name)
 
     payload_stages: list[NamedUSDStage] = []
-    root_stage = _initialize_particlefield3d_usd_stage()
+    root_stage = _initialize_asset_root_stage(asset_name)
 
     # Payload .usdc files are packed into the USDZ after references are authored;
     # suppress expected "could not open asset" warnings during in-memory composition.
@@ -467,9 +502,9 @@ def _compose_isaac_scene_usdz(
     scene_matrix = (
         _get_isaac_scene_alignment_matrix() if apply_ecef2enu_rotation else None
     )
-    _add_isaac_scene_xform(root_stage, scene_root_path, scene_matrix)
+    _define_asset_xform(root_stage, asset_path, scene_matrix)
     if scene_matrix is not None:
-        logger.info("Applied Isaac scene alignment (-90° X) on %s", scene_root_path)
+        logger.info("Applied Isaac asset alignment (-90° X) on %s", asset_path)
 
     if model is not None:
         gaussians_stage = _build_particlefield3d_gaussians_payload(
@@ -479,11 +514,11 @@ def _compose_isaac_scene_usdz(
             projection_mode_hint=projection_mode_hint,
         )
         payload_stages.append(gaussians_stage)
-        gaussians_ref = root_stage.OverridePrim(f"{scene_root_path}/Gaussians")
+        gaussians_ref = root_stage.OverridePrim(gaussians_scene_path)
         gaussians_ref.GetReferences().AddReference(
-            gaussians_stage.filename, USD_GAUSSIANS_ROOT_PATH
+            gaussians_stage.filename, GAUSSIANS_PAYLOAD_PRIM
         )
-        logger.info("Referenced gaussians payload at %s/Gaussians", scene_root_path)
+        logger.info("Referenced gaussians payload at %s", gaussians_scene_path)
 
     has_mesh = mesh_vertices is not None and mesh_faces is not None
     if has_mesh:
@@ -495,10 +530,9 @@ def _compose_isaac_scene_usdz(
         )
         payload_stages.append(mesh_stage)
 
-        UsdGeom.Xform.Define(root_stage, mesh_scene_path)
-        mesh_ref = root_stage.OverridePrim(f"{mesh_scene_path}/geometry")
+        mesh_ref = root_stage.OverridePrim(mesh_scene_path)
         mesh_ref.GetReferences().AddReference(mesh_stage.filename, mesh_payload_path)
-        logger.info("Referenced mesh payload at %s/geometry", mesh_scene_path)
+        logger.info("Referenced mesh payload at %s", mesh_scene_path)
 
     default_stage = NamedUSDStage(filename="default.usda", stage=root_stage)
     _write_particlefield3d_usdz(out_path, [default_stage, *payload_stages])
@@ -735,25 +769,27 @@ def write_to_usdz(
 
 def _serialize_particlefield3d_default_layer(
     gaussians_stage: NamedUSDStage,
+    asset_name: str,
 ) -> NamedUSDStage:
     """
     Create ``default.usda`` that references a gaussians payload layer.
 
     Args:
         gaussians_stage: Payload stage (typically ``gaussians.usdc``).
+        asset_name: USD-safe asset name from the output file stem.
 
     Returns:
         NamedUSDStage with filename ``default.usda`` and an in-memory stage.
     """
-    stage = _initialize_particlefield3d_usd_stage()
+    stage = _initialize_asset_root_stage(asset_name)
 
     # gaussians.usdc is written to the USDZ after references are authored.
     _ = UsdUtils.CoalescingDiagnosticDelegate()
 
-    filename_stem = Path(gaussians_stage.filename).stem
-    prim_path = f"/World/{filename_stem}"
-    prim = stage.OverridePrim(prim_path)
-    prim.GetReferences().AddReference(gaussians_stage.filename)
+    asset_path, gaussians_scene_path, _ = _asset_scene_paths(asset_name)
+    UsdGeom.Xform.Define(stage, asset_path)
+    prim = stage.OverridePrim(gaussians_scene_path)
+    prim.GetReferences().AddReference(gaussians_stage.filename, GAUSSIANS_PAYLOAD_PRIM)
 
     return NamedUSDStage(filename="default.usda", stage=stage)
 
@@ -1157,13 +1193,16 @@ def _export_splats_to_usdz_particlefield3d(
     logger.info("Creating USD file with ParticleField3DGaussianSplat schema")
     logger.info("Using post-activation gaussian attributes")
 
+    asset_name = _usd_asset_name_from_path(out_path)
     gaussians_stage = _build_particlefield3d_gaussians_payload(
         model,
         linear_srgb=linear_srgb,
         sorting_mode_hint=sorting_mode_hint,
         projection_mode_hint=projection_mode_hint,
     )
-    default_stage = _serialize_particlefield3d_default_layer(gaussians_stage)
+    default_stage = _serialize_particlefield3d_default_layer(
+        gaussians_stage, asset_name
+    )
     _write_particlefield3d_usdz(out_path, [default_stage, gaussians_stage])
 
 
@@ -1187,10 +1226,11 @@ def export_splats_to_usdz(
         model: The Gaussian Splat model to export. Required unless exporting mesh-only.
         out_path: The output path for the usdz file. If the file extension is not ``.usdz``,
             it will be added. *e.g.*, ``./scene`` will save to ``./scene.usdz``.
-        mesh_vertices: Optional mesh vertex positions; packages under ``/World/Scene/mesh``.
+        mesh_vertices: Optional mesh vertex positions; packages under ``/World/<output_file_name>/mesh``
+            (same asset xform as splats, from the output ``.usdz`` filename stem).
         mesh_faces: Optional mesh face indices. Required when ``mesh_vertices`` is set.
-        apply_ecef2enu_rotation: When True, package under ``/World/Scene`` and apply the
-            -90° X upright rotation for ecef2enu-normalized scenes. Splats-only or with mesh.
+        apply_ecef2enu_rotation: When True, apply the -90° X upright rotation on
+            ``/World/<output_file_name>``. Splats-only or with mesh.
         legacy (bool): If True, export using the legacy NuRec format (isaac sim versions prior to 6.0)
             (UsdVol.Volume + .nurec msgpack). If False (default), export using the
             OpenUSD ParticleField3DGaussianSplat schema. Incompatible with mesh export.

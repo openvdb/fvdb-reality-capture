@@ -30,8 +30,8 @@
     │ PATH              Path to the output file. Must be a .ply file or .usdz file. (required)     │
     ╰────────────────────────────────────────────────────────────────────────────────────────────────╯
     ╭─ options ──────────────────────────────────────────────────────────────────────────────────────╮
-    │ --mesh-path PATH       USDZ only. Optional mesh (PLY/OBJ) under /World/Scene/mesh            │
-    │ --ecef2enu-rotation    USDZ only. -90° X upright rotation on /World/Scene                   │
+    │ --mesh-path PATH       USDZ only. Mesh under /World/<output_file_name>/mesh (shared asset xform)      │
+    │ --ecef2enu-rotation    USDZ only. -90° X upright rotation on /World/<output_file_name>                 │
     │ --legacy               USDZ only. NuRec format for Isaac Sim 5.x                            │
     │ -h, --help             show this help message and exit                                       │
     ╰────────────────────────────────────────────────────────────────────────────────────────────────╯
