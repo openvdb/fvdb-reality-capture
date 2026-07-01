@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1782908574486,
+  "lastUpdate": 1782922099485,
   "repoUrl": "https://github.com/openvdb/fvdb-reality-capture",
   "entries": {
     "fvdb-reality-capture Benchmark with pytest-benchmark": [
@@ -17207,6 +17207,88 @@ window.BENCHMARK_DATA = {
           {
             "name": "garden/fvdb_mcmc - SSIM",
             "value": 0.8666,
+            "unit": ""
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "Mark Harris",
+            "username": "harrism",
+            "email": "mharris@nvidia.com"
+          },
+          "committer": {
+            "name": "GitHub",
+            "username": "web-flow",
+            "email": "noreply@github.com"
+          },
+          "id": "6d03f1a93174a09652baf8a3088befddb7296222",
+          "message": "CODEOWNERS: require NVIDIA review for governance/CI files; add governance docs (#298)\n\n## What\n\n- Split `CODEOWNERS` into two review tiers:\n  - **Default (`@openvdb/fvdb-dev`)** — any maintainer may review code.\n- **`@openvdb/fvdb-dev-nvidia`** (child team of `fvdb-dev`) — required\nfor governance, legal, and CI/CD infrastructure: `.github/`,\n`CODEOWNERS`, `LICENSE`, `MAINTAINERS.md`, `CODE_OF_CONDUCT.md`,\n`CONTRIBUTING.md`, `SECURITY.md`, `.gitmodules`.\n- Add the governance docs that were missing in this repo —\n`MAINTAINERS.md`, `CODE_OF_CONDUCT.md`, `CONTRIBUTING.md` — mirrored\nfrom `fvdb-core` so the new `CODEOWNERS` rules protect real files.\n\n## Why\n\nCertain files (legal, governance, release/CI automation) should require\nsign-off from an NVIDIA maintainer. The listed patterns match files\n**even before they exist**, so a non-NVIDIA contributor cannot introduce\nthem without NVIDIA approval. This `CODEOWNERS` is kept **identical**\nacross `fvdb-core`, `fvdb-reality-capture`, and `fvdb-examples`.\n\n## Notes for reviewers\n\n- `MAINTAINERS.md` and `CODE_OF_CONDUCT.md` are copied verbatim from\n`fvdb-core` (same committer list).\n- `CONTRIBUTING.md` is `fvdb-core`'s, with project-identity references\nrebranded to *fVDB-Reality-Capture* and the **Release Process** section\npointing to [`fvdb-core`'s release\nprocess](https://github.com/openvdb/fvdb-core/blob/main/docs/release-process.md)\nrather than a local doc (this repo has none).\n- For enforcement, branch protection must require Code Owner review and\n`fvdb-dev-nvidia` needs explicit write access.\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n\n---------\n\nSigned-off-by: Mark Harris <mharris@nvidia.com>\nCo-authored-by: Claude Opus 4.8 <noreply@anthropic.com>",
+          "timestamp": "2026-07-01T07:07:58Z",
+          "url": "https://github.com/openvdb/fvdb-reality-capture/commit/6d03f1a93174a09652baf8a3088befddb7296222"
+        },
+        "date": 1782922098918,
+        "tool": "customBiggerIsBetter",
+        "benches": [
+          {
+            "name": "bicycle/fvdb_default - PSNR",
+            "value": 25.168,
+            "unit": "dB"
+          },
+          {
+            "name": "bicycle/fvdb_default - SSIM",
+            "value": 0.7453,
+            "unit": ""
+          },
+          {
+            "name": "bicycle/fvdb_mcmc - PSNR",
+            "value": 24.979,
+            "unit": "dB"
+          },
+          {
+            "name": "bicycle/fvdb_mcmc - SSIM",
+            "value": 0.7301,
+            "unit": ""
+          },
+          {
+            "name": "bonsai/fvdb_default - PSNR",
+            "value": 32.579,
+            "unit": "dB"
+          },
+          {
+            "name": "bonsai/fvdb_default - SSIM",
+            "value": 0.9565,
+            "unit": ""
+          },
+          {
+            "name": "bonsai/fvdb_mcmc - PSNR",
+            "value": 32.818,
+            "unit": "dB"
+          },
+          {
+            "name": "bonsai/fvdb_mcmc - SSIM",
+            "value": 0.9591,
+            "unit": ""
+          },
+          {
+            "name": "garden/fvdb_default - PSNR",
+            "value": 27.644,
+            "unit": "dB"
+          },
+          {
+            "name": "garden/fvdb_default - SSIM",
+            "value": 0.866,
+            "unit": ""
+          },
+          {
+            "name": "garden/fvdb_mcmc - PSNR",
+            "value": 27.731,
+            "unit": "dB"
+          },
+          {
+            "name": "garden/fvdb_mcmc - SSIM",
+            "value": 0.8667,
             "unit": ""
           }
         ]
