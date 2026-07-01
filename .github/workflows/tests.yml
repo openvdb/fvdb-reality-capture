@@ -1,16 +1,15 @@
 name: fvdb-reality-capture Unit Tests
 
 on:
+  # No paths-ignore here: this workflow provides required status checks, and a
+  # workflow skipped via paths-ignore never reports them, leaving docs-only PRs
+  # blocked forever. Instead the check-changes job below detects docs-only
+  # changes and the expensive jobs are gated on it (reporting "skipped", which
+  # satisfies the required checks). The push trigger keeps paths-ignore since
+  # push builds are not required PR checks.
   pull_request_target:
     branches:
       - '**'
-    paths-ignore:
-        - 'CODEOWNERS'
-        - '**.md'
-        - 'debug/**'
-        - 'examples/**'
-        - 'notebooks/**'
-        - 'scripts/**'
   push:
     branches:
       - main
@@ -42,11 +41,19 @@ permissions:
   id-token: write
 
 jobs:
+  # Detect whether the PR touches source files or only docs/non-code paths.
+  # The expensive build/test jobs are gated on this so docs-only PRs skip the
+  # work while still reporting the required status checks (skipped == passed).
+  check-changes:
+    uses: ./.github/workflows/check-changes.yml
+
   ##############################################################################
   # BUILD FVDB
   ##############################################################################
   start-build-runner:
     name: Start CPU-only EC2 runner for build
+    needs: check-changes
+    if: needs.check-changes.outputs.should_test == 'true'
     runs-on: ubuntu-latest
     outputs:
       label: ${{ steps.start-build-runner.outputs.label }}
@@ -175,7 +182,8 @@ jobs:
       - start-build-runner # required to get output from the start-build-runner job
       - fvdb-reality-capture-build # required to wait when the main job is done
     runs-on: ubuntu-latest
-    if: ${{ always() }} # required to stop the runner even if the error happened in the previous jobs
+    # Don't try to stop a runner that was never started (docs-only PRs skip start-build-runner).
+    if: ${{ always() && needs.start-build-runner.result != 'skipped' }}
     steps:
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
@@ -357,7 +365,8 @@ jobs:
       - fvdb-reality-capture-unit-tests # required to wait when the main job is done
       #- fvdb-reality-capture-docs-test # required to wait when the main job is done
     runs-on: ubuntu-latest
-    if: ${{ always() }} # required to stop the runner even if the error happened in the previous jobs
+    # Don't try to stop a runner that was never started (docs-only PRs skip start-tests-gpu-runner).
+    if: ${{ always() && needs.start-tests-gpu-runner.result != 'skipped' }}
     steps:
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4

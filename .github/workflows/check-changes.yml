@@ -1,0 +1,46 @@
+# Copyright Contributors to the OpenVDB Project
+# SPDX-License-Identifier: Apache-2.0
+#
+# Reusable workflow: detect whether a PR touches source files or only
+# documentation / non-code paths. Callers gate their real jobs on the
+# `should_test` output so that docs-only PRs are marked as passed
+# (not perpetually "waiting for status").
+
+name: Check for relevant changes
+
+on:
+  workflow_call:
+    outputs:
+      should_test:
+        description: "'true' when the change includes source files, 'false' for docs-only"
+        value: ${{ jobs.check-changes.outputs.should_test }}
+
+# Permissions are inherited from the calling workflow; do not set them here.
+
+jobs:
+  check-changes:
+    name: Check for relevant changes
+    runs-on: ubuntu-latest
+    outputs:
+      should_test: ${{ github.event_name != 'pull_request_target' || steps.filter.outputs.src == 'true' }}
+    steps:
+      - uses: dorny/paths-filter@fbd0ab8f3e69293af611ebaee6363fc25e6d187d # v4.0.1
+        id: filter
+        if: github.event_name == 'pull_request_target'
+        with:
+          # Use the default 'some' quantifier: `src` is true when AT LEAST ONE
+          # changed file is outside the excluded paths below. A PR mixing
+          # excluded and non-excluded files therefore still runs the tests; only
+          # a PR whose files are ALL in excluded paths is treated as skippable.
+          # Do NOT use 'every' here — that would skip the tests whenever any file
+          # is excluded (e.g. a code change that also touches a README), leaving
+          # real changes untested.
+          filters: |
+            src:
+              - '**'
+              - '!**/*.md'
+              - '!CODEOWNERS'
+              - '!debug/**'
+              - '!examples/**'
+              - '!notebooks/**'
+              - '!scripts/**'
