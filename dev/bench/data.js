@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1782922099485,
+  "lastUpdate": 1782922101880,
   "repoUrl": "https://github.com/openvdb/fvdb-reality-capture",
   "entries": {
     "fvdb-reality-capture Benchmark with pytest-benchmark": [
@@ -21786,6 +21786,88 @@ window.BENCHMARK_DATA = {
           {
             "name": "garden/fvdb_mcmc - peak_gpu_memory_gb",
             "value": 3.6448,
+            "unit": "GB"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "Mark Harris",
+            "username": "harrism",
+            "email": "mharris@nvidia.com"
+          },
+          "committer": {
+            "name": "GitHub",
+            "username": "web-flow",
+            "email": "noreply@github.com"
+          },
+          "id": "6d03f1a93174a09652baf8a3088befddb7296222",
+          "message": "CODEOWNERS: require NVIDIA review for governance/CI files; add governance docs (#298)\n\n## What\n\n- Split `CODEOWNERS` into two review tiers:\n  - **Default (`@openvdb/fvdb-dev`)** — any maintainer may review code.\n- **`@openvdb/fvdb-dev-nvidia`** (child team of `fvdb-dev`) — required\nfor governance, legal, and CI/CD infrastructure: `.github/`,\n`CODEOWNERS`, `LICENSE`, `MAINTAINERS.md`, `CODE_OF_CONDUCT.md`,\n`CONTRIBUTING.md`, `SECURITY.md`, `.gitmodules`.\n- Add the governance docs that were missing in this repo —\n`MAINTAINERS.md`, `CODE_OF_CONDUCT.md`, `CONTRIBUTING.md` — mirrored\nfrom `fvdb-core` so the new `CODEOWNERS` rules protect real files.\n\n## Why\n\nCertain files (legal, governance, release/CI automation) should require\nsign-off from an NVIDIA maintainer. The listed patterns match files\n**even before they exist**, so a non-NVIDIA contributor cannot introduce\nthem without NVIDIA approval. This `CODEOWNERS` is kept **identical**\nacross `fvdb-core`, `fvdb-reality-capture`, and `fvdb-examples`.\n\n## Notes for reviewers\n\n- `MAINTAINERS.md` and `CODE_OF_CONDUCT.md` are copied verbatim from\n`fvdb-core` (same committer list).\n- `CONTRIBUTING.md` is `fvdb-core`'s, with project-identity references\nrebranded to *fVDB-Reality-Capture* and the **Release Process** section\npointing to [`fvdb-core`'s release\nprocess](https://github.com/openvdb/fvdb-core/blob/main/docs/release-process.md)\nrather than a local doc (this repo has none).\n- For enforcement, branch protection must require Code Owner review and\n`fvdb-dev-nvidia` needs explicit write access.\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n\n---------\n\nSigned-off-by: Mark Harris <mharris@nvidia.com>\nCo-authored-by: Claude Opus 4.8 <noreply@anthropic.com>",
+          "timestamp": "2026-07-01T07:07:58Z",
+          "url": "https://github.com/openvdb/fvdb-reality-capture/commit/6d03f1a93174a09652baf8a3088befddb7296222"
+        },
+        "date": 1782922101377,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "bicycle/fvdb_default - training_time",
+            "value": 756.25,
+            "unit": "seconds"
+          },
+          {
+            "name": "bicycle/fvdb_default - peak_gpu_memory_gb",
+            "value": 4.5158,
+            "unit": "GB"
+          },
+          {
+            "name": "bicycle/fvdb_mcmc - training_time",
+            "value": 373.85,
+            "unit": "seconds"
+          },
+          {
+            "name": "bicycle/fvdb_mcmc - peak_gpu_memory_gb",
+            "value": 1.45,
+            "unit": "GB"
+          },
+          {
+            "name": "bonsai/fvdb_default - training_time",
+            "value": 481.02,
+            "unit": "seconds"
+          },
+          {
+            "name": "bonsai/fvdb_default - peak_gpu_memory_gb",
+            "value": 1.6159,
+            "unit": "GB"
+          },
+          {
+            "name": "bonsai/fvdb_mcmc - training_time",
+            "value": 648,
+            "unit": "seconds"
+          },
+          {
+            "name": "bonsai/fvdb_mcmc - peak_gpu_memory_gb",
+            "value": 1.5635,
+            "unit": "GB"
+          },
+          {
+            "name": "garden/fvdb_default - training_time",
+            "value": 935.85,
+            "unit": "seconds"
+          },
+          {
+            "name": "garden/fvdb_default - peak_gpu_memory_gb",
+            "value": 5.5606,
+            "unit": "GB"
+          },
+          {
+            "name": "garden/fvdb_mcmc - training_time",
+            "value": 757.03,
+            "unit": "seconds"
+          },
+          {
+            "name": "garden/fvdb_mcmc - peak_gpu_memory_gb",
+            "value": 3.6428,
             "unit": "GB"
           }
         ]
