@@ -17,7 +17,7 @@ import tempfile
 import zipfile
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Optional, Union
 
 import msgpack
 import numpy as np
@@ -150,7 +150,7 @@ def _extract_postactivation_gaussian_arrays(
     Convert fvdb model tensors to post-activation arrays for ParticleField3DGaussianSplat export.
 
     Args:
-        model: Gaussian splat model in fvdb training parameterization.
+        model (GaussianSplat3d): Gaussian splat model in fvdb training parameterization.
 
     Returns:
         Arrays with activations applied (exp scale, sigmoid opacity, normalized quats).
@@ -272,9 +272,9 @@ def _write_particlefield3d_gaussian_splat(
     Write post-activation gaussian data to a ParticleField3DGaussianSplat prim.
 
     Args:
-        stage: USD stage to author the prim on.
-        model: Gaussian splat model to export.
-        prim_path: Absolute prim path (e.g. ``/World/ambulance/gaussians``).
+        stage (Usd.Stage): USD stage to author the prim on.
+        model (GaussianSplat3d): Gaussian splat model to export.
+        prim_path (str): Absolute prim path (e.g. ``/World/ambulance/gaussians``).
         linear_srgb: Color space flag passed to ColorSpaceAPI (see 3dgrut convention).
         projection_mode_hint: ParticleField3DGaussianSplat projection hint.
         sorting_mode_hint: ParticleField3DGaussianSplat sorting hint.
@@ -340,8 +340,8 @@ def _build_particlefield3d_gaussians_payload(
     Asset naming (e.g. ``/World/ambulance``) is applied only in ``default.usda``.
 
     Args:
-        model: Gaussian splat model to export.
-        linear_srgb: Color space flag for radiance SH coefficients.
+        model (GaussianSplat3d): Gaussian splat model to export.
+        linear_srgb (bool): Color space flag for radiance SH coefficients.
         sorting_mode_hint: ParticleField3DGaussianSplat sorting hint.
         projection_mode_hint: ParticleField3DGaussianSplat projection hint.
 
@@ -429,9 +429,9 @@ def _define_asset_xform(
 
 def _compose_isaac_scene_usdz(
     out_path: Path,
-    model: GaussianSplat3d | None,
-    mesh_vertices: np.ndarray | None,
-    mesh_faces: np.ndarray | None,
+    model: Optional[GaussianSplat3d],
+    mesh_vertices: Optional[np.ndarray],
+    mesh_faces: Optional[np.ndarray],
     *,
     apply_ecef2enu_rotation: bool,
     linear_srgb: bool,
@@ -448,12 +448,12 @@ def _compose_isaac_scene_usdz(
             mesh                    (collision mesh, when provided)
 
     Args:
-        out_path: Output ``.usdz`` path.
-        model: Optional Gaussian splat model.
-        mesh_vertices: Optional mesh vertex positions.
-        mesh_faces: Optional mesh face indices; required when ``mesh_vertices`` is set.
-        apply_ecef2enu_rotation: Apply -90° X upright rotation on the asset xform.
-        linear_srgb: Color space flag for ParticleField3DGaussianSplat export.
+        out_path (Path): Output ``.usdz`` path.
+        model (GaussianSplat3d | None): Optional Gaussian splat model.
+        mesh_vertices (np.ndarray | None): Optional mesh vertex positions.
+        mesh_faces (np.ndarray | None): Optional mesh face indices; required when ``mesh_vertices`` is set.
+        apply_ecef2enu_rotation (bool): Apply -90° X upright rotation on the asset xform.
+        linear_srgb (bool): Color space flag for ParticleField3DGaussianSplat export.
         sorting_mode_hint: ParticleField3DGaussianSplat sorting hint.
         projection_mode_hint: ParticleField3DGaussianSplat projection hint.
 
@@ -738,7 +738,7 @@ def _serialize_particlefield3d_default_layer(
 def _write_particlefield3d_usdz(
     file_path: Path,
     stages: list[NamedUSDStage],
-    extra_files: list["NamedSerialized"] | None = None,
+    extra_files: Optional[list["NamedSerialized"]] = None,
 ) -> None:
     """
     Write a USDZ archive from in-memory USD stages (``default.usda`` first).
@@ -767,8 +767,8 @@ def build_legacy_gaussians_payload(
     Build ``gauss.usda`` and ``.nurec`` payload layers for legacy NuRec USDZ export.
 
     Args:
-        model: Gaussian splat model to serialize.
-        archive_stem: Base filename stem for ``{stem}.nurec`` and referenced layers.
+        model (GaussianSplat3d): Gaussian splat model to serialize.
+        archive_stem (str): Base filename stem for ``{stem}.nurec`` and referenced layers.
 
     Returns:
         Tuple of (gauss USD stage, compressed NuRec model file).
@@ -829,7 +829,7 @@ class NamedSerialized:
     """
 
     filename: str
-    serialized: str | bytes
+    serialized: Union[str, bytes]
 
     def save_to_zip(self, zip_file: zipfile.ZipFile):
         """
@@ -1068,7 +1068,7 @@ def fill_3dgut_template(
     return template
 
 
-def _export_splats_to_usdz_legacy(model: GaussianSplat3d, out_path: str | Path) -> None:
+def _export_splats_to_usdz_legacy(model: GaussianSplat3d, out_path: Union[str, Path]) -> None:
     """
     Export an :class:`fvdb.GaussianSplat3d` model to a USDZ file using the legacy NuRec format (UsdVol.Volume + .nurec msgpack).
 
@@ -1094,12 +1094,12 @@ def _export_splats_to_usdz_particlefield3d(
     projection_mode_hint: str = DEFAULT_PROJECTION_MODE_HINT,
 ) -> None:
     """
-    Export a Gaussian splat model to USDZ using the ParticleField3DGaussianSplat schema.
+    Export a :class:`fvdb.GaussianSplat3d` to USDZ using the ParticleField3DGaussianSplat schema.
 
     Args:
-        model: Gaussian splat model to export.
-        out_path: Output ``.usdz`` path.
-        linear_srgb: Color space flag for radiance SH coefficients.
+        model (GaussianSplat3d): Gaussian splat model to export.
+        out_path (Path): Output ``.usdz`` path.
+        linear_srgb (bool): Color space flag for radiance SH coefficients.
         sorting_mode_hint: ParticleField3DGaussianSplat sorting hint.
         projection_mode_hint: ParticleField3DGaussianSplat projection hint.
     """
@@ -1119,11 +1119,11 @@ def _export_splats_to_usdz_particlefield3d(
 
 @torch.no_grad()
 def export_splats_to_usdz(
-    model: GaussianSplat3d | None,
-    out_path: str | Path,
+    model: Optional[GaussianSplat3d],
+    out_path: Union[str, Path],
     *,
-    mesh_vertices: np.ndarray | None = None,
-    mesh_faces: np.ndarray | None = None,
+    mesh_vertices: Optional[np.ndarray] = None,
+    mesh_faces: Optional[np.ndarray] = None,
     apply_ecef2enu_rotation: bool = False,
     legacy: bool = False,
     linear_srgb: bool = False,
@@ -1131,16 +1131,20 @@ def export_splats_to_usdz(
     projection_mode_hint: str = DEFAULT_PROJECTION_MODE_HINT,
 ) -> None:
     """
-    Export Gaussian splat data to a USDZ file.
+    Export a :class:`fvdb.GaussianSplat3d` (and optional collision mesh) to a USDZ file.
+
+    When ``mesh_vertices`` / ``mesh_faces`` or ``apply_ecef2enu_rotation`` are set, the export packages
+    splats and mesh under ``/World/<asset>/`` for Isaac Sim (ParticleField3DGaussianSplat + ``UsdGeom.Mesh``).
+    Otherwise exports splats only (ParticleField3DGaussianSplat by default, or legacy NuRec with ``legacy=True``).
 
     Args:
-        model: The Gaussian Splat model to export. Required unless exporting mesh-only.
-        out_path: The output path for the usdz file. If the file extension is not ``.usdz``,
+        model (GaussianSplat3d | None): The Gaussian splat model to export. Required unless exporting mesh-only.
+        out_path (str | Path): The output path for the usdz file. If the file extension is not ``.usdz``,
             it will be added. *e.g.*, ``./scene`` will save to ``./scene.usdz``.
-        mesh_vertices: Optional mesh vertex positions; packages under ``/World/<output_file_name>/mesh``
+        mesh_vertices (np.ndarray | None): Optional mesh vertex positions; packages under ``/World/<output_file_name>/mesh``
             (same asset xform as splats, from the output ``.usdz`` filename stem).
-        mesh_faces: Optional mesh face indices. Required when ``mesh_vertices`` is set.
-        apply_ecef2enu_rotation: When True, apply the -90° X upright rotation on
+        mesh_faces (np.ndarray | None): Optional mesh face indices. Required when ``mesh_vertices`` is set.
+        apply_ecef2enu_rotation (bool): When True, apply the -90° X upright rotation on
             ``/World/<output_file_name>``. Splats-only or with mesh.
         legacy (bool): If True, export using the legacy NuRec format (isaac sim versions prior to 6.0)
             (UsdVol.Volume + .nurec msgpack). If False (default), export using the
