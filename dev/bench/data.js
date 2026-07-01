@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1782836206776,
+  "lastUpdate": 1782908574486,
   "repoUrl": "https://github.com/openvdb/fvdb-reality-capture",
   "entries": {
     "fvdb-reality-capture Benchmark with pytest-benchmark": [
@@ -12599,6 +12599,133 @@ window.BENCHMARK_DATA = {
             "unit": "iter/sec",
             "range": "stddev: 0.0003223029852191994",
             "extra": "mean: 17.99981913114368 msec\nrounds: 61"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "Mark Harris",
+            "username": "harrism",
+            "email": "mharris@nvidia.com"
+          },
+          "committer": {
+            "name": "GitHub",
+            "username": "web-flow",
+            "email": "noreply@github.com"
+          },
+          "id": "6d03f1a93174a09652baf8a3088befddb7296222",
+          "message": "CODEOWNERS: require NVIDIA review for governance/CI files; add governance docs (#298)\n\n## What\n\n- Split `CODEOWNERS` into two review tiers:\n  - **Default (`@openvdb/fvdb-dev`)** — any maintainer may review code.\n- **`@openvdb/fvdb-dev-nvidia`** (child team of `fvdb-dev`) — required\nfor governance, legal, and CI/CD infrastructure: `.github/`,\n`CODEOWNERS`, `LICENSE`, `MAINTAINERS.md`, `CODE_OF_CONDUCT.md`,\n`CONTRIBUTING.md`, `SECURITY.md`, `.gitmodules`.\n- Add the governance docs that were missing in this repo —\n`MAINTAINERS.md`, `CODE_OF_CONDUCT.md`, `CONTRIBUTING.md` — mirrored\nfrom `fvdb-core` so the new `CODEOWNERS` rules protect real files.\n\n## Why\n\nCertain files (legal, governance, release/CI automation) should require\nsign-off from an NVIDIA maintainer. The listed patterns match files\n**even before they exist**, so a non-NVIDIA contributor cannot introduce\nthem without NVIDIA approval. This `CODEOWNERS` is kept **identical**\nacross `fvdb-core`, `fvdb-reality-capture`, and `fvdb-examples`.\n\n## Notes for reviewers\n\n- `MAINTAINERS.md` and `CODE_OF_CONDUCT.md` are copied verbatim from\n`fvdb-core` (same committer list).\n- `CONTRIBUTING.md` is `fvdb-core`'s, with project-identity references\nrebranded to *fVDB-Reality-Capture* and the **Release Process** section\npointing to [`fvdb-core`'s release\nprocess](https://github.com/openvdb/fvdb-core/blob/main/docs/release-process.md)\nrather than a local doc (this repo has none).\n- For enforcement, branch protection must require Code Owner review and\n`fvdb-dev-nvidia` needs explicit write access.\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n\n---------\n\nSigned-off-by: Mark Harris <mharris@nvidia.com>\nCo-authored-by: Claude Opus 4.8 <noreply@anthropic.com>",
+          "timestamp": "2026-07-01T07:07:58Z",
+          "url": "https://github.com/openvdb/fvdb-reality-capture/commit/6d03f1a93174a09652baf8a3088befddb7296222"
+        },
+        "date": 1782908573737,
+        "tool": "pytest",
+        "benches": [
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_project_gaussians[garden-00000664]",
+            "value": 7225.149020696408,
+            "unit": "iter/sec",
+            "range": "stddev: 0.000011668243869368097",
+            "extra": "mean: 138.40544978871776 usec\nrounds: 5905"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_render_gaussians[garden-00000664]",
+            "value": 707.6556928291091,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00004917867478777631",
+            "extra": "mean: 1.4131165906433099 msec\nrounds: 855"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_forward[garden-00000664]",
+            "value": 648.8287909623134,
+            "unit": "iter/sec",
+            "range": "stddev: 0.000024243861533170523",
+            "extra": "mean: 1.5412386347973945 msec\nrounds: 638"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_backward[garden-00000664]",
+            "value": 190.5824157939964,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00005653882201622977",
+            "extra": "mean: 5.247073796571643 msec\nrounds: 467"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_project_gaussians[garden-00006640]",
+            "value": 296.1595166892032,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00036021060378294234",
+            "extra": "mean: 3.376558724767989 msec\nrounds: 3448"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_render_gaussians[garden-00006640]",
+            "value": 107.81919778815414,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00010187821978264537",
+            "extra": "mean: 9.274786128207197 msec\nrounds: 117"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_forward[garden-00006640]",
+            "value": 79.57476202074629,
+            "unit": "iter/sec",
+            "range": "stddev: 0.0000788793665079129",
+            "extra": "mean: 12.566798499997844 msec\nrounds: 80"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_backward[garden-00006640]",
+            "value": 26.800249326134878,
+            "unit": "iter/sec",
+            "range": "stddev: 0.0002347439592599846",
+            "extra": "mean: 37.313085704200034 msec\nrounds: 595"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_project_gaussians[garden-00016600]",
+            "value": 242.05771731487243,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00044526771889466716",
+            "extra": "mean: 4.13124609738918 msec\nrounds: 3409"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_render_gaussians[garden-00016600]",
+            "value": 70.66782890798694,
+            "unit": "iter/sec",
+            "range": "stddev: 0.0001379176281602738",
+            "extra": "mean: 14.150710662160716 msec\nrounds: 74"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_forward[garden-00016600]",
+            "value": 54.97262214990587,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00023162835816436676",
+            "extra": "mean: 18.190873218182706 msec\nrounds: 55"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_backward[garden-00016600]",
+            "value": 20.39696771249837,
+            "unit": "iter/sec",
+            "range": "stddev: 0.0006775614880664071",
+            "extra": "mean: 49.026895276558385 msec\nrounds: 546"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_forward_mcmc[garden-00000664]",
+            "value": 621.743156960956,
+            "unit": "iter/sec",
+            "range": "stddev: 0.000048308267899268726",
+            "extra": "mean: 1.6083811921436197 msec\nrounds: 713"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_forward_mcmc[garden-00006640]",
+            "value": 79.18516153292794,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00018937887006119939",
+            "extra": "mean: 12.628628655182643 msec\nrounds: 87"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_forward_mcmc[garden-00016600]",
+            "value": 55.44338701927111,
+            "unit": "iter/sec",
+            "range": "stddev: 0.0003001160722904438",
+            "extra": "mean: 18.036416131150467 msec\nrounds: 61"
           }
         ]
       }
