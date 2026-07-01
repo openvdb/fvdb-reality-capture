@@ -17,7 +17,7 @@ import tempfile
 import zipfile
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional
 
 import msgpack
 import numpy as np
@@ -408,7 +408,7 @@ def _build_mesh_payload_stage(
 def _define_asset_xform(
     stage: Usd.Stage,
     asset_path: str,
-    matrix: Gf.Matrix4d | None,
+    matrix: Optional[Gf.Matrix4d],
 ) -> UsdGeom.Xform:
     """
     Create an asset root xform and optionally set its transform op.
