@@ -135,9 +135,7 @@ def _prepare_mesh(
         )
 
     if watertight:
-        vertices, faces = pcu.make_mesh_watertight(
-            vertices, faces, resolution=resolution
-        )
+        vertices, faces = pcu.make_mesh_watertight(vertices, faces, resolution=resolution)
         logger.info(
             "Watertight mesh: %d vertices, %d faces",
             vertices.shape[0],
@@ -152,9 +150,7 @@ def _prepare_mesh(
     return vertices.astype(np.float32), faces.astype(np.int32)
 
 
-def _write_mesh_obj(
-    vertices: np.ndarray, faces: np.ndarray, output_path: pathlib.Path
-) -> None:
+def _write_mesh_obj(vertices: np.ndarray, faces: np.ndarray, output_path: pathlib.Path) -> None:
     """Write a plain OBJ file (training-frame coordinates)."""
     with open(output_path, "w", encoding="utf-8") as handle:
         for vertex in vertices:
@@ -193,9 +189,7 @@ def crop_and_convert_mesh_to_obj(
     logger: logging.Logger = logging.getLogger(__name__),
 ) -> tuple[np.ndarray, np.ndarray]:
     """Convert a mesh to OBJ in the training coordinate frame."""
-    vertices, faces = _prepare_mesh(
-        input_path, bbox, resolution, logger, watertight=watertight
-    )
+    vertices, faces = _prepare_mesh(input_path, bbox, resolution, logger, watertight=watertight)
     _write_mesh_obj(vertices, faces, output_path)
     logger.info("Saved mesh OBJ to %s", output_path)
     return vertices, faces
@@ -208,18 +202,10 @@ def main() -> None:
     parser = argparse.ArgumentParser(
         description="Crop mesh and/or splat assets and export an Isaac-ready combined USDZ",
     )
-    parser.add_argument(
-        "--input-splat", type=Path, help="Input splat file (PLY format)"
-    )
-    parser.add_argument(
-        "--input-mesh", type=Path, help="Input mesh file (PLY/OBJ format)"
-    )
-    parser.add_argument(
-        "--output-path", type=Path, required=True, help="Output path without extension"
-    )
-    parser.add_argument(
-        "--resolution", type=int, default=100_000, help="Watertight mesh resolution"
-    )
+    parser.add_argument("--input-splat", type=Path, help="Input splat file (PLY format)")
+    parser.add_argument("--input-mesh", type=Path, help="Input mesh file (PLY/OBJ format)")
+    parser.add_argument("--output-path", type=Path, required=True, help="Output path without extension")
+    parser.add_argument("--resolution", type=int, default=100_000, help="Watertight mesh resolution")
     parser.add_argument(
         "--center",
         action="store_true",

@@ -77,13 +77,9 @@ class Convert(BaseCommand):
         out_file_type = self.out_path.suffix.lower()
 
         if in_file_type not in valid_input_types:
-            raise ValueError(
-                f"Input file type {in_file_type} is not supported. Must be one of {valid_input_types}"
-            )
+            raise ValueError(f"Input file type {in_file_type} is not supported. Must be one of {valid_input_types}")
         if out_file_type not in valid_output_types:
-            raise ValueError(
-                f"Output file type {out_file_type} is not supported. Must be one of {valid_output_types}"
-            )
+            raise ValueError(f"Output file type {out_file_type} is not supported. Must be one of {valid_output_types}")
 
         if out_file_type not in valid_conversions[in_file_type]:
             raise ValueError(
@@ -91,17 +87,11 @@ class Convert(BaseCommand):
                 f"Supported output types for {in_file_type} are: {valid_conversions[in_file_type]}"
             )
         if self.mesh_path is not None and out_file_type != ".usdz":
-            raise ValueError(
-                "--mesh-path is only supported for USDZ export (output file must end in .usdz)"
-            )
+            raise ValueError("--mesh-path is only supported for USDZ export (output file must end in .usdz)")
         if self.ecef2enu_rotation and out_file_type != ".usdz":
-            raise ValueError(
-                "--ecef2enu-rotation is only supported for USDZ export (output file must end in .usdz)"
-            )
+            raise ValueError("--ecef2enu-rotation is only supported for USDZ export (output file must end in .usdz)")
         if self.legacy and out_file_type != ".usdz":
-            raise ValueError(
-                "--legacy is only supported for USDZ export (output file must end in .usdz)"
-            )
+            raise ValueError("--legacy is only supported for USDZ export (output file must end in .usdz)")
         if self.legacy and self.mesh_path is not None:
             raise ValueError("--legacy cannot be used with --mesh-path")
         if self.legacy and self.ecef2enu_rotation:
@@ -109,19 +99,13 @@ class Convert(BaseCommand):
 
         if in_file_type == ".ply":
             model, metadata = GaussianSplat3d.from_ply(self.in_path)
-            logger.info(
-                f"Loaded Gaussian Splat model with {model.num_gaussians} splats from {self.in_path}"
-            )
+            logger.info(f"Loaded Gaussian Splat model with {model.num_gaussians} splats from {self.in_path}")
         elif in_file_type in (".pt", ".pth"):
-            checkpoint = torch.load(
-                self.in_path, map_location="cpu", weights_only=False
-            )
+            checkpoint = torch.load(self.in_path, map_location="cpu", weights_only=False)
             runner = GaussianSplatReconstruction.from_state_dict(checkpoint)
             model = runner.model
             metadata = runner.reconstruction_metadata
-            logger.info(
-                f"Loaded Gaussian Splat model with {model.num_gaussians} splats from {self.in_path}"
-            )
+            logger.info(f"Loaded Gaussian Splat model with {model.num_gaussians} splats from {self.in_path}")
 
         mesh_vertices = None
         mesh_faces = None
@@ -140,9 +124,7 @@ class Convert(BaseCommand):
 
         if out_file_type == ".ply":
             model.save_ply(self.out_path, metadata=metadata)
-            logger.info(
-                f"Saved Gaussian Splat model with {model.num_gaussians} splats to {self.out_path}"
-            )
+            logger.info(f"Saved Gaussian Splat model with {model.num_gaussians} splats to {self.out_path}")
         elif out_file_type == ".usdz":
             export_splats_to_usdz(
                 model,
@@ -171,6 +153,4 @@ class Convert(BaseCommand):
                     self.out_path,
                 )
             else:
-                logger.info(
-                    f"Exported Gaussian Splat model with {model.num_gaussians} splats to {self.out_path}"
-                )
+                logger.info(f"Exported Gaussian Splat model with {model.num_gaussians} splats to {self.out_path}")
