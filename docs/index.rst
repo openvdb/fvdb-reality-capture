@@ -86,6 +86,7 @@ A common reality capture pipeline typically resembles the figure below:
 
    self
    installation
+   release_notes
    GitHub Repository <https://github.com/openvdb/fvdb-reality-capture>
 
 .. toctree::
