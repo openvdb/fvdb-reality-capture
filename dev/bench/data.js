@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1782922101880,
+  "lastUpdate": 1782994929168,
   "repoUrl": "https://github.com/openvdb/fvdb-reality-capture",
   "entries": {
     "fvdb-reality-capture Benchmark with pytest-benchmark": [
@@ -12726,6 +12726,133 @@ window.BENCHMARK_DATA = {
             "unit": "iter/sec",
             "range": "stddev: 0.0003001160722904438",
             "extra": "mean: 18.036416131150467 msec\nrounds: 61"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "Mark Harris",
+            "username": "harrism",
+            "email": "mharris@nvidia.com"
+          },
+          "committer": {
+            "name": "GitHub",
+            "username": "web-flow",
+            "email": "noreply@github.com"
+          },
+          "id": "5fe483e54bfdb6fe618f8af2a6a6cc1df32e8f51",
+          "message": "CI: correct the change-detection gate so docs-only PRs skip cleanly (#300)\n\n## Approach\n\nGate the expensive GPU jobs on whether the PR touches anything that\nneeds testing. Uses `dorny/paths-filter` with a **positive allowlist of\nskippable paths + `predicate-quantifier: every`, inverted**:\n\n- `skippable_only` is true only when *every* changed file is a\ndoc/non-code path (`**/*.md`, `CODEOWNERS`, `debug/`, `examples/`,\n`notebooks/`, `scripts/`).\n- `should_test = !skippable_only`, so:\n- docs/non-code only -> skip (reported `skipped`, satisfies required\nchecks)\n  - any real source file, including **mixed source+docs** -> run\n\nThis is dorny's documented `every` idiom (\"true only if every changed\nfile matches\"). It replaces the earlier `**`+negation form\n(quantifier/negation semantics were unreliable) and the interim shell\nscript. The gated suite has no notebook/doc tests; the Sphinx docs build\nruns on every PR via `docs-build-test.yml`.\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n\n---------\n\nSigned-off-by: Mark Harris <mharris@nvidia.com>\nCo-authored-by: Claude Opus 4.8 <noreply@anthropic.com>",
+          "timestamp": "2026-07-01T22:16:43Z",
+          "url": "https://github.com/openvdb/fvdb-reality-capture/commit/5fe483e54bfdb6fe618f8af2a6a6cc1df32e8f51"
+        },
+        "date": 1782994928402,
+        "tool": "pytest",
+        "benches": [
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_project_gaussians[garden-00000664]",
+            "value": 7318.174140958809,
+            "unit": "iter/sec",
+            "range": "stddev: 0.000011958462245140586",
+            "extra": "mean: 136.64610608309223 usec\nrounds: 6099"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_render_gaussians[garden-00000664]",
+            "value": 716.9983068036848,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00005589052918982966",
+            "extra": "mean: 1.3947034330637567 msec\nrounds: 859"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_forward[garden-00000664]",
+            "value": 653.5891193927275,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00002569731135995741",
+            "extra": "mean: 1.5300132305279728 msec\nrounds: 642"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_backward[garden-00000664]",
+            "value": 193.28694937065256,
+            "unit": "iter/sec",
+            "range": "stddev: 0.000060025903328512004",
+            "extra": "mean: 5.173655041150097 msec\nrounds: 486"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_project_gaussians[garden-00006640]",
+            "value": 296.35571592778206,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00036347819561787143",
+            "extra": "mean: 3.3743233089645783 msec\nrounds: 3392"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_render_gaussians[garden-00006640]",
+            "value": 109.08440572792166,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00008798865447487429",
+            "extra": "mean: 9.167213162385467 msec\nrounds: 117"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_forward[garden-00006640]",
+            "value": 80.53392883446836,
+            "unit": "iter/sec",
+            "range": "stddev: 0.0000979694373295703",
+            "extra": "mean: 12.417126725003413 msec\nrounds: 80"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_backward[garden-00006640]",
+            "value": 27.09733698453442,
+            "unit": "iter/sec",
+            "range": "stddev: 0.0003259470401278593",
+            "extra": "mean: 36.90399542105343 msec\nrounds: 627"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_project_gaussians[garden-00016600]",
+            "value": 242.28156629375204,
+            "unit": "iter/sec",
+            "range": "stddev: 0.0004558171606805042",
+            "extra": "mean: 4.127429153184354 msec\nrounds: 3251"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_render_gaussians[garden-00016600]",
+            "value": 71.61271793371323,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00013580881601335878",
+            "extra": "mean: 13.964000094586948 msec\nrounds: 74"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_forward[garden-00016600]",
+            "value": 55.675523828537585,
+            "unit": "iter/sec",
+            "range": "stddev: 0.0002144821296020894",
+            "extra": "mean: 17.9612140350879 msec\nrounds: 57"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_backward[garden-00016600]",
+            "value": 20.644180534238707,
+            "unit": "iter/sec",
+            "range": "stddev: 0.0007396278468665745",
+            "extra": "mean: 48.439801150812634 msec\nrounds: 557"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_forward_mcmc[garden-00000664]",
+            "value": 631.131921161791,
+            "unit": "iter/sec",
+            "range": "stddev: 0.0000460945663881875",
+            "extra": "mean: 1.584454796960982 msec\nrounds: 724"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_forward_mcmc[garden-00006640]",
+            "value": 79.9450555092031,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00017338876353510717",
+            "extra": "mean: 12.50859097702274 msec\nrounds: 87"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_forward_mcmc[garden-00016600]",
+            "value": 55.91017669718519,
+            "unit": "iter/sec",
+            "range": "stddev: 0.0003313087265317621",
+            "extra": "mean: 17.88583150820815 msec\nrounds: 61"
           }
         ]
       }
