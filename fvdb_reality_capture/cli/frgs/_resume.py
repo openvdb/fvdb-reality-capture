@@ -77,7 +77,7 @@ class Resume(BaseCommand):
 
     # Path to save the output PLY file.
     # Defaults to `out.ply` in the current working directory.
-    # Path must end in .ply or .usdz.
+    # Path must end in .ply, .usdc, or .usdz.
     out_path: Annotated[pathlib.Path, arg(aliases=["-o"])] = pathlib.Path("out_resumed.ply")
 
     def execute(self) -> None:

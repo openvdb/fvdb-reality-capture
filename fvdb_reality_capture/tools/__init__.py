@@ -3,7 +3,7 @@
 #
 
 from ._download_example_data import download_example_data
-from ._export_splats_to_usdz import export_splats_to_usdz
+from ._export_splats_to_usd import export_splats_to_usd
 from ._filter_splats import (
     filter_splats_above_scale,
     filter_splats_below_scale,
@@ -27,5 +27,5 @@ __all__ = [
     "filter_splats_by_opacity_percentile",
     "filter_splats_above_scale",
     "filter_splats_below_scale",
-    "export_splats_to_usdz",
+    "export_splats_to_usd",
 ]

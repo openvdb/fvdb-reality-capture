@@ -110,7 +110,7 @@ class WriterConfig(GaussianSplatReconstructionWriterConfig):
 @dataclass
 class Reconstruct(BaseCommand):
     """
-    Reconstruct a Gaussian Splat Radiance Field from a dataset of posed images, and save the result as a PLY or USDZ file.
+    Reconstruct a Gaussian Splat Radiance Field from a dataset of posed images, and save the result as a PLY or USD file.
 
 
     Example usage:
@@ -119,7 +119,7 @@ class Reconstruct(BaseCommand):
         frgs reconstruct ./colmap_dataset -o ./output.ply
 
         # Reconstruct a Gaussian splat radiance field from a dataset of e57 files
-        frgs reconstruct ./simple_directory_dataset --dataset-type e57 --out-path ./output.usdz
+        frgs reconstruct ./simple_directory_dataset --dataset-type e57 --out-path ./output.usdc
     """
 
     # Path to the dataset. For "colmap" datasets, this should be the
@@ -129,7 +129,7 @@ class Reconstruct(BaseCommand):
 
     # Path to save the output PLY file.
     # Defaults to `out.ply` in the current working directory.
-    # Path must end in .ply or .usdz.
+    # Path must end in .ply, .usdc, or .usdz.
     out_path: Annotated[Path, arg(aliases=["-o"])] = Path("out.ply")
 
     # Name of the run. If None, a name will be generated based on the current date and time.
@@ -320,8 +320,8 @@ class Reconstruct(BaseCommand):
         logging.basicConfig(level=log_level, format="%(levelname)s : %(message)s")
         self.logger = logging.getLogger(__name__)
 
-        if self.out_path.suffix.lower() not in [".ply", ".usdz"]:
-            raise ValueError("Output path must end in .ply or .usdz")
+        if self.out_path.suffix.lower() not in [".ply", ".usdc", ".usdz"]:
+            raise ValueError("Output path must end in .ply, .usdc, or .usdz")
         if self.out_path.exists():
             raise ValueError(f"Output path {self.out_path} already exists")
 

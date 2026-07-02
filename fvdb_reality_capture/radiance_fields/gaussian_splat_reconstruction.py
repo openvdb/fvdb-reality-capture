@@ -22,7 +22,7 @@ from fvdb.viz import Scene
 from scipy.spatial import cKDTree  # type: ignore
 
 from fvdb_reality_capture.sfm_scene import SfmScene
-from fvdb_reality_capture.tools import export_splats_to_usdz
+from fvdb_reality_capture.tools import export_splats_to_usd
 
 from ._gaussian_rendering import RenderBackend, make_render_backend
 from ._private.lpips import LPIPSLoss
@@ -908,14 +908,15 @@ class GaussianSplatReconstruction:
             "pose_adjust_scheduler": self._pose_adjust_scheduler.state_dict() if self._pose_adjust_scheduler else None,
         }
 
-    def save_usdz(self, path: str | pathlib.Path) -> None:
+    def save_usd(self, path: str | pathlib.Path, *, usdz: bool = False) -> None:
         """
-        Save the current Gaussian Splatting model to a USDZ file.
+        Save the current Gaussian Splatting model to a USD file.
 
         Args:
-            path (str | Path): The file path where the USDZ file will be saved.
+            path (str | Path): The file path where the USD file will be saved.
+            usdz (bool): If True, package the export as a ``.usdz`` archive instead of a single ``.usdc`` file.
         """
-        export_splats_to_usdz(self._model, str(path))
+        export_splats_to_usd(self._model, str(path), usdz=usdz)
 
     def save_ply(self, path: str | pathlib.Path) -> None:
         """
