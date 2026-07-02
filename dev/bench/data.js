@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1783008291262,
+  "lastUpdate": 1783008293807,
   "repoUrl": "https://github.com/openvdb/fvdb-reality-capture",
   "entries": {
     "fvdb-reality-capture Benchmark with pytest-benchmark": [
@@ -22077,6 +22077,88 @@ window.BENCHMARK_DATA = {
           {
             "name": "garden/fvdb_mcmc - peak_gpu_memory_gb",
             "value": 3.6428,
+            "unit": "GB"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "Mark Harris",
+            "username": "harrism",
+            "email": "mharris@nvidia.com"
+          },
+          "committer": {
+            "name": "GitHub",
+            "username": "web-flow",
+            "email": "noreply@github.com"
+          },
+          "id": "5fe483e54bfdb6fe618f8af2a6a6cc1df32e8f51",
+          "message": "CI: correct the change-detection gate so docs-only PRs skip cleanly (#300)\n\n## Approach\n\nGate the expensive GPU jobs on whether the PR touches anything that\nneeds testing. Uses `dorny/paths-filter` with a **positive allowlist of\nskippable paths + `predicate-quantifier: every`, inverted**:\n\n- `skippable_only` is true only when *every* changed file is a\ndoc/non-code path (`**/*.md`, `CODEOWNERS`, `debug/`, `examples/`,\n`notebooks/`, `scripts/`).\n- `should_test = !skippable_only`, so:\n- docs/non-code only -> skip (reported `skipped`, satisfies required\nchecks)\n  - any real source file, including **mixed source+docs** -> run\n\nThis is dorny's documented `every` idiom (\"true only if every changed\nfile matches\"). It replaces the earlier `**`+negation form\n(quantifier/negation semantics were unreliable) and the interim shell\nscript. The gated suite has no notebook/doc tests; the Sphinx docs build\nruns on every PR via `docs-build-test.yml`.\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n\n---------\n\nSigned-off-by: Mark Harris <mharris@nvidia.com>\nCo-authored-by: Claude Opus 4.8 <noreply@anthropic.com>",
+          "timestamp": "2026-07-01T22:16:43Z",
+          "url": "https://github.com/openvdb/fvdb-reality-capture/commit/5fe483e54bfdb6fe618f8af2a6a6cc1df32e8f51"
+        },
+        "date": 1783008293328,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "bicycle/fvdb_default - training_time",
+            "value": 734.46,
+            "unit": "seconds"
+          },
+          {
+            "name": "bicycle/fvdb_default - peak_gpu_memory_gb",
+            "value": 4.5482,
+            "unit": "GB"
+          },
+          {
+            "name": "bicycle/fvdb_mcmc - training_time",
+            "value": 366.87,
+            "unit": "seconds"
+          },
+          {
+            "name": "bicycle/fvdb_mcmc - peak_gpu_memory_gb",
+            "value": 1.4514,
+            "unit": "GB"
+          },
+          {
+            "name": "bonsai/fvdb_default - training_time",
+            "value": 474.75,
+            "unit": "seconds"
+          },
+          {
+            "name": "bonsai/fvdb_default - peak_gpu_memory_gb",
+            "value": 1.6131,
+            "unit": "GB"
+          },
+          {
+            "name": "bonsai/fvdb_mcmc - training_time",
+            "value": 641.51,
+            "unit": "seconds"
+          },
+          {
+            "name": "bonsai/fvdb_mcmc - peak_gpu_memory_gb",
+            "value": 1.5628,
+            "unit": "GB"
+          },
+          {
+            "name": "garden/fvdb_default - training_time",
+            "value": 921.48,
+            "unit": "seconds"
+          },
+          {
+            "name": "garden/fvdb_default - peak_gpu_memory_gb",
+            "value": 5.5442,
+            "unit": "GB"
+          },
+          {
+            "name": "garden/fvdb_mcmc - training_time",
+            "value": 745.94,
+            "unit": "seconds"
+          },
+          {
+            "name": "garden/fvdb_mcmc - peak_gpu_memory_gb",
+            "value": 3.6416,
             "unit": "GB"
           }
         ]
