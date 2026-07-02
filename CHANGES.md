@@ -152,19 +152,18 @@ This release focuses on Gaussian splatting quality and performance, foundation-m
 
 ## Version 0.3.0 - October 24, 2025
 
-*164 commits, 177 files changed, 9 contributors.*
+*163 commits, ~150 files changed, 8 contributors.*
 
-This is the initial public release of fVDB-Reality-Capture, a toolbox built on top of fVDB for turning multi-view captures into 3D Gaussian splat reconstructions, meshes, and other derived assets. The release establishes the core pipeline end-to-end: loading COLMAP/e57/simple-directory SfM captures into a common `SfmScene` representation, training and refining 3D Gaussian splats (including multi-GPU support), extracting meshes via TSDF fusion, an interactive Viser-based viewer, a `frgs` command-line tool, benchmarking utilities, foundation-model-assisted masking, and a full documentation and CI setup.
+This is the initial public release of fVDB-Reality-Capture, a toolbox built on top of fVDB for turning multi-view captures into 3D Gaussian splat reconstructions, meshes, and other derived assets. The release establishes the core pipeline end-to-end: loading COLMAP/e57/simple-directory SfM captures into a common `SfmScene` representation, training and refining 3D Gaussian splats on fVDB's `GaussianSplat3d`, extracting meshes via TSDF fusion, a `frgs` command-line tool, benchmarking utilities, foundation-model-assisted masking, and a full documentation and CI setup.
 
 **Highlights:**
 - New `SfmScene`/`ColmapDataset` data model for loading and transforming COLMAP, e57, and plain-directory captures, with a composable torchvision-style transform pipeline and an on-disk caching layer.
-- A rewritten Gaussian splatting stack centered on a new C++ `GaussianSplat3d` class, a documented and optimized `GaussianSplatOptimizer` (refinement, pose optimization, MCMC-style densification controls), checkpointing, and multi-GPU training support.
-- Mesh reconstruction from trained splats via TSDF fusion (`splat2mesh`), including DLNR-based stereo depth estimation and SAM2-based foundation-model masking for cleaner reconstructions.
-- A Python Viser viewer with a registrable custom-renderer API, camera image overlays, and up-axis controls, plus PLY/USDZ export and a unified `frgs` CLI (download, reconstruct, convert, show-data, show, evaluate, mesh).
-- `GARfVDB`, a GARField-style radiance-field segmentation model built on Gaussian splats, with a contrastive-loss training pipeline, SAM2 mask generation, and a paper-faithful evaluation pass.
+- A Gaussian splatting reconstruction pipeline built on fVDB's `GaussianSplat3d`, with a documented and optimized `GaussianSplatOptimizer` (refinement, pose optimization, spatial chunking for large scenes) and checkpointing.
+- Mesh reconstruction from trained splats via TSDF fusion, including a DLNR-based stereo-depth path and SAM2-based foundation-model masking for cleaner reconstructions.
+- PLY/USDZ export and S3 upload/download utilities, unified behind a single pip-installable `frgs` CLI (download, reconstruct, convert, show-data, show, evaluate, mesh, mesh-dlnr).
 - A benchmarking suite (end-to-end benchmark, Nsight profiling scripts, Dockerized CI runs) plus a full Sphinx/GitHub Pages documentation site with tutorials and notebooks.
 
-**Contributors:** @fwilliams, @swahtz, @harrism, @matthewdcong, @bbartlett-nv, @zlalena, @blackencino, @vinegh4, @phapalova
+**Contributors:** @fwilliams, @swahtz, @harrism, @matthewdcong, @bbartlett-nv, @zlalena, @vinegh4, @phapalova
 
 ---
 
@@ -177,26 +176,24 @@ This is the initial public release of fVDB-Reality-Capture, a toolbox built on t
 - Added a better/self-contained caching API (`Cache`, SQLite-backed) for derived dataset artifacts, replacing the earlier `DatasetCache` (@fwilliams).
 - Fixed non-deterministic PCA in the COLMAP dataset loader caused by OpenBLAS, switching to MKL (@swahtz).
 - Fixed bugs found running against real-world (nvrobotics) and text-format COLMAP data, including correct step counting for batch size > 1 (#134, #135 - @fwilliams).
-- Added unit tests for `SfmScene` and transforms (#27 - @fwilliams), and a tutorial notebook for `SfmScene` (#139 - @fwilliams).
+- Unit tests added for `SfmScene` and transforms (#27 - @fwilliams), and a tutorial notebook for `SfmScene` (#139 - @fwilliams).
 - Added support for e57/PLY safety-park and other example datasets, and an `miris_factory` example dataset (#40, #82 - @fwilliams).
 
 ### Gaussian Splatting Training & Optimization
 
 **New Features:**
-- Added a new C++ `GaussianSplat3d` class and switched the Python training/inference path to the new C++ Gaussian Splat API (@fwilliams).
-- Added multi-GPU Gaussian splat training (@bbartlett-nv) and multi-GPU camera pose optimization (@zlalena).
+- Migrated the reconstruction pipeline onto fVDB's C++ `GaussianSplat3d` class (`from fvdb import GaussianSplat3d`), replacing the project's earlier Python-side Gaussian splat representation (@fwilliams).
 - Refactored pose optimization and rewrote `GaussianSplatOptimizer` with documented, configurable refinement (splitting/duplication/deletion), percentile-based gradient pruning thresholds, and deferred pose optimization until after refinement completes (#66, #84 - @fwilliams).
-- Added `__getitem__`/`__setitem__`, chunking, and concatenation support to `GaussianSplat3d` (@fwilliams).
+- Added spatial chunking to `GaussianSplatReconstruction` (`nchunks`/`chunk_overlap_pct`), splitting large scenes into overlapping crops that are reconstructed independently and merged back together (@fwilliams).
 - Added functions to filter `GaussianSplat3d` results by mean, opacity, or scale (#98 - @swahtz).
 - Rolled a self-contained PSNR and LPIPS implementation to remove the `torchmetrics` dependency, then switched to SSIM/PSNR from `fvdb.utils.metrics` (@fwilliams; #29 - @harrism).
 - Renamed `SceneOptimizationRunner` to `GaussianSplatReconstruction`, reworked checkpointing to serialize `SfmScene`s directly, and promoted USDZ export to its own tool as part of a broader API/notebook overhaul (#96 - @fwilliams).
-- Added a `frgs evaluate` script and an `frgs mesh` extraction path built on the new checkpoint API (@fwilliams).
-- Cleaned up the underlying fVDB `GridBatch`/`Grid` Python interface (immutable construction via `from_*` classmethods, tightened tensor/`JaggedTensor` conversion rules) that the reconstruction pipeline builds on (@blackencino).
+- Added a `frgs evaluate` script and an `frgs mesh`/`frgs mesh-dlnr` extraction path built on the new checkpoint API (@fwilliams).
 
 **Optimizations:**
 - Fixed a performance regression in the Gaussian splat loss computation (#137 - @matthewdcong).
 - Fused the L1/SSIM loss interpolation into a single `torch.lerp` call to cut memory bandwidth and temporary tensors (#85 - @matthewdcong).
-- Deferred `loss.item()` synchronization to a single point per iteration, improving multi-GPU throughput by ~10% and single-GPU by ~5-7% (#144 - @matthewdcong).
+- Deferred `loss.item()` synchronization to a single point per iteration, improving training throughput (#144 - @matthewdcong).
 - Reduced extra parameter copies during Gaussian refinement (duplication/splitting/deletion) to cut memory usage (#84 - @fwilliams).
 
 **Bug Fixes:**
@@ -207,33 +204,20 @@ This is the initial public release of fVDB-Reality-Capture, a toolbox built on t
 
 ### Mesh Reconstruction (TSDF Fusion)
 
-- Added mesh reconstruction from trained Gaussian splats via TSDF fusion, along with the `splat2mesh` script (@fwilliams).
+- Added mesh reconstruction from trained Gaussian splats via TSDF fusion (`_tsdf_from_splats.py`/`_mesh_from_splats.py`, exposed as `frgs mesh`) (@fwilliams).
 - Added support for per-image weighting in TSDF fusion (@fwilliams) and extra meshing parameters for thresholding low-opacity background pixels and downsampling large images (#95 - @fwilliams).
-- Made the DLNR stereo-depth baseline scale with per-image rendered depth rather than overall scene scale, making meshing robust across capture types (e.g. orbit vs. robot navigation vs. multi-scale captures) (#86 - @fwilliams).
-- Added a foundation-models module and GS2Mesh integration for mask-assisted meshing (@fwilliams), followed by a SAM2 foundation model for mask prediction (#87 - @swahtz).
+- Added a DLNR-based stereo-depth meshing path (`_tsdf_from_splats_dlnr.py`, `frgs mesh-dlnr`) and made its depth baseline scale with per-image rendered depth rather than overall scene scale, making meshing robust across capture types (e.g. orbit vs. robot navigation vs. multi-scale captures) (#86 - @fwilliams).
+- Added a foundation-models module with a SAM2 wrapper for mask-assisted meshing (@fwilliams, #87 - @swahtz).
 - Documented the TSDF/meshing algorithms in detail with attribution to the underlying papers (#90 - @fwilliams).
-
-### Visualization & Viewer
-
-- Added a Python Viewer API with support for registering custom renderers (@fwilliams).
-- Added camera image overlays and up-axis controls to the Viser-based 3DGS viewer (@swahtz).
-- Fixed the viewer to use the `ProjectionType` enum consistently (#70, #77 - @matthewdcong).
-- Added a new visualization API (#136 - @fwilliams) and fixed the visualization server's IP address handling (#145 - @swahtz).
-- Added attribution for the turbo colormap used in visualizations (@fwilliams).
 
 ### Command-Line Tools & I/O
 
-- Unified all Gaussian-splatting command-line utilities into a single pip-installable `frgs` CLI (download, reconstruct, convert, show-data, show, evaluate, mesh) (#97 - @fwilliams).
+- Unified all Gaussian-splatting command-line utilities into a single pip-installable `frgs` CLI (download, reconstruct, convert, show-data, show, evaluate, mesh, mesh-dlnr, points, resume) (#97 - @fwilliams).
 - Added C++ PLY saving and extra metadata fields in exported PLY files (#37 - @fwilliams).
-- Added USDZ export from PLY (`ply_to_usdz`) and fixed its SH-coefficient data layout/reordering (#71, #143 - @swahtz).
+- Added USDZ export from PLY and fixed its SH-coefficient data layout/reordering (#71, #143 - @swahtz).
 - Added S3 upload/download utilities and tests, and moved the S3 module to its proper package location (#69, #81, #33 - @harrism, @fwilliams).
 - Renamed the package from `fvdb_3dgs`/`fvdb_gs3d` to `fvdb_reality_capture` and cleaned up the public import API into clearly scoped submodules (#45, #126 - @fwilliams).
-
-### Multi-GPU Training
-
-- Added multi-GPU Gaussian splat training support (@bbartlett-nv) and multi-GPU camera pose optimization (@zlalena).
-- Fixed stride handling for splat filtering utilities after the multi-GPU refactor (@bbartlett-nv).
-- Improved multi-GPU training throughput by deferring loss-logging synchronization (#144 - @matthewdcong).
+- Added scripts for extracting geo-referenced orthomosaics and geotagged video frames (@bbartlett-nv).
 
 ### Benchmarking
 
@@ -241,11 +225,6 @@ This is the initial public release of fVDB-Reality-Capture, a toolbox built on t
 - Added Nsight profiling scripts for comparing 3DGS performance (@harrism) and support for benchmarking across multiple configurations (#72 - @fwilliams).
 - Updated the benchmark Docker setup (CPM cache, paths) and fixed Docker benchmark path issues (#73, #78 - @harrism, @fwilliams).
 - Updated the comparison benchmark to track the latest fvdb-reality-capture API and repo layout (#34, #140 - @harrism).
-
-### Scene Segmentation (GARfVDB)
-
-- Implemented GARField-style radiance-field segmentation on top of Gaussian splat scenes (`GARfVDB`), including a configurable grid-based feature model, a contrastive-loss training pipeline, SAM2-based mask generation, and a core `render_top_contributing_gaussian_ids` fVDB kernel for per-pixel Gaussian attribution (@swahtz).
-- Added a GARField evaluation phase: conversion from Nerfstudio scenes to COLMAP scenes, reuse of GARField-generated masks for training, and the "completeness" experiment from the GARField paper, plus checkpoint and PCA robustness fixes (@swahtz).
 
 ### Isaac Sim Integration
 
