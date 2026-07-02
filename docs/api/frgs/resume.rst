@@ -37,7 +37,7 @@
     │     If set, show verbose debug messages. (default: False)                                    │
     │ -o PATH, --out-path PATH                                                                     │
     │     Path to save the output PLY file. Defaults to `out.ply` in the current working           │
-    │     directory. Path must end in .ply or .usdz. (default: out_resumed.ply)                    │
+    │     directory. Path must end in .ply, .usdc, or .usdz. (default: out_resumed.ply)            │
     ╰──────────────────────────────────────────────────────────────────────────────────────────────╯
     ╭─ io options ─────────────────────────────────────────────────────────────────────────────────╮
     │ Configure saving and logging metrics, images, and checkpoints.                               │

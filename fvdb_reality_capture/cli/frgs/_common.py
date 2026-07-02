@@ -11,7 +11,7 @@ from fvdb.types import DeviceIdentifier, to_Mat33fBatch, to_Mat44fBatch, to_Vec2
 
 from fvdb_reality_capture.radiance_fields import GaussianSplatReconstruction
 from fvdb_reality_capture.sfm_scene import SfmScene
-from fvdb_reality_capture.tools import export_splats_to_usdz
+from fvdb_reality_capture.tools import export_splats_to_usd
 
 DatasetType = Literal["colmap", "simple_directory", "e57"]
 NearFarUnits = Literal["absolute", "camera_extent", "median_depth"]
@@ -68,37 +68,37 @@ def load_sfm_scene(path: pathlib.Path, dataset_type: DatasetType) -> SfmScene:
 
 def save_model_from_runner(out_path: pathlib.Path, runner: GaussianSplatReconstruction) -> None:
     """
-    Save the model from the runner to the specified output path in either PLY or USDZ format
+    Save the model from the runner to the specified output path in either PLY or USD format
     depending on the file extension.
 
     Args:
-        out_path (pathlib.Path): Path to save the output file. Must end in .ply or .usdz.
+        out_path (pathlib.Path): Path to save the output file. Must end in .ply, .usdc, or .usdz.
         runner (GaussianSplatReconstruction): The runner containing the model to be saved.
     """
     if out_path.suffix.lower() == ".ply":
         runner.save_ply(out_path)
-    elif out_path.suffix.lower() == ".usdz":
-        runner.save_usdz(out_path)
+    elif out_path.suffix.lower() in (".usdc", ".usdz"):
+        runner.save_usd(out_path, usdz=out_path.suffix.lower() == ".usdz")
     else:
-        raise ValueError("Output path must end in .ply or .usdz")
+        raise ValueError("Output path must end in .ply, .usdc, or .usdz")
 
 
 def save_model_from_splats(out_path: pathlib.Path, model: GaussianSplat3d, metadata: dict) -> None:
     """
-    Save the given Gaussian Splat model to the specified output path in either PLY or USDZ format
+    Save the given Gaussian Splat model to the specified output path in either PLY or USD format
     depending on the file extension.
 
     Args:
-        out_path (pathlib.Path): Path to save the output file. Must end in .ply or .usdz.
+        out_path (pathlib.Path): Path to save the output file. Must end in .ply, .usdc, or .usdz.
         model (GaussianSplat3d): The Gaussian Splat model to be saved.
         metadata (dict): Metadata to be saved with the model.
     """
     if out_path.suffix.lower() == ".ply":
         model.save_ply(out_path, metadata)
-    elif out_path.suffix.lower() == ".usdz":
-        export_splats_to_usdz(model, str(out_path))
+    elif out_path.suffix.lower() in (".usdc", ".usdz"):
+        export_splats_to_usd(model, str(out_path), usdz=out_path.suffix.lower() == ".usdz")
     else:
-        raise ValueError("Output path must end in .ply or .usdz")
+        raise ValueError("Output path must end in .ply, .usdc, or .usdz")
 
 
 def near_far_for_units(

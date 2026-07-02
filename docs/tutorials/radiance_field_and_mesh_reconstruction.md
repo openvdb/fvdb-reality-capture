@@ -431,25 +431,26 @@ plot_reconstruction_results(model, cleaned_sfm_scene, image_id=16)
 
 
 
-## Export a Gaussian Splat radiance field to PLY and USDZ
-You can save Gaussian Splat models to PLY and USDZ files using `fvdb_reality_capture`. This is useful for exporting your Gaussian Splats to be used in other applications, like [SuperSplat](https://superspl.at/editor/), [Blender with the 3DGS Addon](https://github.com/Kiri-Innovation/3dgs-render-blender-addon), or [NVIDIA's Isaac Sim](https://developer.nvidia.com/isaac/sim). Let's see how to do this below.
+## Export a Gaussian Splat radiance field to PLY and USD
+You can save Gaussian Splat models to PLY and USD (`.usdc` or `.usdz`) files using `fvdb_reality_capture`. This is useful for exporting your Gaussian Splats to be used in other applications, like [SuperSplat](https://superspl.at/editor/), [Blender with the 3DGS Addon](https://github.com/Kiri-Innovation/3dgs-render-blender-addon), or [NVIDIA's Isaac Sim](https://developer.nvidia.com/isaac/sim). Let's see how to do this below.
 
 Try going to [supersplat.at](https://superspl.at/editor/) and dragging the PLY saved below to try it out.
 
 
 ```python
-from fvdb_reality_capture.tools import export_splats_to_usdz
+from fvdb_reality_capture.tools import export_splats_to_usd
 
 # Save the model as a PLY file for viewing in external tools like SuperSplat
 model.save_ply("reconstructed_model.ply", metadata=runner.reconstruction_metadata)
 
-# Save the model as a USDZ file for viewing in tools like NVIDIA's Isaac Sim
-export_splats_to_usdz(model, out_path="reconstructed_model.usdz")
+# Save the model as a single-file USDC for viewing in tools like NVIDIA's Isaac Sim.
+# Pass usdz=True to instead package the export as a .usdz archive.
+export_splats_to_usd(model, out_path="reconstructed_model.usdc")
 ```
 
-    2025-10-19 17:42:54,717 - fvdb_reality_capture.tools._export_splats_to_usdz - INFO - Creating USD file containing NuRec model
-    2025-10-19 17:42:54,775 - fvdb_reality_capture.tools._export_splats_to_usdz - INFO - Model bounding box: min=[-184.37056 -157.57402  -40.16857], max=[165.56892 198.76385  88.72124]
-    2025-10-19 17:42:54,985 - fvdb_reality_capture.tools._export_splats_to_usdz - INFO - USDZ file created successfully at reconstructed_model.usdz
+    2025-10-19 17:42:54,717 - fvdb_reality_capture.tools._export_splats_to_usd - INFO - Creating ParticleField3DGaussianSplat at /World/reconstructed_model/gaussians
+    2025-10-19 17:42:54,775 - fvdb_reality_capture.tools._export_splats_to_usd - INFO -   Gaussians: 1,552,032
+    2025-10-19 17:42:54,985 - fvdb_reality_capture.tools._export_splats_to_usd - INFO - Wrote USD scene to reconstructed_model.usdc
 
 
 ## Reconstruct a mesh from a Gaussian Splat radiance field

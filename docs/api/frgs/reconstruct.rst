@@ -3,13 +3,13 @@
     usage: frgs reconstruct [-h] [RECONSTRUCT OPTIONS] PATH
 
     Reconstruct a Gaussian Splat Radiance Field from a dataset of posed images, and save the result
-    as a PLY or USDZ file. Example usage:
+    as a PLY or USD file. Example usage:
 
         # Reconstruct a Gaussian splat radiance field from a Colmap dataset
         frgs reconstruct ./colmap_dataset -o ./output.ply
 
         # Reconstruct a Gaussian splat radiance field from a dataset of e57 files
-        frgs reconstruct ./simple_directory_dataset --dataset-type e57 --out-path ./output.usdz
+        frgs reconstruct ./simple_directory_dataset --dataset-type e57 --out-path ./output.usdc
 
     ╭─ positional arguments ───────────────────────────────────────────────────────────────────────╮
     │ PATH                                                                                         │
@@ -22,7 +22,7 @@
     │     show this help message and exit                                                          │
     │ -o PATH, --out-path PATH                                                                     │
     │     Path to save the output PLY file. Defaults to `out.ply` in the current working           │
-    │     directory. Path must end in .ply or .usdz. (default: out.ply)                            │
+    │     directory. Path must end in .ply, .usdc, or .usdz. (default: out.ply)                    │
     │ -n {None}|STR, --run-name {None}|STR                                                         │
     │     Name of the run. If None, a name will be generated based on the current date and time.   │
     │     (default: None)                                                                          │

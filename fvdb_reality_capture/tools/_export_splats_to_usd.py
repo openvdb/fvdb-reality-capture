@@ -95,7 +95,7 @@ def _initialize_legacy_nurec_usd_stage() -> Usd.Stage:
 
     This format uses ``UsdVol.Volume`` with embedded ``.nurec`` field assets and was
     the Isaac Sim / Omniverse path before OpenUSD's ``ParticleField3DGaussianSplat``
-    schema (Isaac Sim 6.0+). Retained for ``export_splats_to_usdz(..., legacy=True)``.
+    schema (Isaac Sim 6.0+). Retained for ``export_splats_to_usd(..., legacy=True, usdz=True)``.
 
     Returns:
         Usd.Stage: In-memory stage with ``/World`` as default prim.
@@ -384,6 +384,32 @@ def _get_isaac_scene_alignment_matrix() -> Gf.Matrix4d:
     return _rotation_matrix_to_gf_matrix4d(_create_rotation_matrix_x(-90))
 
 
+def _write_mesh_prim(
+    stage: Usd.Stage,
+    vertices: np.ndarray,
+    faces: np.ndarray,
+    prim_path: str,
+) -> UsdGeom.Mesh:
+    """
+    Write a triangle mesh directly onto ``stage`` at ``prim_path``.
+
+    Args:
+        stage: USD stage to author the mesh on.
+        vertices: Mesh vertex positions, shape (V, 3).
+        faces: Triangle face indices, shape (F, 3).
+        prim_path: Absolute prim path for the mesh (e.g. ``/World/ambulance/mesh``).
+
+    Returns:
+        The authored ``UsdGeom.Mesh``.
+    """
+    mesh = UsdGeom.Mesh.Define(stage, prim_path)
+    mesh.CreatePointsAttr(Vt.Vec3fArray.FromNumpy(vertices))
+    mesh.CreateFaceVertexCountsAttr(Vt.IntArray.FromNumpy(np.full(len(faces), 3, dtype=np.int32)))
+    mesh.CreateFaceVertexIndicesAttr(Vt.IntArray.FromNumpy(faces.reshape(-1).astype(np.int32)))
+    mesh.CreateSubdivisionSchemeAttr().Set(UsdGeom.Tokens.none)
+    return mesh
+
+
 def _build_mesh_payload_stage(
     vertices: np.ndarray,
     faces: np.ndarray,
@@ -401,11 +427,7 @@ def _build_mesh_payload_stage(
         In-memory stage with one ``UsdGeom.Mesh`` at ``mesh_prim_path``.
     """
     stage = _initialize_payload_stage(Path(mesh_prim_path).name)
-    mesh = UsdGeom.Mesh.Define(stage, mesh_prim_path)
-    mesh.CreatePointsAttr(Vt.Vec3fArray.FromNumpy(vertices))
-    mesh.CreateFaceVertexCountsAttr(Vt.IntArray.FromNumpy(np.full(len(faces), 3, dtype=np.int32)))
-    mesh.CreateFaceVertexIndicesAttr(Vt.IntArray.FromNumpy(faces.reshape(-1).astype(np.int32)))
-    mesh.CreateSubdivisionSchemeAttr().Set(UsdGeom.Tokens.none)
+    _write_mesh_prim(stage, vertices, faces, mesh_prim_path)
     return stage
 
 
@@ -515,6 +537,65 @@ def _compose_isaac_scene_usdz(
     default_stage = NamedUSDStage(filename="default.usda", stage=root_stage)
     _write_particlefield3d_usdz(out_path, [default_stage, *payload_stages])
     logger.info("Wrote Isaac scene USDZ to %s", out_path)
+
+
+def _build_particlefield3d_scene_stage(
+    model: Optional[GaussianSplat3d],
+    mesh_vertices: Optional[np.ndarray],
+    mesh_faces: Optional[np.ndarray],
+    *,
+    apply_ecef2enu_rotation: bool,
+    linear_srgb: bool,
+    sorting_mode_hint: str,
+    projection_mode_hint: str,
+    asset_name: str,
+) -> Usd.Stage:
+    """
+    Build one self-contained stage with gaussians/mesh authored directly (no references), for
+    single-file ``.usdc`` export.
+
+    Hierarchy (e.g. asset name ``ambulance``)::
+
+        /World/ambulance          (asset xform; optional ecef2enu rotation)
+            gaussians               (ParticleField3DGaussianSplat)
+            mesh                    (collision mesh, when provided)
+
+    Args:
+        model (GaussianSplat3d | None): Optional Gaussian splat model.
+        mesh_vertices (np.ndarray | None): Optional mesh vertex positions.
+        mesh_faces (np.ndarray | None): Optional mesh face indices; required when ``mesh_vertices`` is set.
+        apply_ecef2enu_rotation (bool): Apply -90° X upright rotation on the asset xform.
+        linear_srgb (bool): Color space flag for ParticleField3DGaussianSplat export.
+        sorting_mode_hint: ParticleField3DGaussianSplat sorting hint.
+        projection_mode_hint: ParticleField3DGaussianSplat projection hint.
+        asset_name (str): USD-safe asset name placed under ``/World``.
+
+    Returns:
+        Usd.Stage: Self-contained stage with ``/World`` as ``defaultPrim``.
+    """
+    asset_path, gaussians_scene_path, mesh_scene_path = _asset_scene_paths(asset_name)
+    stage = _initialize_asset_root_stage(asset_name)
+
+    scene_matrix = _get_isaac_scene_alignment_matrix() if apply_ecef2enu_rotation else None
+    _define_asset_xform(stage, asset_path, scene_matrix)
+    if scene_matrix is not None:
+        logger.info("Applied Isaac asset alignment (-90° X) on %s", asset_path)
+
+    if model is not None:
+        _write_particlefield3d_gaussian_splat(
+            stage,
+            model,
+            gaussians_scene_path,
+            linear_srgb=linear_srgb,
+            sorting_mode_hint=sorting_mode_hint,
+            projection_mode_hint=projection_mode_hint,
+        )
+
+    if mesh_vertices is not None and mesh_faces is not None:
+        _write_mesh_prim(stage, mesh_vertices, mesh_faces, mesh_scene_path)
+        logger.info("Wrote mesh at %s", mesh_scene_path)
+
+    return stage
 
 
 def _serialize_nurec_usd(
@@ -1128,7 +1209,7 @@ def _export_splats_to_usdz_particlefield3d(
 
 
 @torch.no_grad()
-def export_splats_to_usdz(
+def export_splats_to_usd(
     model: Optional[GaussianSplat3d],
     out_path: Union[str, Path],
     *,
@@ -1136,13 +1217,18 @@ def export_splats_to_usdz(
     mesh_faces: Optional[np.ndarray] = None,
     apply_ecef2enu_rotation: bool = False,
     legacy: bool = False,
+    usdz: bool = False,
     linear_srgb: bool = False,
     sorting_mode_hint: str = DEFAULT_SORTING_MODE_HINT,
     projection_mode_hint: str = DEFAULT_PROJECTION_MODE_HINT,
     asset_name: Optional[str] = None,
-) -> None:
+) -> Path:
     """
-    Export a :class:`fvdb.GaussianSplat3d` (and optional collision mesh) to a USDZ file.
+    Export a :class:`fvdb.GaussianSplat3d` (and optional collision mesh) to a USD file.
+
+    By default, exports a single self-contained ``.usdc`` file. Pass ``usdz=True`` to instead
+    package the export as a ``.usdz`` archive (required for the legacy NuRec format, which
+    references an external ``.nurec`` sidecar file).
 
     When ``mesh_vertices`` / ``mesh_faces`` or ``apply_ecef2enu_rotation`` are set, the export packages
     splats and mesh under ``/World/<asset>/`` for Isaac Sim (ParticleField3DGaussianSplat + ``UsdGeom.Mesh``).
@@ -1150,8 +1236,9 @@ def export_splats_to_usdz(
 
     Args:
         model (GaussianSplat3d | None): The Gaussian splat model to export. Required unless exporting mesh-only.
-        out_path (str | Path): The output path for the usdz file. If the file extension is not ``.usdz``,
-            it will be added. *e.g.*, ``./scene`` will save to ``./scene.usdz``.
+        out_path (str | Path): The output path for the USD file. Its extension is replaced with
+            ``.usdz`` (if ``usdz=True``) or ``.usdc`` (default). *e.g.*, ``./scene`` will save to
+            ``./scene.usdc``.
         mesh_vertices (np.ndarray | None): Optional mesh vertex positions; packages under ``/World/<asset_name>/mesh``
             (same asset xform as splats).
         mesh_faces (np.ndarray | None): Optional mesh face indices. Required when ``mesh_vertices`` is set.
@@ -1159,7 +1246,8 @@ def export_splats_to_usdz(
             ``/World/<asset_name>``. Splats-only or with mesh.
         legacy (bool): If True, export using the legacy NuRec format (isaac sim versions prior to 6.0)
             (UsdVol.Volume + .nurec msgpack). If False (default), export using the
-            OpenUSD ParticleField3DGaussianSplat schema. Incompatible with mesh export.
+            OpenUSD ParticleField3DGaussianSplat schema. Incompatible with mesh export. Requires ``usdz=True``.
+        usdz (bool): If True, package the export as a ``.usdz`` archive instead of a single ``.usdc`` file.
         linear_srgb (bool): ParticleField3DGaussianSplat export only. Sets ``ColorSpaceAPI`` to
             ``lin_rec709_scene`` when True, else ``srgb_rec709_display`` (matches 3dgrut).
             fvdb trains against ``image / 255`` (gamma-encoded sRGB), so ``False`` (default)
@@ -1171,18 +1259,37 @@ def export_splats_to_usdz(
             ``legacy=True``, which uses a fixed prim name.
 
     Returns:
-        None
+        Path: The final output path (with the resolved ``.usdc``/``.usdz`` extension).
     """
     if isinstance(out_path, str):
         out_path = Path(out_path)
-    out_path = out_path.with_suffix(".usdz")
+    out_path = out_path.with_suffix(".usdz" if usdz else ".usdc")
 
+    if legacy and not usdz:
+        raise ValueError("legacy export requires usdz=True (the legacy NuRec format is only packaged as .usdz)")
     if legacy and mesh_vertices is not None:
         raise ValueError("legacy export does not support mesh export")
     if model is None and mesh_vertices is None:
         raise ValueError("A Gaussian Splat model, mesh (vertices and faces), or both must be provided")
     if mesh_vertices is not None and mesh_faces is None:
         raise ValueError("mesh_faces is required when mesh_vertices is provided")
+
+    if not usdz:
+        resolved_asset_name = _usd_asset_name_from_path(out_path, asset_name)
+        stage = _build_particlefield3d_scene_stage(
+            model,
+            mesh_vertices,
+            mesh_faces,
+            apply_ecef2enu_rotation=apply_ecef2enu_rotation,
+            linear_srgb=linear_srgb,
+            sorting_mode_hint=sorting_mode_hint,
+            projection_mode_hint=projection_mode_hint,
+            asset_name=resolved_asset_name,
+        )
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        stage.GetRootLayer().Export(str(out_path))
+        logger.info(f"Wrote USD scene to {out_path}")
+        return out_path
 
     if mesh_vertices is not None or apply_ecef2enu_rotation:
         _compose_isaac_scene_usdz(
@@ -1196,7 +1303,7 @@ def export_splats_to_usdz(
             projection_mode_hint=projection_mode_hint,
             asset_name=asset_name,
         )
-        return
+        return out_path
 
     if model is None:
         raise ValueError("model is required for splats-only export")
@@ -1212,3 +1319,4 @@ def export_splats_to_usdz(
             projection_mode_hint=projection_mode_hint,
             asset_name=asset_name,
         )
+    return out_path

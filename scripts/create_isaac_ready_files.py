@@ -26,7 +26,7 @@ import point_cloud_utils as pcu
 import torch
 from fvdb import GaussianSplat3d
 
-from fvdb_reality_capture.tools import export_splats_to_usdz
+from fvdb_reality_capture.tools import export_splats_to_usd
 
 
 def _crop_splat_model(
@@ -172,10 +172,11 @@ def crop_and_convert_splat_to_usdz(
     model = _crop_splat_model(model, bbox, logger)
     if center:
         model, _ = _apply_centering(model, None, logger)
-    export_splats_to_usdz(
+    export_splats_to_usd(
         model,
         output_path,
         apply_ecef2enu_rotation=apply_ecef2enu_rotation,
+        usdz=True,
     )
 
 
@@ -270,12 +271,13 @@ def main() -> None:
     if model is None and mesh_vertices is None:
         parser.error("No assets left after cropping")
 
-    export_splats_to_usdz(
+    export_splats_to_usd(
         model,
         usdz_output_path,
         mesh_vertices=mesh_vertices,
         mesh_faces=mesh_faces,
         apply_ecef2enu_rotation=apply_ecef2enu_rotation,
+        usdz=True,
     )
 
 
