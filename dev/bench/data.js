@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1782994929168,
+  "lastUpdate": 1783008291262,
   "repoUrl": "https://github.com/openvdb/fvdb-reality-capture",
   "entries": {
     "fvdb-reality-capture Benchmark with pytest-benchmark": [
@@ -17416,6 +17416,88 @@ window.BENCHMARK_DATA = {
           {
             "name": "garden/fvdb_mcmc - SSIM",
             "value": 0.8667,
+            "unit": ""
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "Mark Harris",
+            "username": "harrism",
+            "email": "mharris@nvidia.com"
+          },
+          "committer": {
+            "name": "GitHub",
+            "username": "web-flow",
+            "email": "noreply@github.com"
+          },
+          "id": "5fe483e54bfdb6fe618f8af2a6a6cc1df32e8f51",
+          "message": "CI: correct the change-detection gate so docs-only PRs skip cleanly (#300)\n\n## Approach\n\nGate the expensive GPU jobs on whether the PR touches anything that\nneeds testing. Uses `dorny/paths-filter` with a **positive allowlist of\nskippable paths + `predicate-quantifier: every`, inverted**:\n\n- `skippable_only` is true only when *every* changed file is a\ndoc/non-code path (`**/*.md`, `CODEOWNERS`, `debug/`, `examples/`,\n`notebooks/`, `scripts/`).\n- `should_test = !skippable_only`, so:\n- docs/non-code only -> skip (reported `skipped`, satisfies required\nchecks)\n  - any real source file, including **mixed source+docs** -> run\n\nThis is dorny's documented `every` idiom (\"true only if every changed\nfile matches\"). It replaces the earlier `**`+negation form\n(quantifier/negation semantics were unreliable) and the interim shell\nscript. The gated suite has no notebook/doc tests; the Sphinx docs build\nruns on every PR via `docs-build-test.yml`.\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n\n---------\n\nSigned-off-by: Mark Harris <mharris@nvidia.com>\nCo-authored-by: Claude Opus 4.8 <noreply@anthropic.com>",
+          "timestamp": "2026-07-01T22:16:43Z",
+          "url": "https://github.com/openvdb/fvdb-reality-capture/commit/5fe483e54bfdb6fe618f8af2a6a6cc1df32e8f51"
+        },
+        "date": 1783008290685,
+        "tool": "customBiggerIsBetter",
+        "benches": [
+          {
+            "name": "bicycle/fvdb_default - PSNR",
+            "value": 25.162,
+            "unit": "dB"
+          },
+          {
+            "name": "bicycle/fvdb_default - SSIM",
+            "value": 0.7452,
+            "unit": ""
+          },
+          {
+            "name": "bicycle/fvdb_mcmc - PSNR",
+            "value": 25.023,
+            "unit": "dB"
+          },
+          {
+            "name": "bicycle/fvdb_mcmc - SSIM",
+            "value": 0.7308,
+            "unit": ""
+          },
+          {
+            "name": "bonsai/fvdb_default - PSNR",
+            "value": 32.476,
+            "unit": "dB"
+          },
+          {
+            "name": "bonsai/fvdb_default - SSIM",
+            "value": 0.9562,
+            "unit": ""
+          },
+          {
+            "name": "bonsai/fvdb_mcmc - PSNR",
+            "value": 32.76,
+            "unit": "dB"
+          },
+          {
+            "name": "bonsai/fvdb_mcmc - SSIM",
+            "value": 0.959,
+            "unit": ""
+          },
+          {
+            "name": "garden/fvdb_default - PSNR",
+            "value": 27.637,
+            "unit": "dB"
+          },
+          {
+            "name": "garden/fvdb_default - SSIM",
+            "value": 0.8653,
+            "unit": ""
+          },
+          {
+            "name": "garden/fvdb_mcmc - PSNR",
+            "value": 27.747,
+            "unit": "dB"
+          },
+          {
+            "name": "garden/fvdb_mcmc - SSIM",
+            "value": 0.8666,
             "unit": ""
           }
         ]
