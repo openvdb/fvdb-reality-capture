@@ -44,6 +44,9 @@ class Convert(BaseCommand):
         # Legacy NuRec USDZ for Isaac Sim 5.x
         frgs convert input.ply output.usdz --legacy
 
+        # Custom asset prim name (/World/my_asset) instead of the output file name
+        frgs convert input.ply output.usdz --prim-path my_asset
+
     """
 
     # Path to the input file. Must be a .ply file or Checkpoint (.pt or .pth) file.
@@ -60,6 +63,9 @@ class Convert(BaseCommand):
 
     # USDZ export only. Export legacy NuRec format (UsdVol.Volume + .nurec) for Isaac Sim 5.x.
     legacy: bool = False
+
+    # USDZ export only. Name of the asset prim placed under /World (i.e. /World/<prim-path>). Defaults to the output file name.
+    prim_path: str | None = None
 
     @torch.no_grad()
     def execute(self) -> None:
@@ -96,6 +102,10 @@ class Convert(BaseCommand):
             raise ValueError("--legacy cannot be used with --mesh-path")
         if self.legacy and self.ecef2enu_rotation:
             raise ValueError("--legacy cannot be used with --ecef2enu-rotation")
+        if self.prim_path is not None and out_file_type != ".usdz":
+            raise ValueError("--prim-path is only supported for USDZ export (output file must end in .usdz)")
+        if self.legacy and self.prim_path is not None:
+            raise ValueError("--legacy cannot be used with --prim-path")
 
         if in_file_type == ".ply":
             model, metadata = GaussianSplat3d.from_ply(self.in_path)
@@ -133,6 +143,7 @@ class Convert(BaseCommand):
                 mesh_faces=mesh_faces,
                 apply_ecef2enu_rotation=self.ecef2enu_rotation,
                 legacy=self.legacy,
+                asset_name=self.prim_path,
             )
             if self.legacy:
                 logger.info(

@@ -35,15 +35,19 @@ GAUSSIANS_PAYLOAD_PRIM = "/gaussians"
 MESH_PAYLOAD_PRIM = "/mesh"
 
 
-def _usd_asset_name_from_path(out_path: Path) -> str:
-    """Derive a valid USD prim name from the output ``.usdz`` file stem."""
-    stem = out_path.stem
-    name = "".join(c if c.isalnum() or c == "_" else "_" for c in stem)
-    if not name:
+def _usd_safe_name(name: str) -> str:
+    """Sanitize an arbitrary string into a valid USD prim name."""
+    safe_name = "".join(c if c.isalnum() or c == "_" else "_" for c in name)
+    if not safe_name:
         return "gaussians"
-    if name[0].isdigit():
-        name = f"asset_{name}"
-    return name
+    if safe_name[0].isdigit():
+        safe_name = f"asset_{safe_name}"
+    return safe_name
+
+
+def _usd_asset_name_from_path(out_path: Path, asset_name: Optional[str] = None) -> str:
+    """Derive a valid USD prim name, from ``asset_name`` if given, else the output ``.usdz`` file stem."""
+    return _usd_safe_name(asset_name if asset_name is not None else out_path.stem)
 
 
 def _asset_scene_paths(asset_name: str) -> tuple[str, str, str]:
@@ -437,6 +441,7 @@ def _compose_isaac_scene_usdz(
     linear_srgb: bool,
     sorting_mode_hint: str,
     projection_mode_hint: str,
+    asset_name: Optional[str] = None,
 ) -> None:
     """
     Package mesh and/or splats into one Isaac-ready USDZ under a single asset xform.
@@ -456,6 +461,8 @@ def _compose_isaac_scene_usdz(
         linear_srgb (bool): Color space flag for ParticleField3DGaussianSplat export.
         sorting_mode_hint: ParticleField3DGaussianSplat sorting hint.
         projection_mode_hint: ParticleField3DGaussianSplat projection hint.
+        asset_name (str | None): Optional override for the asset name under ``/World``.
+            Defaults to the output file's stem.
 
     Returns:
         None
@@ -466,7 +473,7 @@ def _compose_isaac_scene_usdz(
         raise ValueError("mesh_faces is required when mesh_vertices is provided")
 
     mesh_payload_path = MESH_PAYLOAD_PRIM
-    asset_name = _usd_asset_name_from_path(out_path)
+    asset_name = _usd_asset_name_from_path(out_path, asset_name)
     asset_path, gaussians_scene_path, mesh_scene_path = _asset_scene_paths(asset_name)
 
     payload_stages: list[NamedUSDStage] = []
@@ -1092,6 +1099,7 @@ def _export_splats_to_usdz_particlefield3d(
     linear_srgb: bool = False,
     sorting_mode_hint: str = DEFAULT_SORTING_MODE_HINT,
     projection_mode_hint: str = DEFAULT_PROJECTION_MODE_HINT,
+    asset_name: Optional[str] = None,
 ) -> None:
     """
     Export a :class:`fvdb.GaussianSplat3d` to USDZ using the ParticleField3DGaussianSplat schema.
@@ -1102,11 +1110,13 @@ def _export_splats_to_usdz_particlefield3d(
         linear_srgb (bool): Color space flag for radiance SH coefficients.
         sorting_mode_hint: ParticleField3DGaussianSplat sorting hint.
         projection_mode_hint: ParticleField3DGaussianSplat projection hint.
+        asset_name (str | None): Optional override for the asset name under ``/World``.
+            Defaults to the output file's stem.
     """
     logger.info("Creating USD file with ParticleField3DGaussianSplat schema")
     logger.info("Using post-activation gaussian attributes")
 
-    asset_name = _usd_asset_name_from_path(out_path)
+    asset_name = _usd_asset_name_from_path(out_path, asset_name)
     gaussians_stage = _build_particlefield3d_gaussians_payload(
         model,
         linear_srgb=linear_srgb,
@@ -1129,6 +1139,7 @@ def export_splats_to_usdz(
     linear_srgb: bool = False,
     sorting_mode_hint: str = DEFAULT_SORTING_MODE_HINT,
     projection_mode_hint: str = DEFAULT_PROJECTION_MODE_HINT,
+    asset_name: Optional[str] = None,
 ) -> None:
     """
     Export a :class:`fvdb.GaussianSplat3d` (and optional collision mesh) to a USDZ file.
@@ -1141,11 +1152,11 @@ def export_splats_to_usdz(
         model (GaussianSplat3d | None): The Gaussian splat model to export. Required unless exporting mesh-only.
         out_path (str | Path): The output path for the usdz file. If the file extension is not ``.usdz``,
             it will be added. *e.g.*, ``./scene`` will save to ``./scene.usdz``.
-        mesh_vertices (np.ndarray | None): Optional mesh vertex positions; packages under ``/World/<output_file_name>/mesh``
-            (same asset xform as splats, from the output ``.usdz`` filename stem).
+        mesh_vertices (np.ndarray | None): Optional mesh vertex positions; packages under ``/World/<asset_name>/mesh``
+            (same asset xform as splats).
         mesh_faces (np.ndarray | None): Optional mesh face indices. Required when ``mesh_vertices`` is set.
         apply_ecef2enu_rotation (bool): When True, apply the -90° X upright rotation on
-            ``/World/<output_file_name>``. Splats-only or with mesh.
+            ``/World/<asset_name>``. Splats-only or with mesh.
         legacy (bool): If True, export using the legacy NuRec format (isaac sim versions prior to 6.0)
             (UsdVol.Volume + .nurec msgpack). If False (default), export using the
             OpenUSD ParticleField3DGaussianSplat schema. Incompatible with mesh export.
@@ -1155,6 +1166,9 @@ def export_splats_to_usdz(
             matches training; use ``True`` only if your training pipeline optimizes in linear space.
         sorting_mode_hint (str): ParticleField3DGaussianSplat sorting hint (default: ``cameraDistance``).
         projection_mode_hint (str): ParticleField3DGaussianSplat projection hint (default: ``perspective``).
+        asset_name (str | None): Optional override for the asset name placed under ``/World``
+            (e.g. ``/World/<asset_name>``). Defaults to the output file's stem. Ignored when
+            ``legacy=True``, which uses a fixed prim name.
 
     Returns:
         None
@@ -1180,6 +1194,7 @@ def export_splats_to_usdz(
             linear_srgb=linear_srgb,
             sorting_mode_hint=sorting_mode_hint,
             projection_mode_hint=projection_mode_hint,
+            asset_name=asset_name,
         )
         return
 
@@ -1195,4 +1210,5 @@ def export_splats_to_usdz(
             linear_srgb=linear_srgb,
             sorting_mode_hint=sorting_mode_hint,
             projection_mode_hint=projection_mode_hint,
+            asset_name=asset_name,
         )
