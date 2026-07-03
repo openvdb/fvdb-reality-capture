@@ -171,7 +171,7 @@ def _extract_postactivation_gaussian_arrays(
     num_rest_coeffs = (sh_degree + 1) ** 2 - 1
 
     quat_norms = np.linalg.norm(rotations, axis=1, keepdims=True)
-    rotations = rotations / quat_norms
+    rotations = rotations / np.clip(quat_norms, 1e-8, None)
 
     albedo = sh0[:, 0, :].reshape(num_gaussians, 3)
     specular = shN.reshape(num_gaussians, -1)

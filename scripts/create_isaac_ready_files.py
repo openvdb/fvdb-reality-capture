@@ -128,6 +128,8 @@ def _prepare_mesh(
             if all(old_to_new[idx] != -1 for idx in face):
                 valid_faces.append([old_to_new[idx] for idx in face])
         faces = np.array(valid_faces, dtype=np.int32)
+        if vertices.shape[0] == 0:
+            raise ValueError(f"No mesh vertices remain after cropping to bbox {bbox}")
         logger.info(
             "Cropped mesh bounds min=%s max=%s",
             vertices.min(axis=0),
