@@ -175,6 +175,13 @@ def _extract_postactivation_gaussian_arrays(
     specular = shN.reshape(num_gaussians, -1)
     expected_specular_cols = num_rest_coeffs * 3
     if specular.shape[1] != expected_specular_cols:
+        logger.warning(
+            "shN has %d coefficient columns but SH degree %d expects %d; padding/truncating to match. "
+            "This usually indicates a mismatch between the model's SH degree and its shN tensor.",
+            specular.shape[1],
+            sh_degree,
+            expected_specular_cols,
+        )
         padded = np.zeros((num_gaussians, expected_specular_cols), dtype=np.float32)
         if specular.shape[1] > 0:
             padded[:, : min(specular.shape[1], expected_specular_cols)] = specular[:, :expected_specular_cols]

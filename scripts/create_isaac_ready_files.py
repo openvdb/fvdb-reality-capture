@@ -262,6 +262,12 @@ def main() -> None:
             watertight=not args.no_watertight,
         )
 
+    # If cropping removed every splat, fall back to a mesh-only export (model=None) instead of
+    # handing an empty GaussianSplat3d to the exporter (which would fail computing gaussian extents).
+    if model is not None and model.num_gaussians == 0:
+        logger.warning("All splats were removed by cropping; exporting mesh only")
+        model = None
+
     if args.center:
         model, mesh_vertices = _apply_centering(model, mesh_vertices, logger)
 
