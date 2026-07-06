@@ -130,6 +130,13 @@ class ExportSplatsToUsdTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 export_splats_to_usd(model, out_path, legacy=True)
 
+    def test_legacy_rejects_ecef2enu_rotation(self):
+        model = _make_test_splats()
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            out_path = Path(tmp_dir) / "scene.usdc"
+            with self.assertRaises(ValueError):
+                export_splats_to_usd(model, out_path, legacy=True, usdz=True, apply_ecef2enu_rotation=True)
+
 
 if __name__ == "__main__":
     unittest.main()

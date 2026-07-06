@@ -25,8 +25,6 @@ import torch
 from fvdb import GaussianSplat3d
 from pxr import Gf, Sdf, Usd, UsdGeom, UsdUtils, UsdVol, Vt
 
-# Set up logging
-logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
 
 DEFAULT_PROJECTION_MODE_HINT = "perspective"
@@ -237,6 +235,8 @@ def _compute_gaussian_bounding_extent(positions: np.ndarray) -> Vt.Vec3fArray:
     Returns:
         Two-element ``Vt.Vec3fArray`` with min and max corners.
     """
+    if positions.shape[0] == 0:
+        raise ValueError("Cannot compute a bounding extent: the Gaussian splat model has no gaussians")
     min_bounds = np.min(positions, axis=0)
     max_bounds = np.max(positions, axis=0)
     return Vt.Vec3fArray(
@@ -1246,7 +1246,8 @@ def export_splats_to_usd(
             ``/World/<asset_name>``. Splats-only or with mesh.
         legacy (bool): If True, export using the legacy NuRec format (isaac sim versions prior to 6.0)
             (UsdVol.Volume + .nurec msgpack). If False (default), export using the
-            OpenUSD ParticleField3DGaussianSplat schema. Incompatible with mesh export. Requires ``usdz=True``.
+            OpenUSD ParticleField3DGaussianSplat schema. Incompatible with mesh export and
+            ``apply_ecef2enu_rotation``. Requires ``usdz=True``.
         usdz (bool): If True, package the export as a ``.usdz`` archive instead of a single ``.usdc`` file.
         linear_srgb (bool): ParticleField3DGaussianSplat export only. Sets ``ColorSpaceAPI`` to
             ``lin_rec709_scene`` when True, else ``srgb_rec709_display`` (matches 3dgrut).
@@ -1269,6 +1270,8 @@ def export_splats_to_usd(
         raise ValueError("legacy export requires usdz=True (the legacy NuRec format is only packaged as .usdz)")
     if legacy and mesh_vertices is not None:
         raise ValueError("legacy export does not support mesh export")
+    if legacy and apply_ecef2enu_rotation:
+        raise ValueError("legacy export does not support apply_ecef2enu_rotation")
     if model is None and mesh_vertices is None:
         raise ValueError("A Gaussian Splat model, mesh (vertices and faces), or both must be provided")
     if mesh_vertices is not None and mesh_faces is None:
