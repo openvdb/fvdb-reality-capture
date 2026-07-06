@@ -21,7 +21,7 @@ author = "Contributors to the OpenVDB Project"
 
 # Stable fvdb-core version shown in installation examples.
 # Updated automatically by fvdb-core's devtools/update-doc-versions.sh during release.
-fvdb_core_stable_version = "0.4.0"
+fvdb_core_stable_version = "0.5.0"
 
 version = fvdb_core_stable_version
 release = fvdb_core_stable_version
