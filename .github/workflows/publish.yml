@@ -442,7 +442,7 @@ jobs:
       - name: Install fvdb-core from S3 staging and fvdb-reality-capture wheel
         run: |
           uv pip install --no-cache \
-            torch==${{ needs.discover-fvdb-core.outputs.torch-version }} \
+            torch==${{ needs.discover-fvdb-core.outputs.torch-version }} torchvision \
             --extra-index-url ${{ needs.discover-fvdb-core.outputs.pytorch-index }}
           uv pip install --no-cache \
             "${{ needs.discover-fvdb-core.outputs.core-wheel-url }}"
