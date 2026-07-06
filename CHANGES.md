@@ -5,11 +5,12 @@ fVDB-Reality-Capture Version History
 
 *23 commits, 100+ files changed, 7 contributors.*
 
-This release tracks fVDB 0.5.0. It catches up to fVDB-core's new composable camera and batched-image APIs, adds dense depth supervision for Gaussian splat reconstruction, moves documentation to a versioned Read the Docs site, switches to the upstream PyCOLMAP, and hardens the release/CI pipeline and repository governance across the fVDB repositories.
+This release tracks fVDB 0.5.0. It catches up to fVDB-core's new composable camera and batched-image APIs, adds dense depth supervision for Gaussian splat reconstruction, reworks Gaussian splat USD export onto the OpenUSD ParticleField3DGaussianSplat standard, moves documentation to a versioned Read the Docs site, switches to the upstream PyCOLMAP, and hardens the release/CI pipeline and repository governance across the fVDB repositories.
 
 **Highlights:**
 - Reworked Gaussian splat reconstruction on top of fVDB-core's new camera/render API (fVDB-core #518), cleaning up how reality-capture represents cameras, distortion, and world-space render behavior.
 - Added a `DepthMapAttribute` for per-image depth rasters and wired optional dense depth supervision into `GaussianSplatReconstruction`.
+- Reworked Gaussian splat USD export onto the OpenUSD `ParticleField3DGaussianSplat` schema (Isaac Sim 6.0+), defaulting to single-file `.usdc` output with opt-in `.usdz`, and expanded `frgs convert` with mesh embedding, upright rotation, and prim-naming options for Isaac Sim.
 - Fixed a scene-normalization bug that inverted camera matrices, and a TSDF meshing crash caused by fVDB-core's move to a batched depth-image API.
 - Switched COLMAP dependency management to the official PyCOLMAP repository and synced the benchmark environment to PyTorch 2.11.
 - Migrated documentation to a versioned Read the Docs site.
@@ -43,10 +44,23 @@ This release tracks fVDB 0.5.0. It catches up to fVDB-core's new composable came
 
 ---
 
+### USD Export & Isaac Sim Integration
+
+**New Features:**
+- Reworked Gaussian splat USD export onto the OpenUSD `UsdVol.ParticleField3DGaussianSplat` schema (Isaac Sim 6.0+), and defaulted exports to a single self-contained `.usdc` file with `.usdz` archive packaging available opt-in. The legacy Omniverse NuRec format (`UsdVol.Volume` + `.nurec`) is retained behind a `legacy` / `--legacy` flag for Isaac Sim versions prior to 6.0. This renames the export entry points from `export_splats_to_usdz` / `GaussianSplatReconstruction.save_usdz` to `export_splats_to_usd` / `save_usd` (taking a `usdz` flag), a breaking API change (#294 - @zlalena, @swahtz).
+- Extended `frgs convert` to export USD (`.usdc`/`.usdz`) with optional collision-mesh embedding, ecef2enu upright rotation for Isaac Sim, a customizable asset prim name (`--prim-path`), and legacy-format selection (`--legacy`) (#294 - @zlalena, @swahtz).
+- Overhauled `scripts/create_isaac_ready_files.py` to produce a single aligned mesh + splat Isaac-ready asset, with optional bounding-box cropping, origin centering, and watertight mesh conversion, and added `tests/unit/test_export_splats_to_usd.py` covering `.usdc`/`.usdz` write/read round-trips (#294 - @zlalena, @swahtz).
+
+**Bug Fixes:**
+- Hardened degenerate cases in USD export: zero-norm quaternions no longer produce NaN/Inf orientations, empty gaussian/mesh sets fail fast with clear errors (falling back to mesh-only export when a crop removes all splats), and shN/SH-degree coefficient-count mismatches now emit a warning instead of silently padding or truncating (#294 - @zlalena, @swahtz).
+
+---
+
 ### PyTorch & Dependency Compatibility
 
 - Switched from a fork to the official PyCOLMAP repository for the COLMAP dependency, and fixed a PyCOLMAP version mismatch that was failing nightly tests (#293, #297 - @matthewdcong).
 - Synced the benchmark environment to PyTorch 2.11 to match the fVDB-core build (#296 - @harrism).
+- Raised the minimum `usd-core` to `>=26.3` for `ParticleField3DGaussianSplat` schema support (#294 - @zlalena, @swahtz).
 
 ---
 
