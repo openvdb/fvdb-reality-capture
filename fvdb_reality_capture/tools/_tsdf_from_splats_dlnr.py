@@ -662,16 +662,20 @@ def tsdf_from_splats_dlnr(
             depth_image = depth_image.to(dtype)
             weight_image = weight_image.to(dtype)
 
+            # squeeze(0) drops the DataLoader collation dim; unsqueeze(0) then adds the
+            # fvdb grid-batch dim (1 for a single Grid). fvdb-core expects batched
+            # inputs: projection (B, 3, 3), cam-to-world (B, 4, 4), depth (B, H, W),
+            # features (B, H, W, C), weights (B, H, W).
             accum_grid, tsdf, weights, colors = accum_grid.integrate_tsdf_with_features(
                 truncation_margin,
-                projection_matrix.to(dtype),
-                cam_to_world_matrix.to(dtype),
+                projection_matrix.to(dtype).unsqueeze(0),
+                cam_to_world_matrix.to(dtype).unsqueeze(0),
                 tsdf,
                 colors,
                 weights,
-                depth_image.squeeze(0).to(device),
-                rgb_image.squeeze(0).to(device),
-                weight_image.squeeze(0).to(device),
+                depth_image.squeeze(0).to(device).unsqueeze(0),
+                rgb_image.squeeze(0).to(device).unsqueeze(0),
+                weight_image.squeeze(0).to(device).unsqueeze(0),
             )
 
             if show_progress:

@@ -18,6 +18,7 @@ boto3
 msgpack
 numpy
 opencv-python-headless
+pycolmap>=3.11
 pyproj
 requests
 scikit-image

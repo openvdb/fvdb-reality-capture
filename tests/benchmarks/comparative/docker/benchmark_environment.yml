@@ -42,9 +42,10 @@ dependencies:
   - psutil
   - pybind11
   - py-opencv>=4.10[build=headless*]
+  - pycolmap>=3.11
   - pytest-benchmark
   - python=3.12
-  - pytorch-gpu=2.10.0
+  - pytorch-gpu=2.11.0
   - rich
   - scikit-build-core
   - scikit-learn
@@ -67,9 +68,6 @@ dependencies:
   - pip:
     - point-cloud-utils
     - pytest-markdown-docs
-    - https://fvdb-packages.s3.us-east-2.amazonaws.com/dev-whls/pt210cu130/torchsparse-2.1.0-cp312-cp312-linux_x86_64.whl
-    - https://fvdb-packages.s3.us-east-2.amazonaws.com/dev-whls/pt210cu130/torchsparse_20-2.0.0b0-cp312-cp312-linux_x86_64.whl
-    - https://fvdb-packages.s3.us-east-2.amazonaws.com/dev-whls/pt210cu130/torch_scatter-2.1.2-cp312-cp312-linux_x86_64.whl
     - oiio-static-python
     - dlnr_lite
     - einops
@@ -77,6 +75,5 @@ dependencies:
     - piexif
     - splines
     - nerfview @ git+https://github.com/nerfstudio-project/nerfview@4538024fe0d15fd1a0e4d760f3695fc44ca72787
-    - pycolmap @ git+https://github.com/rmbrualla/pycolmap@cc7ea4b7301720ac29287dbe450952511b32125e
     - torchmetrics
     - sam2==1.1.0

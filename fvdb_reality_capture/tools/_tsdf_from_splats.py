@@ -201,16 +201,20 @@ def tsdf_from_splats(
             weight_images = ((depth_images > near_i) & (depth_images < far_i) & alpha_mask).to(dtype).squeeze(0)
         else:
             weight_images = ((depth_images > near_i) & (depth_images < far_i)).to(dtype).squeeze(0)
+        # fvdb-core's TSDF integration expects a leading batch dimension whose size
+        # matches the grid batch size (1 for a single Grid): projection (B, 3, 3),
+        # cam-to-world (B, 4, 4), depth (B, H, W), features (B, H, W, C), weights
+        # (B, H, W). We integrate one camera per iteration, so B == 1.
         accum_grid, tsdf, weights, features = accum_grid.integrate_tsdf_with_features(
             truncation_margin,
-            projection_matrix.to(dtype),
-            cam_to_world_matrix.to(dtype),
+            projection_matrix.to(dtype).unsqueeze(0),
+            cam_to_world_matrix.to(dtype).unsqueeze(0),
             tsdf,
             features,
             weights,
-            depth_images,
-            feature_images,
-            weight_images,
+            depth_images.unsqueeze(0),
+            feature_images.unsqueeze(0),
+            weight_images.unsqueeze(0),
         )
 
         if show_progress:

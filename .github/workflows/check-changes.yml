@@ -1,0 +1,48 @@
+# Copyright Contributors to the OpenVDB Project
+# SPDX-License-Identifier: Apache-2.0
+#
+# Reusable workflow: decide whether a PR needs testing, or touches only
+# skippable (docs / non-code) paths. Callers gate their expensive jobs on the
+# `should_test` output so skippable-only PRs skip the work while still
+# reporting the required status checks (skipped == passed).
+
+name: Check for relevant changes
+
+on:
+  workflow_call:
+    outputs:
+      should_test:
+        description: "'true' unless every changed file is a skippable (docs/non-code) path"
+        value: ${{ jobs.check-changes.outputs.should_test }}
+
+# Permissions are inherited from the calling workflow.
+
+jobs:
+  check-changes:
+    name: Check for relevant changes
+    runs-on: ubuntu-latest
+    outputs:
+      # Run tests unless this is a PR whose files are ALL skippable paths.
+      should_test: ${{ github.event_name != 'pull_request_target' || steps.filter.outputs.skippable_only != 'true' }}
+    steps:
+      - uses: dorny/paths-filter@fbd0ab8f3e69293af611ebaee6363fc25e6d187d # v4.0.1
+        id: filter
+        if: github.event_name == 'pull_request_target'
+        with:
+          # 'every' makes the filter true only when EVERY changed file matches one
+          # of these patterns, i.e. the PR touches only skippable paths; we invert
+          # that for should_test. A mixed PR (skippable + real source) has at least
+          # one non-matching file, so skippable_only is false and tests run.
+          #
+          # The gated GPU suite has no notebook/doc tests, and the Sphinx docs
+          # build runs on every PR via docs-build-test.yml, so docs/notebook
+          # changes are still validated there.
+          predicate-quantifier: 'every'
+          filters: |
+            skippable_only:
+              - '**/*.md'
+              - 'CODEOWNERS'
+              - 'debug/**'
+              - 'examples/**'
+              - 'notebooks/**'
+              - 'scripts/**'
