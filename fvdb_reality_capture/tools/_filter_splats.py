@@ -40,9 +40,7 @@ def filter_splats_by_mean_percentile(
     return splats[good_inds]
 
 
-def filter_splats_by_opacity_percentile(
-    splats: GaussianSplat3d, percentile=0.98, decimate=4
-) -> GaussianSplat3d:
+def filter_splats_by_opacity_percentile(splats: GaussianSplat3d, percentile=0.98, decimate=4) -> GaussianSplat3d:
     """
     Remove all gaussians falling outside provided percentile range for logit_opacities.
 
