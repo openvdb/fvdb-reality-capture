@@ -16,3 +16,5 @@ tensor types remain in ``fvdb``.
 .. autofunction:: fvdb_reality_capture.gaussian_render_jagged
 
 .. autofunction:: fvdb_reality_capture.evaluate_spherical_harmonics
+
+.. autofunction:: fvdb_reality_capture.gaussian_splat_to_view_data

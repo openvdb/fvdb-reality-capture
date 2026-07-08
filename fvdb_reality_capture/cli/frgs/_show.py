@@ -15,6 +15,7 @@ import tyro
 from fvdb.types import to_Mat33fBatch, to_Mat44fBatch, to_Vec2fBatch
 from tyro.conf import arg
 
+from fvdb_reality_capture import gaussian_splat_to_view_data
 from fvdb_reality_capture.cli import BaseCommand
 
 from ._common import load_splats_from_file
@@ -116,7 +117,7 @@ class Show(BaseCommand):
 
         viz_scene.add_gaussian_splat_3d(
             "Gaussian Splats",
-            model,
+            gaussian_splat_to_view_data(model),
         )
         logger.info("Viewer running... Ctrl+C to exit.")
         fviz.show()

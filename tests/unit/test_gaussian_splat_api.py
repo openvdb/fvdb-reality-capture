@@ -1,6 +1,8 @@
 # Copyright Contributors to the OpenVDB Project
 # SPDX-License-Identifier: Apache-2.0
 
+import torch
+
 
 def test_gaussian_splat_api_is_owned_by_reality_capture():
     import fvdb
@@ -11,6 +13,7 @@ def test_gaussian_splat_api_is_owned_by_reality_capture():
         "ProjectedGaussianSplats",
         "gaussian_render_jagged",
         "evaluate_spherical_harmonics",
+        "gaussian_splat_to_view_data",
     )
 
     for symbol in public_symbols:
@@ -58,3 +61,27 @@ def test_gaussian_splat_enums_are_owned_by_reality_capture_with_preserved_values
         "ANALYTIC": 1,
         "UNSCENTED": 2,
     }
+
+
+def test_gaussian_splat_view_adapter_is_zero_copy_and_uses_the_core_contract():
+    import fvdb.viz
+    import fvdb_reality_capture as frc
+
+    tensors = {
+        "means": torch.randn(3, 3),
+        "quats": torch.randn(3, 4),
+        "log_scales": torch.randn(3, 3),
+        "logit_opacities": torch.randn(3),
+        "sh0": torch.randn(3, 1, 3),
+        "shN": torch.randn(3, 8, 3),
+    }
+    model = frc.GaussianSplat3d.from_tensors(**tensors)
+
+    view_data = frc.gaussian_splat_to_view_data(model)
+
+    assert isinstance(view_data, fvdb.viz.GaussianSplatViewData)
+    for name, tensor in tensors.items():
+        assert getattr(view_data, name) is tensor
+    assert view_data.sh_ordering == frc.ShOrderingMode.RGB_RGB_RGB.value
+    assert frc.gaussian_splat_to_view_data is frc.radiance_fields.gaussian_splat_to_view_data
+    assert not hasattr(frc, "GaussianSplatViewData")

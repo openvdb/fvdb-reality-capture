@@ -11,6 +11,7 @@ from .radiance_fields import (
     ProjectedGaussianSplats,
     evaluate_spherical_harmonics,
     gaussian_render_jagged,
+    gaussian_splat_to_view_data,
 )
 from . import dev, foundation_models, sfm_scene, tools, transforms
 from .tools import download_example_data
@@ -26,6 +27,7 @@ __all__ = [
     "ProjectedGaussianSplats",
     "gaussian_render_jagged",
     "evaluate_spherical_harmonics",
+    "gaussian_splat_to_view_data",
     "ShOrderingMode",
     "RollingShutterType",
     "CameraModel",

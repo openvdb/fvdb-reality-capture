@@ -24,6 +24,7 @@ from fvdb_reality_capture.sfm_scene import SfmScene
 from fvdb_reality_capture.tools import export_splats_to_usd
 
 from ._gaussian_rendering import RenderBackend, make_render_backend
+from ._gaussian_splat_viz import gaussian_splat_to_view_data
 from ._private.lpips import LPIPSLoss
 from ._private.utils import crop_image_batch
 from .camera_pose_adjust import CameraPoseAdjustment
@@ -846,7 +847,7 @@ class GaussianSplatReconstruction:
             with torch.no_grad():
                 self._viz_scene.add_gaussian_splat_3d(
                     self._viz_scene_name,
-                    self._model,
+                    gaussian_splat_to_view_data(self._model),
                     tile_size=self._cfg.tile_size,
                     min_radius_2d=self._cfg.min_radius_2d,
                     eps_2d=self._cfg.eps_2d,
@@ -1539,7 +1540,7 @@ class GaussianSplatReconstruction:
                         self._logger.info(f"Updating visualization at step {self._global_step:,}")
                         self._viz_scene.add_gaussian_splat_3d(
                             self._viz_scene_name,
-                            self.model,
+                            gaussian_splat_to_view_data(self.model),
                             tile_size=self._cfg.tile_size,
                             min_radius_2d=self._cfg.min_radius_2d,
                             eps_2d=self._cfg.eps_2d,
