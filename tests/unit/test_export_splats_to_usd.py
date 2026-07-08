@@ -11,9 +11,9 @@ from pathlib import Path
 import msgpack
 import numpy as np
 import torch
-from fvdb import GaussianSplat3d
 from pxr import Usd, UsdVol
 
+from fvdb_reality_capture import GaussianSplat3d
 from fvdb_reality_capture.tools import export_splats_to_usd
 from fvdb_reality_capture.tools._export_splats_to_usd import _resize_sh_coefficients, build_legacy_gaussians_payload
 

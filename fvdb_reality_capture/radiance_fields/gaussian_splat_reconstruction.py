@@ -16,7 +16,6 @@ import torch.nn.functional as nnf
 import torch.utils.data
 from torch.utils import _pytree
 import tqdm
-from fvdb import GaussianSplat3d
 from fvdb.utils.metrics import psnr, ssim
 from fvdb.viz import Scene
 from scipy.spatial import cKDTree  # type: ignore
@@ -29,6 +28,7 @@ from ._private.lpips import LPIPSLoss
 from ._private.utils import crop_image_batch
 from .camera_pose_adjust import CameraPoseAdjustment
 from .gaussian_splat_dataset import SfmDataset
+from .gaussian_splatting import GaussianSplat3d
 from .gaussian_splat_optimizer import (
     BaseGaussianSplatOptimizer,
     GaussianSplatOptimizerConfig,
@@ -396,11 +396,11 @@ class GaussianSplatReconstruction:
     """
     Engine for reconstructing a Gaussian splat radiance field from posed images in an :class:`~fvdb_reality_capture.sfm_scene.sfm_scene.SfmScene`.
 
-    This class implements the reconstruction algorithm using a :class:`fvdb.GaussianSplat3d` model and a differentiable rendering pipeline.
+    This class implements the reconstruction algorithm using a :class:`fvdb_reality_capture.GaussianSplat3d` model and a differentiable rendering pipeline.
 
     The reconstruction process optimizes the parameters of the Gaussian splats to minimize the difference between rendered images and the input images.
     The optimization process can be configured using a :class:`GaussianSplatReconstructionConfig` instance, and the underlying
-    :class:`fvdb.GaussianSplat3d` model can be customized as well.
+    :class:`fvdb_reality_capture.GaussianSplat3d` model can be customized as well.
 
     The reconstruction can also optionally optimize camera poses if they are not accurate, using a simple pose adjustment model which stores a per-camera
     embedding which is decoded into a small change in rotation and translation for each camera.
@@ -416,7 +416,7 @@ class GaussianSplatReconstruction:
 
     The reconstruction process is started by calling the :meth:`reconstruct` method, which runs the optimization loop.
 
-    To get the reconstructed model, use the :meth:`model` attribute, which is a :class:`fvdb.GaussianSplat3d` instance.
+    To get the reconstructed model, use the :meth:`model` attribute, which is a :class:`fvdb_reality_capture.GaussianSplat3d` instance.
 
     You can also get a dictionary of metadata about the reconstruction using the :meth:`reconstruction_metadata` attribute.
     This metadata is useful for downstream tasks such as extracting meshes or exporting to USDZ.
@@ -1004,7 +1004,7 @@ class GaussianSplatReconstruction:
         Get the Gaussian Splatting model being optimized.
 
         Returns:
-            model (GaussianSplat3d): The :class:`fvdb.GaussianSplat3d` instance being optimized.
+            model (GaussianSplat3d): The :class:`fvdb_reality_capture.GaussianSplat3d` instance being optimized.
         """
         return self._model
 

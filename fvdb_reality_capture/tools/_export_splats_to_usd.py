@@ -22,8 +22,9 @@ from typing import Any, Optional, Union
 import msgpack
 import numpy as np
 import torch
-from fvdb import GaussianSplat3d
 from pxr import Gf, Sdf, Usd, UsdGeom, UsdUtils, UsdVol, Vt
+
+from fvdb_reality_capture.radiance_fields.gaussian_splatting import GaussianSplat3d
 
 logger = logging.getLogger(__name__)
 
@@ -1226,10 +1227,10 @@ def _export_splats_to_usdz_legacy(
     model: GaussianSplat3d, out_path: Union[str, Path], target_sh_degree: Optional[int] = None
 ) -> None:
     """
-    Export an :class:`fvdb.GaussianSplat3d` model to a USDZ file using the legacy NuRec format (UsdVol.Volume + .nurec msgpack).
+    Export an :class:`fvdb_reality_capture.GaussianSplat3d` model to a USDZ file using the legacy NuRec format (UsdVol.Volume + .nurec msgpack).
 
     Args:
-        model (fvdb.GaussianSplat3d): The Gaussian Splat model to save to a usdz file
+        model (fvdb_reality_capture.GaussianSplat3d): The Gaussian Splat model to save to a usdz file
         out_path (str | Path): The output path for the usdz file. If the file extension is not ``.usdz``,
             it will be added. *e.g.*, ``./scene`` will save to ``./scene.usdz``.
         target_sh_degree (int | None): SH degree to write into the exported model (see
@@ -1253,7 +1254,7 @@ def _export_splats_to_usdz_particlefield3d(
     asset_name: Optional[str] = None,
 ) -> None:
     """
-    Export a :class:`fvdb.GaussianSplat3d` to USDZ using the ParticleField3DGaussianSplat schema.
+    Export a :class:`fvdb_reality_capture.GaussianSplat3d` to USDZ using the ParticleField3DGaussianSplat schema.
 
     Args:
         model (GaussianSplat3d): Gaussian splat model to export.
@@ -1295,7 +1296,7 @@ def export_splats_to_usd(
     target_sh_degree: Optional[int] = None,
 ) -> Path:
     """
-    Export a :class:`fvdb.GaussianSplat3d` (and optional collision mesh) to a USD file.
+    Export a :class:`fvdb_reality_capture.GaussianSplat3d` (and optional collision mesh) to a USD file.
 
     By default, exports a single self-contained ``.usdc`` file. Pass ``usdz=True`` to instead
     package the export as a ``.usdz`` archive (required for the legacy NuRec format, which

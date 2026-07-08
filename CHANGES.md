@@ -1,6 +1,13 @@
 fVDB-Reality-Capture Version History
 ====================================
 
+## Unreleased
+
+### Gaussian Splatting API
+
+- Moved the high-level `GaussianSplat3d`, `ProjectedGaussianSplats`, `gaussian_render_jagged`, and `evaluate_spherical_harmonics` APIs from `fvdb` to `fvdb_reality_capture`. This is a breaking import-path change; the low-level compiled kernels and supporting tensor types remain in fVDB-core.
+- Moved `ShOrderingMode`, `RollingShutterType`, `CameraModel`, and `ProjectionMethod` from `fvdb` to `fvdb_reality_capture`, preserving their member names and values. This is also a breaking import-path change.
+
 ## Version 0.5.0 - July 1, 2026
 
 *23 commits, 100+ files changed, 7 contributors.*

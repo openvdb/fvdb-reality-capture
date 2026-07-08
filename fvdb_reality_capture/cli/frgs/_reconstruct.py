@@ -16,9 +16,9 @@ import fvdb.viz as fviz
 import numpy as np
 import torch
 import tqdm
-from fvdb import GaussianSplat3d
 from tyro.conf import Positional, arg
 
+from fvdb_reality_capture import GaussianSplat3d
 from fvdb_reality_capture.cli import BaseCommand
 from fvdb_reality_capture.radiance_fields import (
     GaussianSplatOptimizerConfig,

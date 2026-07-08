@@ -201,7 +201,7 @@ class SfmDataset(torch.utils.data.Dataset, Iterable):
         Get the canonical camera model for each image in the dataset.
 
         Returns:
-            np.ndarray: An array of integer-encoded ``fvdb.CameraModel`` values.
+            np.ndarray: An array of integer-encoded ``fvdb_reality_capture.CameraModel`` values.
         """
         return np.array(
             [int(self._sfm_scene.images[i].camera_metadata.camera_model) for i in self._indices],

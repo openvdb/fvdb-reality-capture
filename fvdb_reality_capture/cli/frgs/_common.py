@@ -6,12 +6,14 @@ import pathlib
 from typing import Literal
 
 import torch
-from fvdb import CameraModel, GaussianSplat3d
 from fvdb.types import DeviceIdentifier, to_Mat33fBatch, to_Mat44fBatch, to_Vec2iBatch
 
+from fvdb_reality_capture import GaussianSplat3d
 from fvdb_reality_capture.radiance_fields import GaussianSplatReconstruction
 from fvdb_reality_capture.sfm_scene import SfmScene
 from fvdb_reality_capture.tools import export_splats_to_usd
+
+from ...enums import CameraModel
 
 DatasetType = Literal["colmap", "simple_directory", "e57"]
 NearFarUnits = Literal["absolute", "camera_extent", "median_depth"]

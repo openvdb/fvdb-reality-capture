@@ -9,10 +9,10 @@ from typing import Any, Literal
 import cv2
 import numpy as np
 import tqdm
-from fvdb import CameraModel
 
 from fvdb_reality_capture.sfm_scene import SfmCache, SfmCameraMetadata, SfmPosedImageMetadata, SfmScene
 
+from ..enums import CameraModel
 from .base_transform import BaseTransform, transform
 
 

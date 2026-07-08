@@ -12,8 +12,9 @@ from typing import Any, TextIO
 import cv2
 import numpy as np
 import torch
-from fvdb import GaussianSplat3d
 from fvdb.types import NumericScalar, to_FloatingScalar
+
+from .gaussian_splatting import GaussianSplat3d
 
 
 class GaussianSplatReconstructionBaseWriter(ABC):

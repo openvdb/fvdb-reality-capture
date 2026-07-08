@@ -101,6 +101,8 @@ A common reality capture pipeline typically resembles the figure below:
    :maxdepth: 1
    :caption: API References
 
+   api/enums
+   api/gaussian_splatting
    api/radiance_fields
    api/sfm_scene
    api/tools

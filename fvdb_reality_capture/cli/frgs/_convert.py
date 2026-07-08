@@ -9,8 +9,8 @@ from dataclasses import dataclass
 import point_cloud_utils as pcu
 import torch
 import tyro
-from fvdb import GaussianSplat3d
 
+from fvdb_reality_capture import GaussianSplat3d
 from fvdb_reality_capture.cli import BaseCommand
 from fvdb_reality_capture.radiance_fields import GaussianSplatReconstruction
 from fvdb_reality_capture.tools import export_splats_to_usd

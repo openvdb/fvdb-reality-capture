@@ -6,9 +6,9 @@ import tempfile
 import unittest
 
 import torch
-from fvdb import GaussianSplat3d
 
 import fvdb_reality_capture as frc
+from fvdb_reality_capture import GaussianSplat3d
 from tests.unit.common import GettysburgGaussianSplatTestCase
 
 

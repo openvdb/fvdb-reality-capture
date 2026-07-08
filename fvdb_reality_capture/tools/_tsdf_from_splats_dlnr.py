@@ -7,12 +7,15 @@ import tempfile
 import numpy as np
 import torch
 import tqdm
-from fvdb import CameraModel, GaussianSplat3d, Grid
+from fvdb import Grid
 from fvdb.types import NumericMaxRank2, NumericMaxRank3
+
+from fvdb_reality_capture.radiance_fields.gaussian_splatting import GaussianSplat3d
 
 from fvdb_reality_capture.foundation_models.dlnr import DLNRModel
 from fvdb_reality_capture.sfm_scene import SfmCache
 
+from ..enums import CameraModel
 from ._common import validate_camera_matrices_and_image_sizes, validate_pinhole_camera_models
 
 
@@ -505,7 +508,7 @@ def tsdf_from_splats_dlnr(
     num_workers: int = 8,
 ) -> tuple[Grid, torch.Tensor, torch.Tensor]:
     """
-    Extract a Truncated Signed Distance Field (TSDF) from a `fvdb.GaussianSplat3d` using TSDF fusion from depth maps
+    Extract a Truncated Signed Distance Field (TSDF) from a `fvdb_reality_capture.GaussianSplat3d` using TSDF fusion from depth maps
     predicted from the Gaussian splat radiance field and the
     `DLNR foundation model <https://openaccess.thecvf.com/content/CVPR2023/papers/Zhao_High-Frequency_Stereo_Matching_Network_CVPR_2023_paper.pdf>`_.
     DLNR is a high-frequency stereo matching network that computes optical flow and disparity maps between two images, which can be used to compute depth.
@@ -552,7 +555,7 @@ def tsdf_from_splats_dlnr(
 
     .. note::
 
-        Meshing currently supports only :class:`fvdb.CameraModel.PINHOLE` cameras. While the
+        Meshing currently supports only :class:`fvdb_reality_capture.CameraModel.PINHOLE` cameras. While the
         rendering step can handle additional camera models, the underlying fVDB TSDF integration
         path currently assumes perspective pinhole projection. Passing distorted or orthographic
         cameras will raise :class:`NotImplementedError`.

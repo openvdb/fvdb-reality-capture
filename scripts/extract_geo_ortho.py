@@ -13,7 +13,7 @@ from pyproj import Transformer
 from scipy.interpolate import griddata
 from splats_fvdb.training import SfmDataset
 
-from fvdb import CameraModel, GaussianSplat3d
+from fvdb_reality_capture import CameraModel, GaussianSplat3d
 
 
 def lonlat2UTM(lon, lat):

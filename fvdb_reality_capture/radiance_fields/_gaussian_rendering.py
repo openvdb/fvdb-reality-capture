@@ -5,9 +5,11 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Literal, Protocol
 
 import torch
-from fvdb import CameraModel, GaussianSplat3d, ProjectionMethod
+
+from ..enums import CameraModel, ProjectionMethod
 
 from .gaussian_splat_dataset import SfmDataset
+from .gaussian_splatting import GaussianSplat3d
 
 if TYPE_CHECKING:
     from .gaussian_splat_reconstruction import GaussianSplatReconstructionConfig
@@ -114,7 +116,7 @@ class RenderBackend(Protocol):
             config (GaussianSplatReconstructionConfig): Reconstruction config controlling render behavior.
             world_to_camera_matrices (torch.Tensor): Batch of world-to-camera matrices.
             projection_matrices (torch.Tensor): Batch of camera intrinsics matrices.
-            camera_models (torch.Tensor): Batch of encoded :class:`fvdb.CameraModel` values.
+            camera_models (torch.Tensor): Batch of encoded :class:`fvdb_reality_capture.CameraModel` values.
             distortion_coeffs (torch.Tensor): Batch of packed distortion coefficients.
             image_width (int): Full image width in pixels before cropping.
             image_height (int): Full image height in pixels before cropping.
@@ -146,7 +148,7 @@ class RenderBackend(Protocol):
             config (GaussianSplatReconstructionConfig): Reconstruction config controlling render behavior.
             world_to_camera_matrices (torch.Tensor): Batch of world-to-camera matrices.
             projection_matrices (torch.Tensor): Batch of camera intrinsics matrices.
-            camera_models (torch.Tensor): Batch of encoded :class:`fvdb.CameraModel` values.
+            camera_models (torch.Tensor): Batch of encoded :class:`fvdb_reality_capture.CameraModel` values.
             distortion_coeffs (torch.Tensor): Batch of packed distortion coefficients.
             image_width (int): Output image width in pixels.
             image_height (int): Output image height in pixels.
@@ -212,7 +214,7 @@ class ImageSpaceRenderBackend:
             config (GaussianSplatReconstructionConfig): Reconstruction config controlling render behavior.
             world_to_camera_matrices (torch.Tensor): Batch of world-to-camera matrices.
             projection_matrices (torch.Tensor): Batch of camera intrinsics matrices.
-            camera_models (torch.Tensor): Batch of encoded :class:`fvdb.CameraModel` values.
+            camera_models (torch.Tensor): Batch of encoded :class:`fvdb_reality_capture.CameraModel` values.
             distortion_coeffs (torch.Tensor): Batch of packed distortion coefficients.
             image_width (int): Full image width in pixels before cropping.
             image_height (int): Full image height in pixels before cropping.
@@ -278,7 +280,7 @@ class ImageSpaceRenderBackend:
             config (GaussianSplatReconstructionConfig): Reconstruction config controlling render behavior.
             world_to_camera_matrices (torch.Tensor): Batch of world-to-camera matrices.
             projection_matrices (torch.Tensor): Batch of camera intrinsics matrices.
-            camera_models (torch.Tensor): Batch of encoded :class:`fvdb.CameraModel` values.
+            camera_models (torch.Tensor): Batch of encoded :class:`fvdb_reality_capture.CameraModel` values.
             distortion_coeffs (torch.Tensor): Batch of packed distortion coefficients.
             image_width (int): Output image width in pixels.
             image_height (int): Output image height in pixels.
@@ -478,7 +480,7 @@ class WorldSpaceRenderBackend:
             config (GaussianSplatReconstructionConfig): Reconstruction config controlling render behavior.
             world_to_camera_matrices (torch.Tensor): Batch of world-to-camera matrices.
             projection_matrices (torch.Tensor): Batch of camera intrinsics matrices.
-            camera_models (torch.Tensor): Batch of encoded :class:`fvdb.CameraModel` values.
+            camera_models (torch.Tensor): Batch of encoded :class:`fvdb_reality_capture.CameraModel` values.
             distortion_coeffs (torch.Tensor): Batch of packed distortion coefficients.
             image_width (int): Full image width in pixels before cropping.
             image_height (int): Full image height in pixels before cropping.
@@ -536,7 +538,7 @@ class WorldSpaceRenderBackend:
             config (GaussianSplatReconstructionConfig): Reconstruction config controlling render behavior.
             world_to_camera_matrices (torch.Tensor): Batch of world-to-camera matrices.
             projection_matrices (torch.Tensor): Batch of camera intrinsics matrices.
-            camera_models (torch.Tensor): Batch of encoded :class:`fvdb.CameraModel` values.
+            camera_models (torch.Tensor): Batch of encoded :class:`fvdb_reality_capture.CameraModel` values.
             distortion_coeffs (torch.Tensor): Batch of packed distortion coefficients.
             image_width (int): Output image width in pixels.
             image_height (int): Output image height in pixels.

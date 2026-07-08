@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 import torch
-from fvdb import CameraModel
+from ..enums import CameraModel
 from fvdb.types import (
     NumericMaxRank2,
     NumericMaxRank3,
@@ -20,10 +20,10 @@ def validate_pinhole_camera_models(
 
     Some downstream pipelines in reality-capture consume rendered depth images and then unproject
     them using only a perspective projection matrix. Those paths currently support
-    :class:`fvdb.CameraModel.PINHOLE` cameras exclusively.
+    :class:`fvdb_reality_capture.CameraModel.PINHOLE` cameras exclusively.
 
     Args:
-        camera_models (torch.Tensor | None): Optional integer-encoded ``fvdb.CameraModel`` values.
+        camera_models (torch.Tensor | None): Optional integer-encoded ``fvdb_reality_capture.CameraModel`` values.
         num_cameras (int): Expected number of camera models.
         operation_name (str): Name of the calling operation for the error message.
 

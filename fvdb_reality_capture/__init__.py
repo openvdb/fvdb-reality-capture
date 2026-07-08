@@ -4,7 +4,15 @@
 
 from importlib.metadata import PackageNotFoundError, version
 
-from . import dev, foundation_models, radiance_fields, sfm_scene, tools, transforms
+from .enums import CameraModel, ProjectionMethod, RollingShutterType, ShOrderingMode
+from . import radiance_fields
+from .radiance_fields import (
+    GaussianSplat3d,
+    ProjectedGaussianSplats,
+    evaluate_spherical_harmonics,
+    gaussian_render_jagged,
+)
+from . import dev, foundation_models, sfm_scene, tools, transforms
 from .tools import download_example_data
 
 try:
@@ -14,6 +22,14 @@ except PackageNotFoundError:
 
 __all__ = [
     "__version__",
+    "GaussianSplat3d",
+    "ProjectedGaussianSplats",
+    "gaussian_render_jagged",
+    "evaluate_spherical_harmonics",
+    "ShOrderingMode",
+    "RollingShutterType",
+    "CameraModel",
+    "ProjectionMethod",
     "dev",
     "foundation_models",
     "radiance_fields",

@@ -10,8 +10,8 @@ import warnings
 import cv2
 import numpy as np
 import torch
-from fvdb import CameraModel
 
+from fvdb_reality_capture import CameraModel
 from fvdb_reality_capture.sfm_scene import (
     DepthMapAttribute,
     DepthMissingPolicy,

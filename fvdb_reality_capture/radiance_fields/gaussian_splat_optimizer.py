@@ -11,12 +11,13 @@ import numpy as np
 import torch
 import torch.nn.functional as nnf
 import torch.optim
-from fvdb import GaussianSplat3d, morton
+from fvdb import morton
 from scipy.special import logit
 
 from fvdb_reality_capture.sfm_scene import SfmScene, SpatialScaleMode
 
 from .base_gaussian_splat_optimizer import BaseGaussianSplatOptimizer, splat_optimizer
+from .gaussian_splatting import GaussianSplat3d
 
 
 class InsertionGrad2dThresholdMode(str, Enum):
@@ -244,7 +245,7 @@ class GaussianSplatOptimizer(BaseGaussianSplatOptimizer):
     """
     Optimizer for reconstructing a scene using Gaussian Splat radiance fields over a collection of posed images.
 
-    The optimizer uses an Adam optimizer to optimize the parameters of a ``fvdb.GaussianSplat3d`` model, and
+    The optimizer uses an Adam optimizer to optimize the parameters of a ``fvdb_reality_capture.GaussianSplat3d`` model, and
     provides utilities to refine the model by inserting and deleting Gaussians based on their contribution to the
     optimization. The tools here mostly follow the algorithm in the original Gaussian Splatting paper
     (https://arxiv.org/abs/2308.04079).
