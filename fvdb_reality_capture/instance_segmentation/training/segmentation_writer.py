@@ -12,42 +12,39 @@ from typing import Any, TextIO
 import cv2
 import numpy as np
 import torch
-from fvdb import GaussianSplat3d
-from fvdb.types import NumericScalar, to_FloatingScalar
 from fvdb_reality_capture.checkpoints import create_training_checkpoint
-
-from .checkpoint import (
-    GAUSSIAN_SPLAT_RECONSTRUCTION_METHOD,
-    GAUSSIAN_SPLAT_RECONSTRUCTION_METHOD_VERSION,
+from fvdb_reality_capture.instance_segmentation.checkpoint import (
+    GARFVDB_TRAINING_METHOD,
+    GARFVDB_TRAINING_METHOD_VERSION,
 )
+from fvdb.types import NumericScalar, to_FloatingScalar
 
 
-class GaussianSplatReconstructionBaseWriter(ABC):
+class GARfVDBBaseWriter(ABC):
     """
-    Base class for logging and saving data during Gaussian splat reconstruction.
-
-    This class defines the interface for logging metrics, saving images, checkpoints, and PLY files during
-    Gaussian splat reconstruction. Concrete implementations must implement all abstract methods.
-
-    To implement custom logging/saving behavior, subclass this class and implement the abstract methods.
+    Base class for logging and saving data during GARfVDB training.
     """
+
+    def __init__(self) -> None:
+        pass
 
     @abstractmethod
     def log_metric(self, global_step: int, metric_name: str, metric_value: NumericScalar) -> None:
         """
-        Abstract method to log a scalar metric value. This function is called during reconstruction to log metrics such as loss, PSNR, etc.
+        Log a scalar metric value. This function is called during training to log metrics such as loss, PSNR, etc.
 
         Args:
             global_step (int): The global step at which the metric is being logged.
             metric_name (str): The name of the metric being logged.
-            metric_value (NumericScalar): The value of the metric being logged. Must be a scalar type (int, float, np.number, torch.number, etc.).
+            metric_value (NumericScalar): The value of the metric being logged. Must be a scalar type
+                (int, float, np.number, torch.number, etc.).
         """
         pass
 
     @abstractmethod
     def save_image(self, global_step: int, image_name: str, image: torch.Tensor) -> None:
         """
-        Abstract method to save an image. This function is called during reconstruction to save images such as rendered outputs or intermediate results.
+        Save an image. This function is called during training to save images such as rendered outputs or intermediate results.
 
         Args:
             global_step (int): The global step at which the image is being saved.
@@ -59,7 +56,7 @@ class GaussianSplatReconstructionBaseWriter(ABC):
     @abstractmethod
     def save_checkpoint(self, global_step: int, checkpoint_name: str, checkpoint: dict[str, Any]) -> None:
         """
-        Abstract method to save a checkpoint. This function is called during reconstruction to save model checkpoints.
+        Save a checkpoint. This function is called during training to save model checkpoints.
 
         Args:
             global_step (int): The global step at which the checkpoint is being saved.
@@ -68,119 +65,49 @@ class GaussianSplatReconstructionBaseWriter(ABC):
         """
         pass
 
-    @abstractmethod
-    def save_ply(
-        self, global_step: int, ply_name: str, model: GaussianSplat3d, metadata: dict[str, Any] | None = None
-    ) -> None:
-        """
-        Abstract method to save a Gaussian splat model to a PLY file. This function is called during reconstruction to save the current state of the model.
-
-        Args:
-            global_step (int): The global step at which the PLY file is being saved.
-            ply_name (str): The name of the PLY file being saved.
-            model (GaussianSplat3d): The Gaussian splat model to be saved.
-            metadata (dict[str, Any] | None): Optional metadata to be saved with the PLY file.
-        """
-        pass
-
 
 @dataclass
-class GaussianSplatReconstructionWriterConfig:
+class GARfVDBWriterConfig:
     """
-    Parameters for configuring the behavior of a  :class:`GaussianSplatReconstructionWriter`.
+    Parameters for configuring the behavior of the GARfVDBWriter.
     Controls what data gets saved to disk, how much buffering to use, and whether to use TensorBoard.
     """
 
-    # Whether to save images to disk
+    # Configure what kind of data gets saved to disk
     save_images: bool = False
-    """
-    Whether to save images to disk. If ``False``, images will not be saved to disk.
-
-    Default is ``False``.
-    """
-
-    # Whether to save checkpoints to disk
     save_checkpoints: bool = True
-    """
-    Whether to save checkpoints to disk. If ``False``, checkpoints will not be saved to disk.
-
-    Default is ``True``.
-    """
-
-    # Whether to save PLY files to disk
-    save_plys: bool = True
-    """
-    Whether to save PLY files to disk. If ``False``, PLY files will not be saved to disk.
-
-    Default is ``True``.
-    """
-
-    # Whether to save metrics to a CSV file
     save_metrics: bool = True
-    """
-    Whether to save metrics to a CSV file. If ``False``, metrics will not be saved to a CSV file.
-
-    Default is ``True``.
-    """
 
     # How much buffering to use for metrics file logging
     metrics_file_buffer_size: int = 8 * 1024 * 1024  # 8 MB
-    """
-    How much buffering (in bytes) to use for metrics file logging. Larger values can improve performance when logging many metrics.
 
-    Default is 8 MiB.
-    """
-
-    # Whether to use TensorBoard for logging metrics and images
     use_tensorboard: bool = False
-    """
-    Whether to use TensorBoard for logging metrics and images. If ``True``, metrics and images will be logged to TensorBoard.
-
-    Default is ``False``.
-    """
-
-    # Whether to also save images to TensorBoard if use_tensorboard is True
     save_images_to_tensorboard: bool = False
-    """
-    Whether to also save images to TensorBoard if :obj:`use_tensorboard` is ``True``. If ``True``, images will be saved to TensorBoard.
-
-    Default is ``False``.
-    """
 
 
-class GaussianSplatReconstructionWriter(GaussianSplatReconstructionBaseWriter):
+class GARfVDBWriter(GARfVDBBaseWriter):
     """
-    Class to handle logging and saving data during Gaussian splat reconstruction.
-    This class is responsible for saving, checkpoints, PLY files, images, and metrics.
+    Class to handle logging and saving data during GARfVDB training.
+    This class is responsible for saving, checkpoints, images, and metrics.
     It can also log metrics and images to TensorBoard if requested.
-
-    .. code-block:: text
-
-        save_path/run_name/
-            checkpoints/
-                <step>/
-                    <first_checkpoint>.pth
-                    <second_checkpoint>.pth
-                    ...
-                <step>/
-                    ...
-            ply/
-                <step>/
-                    <first_ply>.ply
-                    <second_ply>.ply
-                    ...
-                <step>/
-                    ...
-            images/
-                <step>/
-                    <first_image>.png
-                    <second_image>.png
-                    ...
-                <step>/
-                    ...
-            tensorboard/
-                events.out.tfevents...
-            metrics_log.csv
+    save_path/run_name/
+        checkpoints/
+            <step>/
+                <first_checkpoint>.pth
+                <second_checkpoint>.pth
+                ...
+            <step>/
+                ...
+        images/
+            <step>/
+                <first_image>.png
+                <second_image>.png
+                ...
+            <step>/
+                ...
+        tensorboard/
+            events.out.tfevents...
+        metrics_log.csv
 
     """
 
@@ -189,19 +116,18 @@ class GaussianSplatReconstructionWriter(GaussianSplatReconstructionBaseWriter):
         run_name: str | None,
         save_path: pathlib.Path | None,
         exist_ok: bool = False,
-        config: GaussianSplatReconstructionWriterConfig = GaussianSplatReconstructionWriterConfig(),
+        config: GARfVDBWriterConfig = GARfVDBWriterConfig(),
     ) -> None:
         """
-        Create a new :class:`GaussianSplatReconstructionWriter` instance, which can log and save data during reconstruction.
+        Create a new GARfVDBWriter instance, which can log and save data during training.
 
         Args:
-            run_name (str | None): Name of this reconstruction run. If None, a unique name will be generated.
+            run_name (str | None): Name of this training run. If None, a unique name will be generated.
             save_path (pathlib.Path | None): Path to the directory where results should be saved.
                 If None, no data will be saved to disk.
-            exist_ok (bool): Whether to keep existing data in the save_path/run_name directory if it exists. If ``False``,
-                an error will be raised if the directory already exists. Default is ``False``.
-            config (GaussianSplatReconstructionWriterConfig): Configuration parameters for what data to save and how.
-
+            exist_ok (bool): Whether to keep existing data in the save_path/run_name directory if it exists. If False,
+                an error will be raised if the directory already exists. Default is False.
+            config (GARfVDBWriterConfig): Configuration parameters for what data to save and how.
         """
         super().__init__()
         self._logger = logging.getLogger(f"{self.__class__.__module__}.{self.__class__.__name__}")
@@ -234,12 +160,6 @@ class GaussianSplatReconstructionWriter(GaussianSplatReconstructionBaseWriter):
 
         self._run_name = run_name
         self._save_path = save_path
-
-        # Create directory to save PLY files if requested
-        self._ply_path: pathlib.Path | None = None
-        if self._config.save_plys and self._save_path is not None:
-            self._ply_path = self._save_path / "ply"
-            self._ply_path.mkdir(parents=True, exist_ok=True)
 
         # Create directory to save checkpoints if requested
         self._checkpoints_path: pathlib.Path | None = None
@@ -345,8 +265,8 @@ class GaussianSplatReconstructionWriter(GaussianSplatReconstructionBaseWriter):
         Args:
             base_path (pathlib.Path): Base directory where the file should be saved.
             global_step (int): Global step at which the file is being saved. A subdirectory with this name will be created under base_path.
-            file_name (str): Name of the file to be saved. Can include subdirectories (*e.g.* ``"reconstruction/image_0001.png"``).
-            file_type (str): Type of the file used for error messages (*e.g.* ``"Image"``, ``"Checkpoint"``).
+            file_name (str): Name of the file to be saved. Can include subdirectories (e.g. "train/image_0001.png").
+            file_type (str): Type of the file used for error messages (E.g. "Image", "Checkpoint").
             allowed_sufixes (tuple[str, ...]): Allowed file suffixes/extensions.
             default_suffix (str): Default file suffix/extension to use if none is provided.
 
@@ -362,7 +282,7 @@ class GaussianSplatReconstructionWriter(GaussianSplatReconstructionBaseWriter):
             raise ValueError(f"{file_type} name {file_name} results in a path outside of {base_path.name} directory.")
 
         # Create parent directory if it does not exist. If the user passes in a nested path, we need to create it.
-        # e.g. file_name = "reconstruction/image_0001.png" will create "images/reconstruction/" directory
+        # e.g. file_name = "train/image_0001.png" will create "images/train/" directory
         if not step_file_path.parent.exists():
             step_file_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -385,12 +305,12 @@ class GaussianSplatReconstructionWriter(GaussianSplatReconstructionBaseWriter):
         """
         Generate a unique results directory based on the current time, and return its name and path.
 
-        The results directory will be created under ``base_path`` with a name in the format
-        ``prefix_YYYY-MM-DD-HH-MM-SS``. If a directory with the same name already exists,
+        The results directory will be created under `base_path` with a name in the format
+        `prefix_YYYY-MM-DD-HH-MM-SS`. If a directory with the same name already exists,
         it will attempt to create a new one by appending an incremented number to the name
 
         Returns:
-            run_name: The name of a unique log directory for a specific run in the format ``run_YYYY-MM-DD-HH-MM-SS``.
+            run_name: The name of a unique log directory for a specific run in the format "run_YYYY-MM-DD-HH-MM-SS".
             log_path: A pathlib.Path object pointing to the created log directory.
         """
         attempts = 0
@@ -412,26 +332,26 @@ class GaussianSplatReconstructionWriter(GaussianSplatReconstructionBaseWriter):
 
         self._logger.info(f"Created unique log directory with name {run_name} after {attempts} attempts.")
 
-        return run_name, log_path
+        return run_name, log_path  # type: ignore
 
     @property
     def run_name(self) -> str | None:
         """
-        Return the name of this reconstruction run, or ``None`` if the writer is not saving any data. The name of the run matches
+        Return the name of this training run, or None if no name was specified. The name of the run matches
         the name of the directory where logged results are being saved.
 
         Returns:
-            str | None: The name of this reconstruction run, or ``None`` if the writer is not saving any data.
+            str | None: The name of this training run, or None if no name was specified.
         """
         return self._run_name
 
     @property
     def log_path(self) -> pathlib.Path | None:
         """
-        Return the path where logged results are being saved, or ``None`` if no results are being saved.
+        Return the path where logged results are being saved, or None if no results are being saved.
 
         Returns:
-            log_path (pathlib.Path | None): The path where logged results are being saved, or ``None`` if
+            log_path (pathlib.Path | None): The path where logged results are being saved, or None if
                 no logged results are being saved.
         """
         return self._save_path
@@ -439,7 +359,7 @@ class GaussianSplatReconstructionWriter(GaussianSplatReconstructionBaseWriter):
     @torch.no_grad()
     def log_metric(self, global_step: int, metric_name: str, metric_value: NumericScalar) -> None:
         """
-        Log a scalar metric value. This function is called during reconstruction to log metrics such as loss, PSNR, etc.
+        Log a scalar metric value. This function is called during training to log metrics such as loss, PSNR, etc.
 
         Args:
             global_step (int): The global step at which the metric is being logged.
@@ -509,17 +429,17 @@ class GaussianSplatReconstructionWriter(GaussianSplatReconstructionBaseWriter):
                     else image_path
                 )
 
-                image_np = image[b].cpu().numpy()
-                if num_channels == 1:
-                    image_np = image_np[:, :, 0]  # Remove channel dimension for grayscale
-                if num_channels == 3:
-                    image_np = cv2.cvtColor(image_np, cv2.COLOR_RGB2BGR)  # Convert RGB to BGR for OpenCV
-
                 if image_batch_path.suffix.lower() == ".png":
                     # Save as PNG
+                    image_np = image[b].cpu().numpy()
+                    if num_channels == 1:
+                        image_np = image_np[:, :, 0]  # Remove channel dimension for grayscale
                     cv2.imwrite(str(image_batch_path), image_np)
                 elif image_batch_path.suffix.lower() == ".jpg" or image_batch_path.suffix.lower() == ".jpeg":
                     # Save as JPEG
+                    image_np = (image[b].cpu().numpy() * 255.0).clip(0, 255).astype(np.uint8)
+                    if num_channels == 1:
+                        image_np = image_np[:, :, 0]  # Remove channel dimension for grayscale
                     cv2.imwrite(str(image_batch_path), image_np, [int(cv2.IMWRITE_JPEG_QUALITY), jpeg_quality])
                 else:
                     raise ValueError(f"Unsupported image format {image_batch_path.suffix} for saving. Use .png or .jpg")
@@ -531,12 +451,14 @@ class GaussianSplatReconstructionWriter(GaussianSplatReconstructionBaseWriter):
     @torch.no_grad()
     def save_checkpoint(self, global_step: int, checkpoint_name: str, checkpoint: dict[str, Any]) -> None:
         """
-        Save a reconstruction checkpoint to disk. This function is called during reconstruction to save model and optimizer state.
+        Save a training checkpoint to disk. This function is called during training to save model and optimizer state.
 
         Args:
             global_step (int): The global step at which the checkpoint is being saved.
-            checkpoint_name (str): The name of the checkpoint file. This will be used as the file name. Must have a ``.pth`` or ``.pt`` suffix.
-            checkpoint (dict[str, Any]): The checkpoint dictionary to be saved. Typically contains model state, optimizer state, etc.
+            checkpoint_name (str): The name of the checkpoint file. This will be used as the file name.
+                Must have a .pth or .pt suffix.
+            checkpoint (dict[str, Any]): The checkpoint dictionary to be saved. Typically contains model state,
+                optimizer state, etc.
         """
         if self._config.save_checkpoints and self._checkpoints_path is not None:
             ckpt_path = self._resolve_saved_file(
@@ -549,35 +471,11 @@ class GaussianSplatReconstructionWriter(GaussianSplatReconstructionBaseWriter):
             )
 
             envelope = create_training_checkpoint(
-                GAUSSIAN_SPLAT_RECONSTRUCTION_METHOD,
+                GARFVDB_TRAINING_METHOD,
                 checkpoint,
-                method_version=GAUSSIAN_SPLAT_RECONSTRUCTION_METHOD_VERSION,
+                method_version=GARFVDB_TRAINING_METHOD_VERSION,
             )
             torch.save(envelope.to_dict(), ckpt_path)
 
-    @torch.no_grad()
-    def save_ply(
-        self, global_step: int, ply_name: str, model: GaussianSplat3d, metadata: dict[str, Any] | None = None
-    ) -> None:
-        """
-        Save the current Gaussian splat model to a PLY file. This function is called during reconstruction to save
-        the reconstructed model at various stages.
 
-        Args:
-            global_step (int): The global step at which the PLY file is being saved.
-            ply_name (str): The name of the PLY file. This will be used as the file name. Must have a ``.ply`` suffix.
-            model (GaussianSplat3d): The Gaussian splat model to be saved.
-            metadata (dict[str, Any] | None): Optional metadata to include in the PLY file (e.g. camera parameters, reconstruction config, etc.).
-        """
-        if self._config.save_plys and self._ply_path is not None:
-            ply_path = self._resolve_saved_file(
-                base_path=self._ply_path,
-                global_step=global_step,
-                file_name=ply_name,
-                file_type="PLY",
-                allowed_sufixes=(".ply",),
-                default_suffix=".ply",
-            )
-
-            # Save PLY using model's built-in save function
-            model.save_ply(str(ply_path), metadata=metadata)
+__all__ = ["GARfVDBBaseWriter", "GARfVDBWriter", "GARfVDBWriterConfig"]

@@ -2,8 +2,8 @@
 
     usage: frgs show [-h] [SHOW OPTIONS] PATH
 
-    Visualize a Gaussian splat radiance field in a saved PLY or checkpoint file. This will plot the
-    splats in an interactive viewer shown in a browser window.
+    Visualize a saved Reality Capture product. Supported inputs are Gaussian PLY/checkpoint files
+    and portable GARfVDB bundle directories.
 
     # Example usage:
 
@@ -14,8 +14,7 @@
         frgs show model.pt --viewer-port 8888
 
     ╭─ positional arguments ───────────────────────────────────────────────────────────────────────╮
-    │ PATH                    Path to the input PLY or checkpoint file. Must end in .ply, .pt, or  │
-    │                         .pth. (required)                                                     │
+    │ PATH                    Path to a PLY, checkpoint, or .garfvdb bundle. (required)            │
     ╰──────────────────────────────────────────────────────────────────────────────────────────────╯
     ╭─ options ────────────────────────────────────────────────────────────────────────────────────╮
     │ -h, --help              show this help message and exit                                      │
@@ -27,4 +26,3 @@
     │                         If True, then the viewer will log verbosely. (default: False)        │
     │ --device STR|DEVICE     Device to use for computation (default is "cuda"). (default: cuda)   │
     ╰──────────────────────────────────────────────────────────────────────────────────────────────╯
-

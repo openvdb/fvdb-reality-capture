@@ -11,6 +11,9 @@ import torch
 import tyro
 from tyro.conf import arg
 
+from fvdb_reality_capture.checkpoints import load_training_checkpoint
+from fvdb_reality_capture.radiance_fields.checkpoint import GAUSSIAN_SPLAT_RECONSTRUCTION_METHOD
+
 from fvdb_reality_capture.cli import BaseCommand
 from fvdb_reality_capture.radiance_fields import (
     GaussianSplatReconstruction,
@@ -80,7 +83,11 @@ class Evaluate(BaseCommand):
             self.log_path = self.checkpoint_path.parent / "eval"
 
         logger.info(f"Evaluating checkpoint: {self.checkpoint_path}")
-        checkpoint_state = torch.load(self.checkpoint_path, map_location=self.device, weights_only=False)
+        checkpoint_state = load_training_checkpoint(
+            self.checkpoint_path,
+            map_location=self.device,
+            expected_method=GAUSSIAN_SPLAT_RECONSTRUCTION_METHOD,
+        ).state
         writer_config = GaussianSplatReconstructionWriterConfig(
             save_images=self.save_images,
             save_metrics=True,

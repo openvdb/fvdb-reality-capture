@@ -2,9 +2,8 @@
 
     usage: frgs resume [-h] [RESUME OPTIONS] PATH
 
-    Resume reconstructing a 3D Gaussian Splat radiance field from a checkpoint. This command loads a
-    model checkpoint and continues reconstruction from that point. The dataset used to create the
-    checkpoint must be at the same path as when the checkpoint was created.
+    Resume a Reality Capture training run. The versioned checkpoint envelope identifies the method and dispatches
+    its registered resume handler. Source dataset paths recorded by the checkpoint must remain available.
 
     Example usage:
 
@@ -13,7 +12,7 @@
 
     ╭─ positional arguments ───────────────────────────────────────────────────────────────────────╮
     │ PATH                                                                                         │
-    │     Path to the checkpoint file containing the Gaussian Splat radiance field. (required)     │
+    │     Path to a versioned Reality Capture training checkpoint. (required)                      │
     ╰──────────────────────────────────────────────────────────────────────────────────────────────╯
     ╭─ options ────────────────────────────────────────────────────────────────────────────────────╮
     │ -h, --help                                                                                   │
@@ -36,8 +35,9 @@
     │ -v, --verbose, --no-verbose                                                                  │
     │     If set, show verbose debug messages. (default: False)                                    │
     │ -o PATH, --out-path PATH                                                                     │
-    │     Path to save the output PLY file. Defaults to `out.ply` in the current working           │
-    │     directory. Path must end in .ply, .usdc, or .usdz. (default: out_resumed.ply)            │
+    │     Output product path. The default is selected by the checkpoint method. (default: None)   │
+    │ -r {None}|PATH, --reconstruction-path {None}|PATH                                            │
+    │     Override a reconstruction referenced by a derived-product checkpoint. (default: None)   │
     ╰──────────────────────────────────────────────────────────────────────────────────────────────╯
     ╭─ io options ─────────────────────────────────────────────────────────────────────────────────╮
     │ Configure saving and logging metrics, images, and checkpoints.                               │

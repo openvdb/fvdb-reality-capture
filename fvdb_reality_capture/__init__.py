@@ -4,7 +4,8 @@
 
 from importlib.metadata import PackageNotFoundError, version
 
-from . import dev, foundation_models, radiance_fields, sfm_scene, tools, transforms
+from . import checkpoints, dev, foundation_models, radiance_fields, sfm_scene, tools, transforms
+from . import instance_segmentation
 from .tools import download_example_data
 
 try:
@@ -14,8 +15,10 @@ except PackageNotFoundError:
 
 __all__ = [
     "__version__",
+    "checkpoints",
     "dev",
     "foundation_models",
+    "instance_segmentation",
     "radiance_fields",
     "sfm_scene",
     "tools",

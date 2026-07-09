@@ -55,6 +55,7 @@ Features
 - Extraction of high-quality meshes and point clouds from reconstructed radiance fields, with support for various output
   formats.
 - Visualization tools for inspecting sensor data, radiance fields, and reconstruction results.
+- Scale-conditioned 3D instance feature fields using GARfVDB, stored as portable NanoVDB-based artifacts.
 - Extensible design that allows users to easily add new functionality and customize existing components.
 - Comprehensive documentation and tutorials to help users get started quickly.
 - Automatic scaling to multiple GPUs in a single machine for large-scale reconstructions
@@ -96,6 +97,7 @@ A common reality capture pipeline typically resembles the figure below:
    tutorials/sensor_data_loading_and_manipulation
    tutorials/radiance_field_and_mesh_reconstruction
    tutorials/frgs
+   tutorials/instance_segmentation
 
 .. toctree::
    :maxdepth: 1
@@ -105,7 +107,9 @@ A common reality capture pipeline typically resembles the figure below:
    api/sfm_scene
    api/tools
    api/transforms
+   api/checkpoints
    api/frgs
+   api/instance_segmentation
 
 .. toctree::
    :maxdepth: 1

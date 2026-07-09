@@ -1,11 +1,12 @@
 ``frgs 🐸 CLI Tool``
 ==========================================
 
-fVDB-Reality-Capture provides a command-line interface (CLI) tool called ``frgs`` for tools related to Gaussian splatting.
+fVDB-Reality-Capture provides a command-line interface (CLI) tool called ``frgs`` for tools related to Gaussian Splatting
+and derived spatial products.
 ``frgs`` is pronounced "frogs" 🐸, and is short for  **F**\ vdb-\ **R**\ eality-capture **G**\ aussian **S**\ platting.
 
-This tool allows users to perform Gaussian-splatting-related tasks such as reconstruction, format conversions,
-mesh and point cloud extraction, and visualization directly from the command line, without needing to write any code.
+This tool covers reconstruction, derived instance feature fields, format conversion, mesh and point-cloud extraction,
+and visualization directly from the command line without requiring Python code.
 
 
 ``frgs convert``
@@ -27,6 +28,11 @@ mesh and point cloud extraction, and visualization directly from the command lin
 ----------------------
 
 .. include:: frgs/mesh_basic.rst
+
+``frgs instance-segmentation``
+--------------------------------
+
+.. include:: frgs/instance_segmentation.rst
 
 ``frgs mesh-dlnr``
 ----------------------

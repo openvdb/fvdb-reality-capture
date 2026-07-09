@@ -7,40 +7,29 @@ from typing import Literal
 
 import torch
 from fvdb import CameraModel, GaussianSplat3d
-from fvdb.types import DeviceIdentifier, to_Mat33fBatch, to_Mat44fBatch, to_Vec2iBatch
+from fvdb.types import to_Mat33fBatch, to_Mat44fBatch, to_Vec2iBatch
 
-from fvdb_reality_capture.radiance_fields import GaussianSplatReconstruction
+from fvdb_reality_capture.radiance_fields import GaussianSplatReconstruction, load_splats_from_file
 from fvdb_reality_capture.sfm_scene import SfmScene
 from fvdb_reality_capture.tools import export_splats_to_usd
 
 DatasetType = Literal["colmap", "simple_directory", "e57"]
 NearFarUnits = Literal["absolute", "camera_extent", "median_depth"]
 
-
-def load_splats_from_file(path: pathlib.Path, device: DeviceIdentifier) -> tuple[GaussianSplat3d, dict]:
-    """
-    Load a PLY or a checkpoint file and metadata.
-    The metadata may contain camera information (if it was a PLY saved during training).
-    If so, we will add the camera views to the viewer.
-
-    Args:
-        path (pathlib.Path): Path to the PLY or checkpoint file.
-        device (DeviceIdentifier): Device to load the model onto.
-    Returns:
-        model (GaussianSplat3d): The loaded Gaussian Splat model.
-        metadata (dict): The metadata associated with the model.
-    """
-    if path.suffix.lower() == ".ply":
-        model, metadata = GaussianSplat3d.from_ply(path, device)
-    elif path.suffix.lower() in (".pt", ".pth"):
-        checkpoint = torch.load(path, map_location=device, weights_only=False)
-        runner = GaussianSplatReconstruction.from_state_dict(checkpoint, device=device)
-        model = runner.model
-        metadata = runner.reconstruction_metadata
-    else:
-        raise ValueError("Input path must end in .ply, .pt, or .pth")
-
-    return model, metadata
+# ``load_splats_from_file`` is implemented in the library layer (``radiance_fields``) because the
+# GARfVDB trainer's public resume API also needs it and must not depend on CLI internals. It is
+# re-exported here so all of the CLI load/save helpers remain importable from one place. Listing it in
+# ``__all__`` marks the re-export as intentional so it is not stripped by an unused-import pass.
+__all__ = [
+    "DatasetType",
+    "NearFarUnits",
+    "load_camera_metadata",
+    "load_sfm_scene",
+    "load_splats_from_file",
+    "near_far_for_units",
+    "save_model_from_runner",
+    "save_model_from_splats",
+]
 
 
 def load_sfm_scene(path: pathlib.Path, dataset_type: DatasetType) -> SfmScene:

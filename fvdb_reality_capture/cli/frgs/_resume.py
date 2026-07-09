@@ -11,14 +11,33 @@ import torch
 import tyro
 from tyro.conf import arg
 
+from fvdb_reality_capture.checkpoints import (
+    TrainingCheckpoint,
+    load_training_checkpoint,
+)
 from fvdb_reality_capture.cli import BaseCommand
+from fvdb_reality_capture.instance_segmentation import (
+    GARFVDB_TRAINING_METHOD,
+    GARfVDBTrainer,
+)
+from fvdb_reality_capture.instance_segmentation.training.segmentation_writer import (
+    GARfVDBWriter,
+    GARfVDBWriterConfig,
+)
 from fvdb_reality_capture.radiance_fields import (
+    GAUSSIAN_SPLAT_RECONSTRUCTION_METHOD,
     GaussianSplatReconstruction,
     GaussianSplatReconstructionWriter,
     GaussianSplatReconstructionWriterConfig,
 )
 
 from ._common import save_model_from_runner
+from ._resume_registry import (
+    ResumeContext,
+    ResumeHandler,
+    get_resume_handler,
+    register_resume_handler,
+)
 
 
 @dataclass
@@ -38,9 +57,9 @@ class WriterConfig(GaussianSplatReconstructionWriterConfig):
 @dataclass
 class Resume(BaseCommand):
     """
-    Resume reconstructing a 3D Gaussian Splat radiance field from a checkpoint. This command loads a model
-    checkpoint and continues reconstruction from that point. The dataset used to create the checkpoint
-    must be at the same path as when the checkpoint was created.
+    Resume a Reality Capture training run. The versioned checkpoint envelope dispatches to the registered method
+    handler. Source dataset paths recorded by the checkpoint must remain available at the same path as when the
+    checkpoint was created.
 
     Example usage:
 
@@ -48,7 +67,7 @@ class Resume(BaseCommand):
         frgs resume checkpoint.pt -o out_resumed.ply
     """
 
-    # Path to the checkpoint file containing the Gaussian Splat radiance field.
+    # Path to a versioned Reality Capture training checkpoint.
     checkpoint_path: tyro.conf.Positional[pathlib.Path]
 
     # Configure saving and logging metrics, images, and checkpoints.
@@ -75,10 +94,12 @@ class Resume(BaseCommand):
     # If set, show verbose debug messages.
     verbose: Annotated[bool, arg(aliases=["-v"])] = False
 
-    # Path to save the output PLY file.
-    # Defaults to `out.ply` in the current working directory.
-    # Path must end in .ply, .usdc, or .usdz.
-    out_path: Annotated[pathlib.Path, arg(aliases=["-o"])] = pathlib.Path("out_resumed.ply")
+    # Output path. Defaults to out_resumed.ply for reconstruction checkpoints and
+    # out_resumed.garfvdb for GARfVDB checkpoints.
+    out_path: Annotated[pathlib.Path | None, arg(aliases=["-o"])] = None
+
+    reconstruction_path: Annotated[pathlib.Path | None, arg(aliases=["-r"])] = None
+    """Override the reconstruction referenced by a GARfVDB checkpoint if it moved."""
 
     def execute(self) -> None:
         log_level = logging.DEBUG if self.verbose else logging.INFO
@@ -86,28 +107,96 @@ class Resume(BaseCommand):
         logger = logging.getLogger(__name__)
 
         logger.info(f"Loading checkpoint at {self.checkpoint_path}")
-        checkpoint_state = torch.load(self.checkpoint_path, map_location=self.device, weights_only=False)
+        checkpoint = load_training_checkpoint(self.checkpoint_path, map_location=self.device)
+        handler = get_resume_handler(checkpoint.method)
+        out_path = self.out_path or pathlib.Path(handler.default_output_name)
+        logger.info("Dispatching checkpoint method %s", checkpoint.method)
+        handler.callback(checkpoint, self, out_path)
 
-        writer = GaussianSplatReconstructionWriter(
-            run_name=self.run_name, save_path=self.io.log_path, config=self.io, exist_ok=False
+
+def _resume_garfvdb(checkpoint: TrainingCheckpoint, command: ResumeContext, out_path: pathlib.Path) -> None:
+    if command.update_viz_every > 0:
+        raise ValueError("Live GARfVDB resume visualization is unsupported; resume first, then use frgs show.")
+    writer_config = GARfVDBWriterConfig(
+        save_images=command.io.save_images,
+        save_checkpoints=command.io.save_checkpoints,
+        save_metrics=command.io.save_metrics,
+        metrics_file_buffer_size=command.io.metrics_file_buffer_size,
+        use_tensorboard=command.io.use_tensorboard,
+        save_images_to_tensorboard=command.io.save_images_to_tensorboard,
+    )
+    writer = GARfVDBWriter(
+        run_name=command.run_name,
+        save_path=command.io.log_path,
+        config=writer_config,
+        exist_ok=False,
+    )
+    trainer = GARfVDBTrainer.from_checkpoint_state(
+        checkpoint.state,
+        writer=writer,
+        device=command.device,
+        reconstruction_path=command.reconstruction_path,
+    )
+    trainer.train()
+    logging.getLogger(__name__).info("Saving resumed GARfVDB product to %s", out_path)
+    trainer.to_product().save(out_path)
+
+
+def _resume_gaussian_splat(checkpoint: TrainingCheckpoint, command: ResumeContext, out_path: pathlib.Path) -> None:
+    writer_config = GaussianSplatReconstructionWriterConfig(
+        save_images=command.io.save_images,
+        save_checkpoints=command.io.save_checkpoints,
+        save_plys=command.io.save_plys,
+        save_metrics=command.io.save_metrics,
+        metrics_file_buffer_size=command.io.metrics_file_buffer_size,
+        use_tensorboard=command.io.use_tensorboard,
+        save_images_to_tensorboard=command.io.save_images_to_tensorboard,
+    )
+    writer = GaussianSplatReconstructionWriter(
+        run_name=command.run_name,
+        save_path=command.io.log_path,
+        config=writer_config,
+        exist_ok=False,
+    )
+    if command.update_viz_every > 0:
+        logging.getLogger(__name__).info(
+            "Starting viewer server on %s:%d",
+            command.viewer_ip_address,
+            command.viewer_port,
         )
-        if self.update_viz_every > 0:
-            logger.info(f"Starting viewer server on {self.viewer_ip_address}:{self.viewer_port}")
-            fviz.init(ip_address=self.viewer_ip_address, port=self.viewer_port, verbose=self.verbose)
-            viz_scene = fviz.get_scene("Gaussian Splat Reconstruction Visualization")
-        else:
-            viz_scene = None
-
-        runner = GaussianSplatReconstruction.from_state_dict(
-            checkpoint_state,
-            device=self.device,
-            writer=writer,
-            viz_scene=viz_scene,
-            log_interval_steps=self.io.log_every,
-            viz_update_interval_epochs=self.update_viz_every,
+        fviz.init(
+            ip_address=command.viewer_ip_address,
+            port=command.viewer_port,
+            verbose=command.verbose,
         )
+        viz_scene = fviz.get_scene("Gaussian Splat Reconstruction Visualization")
+    else:
+        viz_scene = None
 
-        runner.optimize()
+    runner = GaussianSplatReconstruction.from_state_dict(
+        checkpoint.state,
+        device=command.device,
+        writer=writer,
+        viz_scene=viz_scene,
+        log_interval_steps=command.io.log_every,
+        viz_update_interval_epochs=command.update_viz_every,
+    )
+    runner.optimize()
+    logging.getLogger(__name__).info("Saving final model to %s", out_path)
+    save_model_from_runner(out_path, runner)
 
-        logger.info(f"Saving final model to {self.out_path}")
-        save_model_from_runner(self.out_path, runner)
+
+register_resume_handler(
+    ResumeHandler(
+        method=GARFVDB_TRAINING_METHOD,
+        default_output_name="out_resumed.garfvdb",
+        callback=_resume_garfvdb,
+    )
+)
+register_resume_handler(
+    ResumeHandler(
+        method=GAUSSIAN_SPLAT_RECONSTRUCTION_METHOD,
+        default_output_name="out_resumed.ply",
+        callback=_resume_gaussian_splat,
+    )
+)

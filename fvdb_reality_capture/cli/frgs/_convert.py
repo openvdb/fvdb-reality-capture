@@ -10,6 +10,8 @@ import point_cloud_utils as pcu
 import torch
 import tyro
 from fvdb import GaussianSplat3d
+from fvdb_reality_capture.checkpoints import load_training_checkpoint
+from fvdb_reality_capture.radiance_fields.checkpoint import GAUSSIAN_SPLAT_RECONSTRUCTION_METHOD
 
 from fvdb_reality_capture.cli import BaseCommand
 from fvdb_reality_capture.radiance_fields import GaussianSplatReconstruction
@@ -123,8 +125,12 @@ class Convert(BaseCommand):
             model, metadata = GaussianSplat3d.from_ply(self.in_path)
             logger.info(f"Loaded Gaussian Splat model with {model.num_gaussians} splats from {self.in_path}")
         elif in_file_type in (".pt", ".pth"):
-            checkpoint = torch.load(self.in_path, map_location="cpu", weights_only=False)
-            runner = GaussianSplatReconstruction.from_state_dict(checkpoint)
+            checkpoint = load_training_checkpoint(
+                self.in_path,
+                map_location="cpu",
+                expected_method=GAUSSIAN_SPLAT_RECONSTRUCTION_METHOD,
+            )
+            runner = GaussianSplatReconstruction.from_state_dict(checkpoint.state)
             model = runner.model
             metadata = runner.reconstruction_metadata
             logger.info(f"Loaded Gaussian Splat model with {model.num_gaussians} splats from {self.in_path}")

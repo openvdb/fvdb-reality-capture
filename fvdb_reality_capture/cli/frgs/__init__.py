@@ -9,6 +9,7 @@ from fvdb_reality_capture.cli import BaseCommand
 from ._convert import Convert
 from ._download import Download
 from ._evaluate import Evaluate
+from ._instance_segmentation import InstanceSegmentation
 from ._mesh_basic import MeshBasic
 from ._mesh_dlnr import MeshDLNR
 from ._points import Points
@@ -23,6 +24,7 @@ def frgs():
         Download
         | Reconstruct
         | ReconstructMCMC
+        | InstanceSegmentation
         | Convert
         | ShowData
         | Show

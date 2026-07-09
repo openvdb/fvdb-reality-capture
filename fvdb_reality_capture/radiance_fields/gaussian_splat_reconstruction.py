@@ -28,6 +28,7 @@ from ._gaussian_rendering import RenderBackend, make_render_backend
 from ._private.lpips import LPIPSLoss
 from ._private.utils import crop_image_batch
 from .camera_pose_adjust import CameraPoseAdjustment
+from .checkpoint import GAUSSIAN_SPLAT_RECONSTRUCTION_METHOD_VERSION
 from .gaussian_splat_dataset import SfmDataset
 from .gaussian_splat_optimizer import (
     BaseGaussianSplatOptimizer,
@@ -425,7 +426,7 @@ class GaussianSplatReconstruction:
     These methods allow you to pause and resume reconstructions from checkpoints.
     """
 
-    version = "0.1.0"
+    version = GAUSSIAN_SPLAT_RECONSTRUCTION_METHOD_VERSION
 
     _magic = "GaussianSplattingCheckpoint"
 
