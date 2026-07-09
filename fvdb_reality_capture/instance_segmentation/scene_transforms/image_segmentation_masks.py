@@ -3,6 +3,7 @@
 #
 import hashlib
 import logging
+from concurrent.futures import Future, ThreadPoolExecutor
 from typing import Any, Literal
 
 import cv2
@@ -10,6 +11,7 @@ import numpy as np
 import torch
 import tqdm
 from fvdb import CameraModel, GaussianSplat3d
+
 from fvdb_reality_capture.foundation_models import SAM2Model
 from fvdb_reality_capture.sfm_scene import SfmCache, SfmScene
 from fvdb_reality_capture.transforms import BaseTransform, transform
@@ -34,6 +36,7 @@ class GenerateGARfVDBMasks(BaseTransform):
         gs3d: GaussianSplat3d | None = None,
         checkpoint: Literal["large", "small", "tiny", "base_plus"] = "large",
         points_per_side=40,
+        points_per_batch=128,
         pred_iou_thresh=0.80,
         stability_score_thresh=0.80,
         device: torch.device | str = "cuda",
@@ -46,6 +49,10 @@ class GenerateGARfVDBMasks(BaseTransform):
                 If None, the transform can only be used with precomputed cached results (requires gs3d_hash).
             checkpoint (Literal["large", "small", "tiny", "base_plus"]): The checkpoint to use for the SAM2 model.
             points_per_side (int): The number of points to use per side for the segmentation mask.
+            points_per_batch (int): The number of point prompts run through the SAM2 mask decoder per
+                forward pass. Higher values reduce the number of decoder invocations (faster mask
+                generation) at the cost of more GPU memory. Does not affect the generated masks, so it
+                is not part of the cache key.
             pred_iou_thresh (float): The IoU threshold for the segmentation mask.
             stability_score_thresh (float): The stability score threshold for the segmentation mask.
             device (torch.device | str): The device to use for the SAM2 model.
@@ -57,6 +64,7 @@ class GenerateGARfVDBMasks(BaseTransform):
         self._gs3d = gs3d
         self._image_type = "pt"
         self._points_per_side = points_per_side
+        self._points_per_batch = points_per_batch
         self._pred_iou_thresh = pred_iou_thresh
         self._stability_score_thresh = stability_score_thresh
         self._device = device
@@ -68,6 +76,7 @@ class GenerateGARfVDBMasks(BaseTransform):
             self._sam2 = SAM2Model(
                 checkpoint=checkpoint,
                 points_per_side=points_per_side,
+                points_per_batch=points_per_batch,
                 pred_iou_thresh=pred_iou_thresh,
                 stability_score_thresh=stability_score_thresh,
                 device=device,
@@ -252,41 +261,62 @@ class GenerateGARfVDBMasks(BaseTransform):
 
             self._logger.info(f"Generating segmentation masks with scales and saving to cache.")
             pbar = tqdm.tqdm(input_scene.images, unit="masks", desc="Generating segmentation masks with scales")
-            mask_paths = []
-            for image_index, image_meta in enumerate(pbar):
-                image_path = image_meta.image_path
-                img = cv2.imread(image_path)
-                assert img is not None, f"Failed to load image {image_path}"
 
-                scales, pixel_to_mask_id, mask_cdf = self._generate_segmentation_mask(
-                    self._gs3d,
-                    img,
-                    image_meta.camera_metadata.projection_matrix,
-                    image_meta.world_to_camera_matrix,
-                    max_scale,
+            # Cache writes are disk-bound (~1 s/img) while mask generation is GPU-bound (~2.7 s/img), so we
+            # hand each write off to a single background thread. That overlaps an image's write with the next
+            # image's SAM2 forward pass instead of blocking on it. The GPU->CPU copies happen here on the main
+            # thread so the worker only touches CPU tensors and the disk. A single worker keeps writes ordered
+            # and avoids concurrent sqlite/disk contention; since writes are faster than SAM2 the queue stays
+            # shallow. Futures are resolved in order below to build mask_paths and surface any write errors.
+            write_futures: list[Future[str]] = []
+            writer = ThreadPoolExecutor(max_workers=1, thread_name_prefix="garfvdb-mask-writer")
+
+            def _submit_write(name: str, data: dict[str, Any]) -> None:
+                metadata = {
+                    "points_per_side": self._points_per_side,
+                    "pred_iou_thresh": self._pred_iou_thresh,
+                    "stability_score_thresh": self._stability_score_thresh,
+                    "gs3d_hash": hash_str,
+                }
+                write_futures.append(
+                    writer.submit(
+                        lambda: str(
+                            output_cache.write_file(
+                                name=name, data=data, data_type=self._image_type, metadata=metadata
+                            )["path"]
+                        )
+                    )
                 )
 
-                # Save the rescaled image to the cache
-                cache_image_filename = f"masks_{image_index:0{num_zeropad}}"
-                cache_file_meta = output_cache.write_file(
-                    name=cache_image_filename,
-                    data={
+            try:
+                for image_index, image_meta in enumerate(pbar):
+                    image_path = image_meta.image_path
+                    img = cv2.imread(image_path)
+                    assert img is not None, f"Failed to load image {image_path}"
+
+                    scales, pixel_to_mask_id = self._generate_segmentation_mask(
+                        self._gs3d,
+                        img,
+                        image_meta.camera_metadata.projection_matrix,
+                        image_meta.world_to_camera_matrix,
+                        max_scale,
+                    )
+
+                    # Copy to CPU on the main thread, then hand the disk write to the background thread.
+                    cache_image_filename = f"masks_{image_index:0{num_zeropad}}"
+                    data = {
                         "schema_version": GARFVDB_MASK_DATA_SCHEMA_VERSION,
                         "scales": scales.detach().cpu(),
                         "pixel_to_mask_id": pixel_to_mask_id.to(self._smallest_int_dtype(pixel_to_mask_id))
                         .detach()
                         .cpu(),
-                        "mask_cdf": mask_cdf.detach().cpu(),
-                    },
-                    data_type=self._image_type,
-                    metadata={
-                        "points_per_side": self._points_per_side,
-                        "pred_iou_thresh": self._pred_iou_thresh,
-                        "stability_score_thresh": self._stability_score_thresh,
-                        "gs3d_hash": hash_str,
-                    },
-                )
-                mask_paths.append(str(cache_file_meta["path"]))
+                    }
+                    _submit_write(cache_image_filename, data)
+
+                # Drain the background writer, preserving image order for mask_paths and surfacing errors.
+                mask_paths = [future.result() for future in write_futures]
+            finally:
+                writer.shutdown(wait=True)
 
             pbar.close()
 
@@ -317,7 +347,7 @@ class GenerateGARfVDBMasks(BaseTransform):
         projection_matrix: np.ndarray,
         world_to_camera_matrix: np.ndarray,
         max_scale: float,
-    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    ) -> tuple[torch.Tensor, torch.Tensor]:
         """Generate all the segmentation masks and correlated scale information for the given image using SAM2.
 
         Args:
@@ -329,8 +359,9 @@ class GenerateGARfVDBMasks(BaseTransform):
 
         Returns:
             scales: Scales for the segmentation masks.
-            pixel_to_mask_id: Pixel to mask id mapping.
-            mask_cdf: Mask CDF for the segmentation masks.
+            pixel_to_mask_id: Pixel to mask id mapping. The per-pixel mask-selection CDF is not
+                returned or cached; it is recomputed from this tensor at load time via
+                ``compute_mask_cdf`` since it is fully derived from the mask areas.
         """
         img = img.squeeze()  # [H, W, 3]
         h, w = img.shape[:2]
@@ -373,8 +404,6 @@ class GenerateGARfVDBMasks(BaseTransform):
         if invalid_mask.any():
             self._logger.debug("Found %d invalid (-1) ids" % (invalid_mask.sum().item()))
 
-        world_pts = gs3d.means[g_ids].squeeze(2)  # [H, W, 3]
-
         # Generate a set of masks for the current image using SAM2
         assert self._sam2 is not None  # Guaranteed by check in __call__
         with torch.autocast("cuda", dtype=torch.bfloat16):
@@ -397,10 +426,12 @@ class GenerateGARfVDBMasks(BaseTransform):
         eroded_masks = eroded_masks * (~invalid_mask.squeeze().unsqueeze(0))
 
         # Compute a 3D scale per mask which corresponds to the variance of the 3D points that fall within that mask
-        # Filter out masks whose scale is too large since very scattered 3D points are likely noise
-        self._logger.debug("world_pts " + str(world_pts.shape))
-        self._logger.debug("scale " + str(world_pts[eroded_masks[1]].std(dim=0) * 2.0))
-        scales = torch.stack([world_pts[mask].unique(dim=0).std(dim=0).norm() for mask in eroded_masks])  # [M]
+        # Filter out masks whose scale is too large since very scattered 3D points are likely noise.
+        # Multiple pixels in a mask can hit the same gaussian, so we deduplicate before taking the std. We
+        # deduplicate on the (integer) gaussian id rather than the (float3) world point, which is both cheaper
+        # and equivalent as long as distinct gaussians have distinct means.
+        g_ids_2d = g_ids.squeeze(-1)  # [H, W]
+        scales = torch.stack([gs3d.means[g_ids_2d[mask].unique()].std(dim=0).norm() for mask in eroded_masks])  # [M]
         keep = scales < max_scale  # [M]
         eroded_masks = eroded_masks[keep]  # [M', H, W]
         scales = scales[keep]  # [M']
@@ -408,55 +439,26 @@ class GenerateGARfVDBMasks(BaseTransform):
         # Compute a tensor that maps pixels to the set of masks which intersect that pixel (sorted by area)
         # i.e. pixel_to_mask_id[i, j] = [m1, m2, m3, ...] where m1, m2, ... are the integer ids of the masks
         # which contain pixel [i, j] and area(m1) <= area(m2) <= area(m3) <= ...
-        max_masks = int(eroded_masks.sum(dim=0).max().item())
+        num_masks, mask_h, mask_w = eroded_masks.shape
+        max_masks = int(eroded_masks.sum(dim=0).max().item()) if num_masks > 0 else 0
         pixel_to_mask_id = torch.full(
-            (max_masks, eroded_masks.shape[1], eroded_masks.shape[2]), -1, dtype=torch.long, device=self._device
+            (max_masks, mask_h, mask_w), -1, dtype=torch.long, device=self._device
         )  # [MM, H, W]
-        for m, mask in enumerate(eroded_masks):
-            mask_clone = mask.clone()
-            for i in range(max_masks):
-                free = pixel_to_mask_id[i] == -1
-                masked_area = mask_clone == 1
-                right_index = free & masked_area
-                if len(pixel_to_mask_id[i][right_index]) > 0:
-                    pixel_to_mask_id[i][right_index] = m
-                mask_clone[right_index] = 0
+        # For each pixel, the masks covering it are packed into slots 0, 1, 2, ... in order of increasing
+        # mask index (i.e. decreasing area, since sam_masks are area-sorted). The slot a mask occupies at a
+        # covered pixel is the number of lower-indexed masks that also cover that pixel, which is exactly the
+        # (exclusive) prefix sum over masks. This replaces the O(M * max_masks) Python loop (which also forced
+        # a device sync per iteration) with a single cumsum + scatter.
+        if num_masks > 0 and max_masks > 0:
+            slot = torch.cumsum(eroded_masks.to(torch.long), dim=0) - 1  # [M, H, W]
+            m_index, row, col = torch.where(eroded_masks)  # covered (mask, y, x) triples
+            pixel_to_mask_id[slot[m_index, row, col], row, col] = m_index
         pixel_to_mask_id = pixel_to_mask_id.permute(1, 2, 0)  # [H, W, MM]
 
-        # We're going to use the SAM masks to group pixels for contrastive learning.
-        # i.e. we're going to project features for each pixel into the image and push features corresponding to pixels
-        #      with the same mask together, and pixels with different masks apart.
-        # If we sample pixels, uniformly, we're going to overwhelmingly sample pixels in large masks, and small masks
-        # will not get supervised. To fix this, we assign a weight to each mask which intersects a pixel. The weight
-        # is proportional to the log probability of sampling that mask (under uniform sampling).
-        # These weights are encoded as a CDF per-pixel which we use to choose which mask to use for loss computation
-        # at training time
-
-        # Get the unique ids of each mask, and the number of pixels each mask occupies (area)
-        mask_ids, num_pix_per_mask = torch.unique(pixel_to_mask_id, return_counts=True)  # [N], [N]
-
-        # Sort masks by their area
-        mask_area_sort_ids = torch.argsort(num_pix_per_mask)
-        mask_ids, num_pix_per_mask = mask_ids[mask_area_sort_ids], num_pix_per_mask[mask_area_sort_ids]  # [N], [N]
-        num_pix_per_mask[0] = 0  # Remove the -1 mask which corresponds to no mask, [N]
-
-        # The probability of any pixel landing in a mask is just the area of the mask over the area of the image
-        probs = num_pix_per_mask / num_pix_per_mask.sum()  # [N]
-
-        # Gather the probability values into pixel_to_mask_id, which produces a tensor where
-        # each pixel has a list of probabilities that correspond to the masks that intersect that pixel
-        mask_probs = torch.gather(probs, 0, pixel_to_mask_id.reshape(-1) + 1).view(pixel_to_mask_id.shape)  # [H, W, MM]
-
-        # Compute a CDF for each pixel (which sums to 1) which weighs each mask by its log probability of being sampled
-        # i.e. mask_cdf[i, j, k] is a cumulative probability weight used to select mask k for pixel [i, j]
-        mask_cdf = torch.log(mask_probs)
-        never_masked = mask_cdf.isinf()
-        mask_cdf[never_masked] = 0.0
-        mask_cdf = mask_cdf / (mask_cdf.sum(dim=-1, keepdim=True) + 1e-6)
-        mask_cdf = torch.cumsum(mask_cdf, dim=-1)  # [H, W, MM]
-        mask_cdf[never_masked] = 1.0
-
-        return scales, pixel_to_mask_id, mask_cdf
+        # The per-pixel mask-selection CDF (used to weight masks for contrastive learning so small masks
+        # aren't drowned out by large ones) is fully derived from pixel_to_mask_id, so we do NOT compute or
+        # cache it here.
+        return scales, pixel_to_mask_id
 
     @staticmethod
     def name() -> str:
@@ -479,6 +481,7 @@ class GenerateGARfVDBMasks(BaseTransform):
             "version": self.version,
             "checkpoint": self._checkpoint,
             "points_per_side": self._points_per_side,
+            "points_per_batch": self._points_per_batch,
             "pred_iou_thresh": self._pred_iou_thresh,
             "stability_score_thresh": self._stability_score_thresh,
             "device": self._device,
@@ -511,6 +514,7 @@ class GenerateGARfVDBMasks(BaseTransform):
             gs3d=None,  # Not needed for cached results
             checkpoint=state_dict["checkpoint"],
             points_per_side=state_dict["points_per_side"],
+            points_per_batch=state_dict.get("points_per_batch", 128),
             pred_iou_thresh=state_dict["pred_iou_thresh"],
             stability_score_thresh=state_dict["stability_score_thresh"],
             device=state_dict["device"],

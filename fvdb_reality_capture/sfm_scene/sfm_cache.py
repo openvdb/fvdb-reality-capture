@@ -9,6 +9,7 @@ import pathlib
 import re
 import signal
 import sqlite3
+import threading
 from typing import Any
 
 import cv2
@@ -81,8 +82,13 @@ class FileLock:
             os_open_flags |= os.O_CREAT
         fd = os.open(self._lock_file_path, os_open_flags)
 
-        signal.signal(signal.SIGALRM, self._timeout_signal_handler)
-        signal.alarm(self._timeout_seconds)
+        # signal.signal()/signal.alarm() only work in the main thread of the main interpreter, so the
+        # SIGALRM-based timeout can only be used there. When acquiring the lock from a worker thread
+        # (e.g. a background cache writer), fall back to a plain blocking flock with no timeout.
+        use_timeout = threading.current_thread() is threading.main_thread()
+        if use_timeout:
+            signal.signal(signal.SIGALRM, self._timeout_signal_handler)
+            signal.alarm(self._timeout_seconds)
 
         try:
             fcntl.flock(fd, fcntl.LOCK_EX if self._exclusive else fcntl.LOCK_SH)
@@ -93,8 +99,9 @@ class FileLock:
         else:
             self._lock_fd = fd
         finally:
-            signal.alarm(0)
-            signal.signal(signal.SIGALRM, signal.SIG_DFL)
+            if use_timeout:
+                signal.alarm(0)
+                signal.signal(signal.SIGALRM, signal.SIG_DFL)
 
     def __exit__(self, exc_type, exc_value, traceback):
         fd = int(self._lock_fd) if self._lock_fd is not None else None

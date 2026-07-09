@@ -103,7 +103,8 @@ class GARfVDBMaskAttribute(SceneAttribute):
                 f"Unsupported GARfVDB mask schema_version {data.get('schema_version')!r} in {path}; "
                 f"expected {GARFVDB_MASK_DATA_SCHEMA_VERSION}."
             )
-        required = {"scales", "pixel_to_mask_id", "mask_cdf"}
+        # mask_cdf is not stored on disk; it is recomputed from pixel_to_mask_id at load time by the dataset.
+        required = {"scales", "pixel_to_mask_id"}
         missing = required.difference(data)
         if missing:
             raise ValueError(f"GARfVDB mask artifact {path} is missing fields: {sorted(missing)}")
@@ -112,7 +113,6 @@ class GARfVDBMaskAttribute(SceneAttribute):
         return {
             "scales": data["scales"],
             "pixel_to_mask_id": data["pixel_to_mask_id"],
-            "mask_cdf": data["mask_cdf"],
         }
 
     def state_dict(self) -> dict[str, Any]:

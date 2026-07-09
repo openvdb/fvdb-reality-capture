@@ -8,11 +8,13 @@ import fvdb
 import numpy as np
 import torch
 import torch.cuda.nvtx as nvtx
-from fvdb_reality_capture.radiance_fields import SfmDataset
+
 from fvdb_reality_capture.instance_segmentation.scene_attribute import (
     GARFVDB_MASK_ATTRIBUTE_NAME,
     GARfVDBMaskAttribute,
 )
+from fvdb_reality_capture.instance_segmentation.util import compute_mask_cdf
+from fvdb_reality_capture.radiance_fields import SfmDataset
 from fvdb_reality_capture.sfm_scene import SfmScene
 
 
@@ -137,8 +139,9 @@ class SegmentationDataset(SfmDataset):
         # which are smaller (by about 2x) but are slower to decode on disk and would certainly
         # require caching to be performant.
         with nvtx.range("get_mask_data_decode"):
-            mask_cdf = data["mask_cdf"]
             mask_ids = data["pixel_to_mask_id"]
+            # mask_cdf is derived from pixel_to_mask_id and is not stored in the cache; compute it.
+            mask_cdf = compute_mask_cdf(mask_ids)
             # Using pixel_to_mask_id as indices, torch requires the indices to be at least int32.
             if mask_ids.dtype in [torch.int8, torch.int16]:
                 mask_ids = mask_ids.to(torch.int32)

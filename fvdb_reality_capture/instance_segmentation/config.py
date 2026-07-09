@@ -5,7 +5,10 @@ from dataclasses import dataclass, field
 
 import torch
 from fvdb import GaussianSplat3d
-from fvdb_reality_capture.instance_segmentation.scene_transforms import GenerateGARfVDBMasks
+
+from fvdb_reality_capture.instance_segmentation.scene_transforms import (
+    GenerateGARfVDBMasks,
+)
 from fvdb_reality_capture.transforms import (
     Identity,
     SceneTransformConfig,
@@ -62,7 +65,7 @@ class GARfVDBTrainingConfig:
     sample_pixels_per_image: int = 256
     """Number of pixels to sample per image for training."""
 
-    batch_size: int = 8
+    batch_size: int = 1
     """Number of images per training batch."""
 
     accumulate_grad_steps: int = 1
@@ -98,6 +101,10 @@ class GARfVDBTransformConfig(SceneTransformConfig):
     sam2_points_per_side: int = 40
     """SAM2 grid density for automatic mask generation."""
 
+    sam2_points_per_batch: int = 128
+    """Number of SAM2 point prompts run through the mask decoder per forward pass. Higher values
+    speed up mask generation at the cost of more GPU memory; does not change the generated masks."""
+
     sam2_pred_iou_thresh: float = 0.80
     """SAM2 predicted IoU threshold for mask filtering."""
 
@@ -118,10 +125,11 @@ class GARfVDBTransformConfig(SceneTransformConfig):
                     gs3d=gs3d,
                     checkpoint="large",
                     points_per_side=self.sam2_points_per_side,
+                    points_per_batch=self.sam2_points_per_batch,
                     pred_iou_thresh=self.sam2_pred_iou_thresh,
                     stability_score_thresh=self.sam2_stability_score_thresh,
                     device=self.device,
-                )
+                ),
             ]
             if self.compute_segmentation_masks
             else []

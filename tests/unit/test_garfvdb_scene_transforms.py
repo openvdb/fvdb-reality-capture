@@ -168,6 +168,62 @@ def test_cached_mask_transform_attaches_attribute_without_replacing_scene_state(
         assert restored_attribute.paths == attribute.paths
 
 
+def test_mask_cache_without_cdf_recomputes_on_load():
+    from fvdb_reality_capture.instance_segmentation.util import compute_mask_cdf
+
+    with tempfile.TemporaryDirectory() as directory:
+        scene = _make_scene(pathlib.Path(directory), num_images=1)
+        carrier_hash = hashlib.sha256(b"test carrier").hexdigest()
+        transform = GenerateGARfVDBMasks(
+            gs3d=None,
+            gs3d_hash=carrier_hash,
+            checkpoint="large",
+            points_per_side=4,
+            pred_iou_thresh=0.8,
+            stability_score_thresh=0.8,
+            device="cpu",
+        )
+        cache = scene.cache.make_folder(
+            f"garfvdb_masks_v1_{carrier_hash}_p4_i80_s80",
+            description="cached GARfVDB masks without mask_cdf",
+        )
+
+        # Build a pixel_to_mask_id with contiguous mask ids {-1, 0, 1} and deliberately omit mask_cdf,
+        # mirroring the newer cache format.
+        pixel_to_mask_id = torch.full((6, 8, 2), -1, dtype=torch.int16)
+        pixel_to_mask_id[:3, :, 0] = 0
+        pixel_to_mask_id[3:, :, 0] = 1
+        pixel_to_mask_id[0, 0, 1] = 1
+        cache.write_file(
+            name="masks_000",
+            data={
+                "schema_version": GARFVDB_MASK_DATA_SCHEMA_VERSION,
+                "scales": torch.tensor([0.1, 0.2]),
+                "pixel_to_mask_id": pixel_to_mask_id,
+            },
+            data_type="pt",
+            metadata={
+                "points_per_side": 4,
+                "pred_iou_thresh": 0.8,
+                "stability_score_thresh": 0.8,
+                "gs3d_hash": carrier_hash,
+            },
+        )
+
+        transformed = transform(scene)
+        attribute = transformed.get_attribute(GARFVDB_MASK_ATTRIBUTE_NAME)
+        assert isinstance(attribute, GARfVDBMaskAttribute)
+        # The loader passes through the cache contents verbatim -- no mask_cdf on disk.
+        assert "mask_cdf" not in attribute.load(0)
+
+        dataset = SegmentationDataset(transformed, cache_loaded_masks=False, cache_images=False)
+        mask_cdf, mask_ids, scales = dataset._get_mask_data(0)
+        # mask_cdf is recomputed from pixel_to_mask_id and matches the canonical computation.
+        assert torch.equal(mask_cdf, compute_mask_cdf(pixel_to_mask_id))
+        assert mask_ids.dtype == torch.int32
+        assert torch.equal(scales, torch.tensor([0.1, 0.2]))
+
+
 def test_standard_scene_pipeline_places_product_transform_last():
     common = SceneTransformConfig(crop_bbox=(-1, -1, -1, 1, 1, 1))
     terminal = Identity()
@@ -204,7 +260,7 @@ def test_garfvdb_mask_generation_uses_materialized_pinhole_images():
         with mock.patch.object(
             transform,
             "_generate_segmentation_mask",
-            return_value=(mask_data["scales"], mask_data["pixel_to_mask_id"], mask_data["mask_cdf"]),
+            return_value=(mask_data["scales"], mask_data["pixel_to_mask_id"]),
         ) as generate:
             transformed = transform(scene)
 

@@ -4,6 +4,51 @@
 import torch
 
 
+def compute_mask_cdf(pixel_to_mask_id: torch.Tensor) -> torch.Tensor:
+    """Compute the per-pixel mask-selection CDF from a pixel-to-mask-id tensor.
+
+    ``mask_cdf`` is fully derived from ``pixel_to_mask_id`` (it depends only on the areas of the
+    masks intersecting each pixel), so it is recomputed at load time rather than stored on disk.
+    A full ``[H, W, MM]`` float32 CDF is by far the largest field in the mask cache (~155 MB for a
+    ~2K image), and dropping it from the cache roughly quarters the on-disk artifact and the (disk
+    bound) write time. This must stay byte-for-byte consistent with the value that used to be
+    written, so the implementation matches the original inline computation exactly.
+
+    Args:
+        pixel_to_mask_id: ``[H, W, MM]`` integer tensor mapping each pixel to the ids of the masks
+            that intersect it (``-1`` padding), packed in order of decreasing mask area.
+
+    Returns:
+        ``[H, W, MM]`` float32 CDF used to sample a mask per pixel during training.
+    """
+    # Get the unique ids of each mask, and the number of pixels each mask occupies (area)
+    mask_ids, num_pix_per_mask = torch.unique(pixel_to_mask_id, return_counts=True)  # [N], [N]
+
+    # Sort masks by their area
+    mask_area_sort_ids = torch.argsort(num_pix_per_mask)
+    mask_ids, num_pix_per_mask = mask_ids[mask_area_sort_ids], num_pix_per_mask[mask_area_sort_ids]  # [N], [N]
+    num_pix_per_mask[0] = 0  # Remove the -1 mask which corresponds to no mask, [N]
+
+    # The probability of any pixel landing in a mask is just the area of the mask over the area of the image
+    probs = num_pix_per_mask / num_pix_per_mask.sum()  # [N]
+
+    # Gather the probability values into pixel_to_mask_id, which produces a tensor where
+    # each pixel has a list of probabilities that correspond to the masks that intersect that pixel
+    mask_probs = torch.gather(probs, 0, pixel_to_mask_id.reshape(-1).long() + 1).view(
+        pixel_to_mask_id.shape
+    )  # [H, W, MM]
+
+    # Compute a CDF for each pixel (which sums to 1) which weighs each mask by its log probability of being sampled
+    # i.e. mask_cdf[i, j, k] is a cumulative probability weight used to select mask k for pixel [i, j]
+    mask_cdf = torch.log(mask_probs)
+    never_masked = mask_cdf.isinf()
+    mask_cdf[never_masked] = 0.0
+    mask_cdf = mask_cdf / (mask_cdf.sum(dim=-1, keepdim=True) + 1e-6)
+    mask_cdf = torch.cumsum(mask_cdf, dim=-1)  # [H, W, MM]
+    mask_cdf[never_masked] = 1.0
+    return mask_cdf
+
+
 def center_features(features: torch.Tensor) -> torch.Tensor:
     """Center features by subtracting the mean across samples.
 
