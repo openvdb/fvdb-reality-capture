@@ -37,8 +37,6 @@ def test_gaussian_splat_enums_are_owned_by_reality_capture_with_preserved_values
         assert hasattr(fvdb_reality_capture, enum_name)
         assert not hasattr(fvdb, enum_name)
 
-    assert not hasattr(fvdb.viz, "ShOrderingMode")
-
     assert {member.name: member.value for member in fvdb_reality_capture.ShOrderingMode} == {
         "RGB_RGB_RGB": "rgb_rgb_rgb",
         "RRR_GGG_BBB": "rrr_ggg_bbb",

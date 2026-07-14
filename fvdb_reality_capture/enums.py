@@ -2,37 +2,11 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 
-from enum import Enum, IntEnum
+from enum import IntEnum
+
+from fvdb.viz import ShOrderingMode
 
 __all__ = ["ShOrderingMode", "RollingShutterType", "CameraModel", "ProjectionMethod"]
-
-
-class ShOrderingMode(str, Enum):
-    """
-    Enum representing spherical harmonics ordering modes used by Gaussian splats.
-    Spherical harmonics for Gaussian splatting can be stored differently in memory depending on the application. For example,
-    PLY files store spherical harmonics in ``RRR_GGG_BBB`` order, while some rendering codes
-    (including ``fvdb_reality_capture.GaussianSplat3d``) use ``RGB_RGB_RGB`` order.
-
-    This enum defines two common ordering modes:
-
-    - ``RGB_RGB_RGB``: The feature channels are interleaved for each coefficient. *i.e.* The spherical harmonics
-      tensor corresponds to a (row-major) contiguous tensor of shape ``[num_coefficients, num_sh_bases, channels]``, where channels=3 for RGB.
-    - ``RRR_GGG_BBB``: The feature channels are stored in separate blocks for each coefficient. *i.e.* The spherical harmonics
-      tensor corresponds to a (row-major) contiguous tensor of shape ``[num_coefficients, channels, num_sh_bases]``, where channels=3 for RGB.
-    """
-
-    RGB_RGB_RGB = "rgb_rgb_rgb"
-    """
-    The feature channels of spherical harmonics are interleaved for each coefficient. *i.e.* The spherical harmonics
-    tensor corresponds to a (row-major) contiguous tensor of shape ``[num_coefficients, num_sh_bases, channels]``, where channels=3 for RGB.
-    """
-
-    RRR_GGG_BBB = "rrr_ggg_bbb"
-    """
-    The feature channels of spherical harmonics are stored in separate blocks for each coefficient. *i.e.* The spherical harmonics
-    tensor corresponds to a (row-major) contiguous tensor of shape ``[num_coefficients, channels, num_sh_bases]``, where channels=3 for RGB.
-    """
 
 
 class RollingShutterType(IntEnum):
