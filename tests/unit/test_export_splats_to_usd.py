@@ -185,6 +185,11 @@ class ResizeShCoefficientsTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             _resize_sh_coefficients(shN, target_sh_degree=-1)
 
+    def test_non_3d_input_raises(self):
+        # A non-3D shN would otherwise fail with a cryptic tuple-unpack error.
+        with self.assertRaises(ValueError):
+            _resize_sh_coefficients(np.zeros((5, 3), dtype=np.float32), target_sh_degree=3)
+
 
 class LegacyNurecShDegreeTests(unittest.TestCase):
     # Per-channel directional-coefficient counts the legacy NuRec importer accepts (SH degree 0 or 3).

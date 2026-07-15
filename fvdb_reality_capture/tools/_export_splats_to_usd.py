@@ -869,10 +869,12 @@ def _resize_sh_coefficients(shN: np.ndarray, target_sh_degree: int) -> np.ndarra
             coefficients are zero (which leaves the rendered radiance unchanged).
 
     Raises:
-        ValueError: If ``target_sh_degree`` is negative.
+        ValueError: If ``target_sh_degree`` is negative or ``shN`` is not a 3D ``(N, K-1, C)`` array.
     """
     if target_sh_degree < 0:
         raise ValueError(f"target_sh_degree must be non-negative, but got {target_sh_degree}")
+    if shN.ndim != 3:
+        raise ValueError(f"shN must be a 3D array of shape (N, K-1, C), but got shape {shN.shape}")
     target_coeffs = (target_sh_degree + 1) ** 2 - 1
     num_gaussians, current_coeffs, num_channels = shN.shape
     if current_coeffs == target_coeffs:
