@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1784130757639,
+  "lastUpdate": 1784130760761,
   "repoUrl": "https://github.com/openvdb/fvdb-reality-capture",
   "entries": {
     "fvdb-reality-capture Benchmark with pytest-benchmark": [
@@ -23236,6 +23236,88 @@ window.BENCHMARK_DATA = {
           {
             "name": "garden/fvdb_mcmc - training_time",
             "value": 747.09,
+            "unit": "seconds"
+          },
+          {
+            "name": "garden/fvdb_mcmc - peak_gpu_memory_gb",
+            "value": 3.6347,
+            "unit": "GB"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "Jonathan Swartz",
+            "username": "swahtz",
+            "email": "jonathan@jswartz.info"
+          },
+          "committer": {
+            "name": "GitHub",
+            "username": "web-flow",
+            "email": "noreply@github.com"
+          },
+          "id": "525c47dff938876d53f062b42559ab7f8b603d07",
+          "message": "Adopt release v0.5.0 (#305)\n\n## Adopt release v0.5.0\n\nMerge release changes from `release/v0.5` into `main` via the\n`adopt/v0.5` branch. The version in `pyproject.toml` has been set to\nthe current `main` development version to avoid conflicts.\n\n**Tag:** `v0.5.0`\n\nThis PR replaces the original release PR (#303) which was\nclosed because `release/v0.5` intentionally carries a different version\nstring (`0.5.0`) than `main`.\n\n### To merge\n\nMerge this PR once CI passes. Use a **merge commit** (not squash) to\npreserve\nthe release branch history on `main`.\n\n---------\n\nSigned-off-by: Jonathan Swartz <jonathan@jswartz.info>\nCo-authored-by: Claude Opus 4.8 (1M context) <noreply@anthropic.com>",
+          "timestamp": "2026-07-06T05:39:00Z",
+          "url": "https://github.com/openvdb/fvdb-reality-capture/commit/525c47dff938876d53f062b42559ab7f8b603d07"
+        },
+        "date": 1784130760276,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "bicycle/fvdb_default - training_time",
+            "value": 750.7,
+            "unit": "seconds"
+          },
+          {
+            "name": "bicycle/fvdb_default - peak_gpu_memory_gb",
+            "value": 4.5259,
+            "unit": "GB"
+          },
+          {
+            "name": "bicycle/fvdb_mcmc - training_time",
+            "value": 372.34,
+            "unit": "seconds"
+          },
+          {
+            "name": "bicycle/fvdb_mcmc - peak_gpu_memory_gb",
+            "value": 1.4441,
+            "unit": "GB"
+          },
+          {
+            "name": "bonsai/fvdb_default - training_time",
+            "value": 475.56,
+            "unit": "seconds"
+          },
+          {
+            "name": "bonsai/fvdb_default - peak_gpu_memory_gb",
+            "value": 1.6234,
+            "unit": "GB"
+          },
+          {
+            "name": "bonsai/fvdb_mcmc - training_time",
+            "value": 656.72,
+            "unit": "seconds"
+          },
+          {
+            "name": "bonsai/fvdb_mcmc - peak_gpu_memory_gb",
+            "value": 1.557,
+            "unit": "GB"
+          },
+          {
+            "name": "garden/fvdb_default - training_time",
+            "value": 941.95,
+            "unit": "seconds"
+          },
+          {
+            "name": "garden/fvdb_default - peak_gpu_memory_gb",
+            "value": 5.5516,
+            "unit": "GB"
+          },
+          {
+            "name": "garden/fvdb_mcmc - training_time",
+            "value": 744.84,
             "unit": "seconds"
           },
           {
