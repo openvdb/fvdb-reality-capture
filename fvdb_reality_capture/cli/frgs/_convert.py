@@ -127,9 +127,7 @@ class Convert(BaseCommand):
         if self.target_sh_degree is not None and not self.legacy:
             raise ValueError("--target-sh-degree only applies to legacy export (use with --legacy)")
         if self.target_sh_degree is not None and self.target_sh_degree not in (0, 3):
-            raise ValueError(
-                "--target-sh-degree must be 0 or 3 (the SH degrees the legacy NuRec importer supports)"
-            )
+            raise ValueError("--target-sh-degree must be 0 or 3 (the SH degrees the legacy NuRec importer supports)")
 
         if in_file_type == ".ply":
             model, metadata = GaussianSplat3d.from_ply(self.in_path)

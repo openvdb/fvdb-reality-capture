@@ -152,9 +152,7 @@ def _decode_nurec_payload(raw: bytes) -> dict:
     return {
         "specular_coeffs": state_dict[".gaussians_nodes.gaussians.features_specular.shape"][1],
         "n_active_features": n_active,
-        "radiance_sph_degree": unpacked["nre_data"]["config"]["layers"]["gaussians"]["particle"][
-            "radiance_sph_degree"
-        ],
+        "radiance_sph_degree": unpacked["nre_data"]["config"]["layers"]["gaussians"]["particle"]["radiance_sph_degree"],
     }
 
 

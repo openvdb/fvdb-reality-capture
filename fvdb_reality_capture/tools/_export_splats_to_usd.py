@@ -894,12 +894,14 @@ def build_legacy_gaussians_payload(
     Args:
         model (GaussianSplat3d): Gaussian splat model to serialize.
         archive_stem (str): Base filename stem for ``{stem}.nurec`` and referenced layers.
-        target_sh_degree (int | None): SH degree to write into the exported model. The legacy NuRec
-            importer (Isaac Sim prior to 6.0) only supports SH degree 0 or 3 and silently fails to
-            import models with an intermediate number of coefficients, so an explicit value must be
-            ``0`` or ``3`` (the directional SH coefficients are zero-padded or truncated to match).
-            If ``None`` (the default), degree 0 and 3 models are exported unchanged while degree 1
-            and 2 models are promoted to degree 3. See issue #124.
+        target_sh_degree (int | None): SH degree to normalize the exported model to. This sets the
+            number of directional SH coefficients written to ``features_specular`` and the reported
+            ``n_active_features`` (coefficients are zero-padded or truncated to match); the NuRec
+            ``radiance_sph_degree`` buffer capacity is left at 3 regardless. The legacy NuRec importer
+            (Isaac Sim prior to 6.0) only supports SH degree 0 or 3 and silently fails to import
+            models with an intermediate number of coefficients, so an explicit value must be ``0`` or
+            ``3``. If ``None`` (the default), degree 0 and 3 models are exported unchanged while
+            degree 1 and 2 models are promoted to degree 3. See issue #124.
 
     Returns:
         Tuple of (gauss USD stage, compressed NuRec model file).
