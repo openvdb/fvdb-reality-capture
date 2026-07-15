@@ -1,2 +1,2 @@
-fvdb_core: 2e75b7eeac39ab2a9790fa8028c60dc24bb78302
+fvdb_core: c661e99fd69a38c540b9e7f88b72a2c19d08f50e
 fvdb_reality_capture: 525c47dff938876d53f062b42559ab7f8b603d07
