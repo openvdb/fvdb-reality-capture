@@ -941,9 +941,9 @@ def build_legacy_gaussians_payload(
         "rotation_activation": "normalize",
         "density_kernel_density_clamping": True,
         "density_kernel_min_response": 0.0113,
-        # NuRec has historically only been validated with a degree-3 radiance buffer; keep that
-        # capacity unless a smaller non-zero degree was explicitly requested.
-        "radiance_sph_degree": target_sh_degree if target_sh_degree > 0 else 3,
+        # NuRec is only validated with a degree-3 radiance buffer, and degree-0 exports (which carry
+        # no directional coefficients) reuse that same buffer, so this is always 3.
+        "radiance_sph_degree": 3,
         "transmittance_threshold": 0.0001,
         "global_z_order": True,
         "n_rolling_shutter_iterations": 5,

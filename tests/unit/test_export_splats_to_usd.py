@@ -145,7 +145,8 @@ class ExportSplatsToUsdTests(unittest.TestCase):
 
 def _decode_nurec_payload(raw: bytes) -> dict:
     """Decode the gzipped-msgpack legacy NuRec payload and pull out its SH layout metadata."""
-    unpacked = msgpack.unpackb(gzip.GzipFile(fileobj=io.BytesIO(raw)).read(), raw=False)
+    with gzip.GzipFile(fileobj=io.BytesIO(raw)) as gz:
+        unpacked = msgpack.unpackb(gz.read(), raw=False)
     state_dict = unpacked["nre_data"]["state_dict"]
     n_active = int(np.frombuffer(state_dict[".gaussians_nodes.gaussians.n_active_features"], dtype=np.int64)[0])
     return {
