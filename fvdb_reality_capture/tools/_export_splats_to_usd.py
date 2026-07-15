@@ -900,8 +900,9 @@ def build_legacy_gaussians_payload(
             ``radiance_sph_degree`` buffer capacity is left at 3 regardless. The legacy NuRec importer
             (Isaac Sim prior to 6.0) only supports SH degree 0 or 3 and silently fails to import
             models with an intermediate number of coefficients, so an explicit value must be ``0`` or
-            ``3``. If ``None`` (the default), degree 0 and 3 models are exported unchanged while
-            degree 1 and 2 models are promoted to degree 3. See issue #124.
+            ``3``. If ``None`` (the default), degree 0 and 3 models are exported unchanged while any
+            other degree is normalized to degree 3 (degrees 1-2 are zero-padded up, and any degree
+            above 3 is truncated). See issue #124.
 
     Returns:
         Tuple of (gauss USD stage, compressed NuRec model file).
@@ -916,9 +917,10 @@ def build_legacy_gaussians_payload(
     sh0 = model.sh0.cpu().numpy()
     shN = model.shN.cpu().numpy()
 
-    # Normalize the directional SH to a degree the legacy NuRec importer supports. Only degree 1
-    # and 2 (which silently fail to import in Isaac Sim < 6.0) are promoted to degree 3 by default,
-    # leaving the already-supported degree 0 and 3 exports untouched. See issue #124.
+    # Normalize the directional SH to a degree the legacy NuRec importer supports. By default any
+    # degree other than 0 or 3 is normalized to degree 3 (degrees 1-2, which silently fail to import
+    # in Isaac Sim < 6.0, are zero-padded up; any degree above 3 is truncated), leaving the
+    # already-supported degree 0 and 3 exports untouched. See issue #124.
     if target_sh_degree is None:
         target_sh_degree = model.sh_degree if model.sh_degree in (0, 3) else 3
     elif target_sh_degree not in (0, 3):
@@ -1229,7 +1231,7 @@ def _export_splats_to_usdz_legacy(
         out_path (str | Path): The output path for the usdz file. If the file extension is not ``.usdz``,
             it will be added. *e.g.*, ``./scene`` will save to ``./scene.usdz``.
         target_sh_degree (int | None): SH degree to write into the exported model (see
-            :func:`build_legacy_gaussians_payload`). ``None`` (default) promotes degree 1/2 models to 3.
+            :func:`build_legacy_gaussians_payload`). ``None`` (default) normalizes any non-0/3 degree to 3.
     """
     if isinstance(out_path, str):
         out_path = Path(out_path)
@@ -1328,7 +1330,7 @@ def export_splats_to_usd(
         target_sh_degree (int | None): Legacy export only. SH degree to write into the exported
             model; an explicit value must be ``0`` or ``3`` (the degrees the legacy NuRec importer
             in Isaac Sim prior to 6.0 supports). Directional SH coefficients are zero-padded or
-            truncated to match. ``None`` (the default) promotes degree 1/2 models to 3. Ignored for
+            truncated to match. ``None`` (the default) normalizes any non-0/3 degree to 3. Ignored for
             the ParticleField3DGaussianSplat export, which always writes the model's native SH
             degree. See issue #124.
 

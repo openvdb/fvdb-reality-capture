@@ -76,7 +76,7 @@ class Convert(BaseCommand):
 
     # Legacy export only (--legacy). SH degree to write into the exported model; must be 0 or 3
     # (the degrees the Isaac Sim < 6.0 NuRec importer supports). Directional SH coefficients are
-    # zero-padded or truncated to match. Leaving this unset promotes degree 1/2 models to 3.
+    # zero-padded or truncated to match. Leaving this unset normalizes any non-0/3 degree to 3.
     # Ignored by the default ParticleField3DGaussianSplat export, which writes the native SH degree.
     target_sh_degree: int | None = None
 
