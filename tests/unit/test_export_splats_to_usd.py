@@ -1,16 +1,21 @@
 # Copyright Contributors to the OpenVDB Project
 # SPDX-License-Identifier: Apache-2.0
 #
+import gzip
+import io
 import tempfile
 import unittest
+import zipfile
 from pathlib import Path
 
+import msgpack
 import numpy as np
 import torch
 from fvdb import GaussianSplat3d
 from pxr import Usd, UsdVol
 
 from fvdb_reality_capture.tools import export_splats_to_usd
+from fvdb_reality_capture.tools._export_splats_to_usd import _resize_sh_coefficients, build_legacy_gaussians_payload
 
 
 def _make_test_splats(num_gaussians: int = 8, sh_degree: int = 1, seed: int = 0) -> GaussianSplat3d:
@@ -136,6 +141,112 @@ class ExportSplatsToUsdTests(unittest.TestCase):
             out_path = Path(tmp_dir) / "scene.usdc"
             with self.assertRaises(ValueError):
                 export_splats_to_usd(model, out_path, legacy=True, usdz=True, apply_ecef2enu_rotation=True)
+
+
+def _decode_nurec_payload(raw: bytes) -> dict:
+    """Decode the gzipped-msgpack legacy NuRec payload and pull out its SH layout metadata."""
+    unpacked = msgpack.unpackb(gzip.GzipFile(fileobj=io.BytesIO(raw)).read(), raw=False)
+    state_dict = unpacked["nre_data"]["state_dict"]
+    n_active = int(np.frombuffer(state_dict[".gaussians_nodes.gaussians.n_active_features"], dtype=np.int64)[0])
+    return {
+        "specular_coeffs": state_dict[".gaussians_nodes.gaussians.features_specular.shape"][1],
+        "n_active_features": n_active,
+        "radiance_sph_degree": unpacked["nre_data"]["config"]["layers"]["gaussians"]["particle"][
+            "radiance_sph_degree"
+        ],
+    }
+
+
+class ResizeShCoefficientsTests(unittest.TestCase):
+    def test_pad_appends_zeros_and_preserves_original(self):
+        shN = np.random.rand(5, 3, 3).astype(np.float32)  # degree 1 -> 3 coeffs
+        out = _resize_sh_coefficients(shN, target_sh_degree=3)  # -> 15 coeffs
+        self.assertEqual(out.shape, (5, 15, 3))
+        np.testing.assert_array_equal(out[:, :3, :], shN)  # original coefficients preserved
+        np.testing.assert_array_equal(out[:, 3:, :], np.zeros((5, 12, 3), dtype=np.float32))  # padding is zero
+
+    def test_truncate_keeps_leading_coefficients(self):
+        shN = np.random.rand(5, 15, 3).astype(np.float32)  # degree 3 -> 15 coeffs
+        out = _resize_sh_coefficients(shN, target_sh_degree=1)  # -> 3 coeffs
+        self.assertEqual(out.shape, (5, 3, 3))
+        np.testing.assert_array_equal(out, shN[:, :3, :])
+
+    def test_identity_returns_input_unchanged(self):
+        shN = np.random.rand(5, 8, 3).astype(np.float32)  # degree 2 -> already matches
+        self.assertIs(_resize_sh_coefficients(shN, target_sh_degree=2), shN)
+
+    def test_degree_zero_source(self):
+        shN = np.zeros((5, 0, 3), dtype=np.float32)  # degree 0 -> no directional coeffs
+        self.assertEqual(_resize_sh_coefficients(shN, target_sh_degree=0).shape, (5, 0, 3))
+        self.assertEqual(_resize_sh_coefficients(shN, target_sh_degree=3).shape, (5, 15, 3))
+
+    def test_negative_degree_raises(self):
+        # A negative degree would otherwise silently drop coefficients via a negative-index slice.
+        shN = np.zeros((5, 3, 3), dtype=np.float32)
+        with self.assertRaises(ValueError):
+            _resize_sh_coefficients(shN, target_sh_degree=-1)
+
+
+class LegacyNurecShDegreeTests(unittest.TestCase):
+    # Per-channel directional-coefficient counts the legacy NuRec importer accepts (SH degree 0 or 3).
+    _SUPPORTED_SPECULAR_COEFFS = {0, 15}
+
+    def _payload_info(self, model: GaussianSplat3d, **kwargs) -> dict:
+        _, model_file = build_legacy_gaussians_payload(model, "scene", **kwargs)
+        return _decode_nurec_payload(model_file.serialized)
+
+    def test_auto_promotes_intermediate_degrees_to_supported_layout(self):
+        # Degree 1 and 2 have an intermediate coefficient count that silently fails to import;
+        # they must be promoted to the degree-3 layout (issue #124).
+        for degree in (1, 2):
+            with self.subTest(source_degree=degree):
+                info = self._payload_info(_make_test_splats(sh_degree=degree))
+                self.assertEqual(info["specular_coeffs"], 15)
+                self.assertEqual(info["n_active_features"], 16)
+                self.assertEqual(info["radiance_sph_degree"], 3)
+
+    def test_auto_leaves_supported_degrees_unchanged(self):
+        # Degree 0 and 3 already import correctly and must be exported unchanged.
+        for degree, expected_coeffs, expected_n_active in ((0, 0, 1), (3, 15, 16)):
+            with self.subTest(source_degree=degree):
+                info = self._payload_info(_make_test_splats(sh_degree=degree))
+                self.assertEqual(info["specular_coeffs"], expected_coeffs)
+                self.assertEqual(info["n_active_features"], expected_n_active)
+
+    def test_every_auto_export_uses_a_supported_layout(self):
+        for degree in (0, 1, 2, 3):
+            with self.subTest(source_degree=degree):
+                info = self._payload_info(_make_test_splats(sh_degree=degree))
+                self.assertIn(info["specular_coeffs"], self._SUPPORTED_SPECULAR_COEFFS)
+
+    def test_explicit_target_pads_and_truncates(self):
+        padded = self._payload_info(_make_test_splats(sh_degree=0), target_sh_degree=3)
+        self.assertEqual(padded["specular_coeffs"], 15)
+        self.assertEqual(padded["n_active_features"], 16)
+
+        truncated = self._payload_info(_make_test_splats(sh_degree=3), target_sh_degree=0)
+        self.assertEqual(truncated["specular_coeffs"], 0)
+        self.assertEqual(truncated["n_active_features"], 1)
+
+    def test_unsupported_explicit_target_is_rejected(self):
+        # Explicit targets outside {0, 3} would produce a NuRec file the importer cannot load.
+        model = _make_test_splats(sh_degree=3)
+        for bad_degree in (-1, 1, 2, 4):
+            with self.subTest(target_sh_degree=bad_degree):
+                with self.assertRaises(ValueError):
+                    build_legacy_gaussians_payload(model, "scene", target_sh_degree=bad_degree)
+
+    def test_end_to_end_legacy_usdz_promotes_degree(self):
+        # Full public path: a degree-2 model exported via export_splats_to_usd(legacy=True) must
+        # produce a degree-3 NuRec payload inside the .usdz archive.
+        model = _make_test_splats(sh_degree=2)
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            out_path = export_splats_to_usd(model, Path(tmp_dir) / "scene", legacy=True, usdz=True)
+            self.assertTrue(out_path.exists())
+            with zipfile.ZipFile(out_path) as zf:
+                nurec_name = next(name for name in zf.namelist() if name.endswith(".nurec"))
+                info = _decode_nurec_payload(zf.read(nurec_name))
+        self.assertEqual(info["specular_coeffs"], 15)
 
 
 if __name__ == "__main__":

@@ -854,9 +854,39 @@ def _write_particlefield3d_usdz(
     logger.info(f"USDZ file created successfully at {file_path}")
 
 
+def _resize_sh_coefficients(shN: np.ndarray, target_sh_degree: int) -> np.ndarray:
+    """
+    Pad (with zeros) or truncate the directional SH coefficients so the exported model has
+    exactly ``(target_sh_degree + 1) ** 2 - 1`` coefficients per channel.
+
+    Args:
+        shN (np.ndarray): Directional SH coefficients of shape ``(N, K - 1, C)`` where ``K`` is the
+            number of SH bases in the source model and ``C`` is the number of channels.
+        target_sh_degree (int): Desired SH degree for the exported model.
+
+    Returns:
+        np.ndarray: SH coefficients of shape ``(N, (target_sh_degree + 1) ** 2 - 1, C)``. Padded
+            coefficients are zero (which leaves the rendered radiance unchanged).
+
+    Raises:
+        ValueError: If ``target_sh_degree`` is negative.
+    """
+    if target_sh_degree < 0:
+        raise ValueError(f"target_sh_degree must be non-negative, but got {target_sh_degree}")
+    target_coeffs = (target_sh_degree + 1) ** 2 - 1
+    num_gaussians, current_coeffs, num_channels = shN.shape
+    if current_coeffs == target_coeffs:
+        return shN
+    if current_coeffs > target_coeffs:
+        return shN[:, :target_coeffs, :]
+    padding = np.zeros((num_gaussians, target_coeffs - current_coeffs, num_channels), dtype=shN.dtype)
+    return np.concatenate([shN, padding], axis=1)
+
+
 def build_legacy_gaussians_payload(
     model: GaussianSplat3d,
     archive_stem: str,
+    target_sh_degree: Optional[int] = None,
 ) -> tuple[NamedUSDStage, "NamedSerialized"]:
     """
     Build ``gauss.usda`` and ``.nurec`` payload layers for legacy NuRec USDZ export.
@@ -864,9 +894,18 @@ def build_legacy_gaussians_payload(
     Args:
         model (GaussianSplat3d): Gaussian splat model to serialize.
         archive_stem (str): Base filename stem for ``{stem}.nurec`` and referenced layers.
+        target_sh_degree (int | None): SH degree to write into the exported model. The legacy NuRec
+            importer (Isaac Sim prior to 6.0) only supports SH degree 0 or 3 and silently fails to
+            import models with an intermediate number of coefficients, so an explicit value must be
+            ``0`` or ``3`` (the directional SH coefficients are zero-padded or truncated to match).
+            If ``None`` (the default), degree 0 and 3 models are exported unchanged while degree 1
+            and 2 models are promoted to degree 3. See issue #124.
 
     Returns:
         Tuple of (gauss USD stage, compressed NuRec model file).
+
+    Raises:
+        ValueError: If ``target_sh_degree`` is not one of ``None``, ``0``, or ``3``.
     """
     means = model.means.cpu().numpy()
     quats = model.quats.cpu().numpy()
@@ -874,7 +913,19 @@ def build_legacy_gaussians_payload(
     logit_opacities = model.logit_opacities.cpu().numpy()
     sh0 = model.sh0.cpu().numpy()
     shN = model.shN.cpu().numpy()
-    n_sh_coeffs = model.num_sh_bases
+
+    # Normalize the directional SH to a degree the legacy NuRec importer supports. Only degree 1
+    # and 2 (which silently fail to import in Isaac Sim < 6.0) are promoted to degree 3 by default,
+    # leaving the already-supported degree 0 and 3 exports untouched. See issue #124.
+    if target_sh_degree is None:
+        target_sh_degree = model.sh_degree if model.sh_degree in (0, 3) else 3
+    elif target_sh_degree not in (0, 3):
+        raise ValueError(
+            "target_sh_degree must be 0 or 3 (the SH degrees the legacy NuRec importer supports), "
+            f"but got {target_sh_degree}"
+        )
+    shN = _resize_sh_coefficients(shN, target_sh_degree)
+    n_sh_coeffs = (target_sh_degree + 1) ** 2
 
     usdz_params = {
         "positions": means,
@@ -890,7 +941,9 @@ def build_legacy_gaussians_payload(
         "rotation_activation": "normalize",
         "density_kernel_density_clamping": True,
         "density_kernel_min_response": 0.0113,
-        "radiance_sph_degree": 3,
+        # NuRec has historically only been validated with a degree-3 radiance buffer; keep that
+        # capacity unless a smaller non-zero degree was explicitly requested.
+        "radiance_sph_degree": target_sh_degree if target_sh_degree > 0 else 3,
         "transmittance_threshold": 0.0001,
         "global_z_order": True,
         "n_rolling_shutter_iterations": 5,
@@ -1163,7 +1216,9 @@ def fill_3dgut_template(
     return template
 
 
-def _export_splats_to_usdz_legacy(model: GaussianSplat3d, out_path: Union[str, Path]) -> None:
+def _export_splats_to_usdz_legacy(
+    model: GaussianSplat3d, out_path: Union[str, Path], target_sh_degree: Optional[int] = None
+) -> None:
     """
     Export an :class:`fvdb.GaussianSplat3d` model to a USDZ file using the legacy NuRec format (UsdVol.Volume + .nurec msgpack).
 
@@ -1171,12 +1226,14 @@ def _export_splats_to_usdz_legacy(model: GaussianSplat3d, out_path: Union[str, P
         model (fvdb.GaussianSplat3d): The Gaussian Splat model to save to a usdz file
         out_path (str | Path): The output path for the usdz file. If the file extension is not ``.usdz``,
             it will be added. *e.g.*, ``./scene`` will save to ``./scene.usdz``.
+        target_sh_degree (int | None): SH degree to write into the exported model (see
+            :func:`build_legacy_gaussians_payload`). ``None`` (default) promotes degree 1/2 models to 3.
     """
     if isinstance(out_path, str):
         out_path = Path(out_path)
     out_path = out_path.with_suffix(".usdz")
 
-    gauss_usd, model_file = build_legacy_gaussians_payload(model, out_path.stem)
+    gauss_usd, model_file = build_legacy_gaussians_payload(model, out_path.stem, target_sh_degree=target_sh_degree)
     default_usd = serialize_usd_default_layer(gauss_usd)
     write_to_usdz(out_path, model_file, gauss_usd, default_usd)
 
@@ -1229,6 +1286,7 @@ def export_splats_to_usd(
     sorting_mode_hint: str = DEFAULT_SORTING_MODE_HINT,
     projection_mode_hint: str = DEFAULT_PROJECTION_MODE_HINT,
     asset_name: Optional[str] = None,
+    target_sh_degree: Optional[int] = None,
 ) -> Path:
     """
     Export a :class:`fvdb.GaussianSplat3d` (and optional collision mesh) to a USD file.
@@ -1265,6 +1323,12 @@ def export_splats_to_usd(
         asset_name (str | None): Optional override for the asset name placed under ``/World``
             (e.g. ``/World/<asset_name>``). Defaults to the output file's stem. Ignored when
             ``legacy=True``, which uses a fixed prim name.
+        target_sh_degree (int | None): Legacy export only. SH degree to write into the exported
+            model; an explicit value must be ``0`` or ``3`` (the degrees the legacy NuRec importer
+            in Isaac Sim prior to 6.0 supports). Directional SH coefficients are zero-padded or
+            truncated to match. ``None`` (the default) promotes degree 1/2 models to 3. Ignored for
+            the ParticleField3DGaussianSplat export, which always writes the model's native SH
+            degree. See issue #124.
 
     Returns:
         Path: The final output path (with the resolved ``.usdc``/``.usdz`` extension).
@@ -1319,7 +1383,7 @@ def export_splats_to_usd(
         raise ValueError("model is required for splats-only export")
 
     if legacy:
-        _export_splats_to_usdz_legacy(model, out_path)
+        _export_splats_to_usdz_legacy(model, out_path, target_sh_degree=target_sh_degree)
     else:
         _export_splats_to_usdz_particlefield3d(
             model,

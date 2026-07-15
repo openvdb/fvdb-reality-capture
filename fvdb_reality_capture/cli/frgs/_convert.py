@@ -74,6 +74,12 @@ class Convert(BaseCommand):
     # Implied if the output path already ends in .usdz.
     usdz: bool = False
 
+    # Legacy export only (--legacy). SH degree to write into the exported model; must be 0 or 3
+    # (the degrees the Isaac Sim < 6.0 NuRec importer supports). Directional SH coefficients are
+    # zero-padded or truncated to match. Leaving this unset promotes degree 1/2 models to 3.
+    # Ignored by the default ParticleField3DGaussianSplat export, which writes the native SH degree.
+    target_sh_degree: int | None = None
+
     @torch.no_grad()
     def execute(self) -> None:
         valid_input_types = (".ply", ".pt", ".pth")
@@ -118,6 +124,12 @@ class Convert(BaseCommand):
             raise ValueError("--prim-path is only supported for USD export (output file must end in .usdc or .usdz)")
         if self.legacy and self.prim_path is not None:
             raise ValueError("--legacy cannot be used with --prim-path")
+        if self.target_sh_degree is not None and not self.legacy:
+            raise ValueError("--target-sh-degree only applies to legacy export (use with --legacy)")
+        if self.target_sh_degree is not None and self.target_sh_degree not in (0, 3):
+            raise ValueError(
+                "--target-sh-degree must be 0 or 3 (the SH degrees the legacy NuRec importer supports)"
+            )
 
         if in_file_type == ".ply":
             model, metadata = GaussianSplat3d.from_ply(self.in_path)
@@ -157,6 +169,7 @@ class Convert(BaseCommand):
                 legacy=self.legacy,
                 usdz=usdz,
                 asset_name=self.prim_path,
+                target_sh_degree=self.target_sh_degree,
             )
             if self.legacy:
                 logger.info(
