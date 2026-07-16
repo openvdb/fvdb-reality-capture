@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1784216968145,
+  "lastUpdate": 1784216970665,
   "repoUrl": "https://github.com/openvdb/fvdb-reality-capture",
   "entries": {
     "fvdb-reality-capture Benchmark with pytest-benchmark": [
@@ -23532,6 +23532,88 @@ window.BENCHMARK_DATA = {
           {
             "name": "garden/fvdb_mcmc - peak_gpu_memory_gb",
             "value": 3.6347,
+            "unit": "GB"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "Mark Harris",
+            "username": "harrism",
+            "email": "mharris@nvidia.com"
+          },
+          "committer": {
+            "name": "GitHub",
+            "username": "web-flow",
+            "email": "noreply@github.com"
+          },
+          "id": "4e042a878526cc782f13cf5d7bb4e59cdadee88c",
+          "message": "Fix legacy NuRec USDZ export for SH degree 1 and 2 (#307)\n\nThe legacy NuRec USDZ export (export_splats_to_usd(..., legacy=True), for Isaac\nSim < 6.0) hardcoded radiance_sph_degree=3 while serializing the model's actual\nshN, so splats trained at SH degree 1 or 2 wrote an intermediate coefficient\ncount the NuRec importer silently fails to import.\n\nNormalize the exported directional SH to a supported degree (pad 1/2 up to 3,\nleave 0/3 unchanged), add an optional target_sh_degree control (0 or 3) on\nexport_splats_to_usd / build_legacy_gaussians_payload and a --target-sh-degree\nflag on `frgs convert`, with validation that rejects unsupported/negative\nvalues. Only the legacy path is affected; the default ParticleField3DGaussianSplat\nexport already writes the model's native SH degree. Adds unit tests for the SH\nresize helper, the legacy payload SH layout, validation, and an end-to-end usdz\nround-trip.\n\nFixes #124.\n\nCo-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>",
+          "timestamp": "2026-07-16T00:46:26Z",
+          "url": "https://github.com/openvdb/fvdb-reality-capture/commit/4e042a878526cc782f13cf5d7bb4e59cdadee88c"
+        },
+        "date": 1784216970172,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "bicycle/fvdb_default - training_time",
+            "value": 743.76,
+            "unit": "seconds"
+          },
+          {
+            "name": "bicycle/fvdb_default - peak_gpu_memory_gb",
+            "value": 4.5269,
+            "unit": "GB"
+          },
+          {
+            "name": "bicycle/fvdb_mcmc - training_time",
+            "value": 366.61,
+            "unit": "seconds"
+          },
+          {
+            "name": "bicycle/fvdb_mcmc - peak_gpu_memory_gb",
+            "value": 1.4441,
+            "unit": "GB"
+          },
+          {
+            "name": "bonsai/fvdb_default - training_time",
+            "value": 472.65,
+            "unit": "seconds"
+          },
+          {
+            "name": "bonsai/fvdb_default - peak_gpu_memory_gb",
+            "value": 1.6106,
+            "unit": "GB"
+          },
+          {
+            "name": "bonsai/fvdb_mcmc - training_time",
+            "value": 639.2,
+            "unit": "seconds"
+          },
+          {
+            "name": "bonsai/fvdb_mcmc - peak_gpu_memory_gb",
+            "value": 1.5556,
+            "unit": "GB"
+          },
+          {
+            "name": "garden/fvdb_default - training_time",
+            "value": 912.73,
+            "unit": "seconds"
+          },
+          {
+            "name": "garden/fvdb_default - peak_gpu_memory_gb",
+            "value": 5.5894,
+            "unit": "GB"
+          },
+          {
+            "name": "garden/fvdb_mcmc - training_time",
+            "value": 745.5,
+            "unit": "seconds"
+          },
+          {
+            "name": "garden/fvdb_mcmc - peak_gpu_memory_gb",
+            "value": 3.6348,
             "unit": "GB"
           }
         ]
