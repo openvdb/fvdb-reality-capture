@@ -318,7 +318,7 @@ runner.optimize()
 
 
 ## Visualize a Gaussian splat radiance field with `fvdb.viz`
-A major benefit of a 3D radiance fields is that we can render them continuously from any point in space in real time. Let's interactively visualize the reconstructed Gaussian Splat, examining the result from novel, freeform viewpoints. The viewer in `fvdb.viz` consumes a renderer-focused data contract, and `frc.gaussian_splat_to_view_data` adapts an `frc.GaussianSplat3d` to that contract without copying its tensors.
+A major benefit of 3D radiance fields is that we can render them continuously from any point in space in real time. Let's interactively visualize the reconstructed Gaussian Splat, examining the result from novel, freeform viewpoints. The viewer in `fvdb.viz` consumes a renderer-focused data contract, and `frc.gaussian_splat_to_view_data` adapts an `frc.GaussianSplat3d` to that contract without copying its tensors.
 
 
 ```python
