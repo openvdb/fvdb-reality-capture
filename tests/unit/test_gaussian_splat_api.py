@@ -27,7 +27,6 @@ def test_gaussian_splat_enums_are_owned_by_reality_capture_with_preserved_values
     import fvdb_reality_capture
 
     public_enums = (
-        "ShOrderingMode",
         "RollingShutterType",
         "CameraModel",
         "ProjectionMethod",
@@ -37,10 +36,8 @@ def test_gaussian_splat_enums_are_owned_by_reality_capture_with_preserved_values
         assert hasattr(fvdb_reality_capture, enum_name)
         assert not hasattr(fvdb, enum_name)
 
-    assert {member.name: member.value for member in fvdb_reality_capture.ShOrderingMode} == {
-        "RGB_RGB_RGB": "rgb_rgb_rgb",
-        "RRR_GGG_BBB": "rrr_ggg_bbb",
-    }
+    assert not hasattr(fvdb_reality_capture, "ShOrderingMode")
+
     assert {member.name: member.value for member in fvdb_reality_capture.RollingShutterType} == {
         "NONE": 0,
         "VERTICAL": 1,
@@ -80,6 +77,6 @@ def test_gaussian_splat_view_adapter_is_zero_copy_and_uses_the_core_contract():
     assert isinstance(view_data, fvdb.viz.GaussianSplatViewData)
     for name, tensor in tensors.items():
         assert getattr(view_data, name) is tensor
-    assert view_data.sh_ordering == frc.ShOrderingMode.RGB_RGB_RGB.value
+    assert view_data.sh_ordering == fvdb.viz.ShOrderingMode.RGB_RGB_RGB
     assert frc.gaussian_splat_to_view_data is frc.radiance_fields.gaussian_splat_to_view_data
     assert not hasattr(frc, "GaussianSplatViewData")

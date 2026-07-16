@@ -4,7 +4,7 @@
 
 from importlib.metadata import PackageNotFoundError, version
 
-from .enums import CameraModel, ProjectionMethod, RollingShutterType, ShOrderingMode
+from .enums import CameraModel, ProjectionMethod, RollingShutterType
 from . import radiance_fields
 from .radiance_fields import (
     GaussianSplat3d,
@@ -28,7 +28,6 @@ __all__ = [
     "gaussian_render_jagged",
     "evaluate_spherical_harmonics",
     "gaussian_splat_to_view_data",
-    "ShOrderingMode",
     "RollingShutterType",
     "CameraModel",
     "ProjectionMethod",

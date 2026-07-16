@@ -4,9 +4,7 @@
 
 from enum import IntEnum
 
-from fvdb.viz import ShOrderingMode
-
-__all__ = ["ShOrderingMode", "RollingShutterType", "CameraModel", "ProjectionMethod"]
+__all__ = ["RollingShutterType", "CameraModel", "ProjectionMethod"]
 
 
 class RollingShutterType(IntEnum):
