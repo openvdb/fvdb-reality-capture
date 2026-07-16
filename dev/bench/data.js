@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1784203600159,
+  "lastUpdate": 1784216968145,
   "repoUrl": "https://github.com/openvdb/fvdb-reality-capture",
   "entries": {
     "fvdb-reality-capture Benchmark with pytest-benchmark": [
@@ -18461,6 +18461,88 @@ window.BENCHMARK_DATA = {
           {
             "name": "garden/fvdb_mcmc - SSIM",
             "value": 0.867,
+            "unit": ""
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "Mark Harris",
+            "username": "harrism",
+            "email": "mharris@nvidia.com"
+          },
+          "committer": {
+            "name": "GitHub",
+            "username": "web-flow",
+            "email": "noreply@github.com"
+          },
+          "id": "4e042a878526cc782f13cf5d7bb4e59cdadee88c",
+          "message": "Fix legacy NuRec USDZ export for SH degree 1 and 2 (#307)\n\nThe legacy NuRec USDZ export (export_splats_to_usd(..., legacy=True), for Isaac\nSim < 6.0) hardcoded radiance_sph_degree=3 while serializing the model's actual\nshN, so splats trained at SH degree 1 or 2 wrote an intermediate coefficient\ncount the NuRec importer silently fails to import.\n\nNormalize the exported directional SH to a supported degree (pad 1/2 up to 3,\nleave 0/3 unchanged), add an optional target_sh_degree control (0 or 3) on\nexport_splats_to_usd / build_legacy_gaussians_payload and a --target-sh-degree\nflag on `frgs convert`, with validation that rejects unsupported/negative\nvalues. Only the legacy path is affected; the default ParticleField3DGaussianSplat\nexport already writes the model's native SH degree. Adds unit tests for the SH\nresize helper, the legacy payload SH layout, validation, and an end-to-end usdz\nround-trip.\n\nFixes #124.\n\nCo-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>",
+          "timestamp": "2026-07-16T00:46:26Z",
+          "url": "https://github.com/openvdb/fvdb-reality-capture/commit/4e042a878526cc782f13cf5d7bb4e59cdadee88c"
+        },
+        "date": 1784216967569,
+        "tool": "customBiggerIsBetter",
+        "benches": [
+          {
+            "name": "bicycle/fvdb_default - PSNR",
+            "value": 25.202,
+            "unit": "dB"
+          },
+          {
+            "name": "bicycle/fvdb_default - SSIM",
+            "value": 0.7459,
+            "unit": ""
+          },
+          {
+            "name": "bicycle/fvdb_mcmc - PSNR",
+            "value": 25.009,
+            "unit": "dB"
+          },
+          {
+            "name": "bicycle/fvdb_mcmc - SSIM",
+            "value": 0.7309,
+            "unit": ""
+          },
+          {
+            "name": "bonsai/fvdb_default - PSNR",
+            "value": 32.499,
+            "unit": "dB"
+          },
+          {
+            "name": "bonsai/fvdb_default - SSIM",
+            "value": 0.9553,
+            "unit": ""
+          },
+          {
+            "name": "bonsai/fvdb_mcmc - PSNR",
+            "value": 32.727,
+            "unit": "dB"
+          },
+          {
+            "name": "bonsai/fvdb_mcmc - SSIM",
+            "value": 0.9589,
+            "unit": ""
+          },
+          {
+            "name": "garden/fvdb_default - PSNR",
+            "value": 27.681,
+            "unit": "dB"
+          },
+          {
+            "name": "garden/fvdb_default - SSIM",
+            "value": 0.8658,
+            "unit": ""
+          },
+          {
+            "name": "garden/fvdb_mcmc - PSNR",
+            "value": 27.71,
+            "unit": "dB"
+          },
+          {
+            "name": "garden/fvdb_mcmc - SSIM",
+            "value": 0.8666,
             "unit": ""
           }
         ]
