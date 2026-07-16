@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1784130760761,
+  "lastUpdate": 1784203600159,
   "repoUrl": "https://github.com/openvdb/fvdb-reality-capture",
   "entries": {
     "fvdb-reality-capture Benchmark with pytest-benchmark": [
@@ -13361,6 +13361,133 @@ window.BENCHMARK_DATA = {
             "unit": "iter/sec",
             "range": "stddev: 0.0002599504142727561",
             "extra": "mean: 17.178853777742972 msec\nrounds: 63"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "Mark Harris",
+            "username": "harrism",
+            "email": "mharris@nvidia.com"
+          },
+          "committer": {
+            "name": "GitHub",
+            "username": "web-flow",
+            "email": "noreply@github.com"
+          },
+          "id": "4e042a878526cc782f13cf5d7bb4e59cdadee88c",
+          "message": "Fix legacy NuRec USDZ export for SH degree 1 and 2 (#307)\n\nThe legacy NuRec USDZ export (export_splats_to_usd(..., legacy=True), for Isaac\nSim < 6.0) hardcoded radiance_sph_degree=3 while serializing the model's actual\nshN, so splats trained at SH degree 1 or 2 wrote an intermediate coefficient\ncount the NuRec importer silently fails to import.\n\nNormalize the exported directional SH to a supported degree (pad 1/2 up to 3,\nleave 0/3 unchanged), add an optional target_sh_degree control (0 or 3) on\nexport_splats_to_usd / build_legacy_gaussians_payload and a --target-sh-degree\nflag on `frgs convert`, with validation that rejects unsupported/negative\nvalues. Only the legacy path is affected; the default ParticleField3DGaussianSplat\nexport already writes the model's native SH degree. Adds unit tests for the SH\nresize helper, the legacy payload SH layout, validation, and an end-to-end usdz\nround-trip.\n\nFixes #124.\n\nCo-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>",
+          "timestamp": "2026-07-16T00:46:26Z",
+          "url": "https://github.com/openvdb/fvdb-reality-capture/commit/4e042a878526cc782f13cf5d7bb4e59cdadee88c"
+        },
+        "date": 1784203599356,
+        "tool": "pytest",
+        "benches": [
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_project_gaussians[garden-00000664]",
+            "value": 7113.508181329194,
+            "unit": "iter/sec",
+            "range": "stddev: 0.000011850521867428015",
+            "extra": "mean: 140.57761297367975 usec\nrounds: 5519"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_render_gaussians[garden-00000664]",
+            "value": 701.887723865683,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00005132974392191042",
+            "extra": "mean: 1.4247292921614987 msec\nrounds: 842"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_forward[garden-00000664]",
+            "value": 642.1548772225665,
+            "unit": "iter/sec",
+            "range": "stddev: 0.000024917275941110326",
+            "extra": "mean: 1.5572567233705008 msec\nrounds: 629"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_backward[garden-00000664]",
+            "value": 188.483813117591,
+            "unit": "iter/sec",
+            "range": "stddev: 0.000039592115461235926",
+            "extra": "mean: 5.305495381590786 msec\nrounds: 1347"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_project_gaussians[garden-00006640]",
+            "value": 338.8362620326057,
+            "unit": "iter/sec",
+            "range": "stddev: 0.0005123158298114524",
+            "extra": "mean: 2.9512779830624254 msec\nrounds: 6435"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_render_gaussians[garden-00006640]",
+            "value": 107.66534636190993,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00008223220619138819",
+            "extra": "mean: 9.288039594825305 msec\nrounds: 116"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_forward[garden-00006640]",
+            "value": 81.88505142024181,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00007100518767843962",
+            "extra": "mean: 12.212241216872485 msec\nrounds: 83"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_backward[garden-00006640]",
+            "value": 26.86437661351757,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00023712443207701212",
+            "extra": "mean: 37.224016562395185 msec\nrounds: 585"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_project_gaussians[garden-00016600]",
+            "value": 277.99174637391366,
+            "unit": "iter/sec",
+            "range": "stddev: 0.0006621866205864394",
+            "extra": "mean: 3.5972291013811137 msec\nrounds: 5790"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_render_gaussians[garden-00016600]",
+            "value": 70.4331403258453,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00013777682117636786",
+            "extra": "mean: 14.197861906677645 msec\nrounds: 75"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_forward[garden-00016600]",
+            "value": 56.035053736481814,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00019390386987027639",
+            "extra": "mean: 17.845972000004462 msec\nrounds: 58"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_backward[garden-00016600]",
+            "value": 20.440407501706392,
+            "unit": "iter/sec",
+            "range": "stddev: 0.0007041930575793244",
+            "extra": "mean: 48.92270371402912 msec\nrounds: 549"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_forward_mcmc[garden-00000664]",
+            "value": 618.4853483327139,
+            "unit": "iter/sec",
+            "range": "stddev: 0.0000455143351628748",
+            "extra": "mean: 1.6168531763860805 msec\nrounds: 720"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_forward_mcmc[garden-00006640]",
+            "value": 81.57729191635505,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00017543122858228074",
+            "extra": "mean: 12.258313269645502 msec\nrounds: 89"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_forward_mcmc[garden-00016600]",
+            "value": 56.741119159938265,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00028493645916280685",
+            "extra": "mean: 17.62390334919661 msec\nrounds: 63"
           }
         ]
       }
