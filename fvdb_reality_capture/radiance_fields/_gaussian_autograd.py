@@ -2,11 +2,6 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 """Python torch.autograd.Function wrappers for Gaussian splatting dispatch functions.
-
-This module replaces the C++ autograd layer (detail/autograd/) with equivalent
-Python autograd wrappers that call the raw dispatch forward/backward functions
-exposed through pybind11. This is the first step in the migration from C++ to
-Python autograd.
 """
 
 from __future__ import annotations
