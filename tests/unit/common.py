@@ -5,9 +5,9 @@ from typing import Literal
 
 import numpy as np
 import torch
-from fvdb import GaussianSplat3d
 
 import fvdb_reality_capture as frc
+from fvdb_reality_capture import CameraModel, GaussianSplat3d
 
 from fvdb_reality_capture.sfm_scene import (
     SfmCameraMetadata,
@@ -281,8 +281,6 @@ class GettysburgGaussianSplatTestCase:  # intentionally not typed as unittest.Te
         """
         Render a single training image and return ``(gt_image, pred_image, alphas)``.
         """
-        from fvdb import CameraModel
-
         data_item = self.training_dataset[index]
         projection_matrix = data_item["projection"].to(device=self.device).unsqueeze(0)
         world_to_camera_matrix = data_item["world_to_camera"].to(device=self.device).unsqueeze(0)

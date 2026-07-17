@@ -9,7 +9,6 @@ from typing import Any, Callable
 
 import numpy as np
 import torch
-from fvdb import GaussianSplat3d
 
 from fvdb_reality_capture.radiance_fields.base_gaussian_splat_optimizer import (
     BaseGaussianSplatOptimizer,
@@ -20,6 +19,8 @@ from fvdb_reality_capture.radiance_fields.gaussian_splat_optimizer import (
     GaussianSplatOptimizerConfig,
 )
 from fvdb_reality_capture.sfm_scene.sfm_scene import SfmScene
+
+from .gaussian_splatting import GaussianSplat3d
 
 
 @dataclass
@@ -62,7 +63,7 @@ class GaussianSplatOptimizerMCMCConfig(GaussianSplatOptimizerConfig):
     for relocated/duplicated Gaussians.
 
     This controls the size of the binomial coefficient lookup table passed into
-    :meth:`fvdb.GaussianSplat3d.relocate_gaussians`.
+    :meth:`fvdb_reality_capture.GaussianSplat3d.relocate_gaussians`.
 
     Default: ``51``.
     """
@@ -99,7 +100,7 @@ class GaussianSplatOptimizerMCMCConfig(GaussianSplatOptimizerConfig):
 class GaussianSplatOptimizerMCMC(BaseGaussianSplatOptimizer):
     """
     MCMC optimizer for Gaussian Splat radiance fields.
-    The optimizer uses an MCMC sampler to optimize the parameters of a ``fvdb.GaussianSplat3d`` model, and
+    The optimizer uses an MCMC sampler to optimize the parameters of a ``fvdb_reality_capture.GaussianSplat3d`` model, and
     provides utilities to refine the model by inserting and deleting Gaussians based on their contribution to the
     optimization. The tools here mostly follow the algorithm in the Gaussian Splatting as Markov Chain Monte Carlo (MCMC)
     [paper](https://arxiv.org/abs/2404.09591).

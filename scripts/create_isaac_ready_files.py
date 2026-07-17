@@ -24,8 +24,8 @@ from typing import Optional
 import numpy as np
 import point_cloud_utils as pcu
 import torch
-from fvdb import GaussianSplat3d
 
+from fvdb_reality_capture import GaussianSplat3d
 from fvdb_reality_capture.tools import export_splats_to_usd
 
 

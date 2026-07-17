@@ -7,7 +7,6 @@ import unittest
 from typing import Any
 from unittest.mock import patch
 
-import fvdb
 import numpy as np
 import torch
 
@@ -30,7 +29,7 @@ class MockWriter(radiance_fields.GaussianSplatReconstructionBaseWriter):
     def save_checkpoint(self, global_step: int, checkpoint_name: str, checkpoint: dict[str, Any]) -> None:
         self.checkpoint_log.append((global_step, checkpoint_name, checkpoint))
 
-    def save_ply(self, global_step: int, ply_name: str, model: fvdb.GaussianSplat3d, metadata: dict[str, Any]) -> None:
+    def save_ply(self, global_step: int, ply_name: str, model: frc.GaussianSplat3d, metadata: dict[str, Any]) -> None:
         self.ply_log.append((global_step, ply_name))
 
     def save_image(self, global_step: int, image_name: str, image: torch.Tensor, jpeg_quality: int = 98) -> None:

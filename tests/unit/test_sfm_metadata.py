@@ -5,8 +5,8 @@
 import unittest
 
 import numpy as np
-from fvdb import CameraModel
 
+from fvdb_reality_capture import CameraModel
 from fvdb_reality_capture.sfm_scene import SfmCameraMetadata
 from fvdb_reality_capture.sfm_scene.sfm_metadata import (
     _as_packed_distortion_coeffs,

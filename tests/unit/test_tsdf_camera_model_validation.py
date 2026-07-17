@@ -4,8 +4,8 @@
 import unittest
 
 import torch
-from fvdb import CameraModel
 
+from fvdb_reality_capture import CameraModel
 from fvdb_reality_capture.tools import point_cloud_from_splats, tsdf_from_splats, tsdf_from_splats_dlnr
 
 

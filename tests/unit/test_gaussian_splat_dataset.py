@@ -8,8 +8,8 @@ import unittest
 
 import cv2
 import numpy as np
-from fvdb import CameraModel
 
+from fvdb_reality_capture import CameraModel
 from fvdb_reality_capture.radiance_fields.gaussian_splat_dataset import SfmDataset
 from fvdb_reality_capture.sfm_scene import SfmCache, SfmCameraMetadata, SfmPosedImageMetadata, SfmScene
 

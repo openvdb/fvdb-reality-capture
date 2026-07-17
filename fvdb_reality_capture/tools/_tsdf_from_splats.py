@@ -3,7 +3,7 @@
 #
 import torch
 import tqdm
-from fvdb import CameraModel, GaussianSplat3d, Grid
+from fvdb import Grid
 from fvdb.types import (
     NumericMaxRank1,
     NumericMaxRank2,
@@ -13,6 +13,9 @@ from fvdb.types import (
     to_VecNf,
 )
 
+from fvdb_reality_capture.radiance_fields.gaussian_splatting import GaussianSplat3d
+
+from ..enums import CameraModel
 from ._common import validate_camera_matrices_and_image_sizes, validate_pinhole_camera_models
 
 
@@ -35,7 +38,7 @@ def tsdf_from_splats(
     show_progress: bool = True,
 ) -> tuple[Grid, torch.Tensor, torch.Tensor]:
     """
-    Extract a Truncated Signed Distance Field (TSDF) from a :class:`fvdb.GaussianSplat3d` using TSDF fusion
+    Extract a Truncated Signed Distance Field (TSDF) from a :class:`fvdb_reality_capture.GaussianSplat3d` using TSDF fusion
     from depth maps rendered from the Gaussian splat model.
 
     The algorithm proceeds in two steps:
@@ -64,7 +67,7 @@ def tsdf_from_splats(
 
     .. note::
 
-        Meshing currently supports only :class:`fvdb.CameraModel.PINHOLE` cameras. While the
+        Meshing currently supports only :class:`fvdb_reality_capture.CameraModel.PINHOLE` cameras. While the
         rendering step can handle additional camera models, the underlying fVDB TSDF integration
         path currently assumes perspective pinhole projection. Passing distorted or orthographic
         cameras will raise :class:`NotImplementedError`.

@@ -14,9 +14,9 @@ Before we get started, let's import the pacakges we need. Here's an overview of 
 * `logging`
     - We'll use the built-in Python `logging` module, and call `logging.basicConfig()` which will cause functions within `fvdb_reality_capture` to log to stdout. You don't have to enable this, but it's useful to see what's happening under the hood.
 * `fvdb`
-    - We use `fvdb` for the underlying Gaussian splat data structure (`fvdb.GaussianSplat3d`) which provides fast and scalable rendering, and for interactive visualization (using the `fvdb.viz`) module.
+    - We use `fvdb` for the low-level GPU kernels and interactive visualization (using the `fvdb.viz`) module.
 * `fvdb_reality_capture`
-    - We use this for core algorithms that reconstruct scenes from sensors help us read and process capture data (Duh!)
+    - We use this for the Gaussian splat data structure (`frc.GaussianSplat3d`), fast and scalable rendering, and core algorithms that reconstruct scenes from sensors and help us read and process capture data.
 
 
 
@@ -289,15 +289,15 @@ A [radiance field](https://radiancefields.com/) is a 3D scene representation tha
 
 <!-- The dominant representation for radiance fields is 3D Gaussian Splatting<sup>[1](#references)</sup>, which encodes the radiance field function as a sum of Gaussians. 3D Gaussians are parameterized by their means (positions), rotations, and scales. Additionally each Gaussian has an opacity value and a set of spherical harmonics that map the direction in which a Gaussian is viewed to a color. -->
 
-`fvdb_reality_capture` provides tools to reconstruct a 3D Gaussian Splat radiance field from an `SfmScene` using the optimized `GaussianSplat3d` data structure in the `fvdb-core` library. The resulting reconstruction algorithm is robust, performant, and production-ready.
+`fvdb_reality_capture` provides tools to reconstruct a 3D Gaussian Splat radiance field from an `SfmScene` using its optimized `GaussianSplat3d` data structure, backed by rendering kernels in the `fvdb-core` library. The resulting reconstruction algorithm is robust, performant, and production-ready.
 
-At a high level, reconstructing an `fvdb.GaussianSplat3d` from an `SfmScene` works as follows as follows. We initialize a set of 3D Gaussians directly using the `SfmScene`'s points. Then, we iteratively optimize the Gaussians in in two steps: First, we render images from the Gaussian splat by volume rendering the 3D gaussians using the algorithm first proposed in [\[1\]](#references). Second, we calculate a loss between the rendered images from the Gaussian Splat and the ground truth images in the `SfmScene`. Finally, we update the Gaussian's parameters to reduce this loss via gradient descent. During this optimization, we periodically add new Gaussians to capture regions with high detail, and remove Gaussians in regions of low detail. The figure below illustrates this procedure pictorially.
+At a high level, reconstructing an `frc.GaussianSplat3d` from an `SfmScene` works as follows. We initialize a set of 3D Gaussians directly using the `SfmScene`'s points. Then, we iteratively optimize the Gaussians in in two steps: First, we render images from the Gaussian splat by volume rendering the 3D gaussians using the algorithm first proposed in [\[1\]](#references). Second, we calculate a loss between the rendered images from the Gaussian Splat and the ground truth images in the `SfmScene`. Finally, we update the Gaussian's parameters to reduce this loss via gradient descent. During this optimization, we periodically add new Gaussians to capture regions with high detail, and remove Gaussians in regions of low detail. The figure below illustrates this procedure pictorially.
 
 <div>
 <img src="https://fvdb-data.s3.us-east-2.amazonaws.com/fvdb-reality-capture/doc_figures/fvdb_gs_opt.jpg" width="100%"/>
 </div>
 
-The core API for Gaussian Splat reconstruction is the `fvdb_reality_capture.GaussianSplatReconstruction` class. It accepts an input `SfmScene` and optional config parameters, and produces an `fvdb.GaussianSplat3d` reconstructing the scene. Let's see how to use it below to reconstruct a Gaussian splat radiance field from our cleaned up scene.
+The core API for Gaussian Splat reconstruction is the `fvdb_reality_capture.GaussianSplatReconstruction` class. It accepts an input `SfmScene` and optional config parameters, and produces an `frc.GaussianSplat3d` reconstructing the scene. Let's see how to use it below to reconstruct a Gaussian splat radiance field from our cleaned up scene.
 
 
 ```python
@@ -318,20 +318,21 @@ runner.optimize()
 
 
 ## Visualize a Gaussian splat radiance field with `fvdb.viz`
-A major benefit of a 3D radiance fields is that we can render them continuously from any point in space in real time. Let's interactively visualize the reconstructed Gaussian Splat, examining the result from novel, freeform viewpoints. The viewer in `fvdb.viz` makes this straightforward by letting us visualize `fvdb.GaussianSplat3d` objects directly.
+A major benefit of 3D radiance fields is that we can render them continuously from any point in space in real time. Let's interactively visualize the reconstructed Gaussian Splat, examining the result from novel, freeform viewpoints. The viewer in `fvdb.viz` consumes a renderer-focused data contract, and `frc.gaussian_splat_to_view_data` adapts an `frc.GaussianSplat3d` to that contract without copying its tensors.
 
 
 ```python
 # Get the trained splat model from the reconstruction runner
-model: fvdb.GaussianSplat3d = runner.model
-# model, metadata = fvdb.GaussianSplat3d.from_ply("./reconstructed_model.ply")
+model: frc.GaussianSplat3d = runner.model
+# model, metadata = frc.GaussianSplat3d.from_ply("./reconstructed_model.ply")
 
 # Clear previous contents from the viewer
 # viewer.clear()
 
 # Add our splat model to the viewer
 scene = fvdb.viz.get_scene("Gaussian Splat Model Visualization")
-scene.add_gaussian_splat_3d("Reconstructed Gaussian Splat Radiance Field", model)
+view_data = frc.gaussian_splat_to_view_data(model)
+scene.add_gaussian_splat_3d("Reconstructed Gaussian Splat Radiance Field", view_data)
 
 scene.add_cameras(
     "Input Cameras",
@@ -358,14 +359,14 @@ fvdb.viz.show()
 
 
 ## Plot images and depth maps from a Gaussian Splat radiance field
-The `GaussianSplatReconstruction` class produces an `fvdb.GaussianSplat3d` object which encodes the radiance field. The `fvdb.GaussianSplat3d` class encodes a Gaussian splat radiance field and supports standard operations such as rendering images, depth maps, exporting to PLY, etc.
+The `GaussianSplatReconstruction` class produces an `frc.GaussianSplat3d` object which encodes the radiance field. The `frc.GaussianSplat3d` class encodes a Gaussian splat radiance field and supports standard operations such as rendering images, depth maps, exporting to PLY, etc.
 
 Let's see how to use this class directly to plot some re-rendered images from the optimed Gaussian splat and compare them to their ground truth counterparts. We'll also plot depth maps to visually inspect if the geometry of our reconstructed radiance field makes sense.
 
 
 ```python
 @torch.no_grad()
-def plot_reconstruction_results(model: fvdb.GaussianSplat3d, sfm_scene: frc.sfm_scene.SfmScene, image_id: int):
+def plot_reconstruction_results(model: frc.GaussianSplat3d, sfm_scene: frc.sfm_scene.SfmScene, image_id: int):
     # Get one of the images and its camera from the scene
     image_meta: frc.sfm_scene.SfmPosedImageMetadata = sfm_scene.images[image_id]
     camera_meta: frc.sfm_scene.SfmCameraMetadata = image_meta.camera_metadata
@@ -409,7 +410,7 @@ def plot_reconstruction_results(model: fvdb.GaussianSplat3d, sfm_scene: frc.sfm_
     plt.imshow(depth, cmap="turbo")
     plt.show()
 
-model: fvdb.GaussianSplat3d = runner.model
+model: frc.GaussianSplat3d = runner.model
 print(f"Reconstructed Gaussian Splat Model has {model.num_gaussians}, is on device {model.device}, and renders images with {model.num_channels} channels.")
 plot_reconstruction_results(model, cleaned_sfm_scene, image_id=8)
 plot_reconstruction_results(model, cleaned_sfm_scene, image_id=16)

@@ -4,7 +4,7 @@
 import numpy as np
 import torch
 import tqdm
-from fvdb import CameraModel, GaussianSplat3d
+from ..enums import CameraModel
 from fvdb.types import (
     NumericMaxRank1,
     NumericMaxRank2,
@@ -14,6 +14,8 @@ from fvdb.types import (
     to_VecNf,
 )
 from skimage import feature, morphology
+
+from fvdb_reality_capture.radiance_fields.gaussian_splatting import GaussianSplat3d
 
 from ._common import validate_camera_matrices_and_image_sizes, validate_pinhole_camera_models
 
@@ -78,7 +80,7 @@ def point_cloud_from_splats(
 
     .. note::
 
-        Point cloud extraction currently supports only :class:`fvdb.CameraModel.PINHOLE` cameras.
+        Point cloud extraction currently supports only :class:`fvdb_reality_capture.CameraModel.PINHOLE` cameras.
         While the rendering step can handle additional camera models, the depth unprojection in this
         function currently assumes a perspective pinhole projection matrix. Passing distorted or
         orthographic cameras will raise :class:`NotImplementedError`.

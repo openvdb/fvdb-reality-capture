@@ -9,8 +9,8 @@ import numpy as np
 import point_cloud_utils as pcu
 import pytest
 import torch
-from fvdb import CameraModel
 
+from fvdb_reality_capture import CameraModel
 from fvdb_reality_capture.radiance_fields import (
     GaussianSplatOptimizerConfig,
     GaussianSplatOptimizerMCMCConfig,

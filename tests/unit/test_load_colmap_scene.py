@@ -9,8 +9,8 @@ from collections import OrderedDict
 from unittest.mock import patch
 
 import numpy as np
-from fvdb import CameraModel
 
+from fvdb_reality_capture import CameraModel
 from fvdb_reality_capture.sfm_scene.adapter import COLMAPAdapter
 from fvdb_reality_capture.sfm_scene._load_colmap_scene import load_colmap_scene
 

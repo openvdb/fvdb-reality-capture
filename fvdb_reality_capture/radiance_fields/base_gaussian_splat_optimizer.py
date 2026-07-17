@@ -5,7 +5,8 @@ from abc import ABC, abstractmethod
 from typing import Any, TypeVar
 
 import torch
-from fvdb import GaussianSplat3d
+
+from .gaussian_splatting import GaussianSplat3d
 
 # Keeps track of names of registered optimizers and their classes.
 REGISTERED_OPTIMIZERS = {}
@@ -39,7 +40,7 @@ class BaseGaussianSplatOptimizer(ABC):
     """
     Base class for optimizers that reconstruct a scene using Gaussian Splat radiance fields over a collection of posed images.
 
-    This class defines the interface for optimizers that optimize the parameters of a `fvdb.GaussianSplat3d` model, and
+    This class defines the interface for optimizers that optimize the parameters of a `fvdb_reality_capture.GaussianSplat3d` model, and
     provides utilities to refine the model by inserting and deleting Gaussians based on their contribution to the optimization.
 
     Currently, the only concrete implementation is :class:`GaussianSplatOptimizer`, which implements the algorithm in the

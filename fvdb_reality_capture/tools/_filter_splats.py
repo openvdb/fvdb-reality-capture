@@ -1,23 +1,24 @@
 # Copyright Contributors to the OpenVDB Project
 # SPDX-License-Identifier: Apache-2.0
 #
-import fvdb
 import torch
+
+from fvdb_reality_capture.radiance_fields.gaussian_splatting import GaussianSplat3d
 
 
 def filter_splats_by_mean_percentile(
-    splats: fvdb.GaussianSplat3d, percentile=[0.98, 0.98, 0.98, 0.98, 0.98, 0.98], decimate=4
-) -> fvdb.GaussianSplat3d:
+    splats: GaussianSplat3d, percentile=[0.98, 0.98, 0.98, 0.98, 0.98, 0.98], decimate=4
+) -> GaussianSplat3d:
     """
     Remove all gaussians with locations falling outside the provided percentile ranges
 
     Args:
-        splats (fvdb.GaussianSplat3d): The :class:`~fvdb.GaussianSplat3d` to filter.
+        splats (GaussianSplat3d): The :class:`~fvdb_reality_capture.GaussianSplat3d` to filter.
         percentile (NumericMaxRank1): The percentiles to use for filtering. The percentiles are in the order of (minx, maxx, miny, maxy, minz, maxz).
         decimate (int): Decimate the number of splats by this factor when calculating the percentile range.
 
     Returns:
-        filtered_splats (fvdb.GaussianSplat3d): The :class:`~fvdb.GaussianSplat3d` after removal of gaussians outside percentile bounds
+        filtered_splats (GaussianSplat3d): The :class:`~fvdb_reality_capture.GaussianSplat3d` after removal of gaussians outside percentile bounds
     """
     points = splats.means
 
@@ -39,19 +40,17 @@ def filter_splats_by_mean_percentile(
     return splats[good_inds]
 
 
-def filter_splats_by_opacity_percentile(
-    splats: fvdb.GaussianSplat3d, percentile=0.98, decimate=4
-) -> fvdb.GaussianSplat3d:
+def filter_splats_by_opacity_percentile(splats: GaussianSplat3d, percentile=0.98, decimate=4) -> GaussianSplat3d:
     """
     Remove all gaussians falling outside provided percentile range for logit_opacities.
 
     Args:
-        splats (fvdb.GaussianSplat3d): The :class:`~fvdb.GaussianSplat3d` to filter.
+        splats (GaussianSplat3d): The :class:`~fvdb_reality_capture.GaussianSplat3d` to filter.
         percentile (float): The percentile to use for filtering. The percentile is the percentile of the logit_opacities to use for filtering.
         decimate (int): Decimate the number of splats by this factor when calculating the percentile range.
 
     Returns:
-        filtered_splats (fvdb.GaussianSplat3d): The :class:`~fvdb.GaussianSplat3d` after removal of gaussians outside opacity percentile range
+        filtered_splats (GaussianSplat3d): The :class:`~fvdb_reality_capture.GaussianSplat3d` after removal of gaussians outside opacity percentile range
     """
     lower_bound = torch.quantile(splats.logit_opacities[::decimate], 1.0 - percentile)
     good_inds = splats.logit_opacities > lower_bound
@@ -59,16 +58,16 @@ def filter_splats_by_opacity_percentile(
     return splats[good_inds]
 
 
-def filter_splats_above_scale(splats: fvdb.GaussianSplat3d, prune_scale3d_threshold=0.05) -> fvdb.GaussianSplat3d:
+def filter_splats_above_scale(splats: GaussianSplat3d, prune_scale3d_threshold=0.05) -> GaussianSplat3d:
     """
     Remove all gaussians with sizes larger than provided percent threshold (relative to scene scale)
 
     Args:
-        splats (fvdb.GaussianSplat3d): The :class:`~fvdb.GaussianSplat3d` to filter.
+        splats (GaussianSplat3d): The :class:`~fvdb_reality_capture.GaussianSplat3d` to filter.
         prune_scale3d_threshold (float): Drop all spats with scales larger than this threshold (relative to scene scale).
 
     Returns:
-        filtered_splats (fvdb.GaussianSplat3d): The :class:`~fvdb.GaussianSplat3d` after removal of gaussians outside threshold
+        filtered_splats (GaussianSplat3d): The :class:`~fvdb_reality_capture.GaussianSplat3d` after removal of gaussians outside threshold
     """
 
     points = splats.means
@@ -80,16 +79,16 @@ def filter_splats_above_scale(splats: fvdb.GaussianSplat3d, prune_scale3d_thresh
     return splats[good_inds]
 
 
-def filter_splats_below_scale(splats: fvdb.GaussianSplat3d, prune_scale3d_threshold=0.05) -> fvdb.GaussianSplat3d:
+def filter_splats_below_scale(splats: GaussianSplat3d, prune_scale3d_threshold=0.05) -> GaussianSplat3d:
     """
     Remove all gaussians with sizes smaller than provided percent threshold (relative to scene scale)
 
     Args:
-        splats (fvdb.GaussianSplat3d): The :class:`~fvdb.GaussianSplat3d` to filter.
+        splats (GaussianSplat3d): The :class:`~fvdb_reality_capture.GaussianSplat3d` to filter.
         prune_scale3d_threshold (float): Drop all spats with scales smaller than this threshold (relative to scene scale).
 
     Returns:
-        filtered_splats (fvdb.GaussianSplat3d): The :class:`~fvdb.GaussianSplat3d` after removal of gaussians outside threshold
+        filtered_splats (GaussianSplat3d): The :class:`~fvdb_reality_capture.GaussianSplat3d` after removal of gaussians outside threshold
     """
 
     points = splats.means

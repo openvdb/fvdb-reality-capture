@@ -6,7 +6,7 @@ from abc import ABC, abstractmethod
 
 import numpy as np
 import pycolmap
-from fvdb import CameraModel
+from ..enums import CameraModel
 
 from .sfm_metadata import SfmCameraMetadata
 
@@ -215,7 +215,7 @@ class COLMAPAdapter(Adapter):
             coeffs[7] = params[7]
             return CameraModel.OPENCV_RADTAN_5, coeffs
         if camera_model == "OPENCV_FISHEYE":
-            raise ValueError("COLMAP OPENCV_FISHEYE cameras are not supported by fvdb.CameraModel")
+            raise ValueError("COLMAP OPENCV_FISHEYE cameras are not supported by fvdb_reality_capture.CameraModel")
         raise ValueError(f"Unsupported COLMAP camera model {camera_model}")
 
     def world_to_camera_matrix(self, image_id: int) -> np.ndarray:

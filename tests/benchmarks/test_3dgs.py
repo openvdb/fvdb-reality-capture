@@ -13,7 +13,8 @@ import torch
 import torch.nn.functional as F
 import torch.utils.data
 import yaml
-from fvdb import CameraModel
+
+from fvdb_reality_capture import CameraModel
 
 # Set multiprocessing start method to 'spawn' to avoid fork() warnings with PyTorch
 # This must be done before any multiprocessing operations

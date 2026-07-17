@@ -3,7 +3,7 @@
 #
 from typing import Any
 
-from fvdb import CameraModel
+from ..enums import CameraModel
 import numpy as np
 
 _DISTORTION_COEFFS_SHAPE = (12,)
@@ -48,7 +48,7 @@ def _legacy_camera_type_to_camera_model(camera_type: str) -> CameraModel:
     Map a legacy serialized ``camera_type`` string onto the canonical FVDB camera model.
 
     This exists only to preserve backwards compatibility when loading older scene metadata
-    that predated the move from ``SfmCameraType`` to ``fvdb.CameraModel``.
+    that predated the move from ``SfmCameraType`` to ``fvdb_reality_capture.CameraModel``.
 
     Args:
         camera_type: Legacy serialized camera type string.
@@ -105,7 +105,7 @@ class SfmCameraMetadata:
     This class encodes metadata about a camera used to capture images in an :class:`SfmScene`.
 
     It contains information about the camera's intrinsic parameters (focal length, principal point, etc.),
-    the canonical :class:`fvdb.CameraModel`, and packed distortion coefficients if applicable.
+    the canonical :class:`fvdb_reality_capture.CameraModel`, and packed distortion coefficients if applicable.
 
     The camera metadata is used to project 3D points into 2D pixel coordinates for a single scene pixel space.
     """

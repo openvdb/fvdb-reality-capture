@@ -2,8 +2,9 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 import torch
-from fvdb import GaussianSplat3d
 from fvdb.types import NumericMaxRank1, NumericMaxRank2, NumericMaxRank3
+
+from fvdb_reality_capture.radiance_fields.gaussian_splatting import GaussianSplat3d
 
 from ._common import validate_camera_matrices_and_image_sizes
 from ._tsdf_from_splats import tsdf_from_splats
@@ -28,7 +29,7 @@ def mesh_from_splats(
     show_progress: bool = True,
 ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     """
-    Extract a triangle mesh from a :class:`fvdb.GaussianSplat3d` using TSDF fusion from depth maps rendered from the
+    Extract a triangle mesh from a :class:`fvdb_reality_capture.GaussianSplat3d` using TSDF fusion from depth maps rendered from the
     Gaussian splat radiance field.
 
     The algorithm proceeds in three steps:

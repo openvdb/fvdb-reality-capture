@@ -2,8 +2,9 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 import torch
-from fvdb import GaussianSplat3d
 from fvdb.types import NumericMaxRank2, NumericMaxRank3
+
+from fvdb_reality_capture.radiance_fields.gaussian_splatting import GaussianSplat3d
 
 from ._common import validate_camera_matrices_and_image_sizes
 from ._tsdf_from_splats_dlnr import tsdf_from_splats_dlnr
@@ -33,7 +34,7 @@ def mesh_from_splats_dlnr(
     num_workers: int = 8,
 ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     """
-    Extract a triangle mesh from a :class:`fvdb.GaussianSplat3d` using TSDF fusion from depth maps predicted from the Gaussian splat radiance field and the
+    Extract a triangle mesh from a :class:`fvdb_reality_capture.GaussianSplat3d` using TSDF fusion from depth maps predicted from the Gaussian splat radiance field and the
     `DLNR foundation model <https://openaccess.thecvf.com/content/CVPR2023/papers/Zhao_High-Frequency_Stereo_Matching_Network_CVPR_2023_paper.pdf>`_.
     DLNR is a high-frequency stereo matching network that computes optical flow and disparity maps between two images, which can be used to compute depth.
 
