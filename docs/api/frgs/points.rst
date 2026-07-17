@@ -58,6 +58,6 @@
     │ -o PATH, --output-path PATH                                                                    │
     │                         Path to save the extracted mesh (default is "mesh.ply"). (default:     │
     │                         points.ply)                                                            │
-    │ -d STR, --device STR    Device to use for computation (default is "cuda"). (default: cuda)     │
+    │ -d STR, --device STR    Device to use for computation (default is "cuda:0"). (default: cuda:0) │
     ╰────────────────────────────────────────────────────────────────────────────────────────────────╯
 

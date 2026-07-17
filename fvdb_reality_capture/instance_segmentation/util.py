@@ -1,6 +1,8 @@
 # Copyright Contributors to the OpenVDB Project
 # SPDX-License-Identifier: Apache-2.0
 #
+from typing import NamedTuple
+
 import torch
 
 
@@ -138,6 +140,83 @@ def pca_projection_fast(
     else:
         result = projected_normalized
 
+    return result
+
+
+class PCAProjectionState(NamedTuple):
+    """A frozen PCA-to-RGB transform.
+
+    Captures every per-frame quantity that :func:`pca_projection_fast` recomputes — the centering
+    ``mean``, the principal-component ``basis``, and the ``mins``/``maxs`` used for [0, 1] normalization
+    — so the same feature vector maps to the same color across frames. Used to "lock" the feature
+    visualization so colors do not flicker when the camera moves.
+    """
+
+    mean: torch.Tensor  # [1, C]
+    basis: torch.Tensor  # [C, n_components]
+    mins: torch.Tensor  # [1, n_components]
+    maxs: torch.Tensor  # [1, n_components]
+
+
+def fit_pca_projection(
+    features: torch.Tensor,
+    n_components: int = 3,
+    mask: torch.Tensor | None = None,
+) -> PCAProjectionState:
+    """Fit a reusable PCA-to-RGB transform from a single frame of features.
+
+    Args:
+        features: Feature tensor of shape ``[B, H, W, C]``.
+        n_components: Number of principal components to project onto.
+        mask: Optional boolean mask of shape ``[B, H, W]`` selecting valid features.
+
+    Returns:
+        A :class:`PCAProjectionState` that can be reused via :func:`apply_pca_projection`.
+    """
+    if mask is not None:
+        features = features[mask]
+    features_flat = features.reshape(-1, features.shape[-1])
+    mean = torch.mean(features_flat, dim=0, keepdim=True)
+    features_centered = features_flat - mean
+    basis = calculate_pca_projection(features_centered, n_components, center=False)
+    projected = torch.mm(features_centered, basis)
+    mins = projected.min(dim=0, keepdim=True)[0]
+    maxs = projected.max(dim=0, keepdim=True)[0]
+    return PCAProjectionState(mean=mean, basis=basis, mins=mins, maxs=maxs)
+
+
+def apply_pca_projection(
+    features: torch.Tensor,
+    state: PCAProjectionState,
+    mask: torch.Tensor | None = None,
+) -> torch.Tensor:
+    """Project features to RGB using a previously fitted :class:`PCAProjectionState`.
+
+    Mirrors :func:`pca_projection_fast` but with the transform frozen, so unseen features are placed
+    consistently (and may fall outside [0, 1] — callers should clamp).
+
+    Args:
+        features: Feature tensor of shape ``[B, H, W, C]``.
+        state: A transform produced by :func:`fit_pca_projection`.
+        mask: Optional boolean mask of shape ``[B, H, W]`` selecting valid features.
+
+    Returns:
+        Projected features of shape ``[B, H, W, n_components]`` (invalid pixels set to zero).
+    """
+    B, H, W, C = features.shape
+    n_components = state.basis.shape[-1]
+    device = features.device
+    selected = features[mask] if mask is not None else features
+    features_flat = selected.reshape(-1, C)
+    projected = torch.mm(features_flat - state.mean.to(device), state.basis.to(device))
+    mins = state.mins.to(device)
+    maxs = state.maxs.to(device)
+    projected_normalized = (projected - mins) / (maxs - mins + 1e-8)
+    if mask is not None:
+        result = torch.zeros(B, H, W, n_components, device=device)
+        result[mask] = projected_normalized
+    else:
+        result = projected_normalized
     return result
 
 

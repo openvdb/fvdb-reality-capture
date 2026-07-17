@@ -113,7 +113,7 @@ class GARfVDB:
         return save_garfvdb_bundle(self, path)
 
     @classmethod
-    def load(cls, path: str | pathlib.Path, device: str | torch.device = "cuda") -> "GARfVDB":
+    def load(cls, path: str | pathlib.Path, device: str | torch.device = "cuda:0") -> "GARfVDB":
         """Load and validate a portable ``.garfvdb`` directory."""
         from .artifact import load_garfvdb_bundle
 

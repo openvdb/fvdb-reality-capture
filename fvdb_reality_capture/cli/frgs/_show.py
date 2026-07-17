@@ -50,14 +50,19 @@ class Show(BaseCommand):
     # If True, then the viewer will log verbosely.
     verbose: Annotated[bool, arg(aliases=["-v"])] = False
 
-    # Device to use for computation (default is "cuda").
-    device: str | torch.device = "cuda"
+    # Device to use for computation (default is "cuda:0").
+    device: str | torch.device = "cuda:0"
 
     scale_fraction: float = 0.1
-    """GARfVDB grouping scale as a fraction in ``[0, 1]`` of the artifact's maximum scale."""
+    """Initial GARfVDB grouping scale as a fraction in ``[0, 1]`` of the artifact's maximum scale.
+    Adjustable live via the viewer's grouping-scale slider."""
 
     mask_blend: float = 0.5
-    """GARfVDB feature-overlay opacity."""
+    """Initial GARfVDB feature-overlay opacity in ``[0, 1]``. Adjustable live via the viewer's opacity slider."""
+
+    lock_pca_colors: bool = False
+    """Initial state of the viewer's "Lock PCA colors" toggle, which freezes the feature coloring so it does
+    not flicker as the camera moves. Toggleable live in the viewer."""
 
     overlay_width: int = 1440
     """GARfVDB overlay width in pixels."""
@@ -82,6 +87,7 @@ class Show(BaseCommand):
                 device=self.device,
                 scale_fraction=self.scale_fraction,
                 mask_blend=self.mask_blend,
+                lock_pca_colors=self.lock_pca_colors,
                 overlay_width=self.overlay_width,
                 overlay_height=self.overlay_height,
                 overlay_downsample=self.overlay_downsample,

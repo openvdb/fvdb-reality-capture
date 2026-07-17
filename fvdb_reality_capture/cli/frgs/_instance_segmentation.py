@@ -56,9 +56,30 @@ class InstanceSegmentation(BaseCommand):
     run_name: Annotated[str | None, arg(aliases=["-n"])] = None
     dataset_type: Annotated[DatasetType, arg(aliases=["-dt"])] = "colmap"
     use_every_n_as_val: Annotated[int, arg(aliases=["-vn"])] = -1
-    device: Annotated[str | torch.device, arg(aliases=["-d"])] = "cuda"
+    device: Annotated[str | torch.device, arg(aliases=["-d"])] = "cuda:0"
     verbose: Annotated[bool, arg(aliases=["-v"])] = False
     cache_dataset: bool = True
+
+    viewer: bool = False
+    """Launch a live fvdb viewer during training with interactive grouping-scale, overlay-opacity,
+    and show/hide controls for the segmentation feature overlay."""
+    viewer_port: int = 8080
+    """Port to expose the live training viewer server on (only used when --viewer is set)."""
+    viewer_ip_address: str = "127.0.0.1"
+    """IP address to expose the live training viewer server on (only used when --viewer is set)."""
+    viewer_scale_fraction: float = 0.1
+    """Initial grouping scale as a fraction in [0, 1] of the model's maximum scale (viewer slider seed)."""
+    viewer_mask_blend: float = 0.5
+    """Initial feature-overlay opacity in [0, 1] (viewer slider seed)."""
+    viewer_lock_pca_colors: bool = False
+    """Initial state of the viewer's "Lock PCA colors" toggle, which freezes the feature coloring so it
+    does not flicker as the camera moves (toggleable live)."""
+    viewer_overlay_width: int = 1440
+    """Live training viewer overlay width in pixels."""
+    viewer_overlay_height: int = 720
+    """Live training viewer overlay height in pixels."""
+    viewer_overlay_downsample: int = 2
+    """Live training viewer render downsample factor."""
 
     cfg: GARfVDBTrainingConfig = field(default_factory=GARfVDBTrainingConfig)
     tx: GARfVDBTransformConfig = field(default_factory=GARfVDBTransformConfig)
@@ -78,6 +99,13 @@ class InstanceSegmentation(BaseCommand):
             raise FileNotFoundError(f"Reconstruction does not exist: {self.reconstruction_path}")
         if not self.cfg.model.use_grid:
             raise ValueError("frgs instance-segmentation requires --cfg.model.use-grid")
+
+        if self.viewer:
+            # Vulkan must be initialized before any CUDA payloads (the carrier/model) are loaded.
+            import fvdb.viz as fviz
+
+            logger.info("Starting live training viewer on %s:%d", self.viewer_ip_address, self.viewer_port)
+            fviz.init(ip_address=self.viewer_ip_address, port=self.viewer_port, verbose=self.verbose)
 
         logger.info("Loading dataset from %s", self.dataset_path)
         sfm_scene = load_sfm_scene(self.dataset_path, self.dataset_type)
@@ -110,6 +138,13 @@ class InstanceSegmentation(BaseCommand):
             log_interval_steps=self.io.log_every,
             cache_dataset=self.cache_dataset,
             reconstruction_metadata=metadata,
+            enable_viewer=self.viewer,
+            viewer_scale_fraction=self.viewer_scale_fraction,
+            viewer_mask_blend=self.viewer_mask_blend,
+            viewer_lock_pca_colors=self.viewer_lock_pca_colors,
+            viewer_overlay_width=self.viewer_overlay_width,
+            viewer_overlay_height=self.viewer_overlay_height,
+            viewer_overlay_downsample=self.viewer_overlay_downsample,
         )
         trainer.train()
         logger.info("Saving portable GARfVDB bundle to %s", self.out_path)

@@ -468,7 +468,7 @@ class GaussianSplatReconstruction:
         use_every_n_as_val: int = -1,
         viz_update_interval_epochs: float = 10,
         log_interval_steps: int = 10,
-        device: str | torch.device = "cuda",
+        device: str | torch.device = "cuda:0",
     ):
         """
         Create a :class:`GaussianSplatReconstruction` instance from an :class:`~fvdb_reality_capture.sfm_scene.sfm_scene.SfmScene`, used to reconstruct
@@ -579,7 +579,7 @@ class GaussianSplatReconstruction:
         viz_scene: Scene | None = None,
         viz_update_interval_epochs: float = 1.0,
         log_interval_steps: int = 10,
-        device: str | torch.device = "cuda",
+        device: str | torch.device = "cuda:0",
     ):
         """
         Load a :class:`GaussianSplatReconstruction` instance from a state dictionary (extracted with the :meth:`state_dict` method).

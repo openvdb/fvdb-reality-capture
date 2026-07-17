@@ -7,6 +7,7 @@ import math
 import os
 import pathlib
 import random
+import time
 from dataclasses import asdict
 from typing import TYPE_CHECKING, Any, Callable, Sequence
 
@@ -168,6 +169,15 @@ class GARfVDBTrainer:
         viz_callback: Callable[["GARfVDBTrainer", int], None] | None = None,
         cache_dataset: bool = True,
         reconstruction_metadata: dict[str, Any] | None = None,
+        enable_viewer: bool = False,
+        viewer_scene_name: str = "GARfVDB Training",
+        viewer_scale_fraction: float = 0.1,
+        viewer_mask_blend: float = 0.5,
+        viewer_lock_pca_colors: bool = False,
+        viewer_overlay_width: int = 1440,
+        viewer_overlay_height: int = 720,
+        viewer_overlay_downsample: int = 2,
+        viewer_update_interval_seconds: float = 0.5,
         _private: object | None = None,
     ) -> None:
         """
@@ -268,6 +278,20 @@ class GARfVDBTrainer:
         self._viewer_update_interval_epochs = viewer_update_interval_epochs
         self._viz_callback = viz_callback
 
+        # Live training viewer (fvdb Viewer with interactive scale/opacity/show-overlay controls).
+        # fviz.init(...) must already have been called by the caller before the model was moved to CUDA.
+        self._enable_viewer = enable_viewer
+        self._viewer_scene_name = viewer_scene_name
+        self._viewer_scale_fraction = viewer_scale_fraction
+        self._viewer_mask_blend = viewer_mask_blend
+        self._viewer_lock_pca_colors = viewer_lock_pca_colors
+        self._viewer_overlay_width = viewer_overlay_width
+        self._viewer_overlay_height = viewer_overlay_height
+        self._viewer_overlay_downsample = viewer_overlay_downsample
+        self._viewer_update_interval_seconds = viewer_update_interval_seconds
+        self._overlay_viewer = None
+        self._last_viewer_render_time = 0.0
+
     @property
     def total_steps(self) -> int:
         """Get the total number of steps for training."""
@@ -349,7 +373,7 @@ class GARfVDBTrainer:
         gs_model_path: pathlib.Path,
         writer: GARfVDBWriter,
         config: GARfVDBTrainingConfig = GARfVDBTrainingConfig(),
-        device: str | torch.device = "cuda",
+        device: str | torch.device = "cuda:0",
         use_every_n_as_val: int = 100,
         exclude_indices: Sequence[int] | None = None,
         viewer_update_interval_epochs: int = 10,
@@ -357,6 +381,13 @@ class GARfVDBTrainer:
         viz_callback: Callable[["GARfVDBTrainer", int], None] | None = None,
         cache_dataset: bool = True,
         reconstruction_metadata: dict[str, Any] | None = None,
+        enable_viewer: bool = False,
+        viewer_scale_fraction: float = 0.1,
+        viewer_mask_blend: float = 0.5,
+        viewer_lock_pca_colors: bool = False,
+        viewer_overlay_width: int = 1440,
+        viewer_overlay_height: int = 720,
+        viewer_overlay_downsample: int = 2,
     ) -> "GARfVDBTrainer":
         """
         Create a `GARfVDBTrainer` instance for a new training run.
@@ -479,6 +510,13 @@ class GARfVDBTrainer:
             viz_callback=viz_callback,
             cache_dataset=cache_dataset,
             reconstruction_metadata=reconstruction_metadata,
+            enable_viewer=enable_viewer,
+            viewer_scale_fraction=viewer_scale_fraction,
+            viewer_mask_blend=viewer_mask_blend,
+            viewer_lock_pca_colors=viewer_lock_pca_colors,
+            viewer_overlay_width=viewer_overlay_width,
+            viewer_overlay_height=viewer_overlay_height,
+            viewer_overlay_downsample=viewer_overlay_downsample,
             _private=GARfVDBTrainer.__PRIVATE__,
         )
 
@@ -489,7 +527,7 @@ class GARfVDBTrainer:
         gs_model: GaussianSplat3d,
         gs_model_path: pathlib.Path,
         writer: GARfVDBWriter | None = None,
-        device: str | torch.device = "cuda",
+        device: str | torch.device = "cuda:0",
         eval_only: bool = False,
     ) -> "GARfVDBTrainer":
         """
@@ -672,7 +710,7 @@ class GARfVDBTrainer:
         checkpoint_path: pathlib.Path,
         *,
         writer: GARfVDBWriter | None = None,
-        device: str | torch.device = "cuda",
+        device: str | torch.device = "cuda:0",
         reconstruction_path: pathlib.Path | None = None,
     ) -> "GARfVDBTrainer":
         """Restore a trainer and its carrier from a checkpoint path."""
@@ -690,7 +728,7 @@ class GARfVDBTrainer:
         checkpoint: dict[str, Any],
         *,
         writer: GARfVDBWriter | None = None,
-        device: str | torch.device = "cuda",
+        device: str | torch.device = "cuda:0",
         reconstruction_path: pathlib.Path | None = None,
     ) -> "GARfVDBTrainer":
         """Restore a trainer and carrier from already loaded method state."""
@@ -730,6 +768,53 @@ class GARfVDBTrainer:
         from fvdb_reality_capture.instance_segmentation.garfvdb import GARfVDB
 
         return GARfVDB(model=self._model, reconstruction_metadata=self._reconstruction_metadata)
+
+    def _setup_viewer(self) -> None:
+        """Start the live training viewer if enabled. fviz.init(...) must already have been called."""
+        if not self._enable_viewer:
+            return
+        try:
+            import fvdb.viz as fviz
+
+            from fvdb_reality_capture.instance_segmentation.viewer import GARfVDBOverlayViewer
+
+            scene = fviz.get_scene(self._viewer_scene_name)
+            # to_product() wraps the live model by reference, so overlay frames reflect current weights.
+            self._overlay_viewer = GARfVDBOverlayViewer(
+                scene,
+                self.to_product(),
+                device=self._model.device,
+                overlay_width=self._viewer_overlay_width,
+                overlay_height=self._viewer_overlay_height,
+                overlay_downsample=self._viewer_overlay_downsample,
+                initial_scale_fraction=self._viewer_scale_fraction,
+                initial_mask_blend=self._viewer_mask_blend,
+                lock_pca_colors=self._viewer_lock_pca_colors,
+            )
+            fviz.show()
+            self._logger.info("GARfVDB training viewer running.")
+        except Exception as e:  # never let viewer setup take down training
+            self._logger.warning(f"Failed to start GARfVDB training viewer: {e}")
+            self._overlay_viewer = None
+
+    def _pump_viewer(self) -> None:
+        """Render one overlay frame from the current model, throttled by wall-clock. Never raises."""
+        if self._overlay_viewer is None:
+            return
+        now = time.monotonic()
+        if now - self._last_viewer_render_time < self._viewer_update_interval_seconds:
+            return
+        self._last_viewer_render_time = now
+        was_training = self._model.training
+        try:
+            self._model.eval()
+            with torch.no_grad():
+                self._overlay_viewer.render_once()
+        except Exception as e:  # a viewer hiccup must never interrupt training
+            self._logger.warning(f"GARfVDB training viewer update failed: {e}")
+        finally:
+            if was_training:
+                self._model.train()
 
     def train(self, show_progress: bool = True, log_tag: str = "train"):
         if self._optimizer is None:
@@ -784,6 +869,9 @@ class GARfVDBTrainer:
         self._model.train()
         self._optimizer.zero_grad()
 
+        # Start the live training viewer (no-op unless enabled).
+        self._setup_viewer()
+
         pbar = tqdm.tqdm(range(self.total_steps), desc="Training")
 
         # Gradient accumulation settings
@@ -802,6 +890,9 @@ class GARfVDBTrainer:
         trainloader_iter = iter(trainloader)
         step = 0
         while True:
+            # Refresh the live viewer between steps (throttled internally; no-op unless enabled).
+            self._pump_viewer()
+
             with nvtx.range("dataloader_fetch_batch"):
                 try:
                     minibatch = next(trainloader_iter)

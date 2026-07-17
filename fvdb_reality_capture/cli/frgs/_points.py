@@ -82,8 +82,8 @@ class Points(BaseCommand):
     # Path to save the extracted mesh (default is "mesh.ply").
     output_path: Annotated[pathlib.Path, arg(aliases=["-o"])] = pathlib.Path("points.ply")
 
-    # Device to use for computation (default is "cuda").
-    device: Annotated[str, arg(aliases=["-d"])] = "cuda"
+    # Device to use for computation (default is "cuda:0").
+    device: Annotated[str, arg(aliases=["-d"])] = "cuda:0"
 
     def execute(self) -> None:
         logging.basicConfig(level=logging.INFO, format="%(levelname)s : %(message)s")

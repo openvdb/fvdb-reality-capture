@@ -66,7 +66,7 @@ The Python API accepts grouping scales in scene units:
 
    from fvdb_reality_capture.instance_segmentation import GARfVDB
 
-   product = GARfVDB.load("safety-park.garfvdb", device="cuda")
+   product = GARfVDB.load("safety-park.garfvdb", device="cuda:0")
    scale = 0.1 * product.max_grouping_scale
    per_gaussian_features = product.gaussian_affinities(scale)
 

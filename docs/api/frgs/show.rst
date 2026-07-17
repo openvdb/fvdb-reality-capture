@@ -24,5 +24,5 @@
     │                         The port to expose the viewer server on. (default: 127.0.0.1)        │
     │ -v, --verbose, --no-verbose                                                                  │
     │                         If True, then the viewer will log verbosely. (default: False)        │
-    │ --device STR|DEVICE     Device to use for computation (default is "cuda"). (default: cuda)   │
+    │ --device STR|DEVICE     Device to use for computation (default is "cuda:0"). (default: cuda:0) │
     ╰──────────────────────────────────────────────────────────────────────────────────────────────╯

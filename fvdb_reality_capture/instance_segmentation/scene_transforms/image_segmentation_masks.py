@@ -39,7 +39,7 @@ class GenerateGARfVDBMasks(BaseTransform):
         points_per_batch=128,
         pred_iou_thresh=0.80,
         stability_score_thresh=0.80,
-        device: torch.device | str = "cuda",
+        device: torch.device | str = "cuda:0",
         gs3d_hash: str | None = None,
     ):
         """Create a transform that uses SAM2 to compute segmentation masks with scale information for each image.

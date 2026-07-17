@@ -115,7 +115,7 @@ class GARfVDBModel(torch.nn.Module):
         gs_model: GaussianSplat3d,
         scale_stats: torch.Tensor | None,
         model_config: GARfVDBConfig = GARfVDBConfig(),
-        device: str | torch.device = torch.device("cuda"),
+        device: str | torch.device = torch.device("cuda:0"),
         *,
         encoder_gridbatch: fvdb.GridBatch | None = None,
         encoder_features: torch.Tensor | None = None,

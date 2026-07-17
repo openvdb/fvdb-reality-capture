@@ -42,7 +42,7 @@ class SAM2Model:
         box_nms_thresh: float = 0.7,
         min_mask_region_area: int = 0,
         output_mode: Literal["flat", "multi_scale"] = "flat",
-        device: torch.device | str = "cuda",
+        device: torch.device | str = "cuda:0",
     ):
         """
         Initialize the SAM2 model.

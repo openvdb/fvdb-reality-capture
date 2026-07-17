@@ -260,7 +260,7 @@ if ARTIFACT_SCHEMA_VERSION not in _ARTIFACT_READERS:
     raise RuntimeError("The current GARfVDB artifact schema has no registered reader")
 
 
-def load_garfvdb_bundle(path: str | pathlib.Path, device: str | torch.device = "cuda") -> GARfVDB:
+def load_garfvdb_bundle(path: str | pathlib.Path, device: str | torch.device = "cuda:0") -> GARfVDB:
     """Load a portable GARfVDB bundle using its version-specific reader."""
     bundle_path = pathlib.Path(path)
     _require_bundle_suffix(bundle_path)

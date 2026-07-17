@@ -94,8 +94,8 @@ class MeshBasic(BaseCommand):
     # Path to save the extracted mesh (default is "mesh.ply").
     output_path: Annotated[pathlib.Path, arg(aliases=["-o"])] = pathlib.Path("mesh.ply")
 
-    # Device to use for computation (default is "cuda").
-    device: Annotated[str, arg(aliases=["-d"])] = "cuda"
+    # Device to use for computation (default is "cuda:0").
+    device: Annotated[str, arg(aliases=["-d"])] = "cuda:0"
 
     """
     Extract a mesh from a Gaussian Splat reconstruction.

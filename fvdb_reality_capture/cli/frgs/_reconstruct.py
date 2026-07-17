@@ -121,8 +121,8 @@ class Reconstruct(BaseCommand):
 
     # Which device to use for reconstruction. Must be a cuda device. You can pass in a specific device index via
     # cuda:N where N is the device index, or "cuda" to use the default cuda device.
-    # CPU is not supported. Default is "cuda".
-    device: Annotated[str | torch.device, arg(aliases=["-d"])] = "cuda"
+    # CPU is not supported. Default is "cuda:0".
+    device: Annotated[str | torch.device, arg(aliases=["-d"])] = "cuda:0"
 
     # If set, show verbose debug messages.
     verbose: Annotated[bool, arg(aliases=["-v"])] = False

@@ -69,8 +69,8 @@ class Evaluate(BaseCommand):
     # Whether to save the rendered images. Defaults to True.
     save_images: Annotated[bool, arg(aliases=["-s"])] = True
 
-    # Device to use for computation. Defaults to "cuda".
-    device: str | torch.device = "cuda"
+    # Device to use for computation. Defaults to "cuda:0".
+    device: str | torch.device = "cuda:0"
 
     def execute(self) -> None:
         logging.basicConfig(level=logging.INFO, format="%(levelname)s : %(message)s")

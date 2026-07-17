@@ -111,7 +111,7 @@ class GARfVDBTransformConfig(SceneTransformConfig):
     sam2_stability_score_thresh: float = 0.80
     """SAM2 stability score threshold for mask filtering."""
 
-    device: torch.device | str = "cuda"
+    device: torch.device | str = "cuda:0"
     """Device for SAM2 model inference."""
 
     def build_scene_transforms(self, gs3d: GaussianSplat3d, normalization_transform: torch.Tensor | None):

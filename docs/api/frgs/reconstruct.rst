@@ -42,7 +42,7 @@
     │ -d STR|DEVICE, --device STR|DEVICE                                                           │
     │     Which device to use for reconstruction. Must be a cuda device. You can pass in a         │
     │     specific device index via cuda:N where N is the device index, or "cuda" to use the       │
-    │     default cuda device. CPU is not supported. Default is "cuda". (default: cuda)            │
+    │     default cuda device. CPU is not supported. Default is "cuda:0". (default: cuda:0)        │
     │ -v, --verbose, --no-verbose                                                                  │
     │     If set, show verbose debug messages. (default: False)                                    │
     │ -nc INT INT INT, --nchunks INT INT INT                                                       │
