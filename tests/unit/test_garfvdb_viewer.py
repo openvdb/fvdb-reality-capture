@@ -3,12 +3,15 @@
 
 """Unit tests for the GARfVDB overlay viewer core (no live Vulkan viewer required)."""
 
+from unittest import mock
+
 import numpy as np
 import torch
 
-from unittest import mock
-
-from fvdb_reality_capture.instance_segmentation.util import apply_pca_projection, fit_pca_projection
+from fvdb_reality_capture.instance_segmentation.util import (
+    apply_pca_projection,
+    fit_pca_projection,
+)
 from fvdb_reality_capture.instance_segmentation.viewer import (
     _LOCK_WIDGET_NAME,
     _OPACITY_WIDGET_NAME,
@@ -102,9 +105,7 @@ def _make_viewer(scene, product, **kwargs):
 
 def test_widgets_registered_with_expected_names_and_initials():
     scene = _FakeScene()
-    _make_viewer(
-        scene, _FakeProduct(), initial_scale_fraction=0.25, initial_mask_blend=0.6, lock_pca_colors=True
-    )
+    _make_viewer(scene, _FakeProduct(), initial_scale_fraction=0.25, initial_mask_blend=0.6, lock_pca_colors=True)
     assert set(scene.widgets) == {
         _SCALE_WIDGET_NAME,
         _OPACITY_WIDGET_NAME,
