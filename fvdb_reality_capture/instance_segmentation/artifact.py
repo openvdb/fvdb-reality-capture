@@ -17,8 +17,9 @@ from typing import TYPE_CHECKING, Any
 
 import fvdb
 import torch
-from fvdb import GaussianSplat3d
 from safetensors.torch import load_file, save_file
+
+from fvdb_reality_capture.radiance_fields.gaussian_splatting import GaussianSplat3d
 
 from .config import GARfVDBConfig
 from .model import GARfVDBModel

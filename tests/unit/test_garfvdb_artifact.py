@@ -9,7 +9,7 @@ from pathlib import Path
 
 import fvdb
 import torch
-from fvdb import GaussianSplat3d
+from fvdb_reality_capture import GaussianSplat3d
 from safetensors.torch import load_file, save_file
 
 from fvdb_reality_capture.instance_segmentation import (

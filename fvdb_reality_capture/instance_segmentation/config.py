@@ -4,7 +4,7 @@
 from dataclasses import dataclass, field
 
 import torch
-from fvdb import GaussianSplat3d
+from fvdb_reality_capture.radiance_fields.gaussian_splatting import GaussianSplat3d
 
 from fvdb_reality_capture.instance_segmentation.scene_transforms import (
     GenerateGARfVDBMasks,

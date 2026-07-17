@@ -8,7 +8,7 @@ import fvdb
 import numpy as np
 import torch
 import torch.cuda.nvtx as nvtx
-from fvdb import GaussianSplat3d
+from fvdb_reality_capture.radiance_fields.gaussian_splatting import GaussianSplat3d
 from fvdb_reality_capture.instance_segmentation.config import GARfVDBConfig
 from fvdb_reality_capture.instance_segmentation.training.dataset import GARfVDBInput
 from fvdb_reality_capture.instance_segmentation.util import rgb_to_sh

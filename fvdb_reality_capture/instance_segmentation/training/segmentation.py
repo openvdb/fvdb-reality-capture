@@ -17,7 +17,7 @@ import torch.cuda.nvtx as nvtx
 import torchvision
 import torchvision.transforms.functional as tvF
 import tqdm
-from fvdb import GaussianSplat3d
+from fvdb_reality_capture.radiance_fields.gaussian_splatting import GaussianSplat3d
 from fvdb_reality_capture.checkpoints import load_training_checkpoint
 from fvdb_reality_capture.sfm_scene import SfmScene
 from fvdb_reality_capture.tools import filter_splats_above_scale

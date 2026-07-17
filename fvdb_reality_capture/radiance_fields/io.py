@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import pathlib
 
-from fvdb import GaussianSplat3d
+from .gaussian_splatting import GaussianSplat3d
 from fvdb.types import DeviceIdentifier
 
 from fvdb_reality_capture.checkpoints import load_training_checkpoint
