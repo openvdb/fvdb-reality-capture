@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1784289769514,
+  "lastUpdate": 1784303186069,
   "repoUrl": "https://github.com/openvdb/fvdb-reality-capture",
   "entries": {
     "fvdb-reality-capture Benchmark with pytest-benchmark": [
@@ -18670,6 +18670,88 @@ window.BENCHMARK_DATA = {
           {
             "name": "garden/fvdb_mcmc - SSIM",
             "value": 0.8666,
+            "unit": ""
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "Matthew Cong",
+            "username": "matthewdcong",
+            "email": "1372750+matthewdcong@users.noreply.github.com"
+          },
+          "committer": {
+            "name": "GitHub",
+            "username": "web-flow",
+            "email": "noreply@github.com"
+          },
+          "id": "26c67eb636dc4e37e6b630b2f31b7433a80ef252",
+          "message": "Migrate Gaussian splatting wrappers from fvdb-core to fvdb-reality-capture (#306)\n\nThis MR adds the high-level Gaussian splatting Python API, enums, tests,\nand docs from fvdb-core to complete their migration to\nfvdb-reality-capture. Low-level kernels and viewer support in remaining\nin fvdb-core.\n\n---------\n\nSigned-off-by: Matthew Cong <mcong@nvidia.com>\nSigned-off-by: Matthew Cong <1372750+matthewdcong@users.noreply.github.com>\nCo-authored-by: Mark Harris <mharris@nvidia.com>\nCo-authored-by: Jonathan Swartz <jonathan@jswartz.info>",
+          "timestamp": "2026-07-16T21:51:32Z",
+          "url": "https://github.com/openvdb/fvdb-reality-capture/commit/26c67eb636dc4e37e6b630b2f31b7433a80ef252"
+        },
+        "date": 1784303184905,
+        "tool": "customBiggerIsBetter",
+        "benches": [
+          {
+            "name": "bicycle/fvdb_default - PSNR",
+            "value": 25.133,
+            "unit": "dB"
+          },
+          {
+            "name": "bicycle/fvdb_default - SSIM",
+            "value": 0.7452,
+            "unit": ""
+          },
+          {
+            "name": "bicycle/fvdb_mcmc - PSNR",
+            "value": 24.999,
+            "unit": "dB"
+          },
+          {
+            "name": "bicycle/fvdb_mcmc - SSIM",
+            "value": 0.7304,
+            "unit": ""
+          },
+          {
+            "name": "bonsai/fvdb_default - PSNR",
+            "value": 32.512,
+            "unit": "dB"
+          },
+          {
+            "name": "bonsai/fvdb_default - SSIM",
+            "value": 0.9567,
+            "unit": ""
+          },
+          {
+            "name": "bonsai/fvdb_mcmc - PSNR",
+            "value": 32.809,
+            "unit": "dB"
+          },
+          {
+            "name": "bonsai/fvdb_mcmc - SSIM",
+            "value": 0.9592,
+            "unit": ""
+          },
+          {
+            "name": "garden/fvdb_default - PSNR",
+            "value": 27.642,
+            "unit": "dB"
+          },
+          {
+            "name": "garden/fvdb_default - SSIM",
+            "value": 0.8658,
+            "unit": ""
+          },
+          {
+            "name": "garden/fvdb_mcmc - PSNR",
+            "value": 27.686,
+            "unit": "dB"
+          },
+          {
+            "name": "garden/fvdb_mcmc - SSIM",
+            "value": 0.8665,
             "unit": ""
           }
         ]
