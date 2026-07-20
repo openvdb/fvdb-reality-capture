@@ -117,9 +117,20 @@ class InstanceSegmentation(BaseCommand):
                 "Reconstruction metadata does not contain normalization_transform. "
                 "Use a PLY or checkpoint produced by fvdb-reality-capture."
             )
+        reconstruction_camera_to_world_matrices = metadata.get("camera_to_world_matrices")
+        if reconstruction_camera_to_world_matrices is None:
+            raise ValueError(
+                "Reconstruction metadata does not contain camera_to_world_matrices. "
+                "Use a PLY or checkpoint produced by fvdb-reality-capture."
+            )
 
         self.tx.device = self.device
-        transformed_scene = self.tx.build_scene_transforms(gaussians, normalization_transform)(sfm_scene)
+        transformed_scene = self.tx.build_scene_transforms(
+            gaussians,
+            normalization_transform,
+            reconstruction_camera_to_world_matrices=reconstruction_camera_to_world_matrices,
+            reconstruction_image_ids=metadata.get("image_ids"),
+        )(sfm_scene)
         writer = GARfVDBWriter(
             run_name=self.run_name,
             save_path=self.io.log_path,

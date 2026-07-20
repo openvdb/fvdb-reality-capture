@@ -99,6 +99,23 @@ class GenerateGARfVDBMasks(BaseTransform):
             return torch.int64
 
     @staticmethod
+    def _camera_parameters_sha256(scene: SfmScene) -> str:
+        """Hash ordered camera poses, intrinsics, image sizes, and stable image IDs."""
+        digest = hashlib.sha256()
+        arrays = (
+            scene.camera_to_world_matrices,
+            scene.projection_matrices,
+            scene.image_sizes,
+            np.asarray([image.image_id for image in scene.images], dtype=np.int64),
+        )
+        for values in arrays:
+            array = np.ascontiguousarray(values)
+            digest.update(str(array.dtype).encode("ascii"))
+            digest.update(np.asarray(array.shape, dtype=np.int64).tobytes())
+            digest.update(array.tobytes())
+        return digest.hexdigest()
+
+    @staticmethod
     def rle_encode(tensor: torch.Tensor) -> dict[str, Any]:
         flat = tensor.flatten()
         # Find where values change
@@ -177,10 +194,12 @@ class GenerateGARfVDBMasks(BaseTransform):
                 "Cannot compute cache hash: neither gs3d nor gs3d_hash was provided. "
                 "Provide either a GaussianSplat3d model or restore from a state_dict that includes gs3d_hash."
             )
+        camera_parameters_hash = self._camera_parameters_sha256(input_scene)
 
         cache_prefix = (
             f"garfvdb_masks_v{GARFVDB_MASK_DATA_SCHEMA_VERSION}_{hash_str}_p{self._points_per_side}_"
-            f"i{int(self._pred_iou_thresh * 100)}_s{int(self._stability_score_thresh * 100)}"
+            f"i{int(self._pred_iou_thresh * 100)}_s{int(self._stability_score_thresh * 100)}_"
+            f"c{camera_parameters_hash}"
         )
         output_cache = input_cache.make_folder(
             cache_prefix,
@@ -232,6 +251,7 @@ class GenerateGARfVDBMasks(BaseTransform):
             pred_iou_thresh = value_meta.get("pred_iou_thresh", -1)
             stability_score_thresh = value_meta.get("stability_score_thresh", -1)
             gs3d_hash = value_meta.get("gs3d_hash", -1)
+            cached_camera_parameters_hash = value_meta.get("camera_parameters_sha256", "")
 
             if (
                 cache_file_meta.get("data_type", "") != self._image_type
@@ -239,6 +259,7 @@ class GenerateGARfVDBMasks(BaseTransform):
                 or pred_iou_thresh != self._pred_iou_thresh
                 or stability_score_thresh != self._stability_score_thresh
                 or gs3d_hash != hash_str
+                or cached_camera_parameters_hash != camera_parameters_hash
             ):
                 self._logger.info(
                     f"Output cache mask metadata does not match expected format. "
@@ -278,6 +299,7 @@ class GenerateGARfVDBMasks(BaseTransform):
                     "pred_iou_thresh": self._pred_iou_thresh,
                     "stability_score_thresh": self._stability_score_thresh,
                     "gs3d_hash": hash_str,
+                    "camera_parameters_sha256": camera_parameters_hash,
                 }
                 write_futures.append(
                     writer.submit(
@@ -336,6 +358,7 @@ class GenerateGARfVDBMasks(BaseTransform):
                         "pred_iou_thresh": self._pred_iou_thresh,
                         "stability_score_thresh": self._stability_score_thresh,
                         "gaussian_means_sha256": hash_str,
+                        "camera_parameters_sha256": camera_parameters_hash,
                     },
                 )
             }

@@ -3,9 +3,11 @@
 #
 from dataclasses import dataclass, field
 
+import numpy as np
 import torch
 
 from fvdb_reality_capture.instance_segmentation.scene_transforms import (
+    ApplyReconstructionCameraPoses,
     GenerateGARfVDBMasks,
 )
 from fvdb_reality_capture.radiance_fields.gaussian_splatting import GaussianSplat3d
@@ -118,26 +120,39 @@ class GARfVDBTransformConfig(SceneTransformConfig):
     device: torch.device | str = "cuda:0"
     """Device for SAM2 model inference."""
 
-    def build_scene_transforms(self, gs3d: GaussianSplat3d, normalization_transform: torch.Tensor | None):
+    def build_scene_transforms(
+        self,
+        gs3d: GaussianSplat3d,
+        normalization_transform: torch.Tensor | None,
+        reconstruction_camera_to_world_matrices: torch.Tensor | np.ndarray | None = None,
+        reconstruction_image_ids: torch.Tensor | np.ndarray | None = None,
+    ):
         alignment_transform = (
             TransformScene(normalization_transform.cpu().numpy()) if normalization_transform is not None else Identity()
         )
-        terminal_transforms = (
-            [
-                UndistortImages(),
-                GenerateGARfVDBMasks(
-                    gs3d=gs3d,
-                    checkpoint="large",
-                    points_per_side=self.sam2_points_per_side,
-                    points_per_batch=self.sam2_points_per_batch,
-                    pred_iou_thresh=self.sam2_pred_iou_thresh,
-                    stability_score_thresh=self.sam2_stability_score_thresh,
-                    device=self.device,
-                ),
-            ]
-            if self.compute_segmentation_masks
-            else []
-        )
+        terminal_transforms = []
+        if reconstruction_camera_to_world_matrices is not None:
+            terminal_transforms.append(
+                ApplyReconstructionCameraPoses(
+                    reconstruction_camera_to_world_matrices,
+                    image_ids=reconstruction_image_ids,
+                )
+            )
+        if self.compute_segmentation_masks:
+            terminal_transforms.extend(
+                [
+                    UndistortImages(),
+                    GenerateGARfVDBMasks(
+                        gs3d=gs3d,
+                        checkpoint="large",
+                        points_per_side=self.sam2_points_per_side,
+                        points_per_batch=self.sam2_points_per_batch,
+                        pred_iou_thresh=self.sam2_pred_iou_thresh,
+                        stability_score_thresh=self.sam2_stability_score_thresh,
+                        device=self.device,
+                    ),
+                ]
+            )
         return self.build_scene_transform(
             alignment_transform=alignment_transform,
             terminal_transforms=terminal_transforms,

@@ -355,6 +355,8 @@ class Resize:
         Returns:
             Resized item with updated dimensions and scaled projection matrix.
         """
+        original_h, original_w = item["image"].shape[:2]
+
         # Resize image from [H, W, 3] to [H * scale, W * scale, 3]
         item["image"] = (
             F.interpolate(
@@ -365,14 +367,20 @@ class Resize:
             .permute(0, 2, 3, 1)
             .squeeze(0)
         )  # back to [H * scale, W * scale, 3]
+        resized_h, resized_w = item["image"].shape[:2]
 
-        # Update dimensions
-        item["image_h"] = int(item["image_h"] * self.scale)
-        item["image_w"] = int(item["image_w"] * self.scale)
+        # Interpolation rounds output dimensions to integers. Record the actual dimensions and use
+        # their independent x/y ratios when updating intrinsics.
+        item["image_h"] = resized_h
+        item["image_w"] = resized_w
 
-        # Resize masks similarly
+        # Resize masks to the exact image dimensions.
         item["mask_cdf"] = (
-            F.interpolate(item["mask_cdf"].unsqueeze(0).permute(0, 3, 1, 2), scale_factor=self.scale, mode="nearest")
+            F.interpolate(
+                item["mask_cdf"].unsqueeze(0).permute(0, 3, 1, 2),
+                size=[resized_h, resized_w],
+                mode="nearest",
+            )
             .permute(0, 2, 3, 1)
             .squeeze(0)
         )
@@ -387,16 +395,11 @@ class Resize:
             .squeeze(0)
         )
 
-        # scale intrinsics for new image size
-        fx = item["projection"][0, 0]
-        fy = item["projection"][1, 1]
-        cx = item["projection"][0, 2]
-        cy = item["projection"][1, 2]
-        # Intrinsics scale with the image size: downsampling by ``scale`` (e.g. 0.5) also scales fx/fy/cx/cy.
-        new_fx = fx * self.scale
-        new_fy = fy * self.scale
-        new_cx = cx * self.scale
-        new_cy = cy * self.scale
-        item["projection"] = torch.tensor([[new_fx, 0, new_cx], [0, new_fy, new_cy], [0, 0, 1]], dtype=torch.float32)
+        scale_x = resized_w / original_w
+        scale_y = resized_h / original_h
+        projection = item["projection"].clone()
+        projection[0, :] *= scale_x
+        projection[1, :] *= scale_y
+        item["projection"] = projection
 
         return item

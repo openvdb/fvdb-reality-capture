@@ -16,8 +16,10 @@ First reconstruct the scene, then train GARfVDB against the same posed-image dat
        --reconstruction-path safety-park.ply \
        --out-path safety-park.garfvdb
 
-The reconstruction must have been produced by fVDB Reality Capture and contain its ``normalization_transform``
-metadata. Training checkpoints and metrics are written beneath ``frgs_logs`` by default.
+The reconstruction must have been produced by fVDB Reality Capture and contain its ``normalization_transform`` and
+``camera_to_world_matrices`` metadata. GARfVDB applies the reconstruction's final camera poses after scene alignment,
+including any pose adjustments learned during reconstruction. Training checkpoints and metrics are written beneath
+``frgs_logs`` by default.
 
 Scene transforms and mask supervision
 -------------------------------------
