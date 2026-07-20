@@ -90,7 +90,7 @@ def register_legacy_checkpoint_adapter(adapter: LegacyCheckpointAdapter) -> None
 
 
 def parse_training_checkpoint(root: Any) -> TrainingCheckpoint:
-    """Validate an container or ask registered method-owned legacy adapters."""
+    """Validate a container or ask registered method-owned legacy adapters."""
     if not isinstance(root, dict):
         raise TrainingCheckpointError(f"Checkpoint root must be a dictionary, got {type(root).__name__}")
 
