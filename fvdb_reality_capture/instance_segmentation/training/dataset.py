@@ -4,7 +4,7 @@
 
 from __future__ import annotations
 
-from typing import Literal, NotRequired, Sequence, Sized, TypedDict, cast, overload
+from typing import Any, Literal, NotRequired, Sequence, Sized, TypedDict, cast, overload
 
 import fvdb
 import numpy as np
@@ -289,7 +289,7 @@ class InfiniteSampler(torch.utils.data.Sampler):
         )
 
 
-class GARfVDBInput(dict[str, torch.Tensor | fvdb.JaggedTensor | list[int] | None]):
+class GARfVDBInput(dict[str, Any]):
     @overload
     def __getitem__(self, key: Literal["image_w"]) -> list[int]: ...
     @overload
