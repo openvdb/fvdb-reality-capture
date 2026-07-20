@@ -13,8 +13,11 @@ def compute_mask_cdf(pixel_to_mask_id: torch.Tensor) -> torch.Tensor:
     masks intersecting each pixel), so it is recomputed at load time rather than stored on disk.
     A full ``[H, W, MM]`` float32 CDF is by far the largest field in the mask cache (~155 MB for a
     ~2K image), and dropping it from the cache roughly quarters the on-disk artifact and the (disk
-    bound) write time. This must stay byte-for-byte consistent with the value that used to be
-    written, so the implementation matches the original inline computation exactly.
+    bound) write time.
+
+    Each mask is weighted by the log of its sampling probability (its area over the total masked
+    area) so that small masks are more likely to be selected for supervision; the ``-1`` padding is
+    excluded.
 
     Args:
         pixel_to_mask_id: ``[H, W, MM]`` integer tensor mapping each pixel to the ids of the masks
@@ -23,25 +26,21 @@ def compute_mask_cdf(pixel_to_mask_id: torch.Tensor) -> torch.Tensor:
     Returns:
         ``[H, W, MM]`` float32 CDF used to sample a mask per pixel during training.
     """
-    # Get the unique ids of each mask, and the number of pixels each mask occupies (area)
-    mask_ids, num_pix_per_mask = torch.unique(pixel_to_mask_id, return_counts=True)  # [N], [N]
+    # Shift ids by +1 so the -1 "no mask" padding maps to index 0 of the per-id tables.
+    shifted = pixel_to_mask_id.reshape(-1).long() + 1  # [H*W*MM]
+    num_ids = int(shifted.max().item()) + 1 if shifted.numel() > 0 else 1
 
-    # Sort masks by their area
-    mask_area_sort_ids = torch.argsort(num_pix_per_mask)
-    mask_ids, num_pix_per_mask = mask_ids[mask_area_sort_ids], num_pix_per_mask[mask_area_sort_ids]  # [N], [N]
-    num_pix_per_mask[0] = 0  # Remove the -1 mask which corresponds to no mask, [N]
+    # Per-mask area = number of pixel slots each mask id occupies, indexed by (id + 1).
+    area_per_id = torch.bincount(shifted, minlength=num_ids).to(torch.float32)
+    area_per_id[0] = 0.0  # drop the -1 padding so it contributes no probability
 
-    # The probability of any pixel landing in a mask is just the area of the mask over the area of the image
-    probs = num_pix_per_mask / num_pix_per_mask.sum()  # [N]
+    # Probability of sampling each mask = its area over the total masked area.
+    probs = area_per_id / area_per_id.sum().clamp(min=1e-12)  # indexed by (id + 1)
+    mask_probs = probs[shifted].view(pixel_to_mask_id.shape)  # [H, W, MM]
 
-    # Gather the probability values into pixel_to_mask_id, which produces a tensor where
-    # each pixel has a list of probabilities that correspond to the masks that intersect that pixel
-    mask_probs = torch.gather(probs, 0, pixel_to_mask_id.reshape(-1).long() + 1).view(
-        pixel_to_mask_id.shape
-    )  # [H, W, MM]
-
-    # Compute a CDF for each pixel (which sums to 1) which weighs each mask by its log probability of being sampled
-    # i.e. mask_cdf[i, j, k] is a cumulative probability weight used to select mask k for pixel [i, j]
+    # Compute a CDF for each pixel which weighs each mask by its log probability of being sampled.
+    # Padding / never-masked slots have probability 0 (log -> -inf); exclude them and set them so
+    # they are effectively never selected.
     mask_cdf = torch.log(mask_probs)
     never_masked = mask_cdf.isinf()
     mask_cdf[never_masked] = 0.0
