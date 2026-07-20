@@ -5,7 +5,7 @@ fVDB-Reality-Capture provides a command-line interface (CLI) called ``frgs`` for
 and derived spatial products.
 ``frgs`` is pronounced "frogs" 🐸, and is short for  **F**\ vdb-\ **R**\ eality-capture **G**\ aussian **S**\ platting.
 
-This tool covers reconstruction, derived instance feature fields, format conversion, mesh and point-cloud extraction,
+`frgs` provides reconstruction, derived instance feature fields, format conversion, mesh and point-cloud extraction,
 and visualization directly from the command line without requiring Python code.
 
 
