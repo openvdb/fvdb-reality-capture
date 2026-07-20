@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1784564019093,
+  "lastUpdate": 1784564022121,
   "repoUrl": "https://github.com/openvdb/fvdb-reality-capture",
   "entries": {
     "fvdb-reality-capture Benchmark with pytest-benchmark": [
@@ -24405,6 +24405,88 @@ window.BENCHMARK_DATA = {
           {
             "name": "garden/fvdb_mcmc - peak_gpu_memory_gb",
             "value": 3.6349,
+            "unit": "GB"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "Matthew Cong",
+            "username": "matthewdcong",
+            "email": "1372750+matthewdcong@users.noreply.github.com"
+          },
+          "committer": {
+            "name": "GitHub",
+            "username": "web-flow",
+            "email": "noreply@github.com"
+          },
+          "id": "26c67eb636dc4e37e6b630b2f31b7433a80ef252",
+          "message": "Migrate Gaussian splatting wrappers from fvdb-core to fvdb-reality-capture (#306)\n\nThis MR adds the high-level Gaussian splatting Python API, enums, tests,\nand docs from fvdb-core to complete their migration to\nfvdb-reality-capture. Low-level kernels and viewer support in remaining\nin fvdb-core.\n\n---------\n\nSigned-off-by: Matthew Cong <mcong@nvidia.com>\nSigned-off-by: Matthew Cong <1372750+matthewdcong@users.noreply.github.com>\nCo-authored-by: Mark Harris <mharris@nvidia.com>\nCo-authored-by: Jonathan Swartz <jonathan@jswartz.info>",
+          "timestamp": "2026-07-16T21:51:32Z",
+          "url": "https://github.com/openvdb/fvdb-reality-capture/commit/26c67eb636dc4e37e6b630b2f31b7433a80ef252"
+        },
+        "date": 1784564021672,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "bicycle/fvdb_default - training_time",
+            "value": 743.5,
+            "unit": "seconds"
+          },
+          {
+            "name": "bicycle/fvdb_default - peak_gpu_memory_gb",
+            "value": 4.5424,
+            "unit": "GB"
+          },
+          {
+            "name": "bicycle/fvdb_mcmc - training_time",
+            "value": 367.96,
+            "unit": "seconds"
+          },
+          {
+            "name": "bicycle/fvdb_mcmc - peak_gpu_memory_gb",
+            "value": 1.442,
+            "unit": "GB"
+          },
+          {
+            "name": "bonsai/fvdb_default - training_time",
+            "value": 472.08,
+            "unit": "seconds"
+          },
+          {
+            "name": "bonsai/fvdb_default - peak_gpu_memory_gb",
+            "value": 1.6123,
+            "unit": "GB"
+          },
+          {
+            "name": "bonsai/fvdb_mcmc - training_time",
+            "value": 638.86,
+            "unit": "seconds"
+          },
+          {
+            "name": "bonsai/fvdb_mcmc - peak_gpu_memory_gb",
+            "value": 1.5553,
+            "unit": "GB"
+          },
+          {
+            "name": "garden/fvdb_default - training_time",
+            "value": 923.1,
+            "unit": "seconds"
+          },
+          {
+            "name": "garden/fvdb_default - peak_gpu_memory_gb",
+            "value": 5.5943,
+            "unit": "GB"
+          },
+          {
+            "name": "garden/fvdb_mcmc - training_time",
+            "value": 739.93,
+            "unit": "seconds"
+          },
+          {
+            "name": "garden/fvdb_mcmc - peak_gpu_memory_gb",
+            "value": 3.6376,
             "unit": "GB"
           }
         ]
