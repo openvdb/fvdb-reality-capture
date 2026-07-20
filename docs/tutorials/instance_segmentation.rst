@@ -22,7 +22,7 @@ metadata. Training checkpoints and metrics are written beneath ``frgs_logs`` by 
 Scene transforms and mask supervision
 -------------------------------------
 
-GARfVDB uses the standard Reality Capture scene-transform pipeline for alignment, point filtering, image
+GARfVDB uses fVDB Reality Capture's scene-transform pipeline for alignment, point filtering, image
 downsampling, image filtering, and cropping. Its SAM2 step is appended as the terminal transform because its mask
 rasters and grouping scales describe the final image dimensions and scene coordinate system.
 
