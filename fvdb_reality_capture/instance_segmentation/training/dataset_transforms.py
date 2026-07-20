@@ -97,7 +97,7 @@ class RandomSelectMaskIDAndScale:
                 per_pixel_mask_ = torch.gather(
                     per_pixel_index,
                     -1,
-                    torch.max(random_index.unsqueeze(-1) - 1, torch.Tensor([0]).int()),
+                    torch.clamp(random_index.unsqueeze(-1) - 1, min=0),
                 ).squeeze()
 
             scales = item["scales"]  # [NM] dtype: torch.float32

@@ -961,8 +961,9 @@ class GaussianSplatReconstruction:
         if any(image_id < 0 or image_id > np.iinfo(np.uint32).max for image_id in training_image_ids_list):
             raise ValueError("SfM image IDs must fit in uint32 to be saved in Gaussian PLY metadata.")
         # Gaussian PLY tensor metadata does not support int64; SfM image IDs are non-negative and
-        # naturally fit the supported uint32 representation.
-        training_image_ids = torch.tensor(training_image_ids_list, dtype=torch.uint32)
+        # naturally fit the supported uint32 representation. Keep on self.device so it matches the paired
+        # camera_to_world_matrices (both are ordered by self._training_dataset.indices).
+        training_image_ids = torch.tensor(training_image_ids_list, dtype=torch.uint32, device=self.device)
         training_median_depths = torch.from_numpy(self._training_dataset.sfm_scene.median_depth_per_image).to(
             dtype=torch.float32, device=self.device
         )[self._training_dataset.indices]

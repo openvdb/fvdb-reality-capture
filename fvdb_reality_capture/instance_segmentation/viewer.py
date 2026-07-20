@@ -91,6 +91,11 @@ class GARfVDBOverlayViewer:
             raise ValueError(f"initial_mask_blend must be in [0, 1], got {initial_mask_blend}")
         if overlay_width <= 0 or overlay_height <= 0 or overlay_downsample <= 0:
             raise ValueError("Overlay dimensions and downsample must be positive")
+        if overlay_width < overlay_downsample or overlay_height < overlay_downsample:
+            raise ValueError(
+                f"overlay_downsample ({overlay_downsample}) must not exceed overlay_width ({overlay_width}) "
+                f"or overlay_height ({overlay_height}); the downsampled render target would be empty."
+            )
 
         self._logger = logging.getLogger(__name__)
         self._scene = scene
