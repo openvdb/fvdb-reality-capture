@@ -1,17 +1,21 @@
 # Copyright Contributors to the OpenVDB Project
 # SPDX-License-Identifier: Apache-2.0
 #
+
+from __future__ import annotations
+
 import logging
-from typing import Any, Callable, Literal, Mapping, cast
+from typing import Any, Callable, Literal, Mapping
 
 import fvdb
 import numpy as np
 import torch
 import torch.cuda.nvtx as nvtx
-from fvdb_reality_capture.radiance_fields.gaussian_splatting import GaussianSplat3d
+
 from fvdb_reality_capture.instance_segmentation.config import GARfVDBConfig
 from fvdb_reality_capture.instance_segmentation.training.dataset import GARfVDBInput
 from fvdb_reality_capture.instance_segmentation.util import rgb_to_sh, sh_to_rgb
+from fvdb_reality_capture.radiance_fields.gaussian_splatting import GaussianSplat3d
 
 
 class SparseConvWithSkips(torch.nn.Module):
