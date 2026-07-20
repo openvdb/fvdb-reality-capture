@@ -1,7 +1,7 @@
 ``frgs 🐸 CLI Tool``
 ==========================================
 
-fVDB-Reality-Capture provides a command-line interface (CLI) tool called ``frgs`` for tools related to Gaussian Splatting
+fVDB-Reality-Capture provides a command-line interface (CLI) called ``frgs`` for tools related to Gaussian Splatting
 and derived spatial products.
 ``frgs`` is pronounced "frogs" 🐸, and is short for  **F**\ vdb-\ **R**\ eality-capture **G**\ aussian **S**\ platting.
 
