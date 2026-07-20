@@ -247,9 +247,24 @@ def test_standard_scene_pipeline_places_product_transform_last():
     assert garfvdb_pipeline.transforms[-1] is terminal
 
 
+def test_garfvdb_mask_erosion_removes_boundaries_without_expanding_masks():
+    masks = torch.zeros((2, 5, 5), dtype=torch.bool)
+    masks[:, 1:4, 1:4] = True
+    masks[1, 2, 2] = False
+
+    eroded = GenerateGARfVDBMasks._erode_masks(masks)
+
+    expected = torch.zeros_like(masks)
+    expected[0, 2, 2] = True
+    assert torch.equal(eroded, expected)
+    assert torch.all(~eroded | masks)
+
+
 def test_garfvdb_mask_generation_uses_materialized_pinhole_images():
     with tempfile.TemporaryDirectory() as directory:
         scene = _make_scene(pathlib.Path(directory), num_images=1)
+        bgr_image = np.full((6, 8, 3), (11, 22, 33), dtype=np.uint8)
+        assert cv2.imwrite(scene.images[0].image_path, bgr_image)
         gaussians = mock.Mock()
         gaussians.means = torch.tensor([[0.0, 0.0, 0.0], [1.0, 1.0, 1.0]])
         with mock.patch(
@@ -267,6 +282,7 @@ def test_garfvdb_mask_generation_uses_materialized_pinhole_images():
         assert transformed.has_attribute(GARFVDB_MASK_ATTRIBUTE_NAME)
         generated_image = generate.call_args.args[1]
         assert generated_image.shape == (6, 8, 3)
+        np.testing.assert_array_equal(generated_image[0, 0], np.array([33, 22, 11], dtype=np.uint8))
 
 
 def test_garfvdb_mask_generation_rejects_distorted_scene():

@@ -11,7 +11,7 @@ import torch.cuda.nvtx as nvtx
 from fvdb_reality_capture.radiance_fields.gaussian_splatting import GaussianSplat3d
 from fvdb_reality_capture.instance_segmentation.config import GARfVDBConfig
 from fvdb_reality_capture.instance_segmentation.training.dataset import GARfVDBInput
-from fvdb_reality_capture.instance_segmentation.util import rgb_to_sh
+from fvdb_reality_capture.instance_segmentation.util import rgb_to_sh, sh_to_rgb
 
 
 class SparseConvWithSkips(torch.nn.Module):
@@ -806,10 +806,10 @@ class GARfVDBModel(torch.nn.Module):
         if self.model_config.use_grid:
             # Obtain per-gaussian features from the encoder grids
             enc_feats = self._sample_encoder_grids_at_gaussians()
-            enc_feats = rgb_to_sh(enc_feats)
         else:
-            enc_feats = self.gs_features
-            enc_feats = rgb_to_sh(enc_feats)
+            # Per-Gaussian features are stored as degree-zero SH coefficients so they can be
+            # rendered during training. Evaluate those coefficients before applying the MLP.
+            enc_feats = sh_to_rgb(self.gs_features)
 
         epsilon = 1e-6
         enc_feats = enc_feats / (torch.linalg.norm(enc_feats, dim=-1, keepdim=True) + epsilon)

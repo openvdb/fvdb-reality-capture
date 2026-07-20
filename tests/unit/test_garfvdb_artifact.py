@@ -82,6 +82,14 @@ class GARfVDBNanoVDBTests(unittest.TestCase):
         self.assertEqual(loaded_features.jdata.dtype, features.jdata.dtype)
         torch.testing.assert_close(loaded_features.jdata, features.jdata)
 
+    def test_gaussian_affinities_use_raw_encoder_features(self):
+        model = _make_model("cpu")
+        encoder_features = model._sample_encoder_grids_at_gaussians()
+        normalized_features = encoder_features / (encoder_features.norm(dim=-1, keepdim=True) + 1e-6)
+        expected = model.get_mlp_output(normalized_features, 0.1)
+
+        torch.testing.assert_close(model.get_gaussian_affinity_output(0.1), expected)
+
     def test_nanovdb_and_safetensors_reconstruct_model(self):
         model = _make_model("cpu")
         expected = model.get_gaussian_affinity_output(0.1)

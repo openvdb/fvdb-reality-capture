@@ -294,6 +294,7 @@ class GenerateGARfVDBMasks(BaseTransform):
                     image_path = image_meta.image_path
                     img = cv2.imread(image_path)
                     assert img is not None, f"Failed to load image {image_path}"
+                    img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
 
                     scales, pixel_to_mask_id = self._generate_segmentation_mask(
                         self._gs3d,
@@ -339,6 +340,16 @@ class GenerateGARfVDBMasks(BaseTransform):
                 )
             }
         )
+
+    @staticmethod
+    def _erode_masks(masks: torch.Tensor) -> torch.Tensor:
+        """Erode binary masks by one pixel using a 3x3 square structuring element."""
+        neighborhood_counts = torch.conv2d(
+            masks.unsqueeze(1).float(),
+            torch.ones((1, 1, 3, 3), dtype=torch.float32, device=masks.device),
+            padding=1,
+        )
+        return (neighborhood_counts == 9).squeeze(1)
 
     @torch.inference_mode()
     def _generate_segmentation_mask(
@@ -416,12 +427,7 @@ class GenerateGARfVDBMasks(BaseTransform):
         # Erode masks to remove noise at the boundary.
         # We're going to compute the scale of each mask by taking the standard deviation of the 3D points
         # within that mask, and the points at the boundary of masks are usually noisy.
-        eroded_masks = torch.conv2d(
-            sam_masks.unsqueeze(1).float(),
-            torch.full((3, 3), 1.0, device=self._device).view(1, 1, 3, 3),
-            padding=1,
-        )
-        eroded_masks = (eroded_masks >= 5).squeeze(1)  # [M, H, W]
+        eroded_masks = self._erode_masks(sam_masks)  # [M, H, W]
 
         # mask out any pixels with invalid gaussian ids in the sam_masks
         eroded_masks = eroded_masks * (~invalid_mask.squeeze().unsqueeze(0))

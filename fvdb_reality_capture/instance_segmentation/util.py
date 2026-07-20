@@ -280,3 +280,15 @@ def rgb_to_sh(rgb: torch.Tensor) -> torch.Tensor:
         [N, 3] Tensor of spherical harmonics coefficients
     """
     return rgb * _SH_SCALE + _SH_OFFSET
+
+
+def sh_to_rgb(sh: torch.Tensor) -> torch.Tensor:
+    """Convert degree-zero spherical harmonics coefficients to RGB values.
+
+    Args:
+        sh: Tensor of spherical harmonics coefficients.
+
+    Returns:
+        Tensor of RGB values with the same shape.
+    """
+    return (sh - _SH_OFFSET) / _SH_SCALE
