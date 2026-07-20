@@ -42,7 +42,6 @@ from fvdb_reality_capture.instance_segmentation.training.dataset_transforms impo
 )
 from fvdb_reality_capture.instance_segmentation.training.segmentation_writer import GARfVDBWriter
 from fvdb_reality_capture.instance_segmentation.util import pca_projection_fast
-from torch.utils.tensorboard import SummaryWriter
 
 if TYPE_CHECKING:
     from fvdb_reality_capture.instance_segmentation.garfvdb import GARfVDB
@@ -67,6 +66,11 @@ class TensorboardLogger:
         self._log_every_step = log_every_step
         self._log_dir = log_dir
         self._log_images_to_tensorboard = log_images_to_tensorboard
+        # Imported lazily so importing this module (and the fvdb_reality_capture package) does not require
+        # the optional `tensorboard` package unless TensorBoard logging is actually used. Mirrors the lazy
+        # import in segmentation_writer.py.
+        from torch.utils.tensorboard import SummaryWriter
+
         self._tb_writer = SummaryWriter(log_dir=log_dir)
 
     def log_training_iteration(
