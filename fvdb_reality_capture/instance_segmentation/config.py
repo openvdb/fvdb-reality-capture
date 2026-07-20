@@ -4,11 +4,11 @@
 from dataclasses import dataclass, field
 
 import torch
-from fvdb_reality_capture.radiance_fields.gaussian_splatting import GaussianSplat3d
 
 from fvdb_reality_capture.instance_segmentation.scene_transforms import (
     GenerateGARfVDBMasks,
 )
+from fvdb_reality_capture.radiance_fields.gaussian_splatting import GaussianSplat3d
 from fvdb_reality_capture.transforms import (
     Identity,
     SceneTransformConfig,
@@ -59,7 +59,7 @@ class GARfVDBTrainingConfig:
     max_steps: int | None = None
     """Maximum number of training steps. If None, uses max_epochs."""
 
-    max_epochs: int = 100
+    max_epochs: int = 50
     """Maximum number of training epochs."""
 
     sample_pixels_per_image: int = 256
