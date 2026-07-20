@@ -1330,7 +1330,7 @@ class GaussianSplatReconstruction:
                         # After pose_opt_stop_iter, don't track gradients through pose adjustment
                         with torch.no_grad():
                             cam_to_world_mats = self.pose_adjust_model(cam_to_world_mats, image_ids)
-                    world_to_cam_mats = torch.linalg.inv(cam_to_world_mats).contiguous()
+                    world_to_cam_mats = torch.linalg.inv_ex(cam_to_world_mats)[0].contiguous()
 
                 projection_mats = minibatch["projection"].to(self.device)  # [B, 3, 3]
                 camera_models = minibatch["camera_model"]
