@@ -316,7 +316,7 @@ class GARfVDBWriter(GARfVDBBaseWriter):
         attempts = 0
         max_attempts = 50
         run_name = f"{prefix}_{time.strftime('%Y-%m-%d-%H-%M-%S')}"
-        while attempts < 50:
+        while attempts < max_attempts:
             log_path = base_path / run_name
             try:
                 log_path.mkdir(exist_ok=False, parents=True)
@@ -436,8 +436,8 @@ class GARfVDBWriter(GARfVDBBaseWriter):
                         image_np = image_np[:, :, 0]  # Remove channel dimension for grayscale
                     cv2.imwrite(str(image_batch_path), image_np)
                 elif image_batch_path.suffix.lower() == ".jpg" or image_batch_path.suffix.lower() == ".jpeg":
-                    # Save as JPEG
-                    image_np = (image[b].cpu().numpy() * 255.0).clip(0, 255).astype(np.uint8)
+                    # Save as JPEG. `image` is already uint8 (see _to_batched_uint8_image); do not rescale.
+                    image_np = image[b].cpu().numpy()
                     if num_channels == 1:
                         image_np = image_np[:, :, 0]  # Remove channel dimension for grayscale
                     cv2.imwrite(str(image_batch_path), image_np, [int(cv2.IMWRITE_JPEG_QUALITY), jpeg_quality])

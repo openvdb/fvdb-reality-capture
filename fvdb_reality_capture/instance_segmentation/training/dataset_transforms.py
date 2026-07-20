@@ -9,12 +9,13 @@ import torch.cuda.nvtx as nvtx
 import torch.nn.functional as F
 import torchvision
 import torchvision.transforms.functional as TF
+from torch.utils.data import Dataset
+
 from fvdb_reality_capture.instance_segmentation.training.dataset import (
     GARfVDBInput,
     SegmentationDataItem,
     SegmentationDataset,
 )
-from torch.utils.data import Dataset
 
 
 class TransformedSegmentationDataset(Dataset):
@@ -391,10 +392,11 @@ class Resize:
         fy = item["projection"][1, 1]
         cx = item["projection"][0, 2]
         cy = item["projection"][1, 2]
-        new_fx = fx / self.scale
-        new_fy = fy / self.scale
-        new_cx = cx / self.scale
-        new_cy = cy / self.scale
+        # Intrinsics scale with the image size: downsampling by ``scale`` (e.g. 0.5) also scales fx/fy/cx/cy.
+        new_fx = fx * self.scale
+        new_fy = fy * self.scale
+        new_cx = cx * self.scale
+        new_cy = cy * self.scale
         item["projection"] = torch.tensor([[new_fx, 0, new_cx], [0, new_fy, new_cy], [0, 0, 1]], dtype=torch.float32)
 
         return item
