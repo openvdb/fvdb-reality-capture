@@ -2,7 +2,7 @@ GARfVDB instance segmentation
 =============================
 
 GARfVDB learns a scale-conditioned instance feature field from an existing Gaussian reconstruction. The Gaussian
-splat is an input and rendering carrier; the resulting product is a separate, portable instance-segmentation field.
+splat is an input and rendering base; the resulting product is a separate, portable instance-segmentation field.
 
 Train from an existing reconstruction
 -------------------------------------
@@ -39,7 +39,7 @@ Portable artifact
 * ``manifest.json`` — schema identity and version, configuration, ordered grid metadata, and payload checksums.
 * ``encoder.nvdb`` — the ordered multiresolution grid topology and learned per-voxel features.
 * ``network.safetensors`` — dense network parameters and scale-quantile lookup tensors.
-* ``carrier.ply`` — the exact filtered Gaussian scene carrier and its reconstruction metadata.
+* ``gaussians.ply`` — the exact filtered Gaussians and their reconstruction metadata.
 
 The bundle contains no PyTorch pickle payload. It can be moved and loaded without the original dataset or
 reconstruction. Training and resume still require the source image paths recorded in the checkpoint.

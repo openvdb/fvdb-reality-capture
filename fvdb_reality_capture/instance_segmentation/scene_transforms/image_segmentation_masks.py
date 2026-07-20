@@ -334,7 +334,7 @@ class GenerateGARfVDBMasks(BaseTransform):
                         "points_per_side": self._points_per_side,
                         "pred_iou_thresh": self._pred_iou_thresh,
                         "stability_score_thresh": self._stability_score_thresh,
-                        "carrier_means_sha256": hash_str,
+                        "gaussian_means_sha256": hash_str,
                     },
                 )
             }

@@ -39,7 +39,7 @@ class GARfVDBMaskAttribute(SceneAttribute):
 
     @property
     def provenance(self) -> dict[str, Any]:
-        """Return generation metadata such as the carrier hash and SAM2 settings."""
+        """Return generation metadata such as the Gaussian means hash and SAM2 settings."""
         return dict(self._provenance)
 
     @staticmethod

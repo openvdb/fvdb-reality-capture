@@ -18,7 +18,7 @@ from .training.dataset import GARfVDBInput
 
 
 class GARfVDB:
-    """A portable scale-conditioned instance feature field and its Gaussian carrier."""
+    """A portable scale-conditioned instance feature field and its Gaussian model."""
 
     def __init__(self, model: GARfVDBModel, reconstruction_metadata: Mapping[str, Any] | None = None) -> None:
         if not model.model_config.use_grid:
@@ -32,8 +32,8 @@ class GARfVDB:
         return self._model
 
     @property
-    def carrier(self) -> GaussianSplat3d:
-        """The exact filtered Gaussian carrier used by the feature field."""
+    def gaussians(self) -> GaussianSplat3d:
+        """The exact filtered Gaussian model used by the feature field."""
         return self._model.gs_model
 
     @property
@@ -43,7 +43,7 @@ class GARfVDB:
 
     @property
     def reconstruction_metadata(self) -> dict[str, Any]:
-        """A shallow copy of camera and reconstruction metadata bundled with the carrier."""
+        """A shallow copy of camera and reconstruction metadata bundled with the gaussians."""
         return dict(self._reconstruction_metadata)
 
     @property
@@ -102,7 +102,7 @@ class GARfVDB:
 
     @torch.no_grad()
     def gaussian_affinities(self, scale: float) -> torch.Tensor:
-        """Return per-Gaussian affinities aligned with :attr:`carrier`."""
+        """Return per-Gaussian affinities aligned with :attr:`gaussians`."""
         self._validate_scale(scale)
         return self._model.get_gaussian_affinity_output(scale)
 

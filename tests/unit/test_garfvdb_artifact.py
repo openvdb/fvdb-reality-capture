@@ -23,7 +23,7 @@ from fvdb_reality_capture.instance_segmentation.artifact import ARTIFACT_SCHEMA,
 from fvdb_reality_capture.instance_segmentation.model import GARfVDBModel
 
 
-def _make_carrier(num_gaussians: int = 8) -> GaussianSplat3d:
+def _make_gaussians(num_gaussians: int = 8) -> GaussianSplat3d:
     generator = torch.Generator().manual_seed(7)
     means = torch.rand((num_gaussians, 3), generator=generator)
     quats = torch.rand((num_gaussians, 4), generator=generator)
@@ -36,7 +36,7 @@ def _make_carrier(num_gaussians: int = 8) -> GaussianSplat3d:
 
 
 def _make_model(device: str) -> GARfVDBModel:
-    carrier = _make_carrier().to(device)
+    gaussians = _make_gaussians().to(device)
     config = GARfVDBConfig(
         num_grids=4,
         grid_feature_dim=2,
@@ -45,7 +45,7 @@ def _make_model(device: str) -> GARfVDBModel:
         mlp_output_dim=4,
     )
     return GARfVDBModel(
-        carrier,
+        gaussians,
         torch.tensor([0.05, 0.1, 0.2, 0.4], device=device),
         model_config=config,
         device=device,
@@ -165,7 +165,7 @@ class GARfVDBArtifactTests(unittest.TestCase):
 
             self.assertTrue((path / "encoder.nvdb").is_file())
             self.assertTrue((path / "network.safetensors").is_file())
-            self.assertTrue((path / "carrier.ply").is_file())
+            self.assertTrue((path / "gaussians.ply").is_file())
             self.assertFalse((path / "model.pt").exists())
             manifest = json.loads((path / MANIFEST_NAME).read_text())
             self.assertEqual(manifest["schema_version"], ARTIFACT_SCHEMA_VERSION)
@@ -256,9 +256,9 @@ class GARfVDBArtifactTests(unittest.TestCase):
                 GARfVDB.load(path, device="cuda")
 
     def test_artifact_requires_grid_backed_model(self):
-        carrier = _make_carrier().to("cuda")
+        gaussians = _make_gaussians().to("cuda")
         config = GARfVDBConfig(use_grid=False, num_grids=2, grid_feature_dim=2, mlp_hidden_dim=4, mlp_num_layers=1)
-        model = GARfVDBModel(carrier, torch.tensor([0.1, 0.2], device="cuda"), config, device="cuda")
+        model = GARfVDBModel(gaussians, torch.tensor([0.1, 0.2], device="cuda"), config, device="cuda")
         with self.assertRaisesRegex(ValueError, "use_grid=True"):
             GARfVDB(model)
 

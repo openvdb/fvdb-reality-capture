@@ -223,7 +223,7 @@ class GARfVDBTrainer:
         self._gs_model = gs_model
         self._gs_model_path = gs_model_path
         self._reconstruction_metadata = dict(reconstruction_metadata or {})
-        self._carrier_means_sha256 = hashlib.sha256(
+        self._gaussian_means_sha256 = hashlib.sha256(
             gs_model.means.detach().cpu().contiguous().numpy().tobytes()
         ).hexdigest()
 
@@ -713,7 +713,7 @@ class GARfVDBTrainer:
         device: str | torch.device = "cuda:0",
         reconstruction_path: pathlib.Path | None = None,
     ) -> "GARfVDBTrainer":
-        """Restore a trainer and its carrier from a checkpoint path."""
+        """Restore a trainer and its gaussians from a checkpoint path."""
         checkpoint = cls.load_checkpoint_state(checkpoint_path, map_location=device)
         return cls.from_checkpoint_state(
             checkpoint,
@@ -731,34 +731,34 @@ class GARfVDBTrainer:
         device: str | torch.device = "cuda:0",
         reconstruction_path: pathlib.Path | None = None,
     ) -> "GARfVDBTrainer":
-        """Restore a trainer and carrier from already loaded method state."""
+        """Restore a trainer and gaussians from already loaded method state."""
         from fvdb_reality_capture.radiance_fields import load_splats_from_file
 
         stored_path = checkpoint.get("gs_model_path")
-        carrier_path = reconstruction_path or (pathlib.Path(stored_path) if stored_path is not None else None)
-        if carrier_path is None:
+        gaussians_path = reconstruction_path or (pathlib.Path(stored_path) if stored_path is not None else None)
+        if gaussians_path is None:
             raise ValueError("Checkpoint has no reconstruction path; pass reconstruction_path explicitly.")
-        if not carrier_path.exists():
+        if not gaussians_path.exists():
             raise FileNotFoundError(
-                f"Reconstruction referenced by GARfVDB checkpoint does not exist: {carrier_path}. "
+                f"Reconstruction referenced by GARfVDB checkpoint does not exist: {gaussians_path}. "
                 "Pass --reconstruction-path if it moved."
             )
-        gs_model, metadata = load_splats_from_file(carrier_path, device)
-        gs_model = filter_splats_above_scale(gs_model, checkpoint.get("carrier_filter_threshold", 0.1))
-        expected_count = checkpoint.get("carrier_num_gaussians")
+        gs_model, metadata = load_splats_from_file(gaussians_path, device)
+        gs_model = filter_splats_above_scale(gs_model, checkpoint.get("gaussian_filter_threshold", 0.1))
+        expected_count = checkpoint.get("num_gaussians")
         if expected_count is not None and gs_model.num_gaussians != expected_count:
             raise ValueError(
-                f"Reconstructed carrier has {gs_model.num_gaussians} Gaussians; checkpoint expects {expected_count}."
+                f"Reconstructed model has {gs_model.num_gaussians} Gaussians; checkpoint expects {expected_count}."
             )
-        expected_hash = checkpoint.get("carrier_means_sha256")
+        expected_hash = checkpoint.get("gaussian_means_sha256")
         actual_hash = hashlib.sha256(gs_model.means.detach().cpu().contiguous().numpy().tobytes()).hexdigest()
         if expected_hash is not None and actual_hash != expected_hash:
-            raise ValueError("Reconstructed carrier ordering/content does not match the GARfVDB checkpoint")
+            raise ValueError("Reconstructed Gaussian ordering/content does not match the GARfVDB checkpoint")
         checkpoint["reconstruction_metadata"] = checkpoint.get("reconstruction_metadata", metadata)
         return cls.from_state_dict(
             checkpoint,
             gs_model=gs_model,
-            gs_model_path=carrier_path,
+            gs_model_path=gaussians_path,
             writer=writer,
             device=device,
         )
@@ -1169,9 +1169,9 @@ class GARfVDBTrainer:
             "sfm_scene": self._sfm_scene.state_dict(),
             "gs_model_path": self._gs_model_path,
             "reconstruction_metadata": self._reconstruction_metadata,
-            "carrier_filter_threshold": 0.1,
-            "carrier_num_gaussians": self._gs_model.num_gaussians,
-            "carrier_means_sha256": self._carrier_means_sha256,
+            "gaussian_filter_threshold": 0.1,
+            "num_gaussians": self._gs_model.num_gaussians,
+            "gaussian_means_sha256": self._gaussian_means_sha256,
             "grouping_scale_stats": self._grouping_scale_stats.cpu(),
             "model": self._model.state_dict(),
             "optimizer": self._optimizer.state_dict(),

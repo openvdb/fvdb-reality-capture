@@ -12,4 +12,4 @@
 
    Required inputs are the original posed-image dataset and the matching Reality Capture PLY or checkpoint.
    The output is a portable directory containing NanoVDB encoder grids, safetensors network weights, and the
-   exact filtered Gaussian carrier.
+   exact filtered Gaussian model.

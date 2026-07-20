@@ -33,7 +33,7 @@ ARTIFACT_SCHEMA_VERSION = 1
 MANIFEST_NAME = "manifest.json"
 ENCODER_NAME = "encoder.nvdb"
 NETWORK_NAME = "network.safetensors"
-CARRIER_NAME = "carrier.ply"
+GAUSSIANS_NAME = "gaussians.ply"
 
 
 class GARfVDBArtifactError(ValueError):
@@ -95,7 +95,7 @@ def save_garfvdb_bundle(product: GARfVDB, path: str | pathlib.Path) -> pathlib.P
     try:
         encoder_path = temporary_path / ENCODER_NAME
         network_path = temporary_path / NETWORK_NAME
-        carrier_path = temporary_path / CARRIER_NAME
+        gaussians_path = temporary_path / GAUSSIANS_NAME
 
         grid = product.model.encoder_gridbatch
         features = grid.jagged_like(product.model.encoder_gridbatch_features_data.detach())
@@ -108,7 +108,7 @@ def save_garfvdb_bundle(product: GARfVDB, path: str | pathlib.Path) -> pathlib.P
         )
 
         save_file(product.model.network_state_dict(), network_path)
-        product.carrier.save_ply(str(carrier_path), product.reconstruction_metadata)
+        product.gaussians.save_ply(str(gaussians_path), product.reconstruction_metadata)
 
         voxel_counts = grid.num_voxels.detach().cpu().tolist()
         manifest: dict[str, Any] = {
@@ -128,9 +128,9 @@ def save_garfvdb_bundle(product: GARfVDB, path: str | pathlib.Path) -> pathlib.P
                 "feature_dtype": str(product.model.encoder_gridbatch_features_data.dtype),
             },
             "network": {"file": NETWORK_NAME},
-            "carrier": {
-                "file": CARRIER_NAME,
-                "num_gaussians": product.carrier.num_gaussians,
+            "gaussians": {
+                "file": GAUSSIANS_NAME,
+                "num_gaussians": product.gaussians.num_gaussians,
             },
             "versions": {
                 "fvdb_reality_capture": _package_version("fvdb_reality_capture"),
@@ -140,7 +140,7 @@ def save_garfvdb_bundle(product: GARfVDB, path: str | pathlib.Path) -> pathlib.P
             "checksums": {
                 ENCODER_NAME: _sha256(encoder_path),
                 NETWORK_NAME: _sha256(network_path),
-                CARRIER_NAME: _sha256(carrier_path),
+                GAUSSIANS_NAME: _sha256(gaussians_path),
             },
         }
         (temporary_path / MANIFEST_NAME).write_text(
@@ -201,7 +201,7 @@ def _load_garfvdb_bundle_v1(
 
     encoder_path = _payload_path(bundle_path, manifest, "encoder")
     network_path = _payload_path(bundle_path, manifest, "network")
-    carrier_path = _payload_path(bundle_path, manifest, "carrier")
+    gaussians_path = _payload_path(bundle_path, manifest, "gaussians")
 
     model_config = GARfVDBConfig(**manifest.get("model_config", {}))
     if not model_config.use_grid:
@@ -237,13 +237,13 @@ def _load_garfvdb_bundle_v1(
     ):
         raise GARfVDBArtifactError("NanoVDB transforms do not match the manifest")
 
-    carrier, reconstruction_metadata = GaussianSplat3d.from_ply(carrier_path, device)
-    if carrier.num_gaussians != manifest.get("carrier", {}).get("num_gaussians"):
-        raise GARfVDBArtifactError("Carrier Gaussian count does not match the manifest")
+    gaussians, reconstruction_metadata = GaussianSplat3d.from_ply(gaussians_path, device)
+    if gaussians.num_gaussians != manifest.get("gaussians", {}).get("num_gaussians"):
+        raise GARfVDBArtifactError("Gaussian count does not match the manifest")
 
     network_state = load_file(network_path, device=str(torch.device(device)))
     model = GARfVDBModel.from_artifact_components(
-        gs_model=carrier,
+        gs_model=gaussians,
         model_config=model_config,
         encoder_gridbatch=grid,
         encoder_features=features.jdata,

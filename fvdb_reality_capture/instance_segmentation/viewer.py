@@ -82,7 +82,7 @@ class GARfVDBOverlayViewer:
         initial_scale_fraction: float = 0.1,
         initial_mask_blend: float = 0.5,
         lock_pca_colors: bool = False,
-        add_carrier: bool = True,
+        add_gaussians: bool = True,
         set_initial_camera: bool = True,
     ) -> None:
         if not 0.0 <= initial_scale_fraction <= 1.0:
@@ -102,8 +102,8 @@ class GARfVDBOverlayViewer:
         self._render_width = overlay_width // overlay_downsample
         self._render_height = overlay_height // overlay_downsample
 
-        if add_carrier:
-            scene.add_gaussian_splat_3d("Gaussian Carrier", product.carrier)
+        if add_gaussians:
+            scene.add_gaussian_splat_3d("Gaussian Splats", product.gaussians)
         if set_initial_camera:
             self._add_cameras_and_lookat()
 
@@ -140,12 +140,12 @@ class GARfVDBOverlayViewer:
                 image_sizes=image_sizes,
             )
 
-        carrier = self._product.carrier
-        centroid = carrier.means.mean(dim=0).detach().cpu().numpy()
+        gaussians = self._product.gaussians
+        centroid = gaussians.means.mean(dim=0).detach().cpu().numpy()
         if camera_to_world is not None:
             initial_eye = camera_to_world[0, :3, 3].numpy()
         else:
-            extent = carrier.means.max(dim=0).values - carrier.means.min(dim=0).values
+            extent = gaussians.means.max(dim=0).values - gaussians.means.min(dim=0).values
             initial_eye = centroid + np.ones(3) * float(extent.max().item() / 2.0)
         self._scene.set_camera_lookat(eye=initial_eye, center=centroid, up=[0, 0, 1])
 
@@ -170,7 +170,7 @@ class GARfVDBOverlayViewer:
         )
 
     def _hide_overlay(self) -> None:
-        """Remove the overlay image view so the underlying carrier scene is visible again.
+        """Remove the overlay image view so the underlying Gaussian scene is visible again.
 
         ImageView exposes no visibility toggle, and drawing a fully-transparent frame still draws an
         opaque quad that occludes the 3D scene. So we remove the view outright; render_once re-creates it
@@ -291,7 +291,7 @@ def show_garfvdb_bundle(
     overlay_downsample: int = 2,
     idle_poll_interval: float = 1.0 / 120.0,
 ) -> None:
-    """Load a GARfVDB bundle and display its carrier with a live, interactive feature overlay.
+    """Load a GARfVDB bundle and display its gaussians with a live, interactive feature overlay.
 
     ``scale_fraction`` and ``mask_blend`` seed the initial positions of the interactive grouping-scale and
     overlay-opacity sliders; both can be adjusted live in the viewer, along with a show/hide checkbox and a

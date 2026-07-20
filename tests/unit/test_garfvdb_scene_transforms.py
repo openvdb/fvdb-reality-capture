@@ -124,10 +124,10 @@ def test_garfvdb_mask_attribute_round_trip_and_scene_operations():
 def test_cached_mask_transform_attaches_attribute_without_replacing_scene_state():
     with tempfile.TemporaryDirectory() as directory:
         scene = _make_scene(pathlib.Path(directory))
-        carrier_hash = hashlib.sha256(b"test carrier").hexdigest()
+        gaussians_hash = hashlib.sha256(b"test gaussians").hexdigest()
         transform = GenerateGARfVDBMasks(
             gs3d=None,
-            gs3d_hash=carrier_hash,
+            gs3d_hash=gaussians_hash,
             checkpoint="large",
             points_per_side=4,
             pred_iou_thresh=0.8,
@@ -135,7 +135,7 @@ def test_cached_mask_transform_attaches_attribute_without_replacing_scene_state(
             device="cpu",
         )
         cache = scene.cache.make_folder(
-            f"garfvdb_masks_v1_{carrier_hash}_p4_i80_s80",
+            f"garfvdb_masks_v1_{gaussians_hash}_p4_i80_s80",
             description="cached GARfVDB masks",
         )
         for index in range(scene.num_images):
@@ -147,7 +147,7 @@ def test_cached_mask_transform_attaches_attribute_without_replacing_scene_state(
                     "points_per_side": 4,
                     "pred_iou_thresh": 0.8,
                     "stability_score_thresh": 0.8,
-                    "gs3d_hash": carrier_hash,
+                    "gs3d_hash": gaussians_hash,
                 },
             )
 
@@ -173,10 +173,10 @@ def test_mask_cache_without_cdf_recomputes_on_load():
 
     with tempfile.TemporaryDirectory() as directory:
         scene = _make_scene(pathlib.Path(directory), num_images=1)
-        carrier_hash = hashlib.sha256(b"test carrier").hexdigest()
+        gaussians_hash = hashlib.sha256(b"test gaussians").hexdigest()
         transform = GenerateGARfVDBMasks(
             gs3d=None,
-            gs3d_hash=carrier_hash,
+            gs3d_hash=gaussians_hash,
             checkpoint="large",
             points_per_side=4,
             pred_iou_thresh=0.8,
@@ -184,7 +184,7 @@ def test_mask_cache_without_cdf_recomputes_on_load():
             device="cpu",
         )
         cache = scene.cache.make_folder(
-            f"garfvdb_masks_v1_{carrier_hash}_p4_i80_s80",
+            f"garfvdb_masks_v1_{gaussians_hash}_p4_i80_s80",
             description="cached GARfVDB masks without mask_cdf",
         )
 
@@ -206,7 +206,7 @@ def test_mask_cache_without_cdf_recomputes_on_load():
                 "points_per_side": 4,
                 "pred_iou_thresh": 0.8,
                 "stability_score_thresh": 0.8,
-                "gs3d_hash": carrier_hash,
+                "gs3d_hash": gaussians_hash,
             },
         )
 
@@ -250,12 +250,12 @@ def test_standard_scene_pipeline_places_product_transform_last():
 def test_garfvdb_mask_generation_uses_materialized_pinhole_images():
     with tempfile.TemporaryDirectory() as directory:
         scene = _make_scene(pathlib.Path(directory), num_images=1)
-        carrier = mock.Mock()
-        carrier.means = torch.tensor([[0.0, 0.0, 0.0], [1.0, 1.0, 1.0]])
+        gaussians = mock.Mock()
+        gaussians.means = torch.tensor([[0.0, 0.0, 0.0], [1.0, 1.0, 1.0]])
         with mock.patch(
             "fvdb_reality_capture.instance_segmentation.scene_transforms.image_segmentation_masks.SAM2Model"
         ):
-            transform = GenerateGARfVDBMasks(gs3d=carrier, device="cpu")
+            transform = GenerateGARfVDBMasks(gs3d=gaussians, device="cpu")
         mask_data = _mask_data(0)
         with mock.patch.object(
             transform,

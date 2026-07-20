@@ -97,7 +97,7 @@ def _make_viewer(scene, product, **kwargs):
         overlay_width=16,
         overlay_height=8,
         overlay_downsample=2,
-        add_carrier=False,
+        add_gaussians=False,
         set_initial_camera=False,
         **kwargs,
     )
@@ -155,8 +155,8 @@ def test_scale_slider_change_triggers_rerender():
 
 
 def test_hide_overlay_removes_view_and_re_adds_on_show(monkeypatch):
-    # Hiding removes the overlay view outright (a transparent frame still occludes the carrier),
-    # so the underlying Gaussian carrier scene becomes visible again.
+    # Hiding removes the overlay view outright (a transparent frame still occludes the gaussians),
+    # so the underlying Gaussian model scene becomes visible again.
     import fvdb.viz._viewer_server as vs
 
     removed: list[tuple[str, str]] = []

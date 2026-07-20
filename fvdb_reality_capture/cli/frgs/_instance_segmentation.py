@@ -101,7 +101,7 @@ class InstanceSegmentation(BaseCommand):
             raise ValueError("frgs instance-segmentation requires --cfg.model.use-grid")
 
         if self.viewer:
-            # Vulkan must be initialized before any CUDA payloads (the carrier/model) are loaded.
+            # Vulkan must be initialized before any CUDA payloads (the Gaussian model) are loaded.
             import fvdb.viz as fviz
 
             logger.info("Starting live training viewer on %s:%d", self.viewer_ip_address, self.viewer_port)
@@ -109,8 +109,8 @@ class InstanceSegmentation(BaseCommand):
 
         logger.info("Loading dataset from %s", self.dataset_path)
         sfm_scene = load_sfm_scene(self.dataset_path, self.dataset_type)
-        logger.info("Loading Gaussian carrier from %s", self.reconstruction_path)
-        carrier, metadata = load_splats_from_file(self.reconstruction_path, self.device)
+        logger.info("Loading Gaussian model from %s", self.reconstruction_path)
+        gaussians, metadata = load_splats_from_file(self.reconstruction_path, self.device)
         normalization_transform = metadata.get("normalization_transform")
         if normalization_transform is None:
             raise ValueError(
@@ -119,7 +119,7 @@ class InstanceSegmentation(BaseCommand):
             )
 
         self.tx.device = self.device
-        transformed_scene = self.tx.build_scene_transforms(carrier, normalization_transform)(sfm_scene)
+        transformed_scene = self.tx.build_scene_transforms(gaussians, normalization_transform)(sfm_scene)
         writer = GARfVDBWriter(
             run_name=self.run_name,
             save_path=self.io.log_path,
@@ -128,7 +128,7 @@ class InstanceSegmentation(BaseCommand):
         )
         trainer = GARfVDBTrainer.new(
             sfm_scene=transformed_scene,
-            gs_model=carrier,
+            gs_model=gaussians,
             gs_model_path=self.reconstruction_path,
             writer=writer,
             config=self.cfg,
