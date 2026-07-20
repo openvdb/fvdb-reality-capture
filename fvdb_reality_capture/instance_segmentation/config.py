@@ -95,6 +95,10 @@ class GARfVDBTrainingConfig:
 class GARfVDBTransformConfig(SceneTransformConfig):
     """Configuration for SfmScene transforms applied before segmentation training."""
 
+    image_downsample_factor: int = 4
+    """Factor by which to downsample images before mask generation and training. Defaults to 4 to match
+    the ``frgs reconstruct`` default."""
+
     compute_segmentation_masks: bool = True
     """Whether to compute SAM2 segmentation masks."""
 
