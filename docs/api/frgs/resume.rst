@@ -2,7 +2,7 @@
 
     usage: frgs resume [-h] [RESUME OPTIONS] PATH
 
-    Resume a Reality Capture training run. The versioned checkpoint envelope identifies the method and dispatches
+    Resume a Reality Capture training run. The versioned checkpoint container identifies the method and dispatches
     its registered resume handler. Source dataset paths recorded by the checkpoint must remain available.
 
     Example usage:

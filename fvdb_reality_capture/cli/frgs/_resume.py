@@ -57,7 +57,7 @@ class WriterConfig(GaussianSplatReconstructionWriterConfig):
 @dataclass
 class Resume(BaseCommand):
     """
-    Resume a Reality Capture training run. The versioned checkpoint envelope dispatches to the registered method
+    Resume a Reality Capture training run. The versioned checkpoint container dispatches to the registered method
     handler. Source dataset paths recorded by the checkpoint must remain available at the same path as when the
     checkpoint was created.
 

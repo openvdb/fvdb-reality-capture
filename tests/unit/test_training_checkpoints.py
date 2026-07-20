@@ -43,7 +43,7 @@ def _state(version: str = "1.2.3") -> dict:
     return {"version": version, "step": 7, "payload": torch.tensor([1, 2, 3])}
 
 
-def test_training_checkpoint_envelope_round_trip():
+def test_training_checkpoint_container_round_trip():
     checkpoint = create_training_checkpoint("test.method", _state(), method_version="method-v7")
     serialized = checkpoint.to_dict()
     assert serialized["schema"] == TRAINING_CHECKPOINT_SCHEMA
@@ -148,7 +148,7 @@ def test_resume_dispatches_registered_method_and_uses_handler_default():
     [
         (
             lambda root: GaussianSplatReconstructionWriter(
-                run_name="checkpoint_envelope",
+                run_name="checkpoint_container",
                 save_path=root,
                 config=GaussianSplatReconstructionWriterConfig(
                     save_images=False,
@@ -161,7 +161,7 @@ def test_resume_dispatches_registered_method_and_uses_handler_default():
         ),
         (
             lambda root: GARfVDBWriter(
-                run_name="checkpoint_envelope",
+                run_name="checkpoint_container",
                 save_path=root,
                 config=GARfVDBWriterConfig(
                     save_images=False,
@@ -173,7 +173,7 @@ def test_resume_dispatches_registered_method_and_uses_handler_default():
         ),
     ],
 )
-def test_disk_writers_save_versioned_envelopes(writer_factory, expected_method):
+def test_disk_writers_save_versioned_containers(writer_factory, expected_method):
     with tempfile.TemporaryDirectory() as directory:
         root = pathlib.Path(directory)
         writer = writer_factory(root)

@@ -470,12 +470,12 @@ class GARfVDBWriter(GARfVDBBaseWriter):
                 default_suffix=".pt",
             )
 
-            envelope = create_training_checkpoint(
+            container = create_training_checkpoint(
                 GARFVDB_TRAINING_METHOD,
                 checkpoint,
                 method_version=GARFVDB_TRAINING_METHOD_VERSION,
             )
-            torch.save(envelope.to_dict(), ckpt_path)
+            torch.save(container.to_dict(), ckpt_path)
 
 
 __all__ = ["GARfVDBBaseWriter", "GARfVDBWriter", "GARfVDBWriterConfig"]

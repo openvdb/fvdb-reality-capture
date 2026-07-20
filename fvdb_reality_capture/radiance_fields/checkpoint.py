@@ -17,7 +17,7 @@ from fvdb_reality_capture.checkpoints import (
 GAUSSIAN_SPLAT_RECONSTRUCTION_METHOD = "radiance_fields.gaussian_splat"
 
 # Single source of truth for the Gaussian reconstruction checkpoint format version. The runner's
-# ``state_dict``/``from_state_dict`` and the disk writer's envelope ``method_version`` both derive from
+# ``state_dict``/``from_state_dict`` and the disk writer's container ``method_version`` both derive from
 # this constant so the two can never drift.
 GAUSSIAN_SPLAT_RECONSTRUCTION_METHOD_VERSION = "0.1.0"
 
@@ -25,7 +25,7 @@ GAUSSIAN_SPLAT_RECONSTRUCTION_METHOD_VERSION = "0.1.0"
 def _adapt_flat_gaussian_checkpoint(
     root: Mapping[str, Any],
 ) -> TrainingCheckpoint | None:
-    """Recognize the released pre-envelope Gaussian checkpoint format."""
+    """Recognize the released pre-container Gaussian checkpoint format."""
     if root.get("magic") != "GaussianSplattingCheckpoint":
         return None
     method_version = root.get("version")

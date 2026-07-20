@@ -73,7 +73,7 @@ The Python API accepts grouping scales in scene units:
 Resume training
 ---------------
 
-``frgs resume`` reads the generic training-checkpoint envelope and dispatches the stable
+``frgs resume`` reads the generic training-checkpoint container and dispatches the stable
 ``instance_segmentation.garfvdb`` method ID to the GARfVDB resume handler. If the reconstruction moved, pass its new
 path explicitly. Portable ``.garfvdb`` products are inference artifacts and cannot be resumed:
 

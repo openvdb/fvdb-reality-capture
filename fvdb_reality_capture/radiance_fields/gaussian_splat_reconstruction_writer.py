@@ -549,12 +549,12 @@ class GaussianSplatReconstructionWriter(GaussianSplatReconstructionBaseWriter):
                 default_suffix=".pt",
             )
 
-            envelope = create_training_checkpoint(
+            container = create_training_checkpoint(
                 GAUSSIAN_SPLAT_RECONSTRUCTION_METHOD,
                 checkpoint,
                 method_version=GAUSSIAN_SPLAT_RECONSTRUCTION_METHOD_VERSION,
             )
-            torch.save(envelope.to_dict(), ckpt_path)
+            torch.save(container.to_dict(), ckpt_path)
 
     @torch.no_grad()
     def save_ply(

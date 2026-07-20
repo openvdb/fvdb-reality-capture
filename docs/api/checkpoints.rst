@@ -1,11 +1,11 @@
 Training checkpoints
 ====================
 
-Reality Capture training checkpoints use a method-neutral, versioned envelope. The envelope identifies the stable
+Reality Capture training checkpoints use a method-neutral, versioned container. The container identifies the stable
 method ID and keeps method-owned optimizer, dataset, and model state inside ``state``. Product extensions such as
 ``.garfvdb`` are not used for resume dispatch.
 
-Each method owns its method ID and any adapter for checkpoints written before the envelope was introduced. The
+Each method owns its method ID and any adapter for checkpoints written before the container was introduced. The
 ``frgs resume`` command separately owns resume-handler registration and output defaults, keeping CLI policy out of
 the serialization layer.
 

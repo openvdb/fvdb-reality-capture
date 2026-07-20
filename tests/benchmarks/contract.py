@@ -174,7 +174,7 @@ def validate_checkpoint_contract(state: dict[str, Any]) -> None:
     try:
         checkpoint = parse_training_checkpoint(state)
     except ValueError as exc:
-        _raise_contract_error("Invalid training checkpoint envelope", details={"error": str(exc)})
+        _raise_contract_error("Invalid training checkpoint container", details={"error": str(exc)})
     if checkpoint.method != GAUSSIAN_SPLAT_RECONSTRUCTION_METHOD:
         _raise_contract_error(
             "Checkpoint method mismatch",

@@ -1,7 +1,7 @@
 # Copyright Contributors to the OpenVDB Project
 # SPDX-License-Identifier: Apache-2.0
 
-"""Method-neutral, versioned training-checkpoint envelope I/O."""
+"""Method-neutral, versioned training-checkpoint container I/O."""
 
 from __future__ import annotations
 
@@ -34,7 +34,7 @@ class TrainingCheckpoint:
     schema_version: int = TRAINING_CHECKPOINT_SCHEMA_VERSION
 
     def to_dict(self) -> dict[str, Any]:
-        """Return the serialized checkpoint envelope."""
+        """Return the serialized checkpoint container."""
         return {
             "schema": TRAINING_CHECKPOINT_SCHEMA,
             "schema_version": self.schema_version,
@@ -50,7 +50,7 @@ def create_training_checkpoint(
     *,
     method_version: str,
 ) -> TrainingCheckpoint:
-    """Create a current-version checkpoint envelope around method-owned state."""
+    """Create a current-version checkpoint container around method-owned state."""
     if not isinstance(method, str) or not method:
         raise TrainingCheckpointError("Checkpoint method must be a non-empty string")
     if not isinstance(state, dict):
@@ -83,14 +83,14 @@ _LEGACY_CHECKPOINT_ADAPTERS: list[LegacyCheckpointAdapter] = []
 
 
 def register_legacy_checkpoint_adapter(adapter: LegacyCheckpointAdapter) -> None:
-    """Register a method-owned reader for a pre-envelope checkpoint format."""
+    """Register a method-owned reader for a pre-container checkpoint format."""
     if adapter in _LEGACY_CHECKPOINT_ADAPTERS:
         raise ValueError("Legacy checkpoint adapter is already registered")
     _LEGACY_CHECKPOINT_ADAPTERS.append(adapter)
 
 
 def parse_training_checkpoint(root: Any) -> TrainingCheckpoint:
-    """Validate an envelope or ask registered method-owned legacy adapters."""
+    """Validate an container or ask registered method-owned legacy adapters."""
     if not isinstance(root, dict):
         raise TrainingCheckpointError(f"Checkpoint root must be a dictionary, got {type(root).__name__}")
 
