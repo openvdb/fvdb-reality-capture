@@ -2484,11 +2484,11 @@ class GaussianSplat3d:
         H = pg.image_height
         C = pg.radii.size(0)
 
-        is_crop = crop_width > 0 or crop_height > 0 or crop_origin_w >= 0 or crop_origin_h >= 0
         raster_w = crop_width if crop_width > 0 else W
         raster_h = crop_height if crop_height > 0 else H
         origin_w = crop_origin_w if crop_origin_w >= 0 else 0
         origin_h = crop_origin_h if crop_origin_h >= 0 else 0
+        is_crop = raster_w != W or raster_h != H or origin_w != 0 or origin_h != 0
 
         tile_masks = _pixel_mask_to_tile_mask(masks, tile_size) if masks is not None else None
 
