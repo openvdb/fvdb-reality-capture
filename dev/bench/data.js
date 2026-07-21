@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1784564022121,
+  "lastUpdate": 1784635768511,
   "repoUrl": "https://github.com/openvdb/fvdb-reality-capture",
   "entries": {
     "fvdb-reality-capture Benchmark with pytest-benchmark": [
@@ -13869,6 +13869,133 @@ window.BENCHMARK_DATA = {
             "unit": "iter/sec",
             "range": "stddev: 0.00026063546970149905",
             "extra": "mean: 17.333329677446653 msec\nrounds: 62"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "Matthew Cong",
+            "username": "matthewdcong",
+            "email": "1372750+matthewdcong@users.noreply.github.com"
+          },
+          "committer": {
+            "name": "GitHub",
+            "username": "web-flow",
+            "email": "noreply@github.com"
+          },
+          "id": "3f40f6ef87965872b1dbaba748380c2710e6471c",
+          "message": "Remove sync point by switching from inv to inv_ex (#309)\n\n`torch.linalg.inv` does a host-device synchronization internally.\n`inv_ex` performs the same calculation without the unnecessary sync.\n\nSigned-off-by: Matthew Cong <mcong@nvidia.com>",
+          "timestamp": "2026-07-21T04:19:12Z",
+          "url": "https://github.com/openvdb/fvdb-reality-capture/commit/3f40f6ef87965872b1dbaba748380c2710e6471c"
+        },
+        "date": 1784635767701,
+        "tool": "pytest",
+        "benches": [
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_project_gaussians[garden-00000664]",
+            "value": 6897.740766224965,
+            "unit": "iter/sec",
+            "range": "stddev: 0.000010830126226642252",
+            "extra": "mean: 144.9750046995874 usec\nrounds: 6384"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_render_gaussians[garden-00000664]",
+            "value": 718.4664679046595,
+            "unit": "iter/sec",
+            "range": "stddev: 0.000047702379910772964",
+            "extra": "mean: 1.3918534053738192 msec\nrounds: 856"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_forward[garden-00000664]",
+            "value": 653.8395847177632,
+            "unit": "iter/sec",
+            "range": "stddev: 0.000021723388756489265",
+            "extra": "mean: 1.5294271307107548 msec\nrounds: 635"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_backward[garden-00000664]",
+            "value": 192.60722850870948,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00003690304542200768",
+            "extra": "mean: 5.191913137127048 msec\nrounds: 773"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_project_gaussians[garden-00006640]",
+            "value": 338.863342028907,
+            "unit": "iter/sec",
+            "range": "stddev: 0.0005112332239234843",
+            "extra": "mean: 2.9510421340136994 msec\nrounds: 6462"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_render_gaussians[garden-00006640]",
+            "value": 108.85410366175144,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00007211555371631242",
+            "extra": "mean: 9.186608188032643 msec\nrounds: 117"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_forward[garden-00006640]",
+            "value": 82.36455635537646,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00008062456846337089",
+            "extra": "mean: 12.14114473809976 msec\nrounds: 84"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_backward[garden-00006640]",
+            "value": 27.239496870230525,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00027349053775523605",
+            "extra": "mean: 36.71139759900922 msec\nrounds: 606"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_project_gaussians[garden-00016600]",
+            "value": 276.3425632409555,
+            "unit": "iter/sec",
+            "range": "stddev: 0.0006355486470337206",
+            "extra": "mean: 3.6186969834540297 msec\nrounds: 6346"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_render_gaussians[garden-00016600]",
+            "value": 71.51441440667166,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00012915406535101453",
+            "extra": "mean: 13.983194972602739 msec\nrounds: 73"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_forward[garden-00016600]",
+            "value": 56.95812689125311,
+            "unit": "iter/sec",
+            "range": "stddev: 0.0001675054541892477",
+            "extra": "mean: 17.556757122811337 msec\nrounds: 57"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_backward[garden-00016600]",
+            "value": 20.72835105600324,
+            "unit": "iter/sec",
+            "range": "stddev: 0.0007916798622800598",
+            "extra": "mean: 48.24310420535767 msec\nrounds: 560"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_forward_mcmc[garden-00000664]",
+            "value": 627.7106060788567,
+            "unit": "iter/sec",
+            "range": "stddev: 0.0000431932950593243",
+            "extra": "mean: 1.5930908133713675 msec\nrounds: 718"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_forward_mcmc[garden-00006640]",
+            "value": 81.65175391732495,
+            "unit": "iter/sec",
+            "range": "stddev: 0.0002056662280297037",
+            "extra": "mean: 12.247134348302334 msec\nrounds: 89"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_forward_mcmc[garden-00016600]",
+            "value": 56.7929779045131,
+            "unit": "iter/sec",
+            "range": "stddev: 0.0003275187157345978",
+            "extra": "mean: 17.6078106290062 msec\nrounds: 62"
           }
         ]
       }
