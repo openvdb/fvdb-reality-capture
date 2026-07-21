@@ -1314,12 +1314,12 @@ class GaussianSplatReconstruction:
 
         for epoch in range(start_epoch, self.config.max_epochs):
             for minibatch in trainloader:
-                cam_to_world_mats: torch.Tensor = minibatch["camera_to_world"].to(self.device)  # [B, 4, 4]
-                world_to_cam_mats: torch.Tensor = minibatch["world_to_camera"].to(self.device)  # [B, 4, 4]
 
                 # Camera pose optimization
-                image_ids = minibatch["image_id"].to(self.device)  # [B]
+                image_ids: torch.Tensor | None = None
                 if self.pose_adjust_model is not None:
+                    cam_to_world_mats = minibatch["camera_to_world"].to(self.device)  # [B, 4, 4]
+                    image_ids = minibatch["image_id"].to(self.device)  # [B]
                     if self._global_step == pose_opt_start_step:
                         self._logger.info(
                             f"Starting to optimize camera poses at step {self._global_step:,} (epoch {epoch})"
@@ -1331,6 +1331,8 @@ class GaussianSplatReconstruction:
                         with torch.no_grad():
                             cam_to_world_mats = self.pose_adjust_model(cam_to_world_mats, image_ids)
                     world_to_cam_mats = torch.linalg.inv_ex(cam_to_world_mats)[0].contiguous()
+                else:
+                    world_to_cam_mats = minibatch["world_to_camera"].to(self.device)  # [B, 4, 4]
 
                 projection_mats = minibatch["projection"].to(self.device)  # [B, 3, 3]
                 camera_models = minibatch["camera_model"]
@@ -1420,10 +1422,9 @@ class GaussianSplatReconstruction:
                             sparse_depth = sparse_depth / median_depths.unsqueeze(1)  # Normalize by median depth
 
                             depth_loss = nnf.l1_loss(pred_depth, sparse_depth) * self.config.sparse_depth_reg
+                            loss = loss + depth_loss
                     else:
                         depth_loss = 0.0
-
-                    loss = loss + depth_loss
 
                     # Dense depth loss (from a DepthMapAttribute on the scene).
                     if dense_depth_tgt is not None and self.config.dense_depth_reg > 0.0:
@@ -1450,10 +1451,9 @@ class GaussianSplatReconstruction:
                                 / valid_count
                                 * self.config.dense_depth_reg
                             )
+                        loss = loss + dense_depth_loss
                     else:
                         dense_depth_loss = 0.0
-
-                    loss = loss + dense_depth_loss
 
                     # If you're optimizing poses, regularize the pose parameters so the poses
                     # don't drift too far from the initial values
@@ -1461,6 +1461,7 @@ class GaussianSplatReconstruction:
                         self.pose_adjust_model is not None
                         and pose_opt_start_step <= self._global_step < pose_opt_stop_step
                     ):
+                        assert image_ids is not None
                         pose_params = self.pose_adjust_model.pose_embeddings(image_ids)
                         pose_reg = torch.mean(torch.abs(pose_params))
                         loss = loss + self.config.pose_opt_reg * pose_reg
