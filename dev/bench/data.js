@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1784649117560,
+  "lastUpdate": 1784649120036,
   "repoUrl": "https://github.com/openvdb/fvdb-reality-capture",
   "entries": {
     "fvdb-reality-capture Benchmark with pytest-benchmark": [
@@ -24696,6 +24696,88 @@ window.BENCHMARK_DATA = {
           {
             "name": "garden/fvdb_mcmc - peak_gpu_memory_gb",
             "value": 3.6376,
+            "unit": "GB"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "Matthew Cong",
+            "username": "matthewdcong",
+            "email": "1372750+matthewdcong@users.noreply.github.com"
+          },
+          "committer": {
+            "name": "GitHub",
+            "username": "web-flow",
+            "email": "noreply@github.com"
+          },
+          "id": "3f40f6ef87965872b1dbaba748380c2710e6471c",
+          "message": "Remove sync point by switching from inv to inv_ex (#309)\n\n`torch.linalg.inv` does a host-device synchronization internally.\n`inv_ex` performs the same calculation without the unnecessary sync.\n\nSigned-off-by: Matthew Cong <mcong@nvidia.com>",
+          "timestamp": "2026-07-21T04:19:12Z",
+          "url": "https://github.com/openvdb/fvdb-reality-capture/commit/3f40f6ef87965872b1dbaba748380c2710e6471c"
+        },
+        "date": 1784649119614,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "bicycle/fvdb_default - training_time",
+            "value": 743.27,
+            "unit": "seconds"
+          },
+          {
+            "name": "bicycle/fvdb_default - peak_gpu_memory_gb",
+            "value": 4.5261,
+            "unit": "GB"
+          },
+          {
+            "name": "bicycle/fvdb_mcmc - training_time",
+            "value": 363.24,
+            "unit": "seconds"
+          },
+          {
+            "name": "bicycle/fvdb_mcmc - peak_gpu_memory_gb",
+            "value": 1.4455,
+            "unit": "GB"
+          },
+          {
+            "name": "bonsai/fvdb_default - training_time",
+            "value": 471.27,
+            "unit": "seconds"
+          },
+          {
+            "name": "bonsai/fvdb_default - peak_gpu_memory_gb",
+            "value": 1.6087,
+            "unit": "GB"
+          },
+          {
+            "name": "bonsai/fvdb_mcmc - training_time",
+            "value": 640.57,
+            "unit": "seconds"
+          },
+          {
+            "name": "bonsai/fvdb_mcmc - peak_gpu_memory_gb",
+            "value": 1.5567,
+            "unit": "GB"
+          },
+          {
+            "name": "garden/fvdb_default - training_time",
+            "value": 922.96,
+            "unit": "seconds"
+          },
+          {
+            "name": "garden/fvdb_default - peak_gpu_memory_gb",
+            "value": 5.58,
+            "unit": "GB"
+          },
+          {
+            "name": "garden/fvdb_mcmc - training_time",
+            "value": 744.9,
+            "unit": "seconds"
+          },
+          {
+            "name": "garden/fvdb_mcmc - peak_gpu_memory_gb",
+            "value": 3.6351,
             "unit": "GB"
           }
         ]
