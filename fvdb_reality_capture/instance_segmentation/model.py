@@ -247,7 +247,7 @@ class GARfVDBModel(torch.nn.Module):
             )
 
             # Create reusable GaussianSplat3d for rendering - sh0 will be updated from gs_features
-            self._gs_model_for_render = fvdb.GaussianSplat3d.from_tensors(
+            self._gs_model_for_render = GaussianSplat3d.from_tensors(
                 means=self.gs_model.means.detach(),
                 quats=self.gs_model.quats.detach(),
                 log_scales=self.gs_model.log_scales.detach(),

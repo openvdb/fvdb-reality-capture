@@ -207,7 +207,10 @@ def _load_garfvdb_bundle_v1(
     if not model_config.use_grid:
         raise GARfVDBArtifactError("Portable GARfVDB artifacts require model_config.use_grid=True")
 
-    grid, features, names = fvdb.functional.load_nanovdb(str(encoder_path), device=device)
+    try:
+        grid, features, names = fvdb.functional.load_nanovdb(str(encoder_path), device=device)
+    except Exception as exc:  # corrupt / incompatible NanoVDB encoder payload
+        raise GARfVDBArtifactError(f"Failed to load the NanoVDB encoder payload {encoder_path}: {exc}") from exc
     encoder_manifest = manifest.get("encoder", {})
     expected_names = encoder_manifest.get("grid_names")
     canonical_names = _grid_names(model_config.num_grids)
