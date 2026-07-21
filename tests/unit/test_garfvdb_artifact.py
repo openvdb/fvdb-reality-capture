@@ -9,9 +9,9 @@ from pathlib import Path
 
 import fvdb
 import torch
-from fvdb_reality_capture import GaussianSplat3d
 from safetensors.torch import load_file, save_file
 
+from fvdb_reality_capture import GaussianSplat3d
 from fvdb_reality_capture.instance_segmentation import (
     ARTIFACT_SCHEMA_VERSION,
     GARfVDB,
@@ -19,7 +19,10 @@ from fvdb_reality_capture.instance_segmentation import (
     GARfVDBArtifactVersionError,
     GARfVDBConfig,
 )
-from fvdb_reality_capture.instance_segmentation.artifact import ARTIFACT_SCHEMA, MANIFEST_NAME
+from fvdb_reality_capture.instance_segmentation.artifact import (
+    ARTIFACT_SCHEMA,
+    MANIFEST_NAME,
+)
 from fvdb_reality_capture.instance_segmentation.model import GARfVDBModel
 
 
@@ -188,7 +191,9 @@ class GARfVDBArtifactTests(unittest.TestCase):
             torch.testing.assert_close(loaded.encoder_grids.origins, expected_grid.origins)
             torch.testing.assert_close(loaded.model.encoder_gridbatch_features_data, expected_features)
             torch.testing.assert_close(loaded.gaussian_affinities(0.1), expected_affinities)
-            loaded_render, loaded_alpha = loaded.render_features(torch.eye(4, device="cuda:0"), projection, (16, 16), 0.1)
+            loaded_render, loaded_alpha = loaded.render_features(
+                torch.eye(4, device="cuda:0"), projection, (16, 16), 0.1
+            )
             torch.testing.assert_close(loaded_render, expected_render)
             torch.testing.assert_close(loaded_alpha, expected_alpha)
 
