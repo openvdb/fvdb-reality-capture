@@ -244,6 +244,12 @@ class GARfVDBOverlayViewer:
             if not torch.isfinite(features).all():
                 self._logger.warning("Skipping GARfVDB frame containing non-finite features")
                 return True
+            if features.shape[-1] < 3:
+                self._logger.warning(
+                    "Skipping GARfVDB overlay: PCA projection requires at least 3 feature channels, got %d",
+                    features.shape[-1],
+                )
+                return True
             pca_mask = alpha.squeeze(-1) > 0
             # When locked, reuse the frozen PCA->RGB transform so colors don't flicker as the camera
             # moves. Refit when unlocked, or when locking for the first time / after the scale changes

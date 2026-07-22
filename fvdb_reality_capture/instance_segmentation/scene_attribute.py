@@ -95,7 +95,7 @@ class GARfVDBMaskAttribute(SceneAttribute):
             raise IndexError(f"GARfVDB mask index {index} is out of range for {len(self._paths)} images") from exc
         if not path.is_file():
             raise FileNotFoundError(f"GARfVDB mask artifact does not exist: {path}")
-        data = torch.load(path, map_location="cpu", weights_only=False)
+        data = torch.load(path, map_location="cpu", weights_only=True)
         if not isinstance(data, dict):
             raise ValueError(f"GARfVDB mask artifact must contain a dictionary: {path}")
         if data.get("schema_version") != GARFVDB_MASK_DATA_SCHEMA_VERSION:
