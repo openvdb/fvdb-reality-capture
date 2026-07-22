@@ -125,8 +125,9 @@ def pca_projection_fast(
             features. Invalid features are set to zero in the output.
 
     Returns:
-        Projected features of shape ``[B, H, W, n_components]`` normalized
-        to [0, 1] range.
+        Projected features normalized to the [0, 1] range. The shape depends on ``mask``: if a mask
+        is provided the result is the full ``[B, H, W, n_components]`` tensor with invalid pixels set
+        to zero; if ``mask`` is None the result is the flattened ``[B*H*W, n_components]`` projection.
     """
     B, H, W, C = features.shape
 
@@ -215,7 +216,9 @@ def apply_pca_projection(
         mask: Optional boolean mask of shape ``[B, H, W]`` selecting valid features.
 
     Returns:
-        Projected features of shape ``[B, H, W, n_components]`` (invalid pixels set to zero).
+        Projected features. The shape depends on ``mask``: if a mask is provided the result is the
+        full ``[B, H, W, n_components]`` tensor with invalid pixels set to zero; if ``mask`` is None
+        the result is the flattened ``[B*H*W, n_components]`` projection.
     """
     B, H, W, C = features.shape
     n_components = state.basis.shape[-1]

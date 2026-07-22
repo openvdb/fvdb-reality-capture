@@ -32,11 +32,13 @@ def _camera_tuple_to_c2w(
     up_world: np.ndarray,
     device: torch.device,
 ) -> torch.Tensor | None:
-    position = center - eye_direction * radius
     eye_norm = np.linalg.norm(eye_direction)
     if eye_norm < 1e-8:
         return None
     forward = eye_direction / eye_norm
+    # Offset by the normalized forward so the orbit radius is exactly ``radius`` regardless of the
+    # magnitude of ``eye_direction``.
+    position = center - forward * radius
     right = np.cross(forward, up_world)
     right_norm = np.linalg.norm(right)
     if right_norm < 1e-8:
