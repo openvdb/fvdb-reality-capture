@@ -65,7 +65,8 @@ class ExponentialLRWithRampUpScheduler(LRScheduler):
             else:
                 lr = self._lr_pre_warmup + (self._lr_init - self._lr_pre_warmup) * step / self._warmup_steps
         else:
-            t = np.clip((step - self._warmup_steps) / (self._max_steps - self._warmup_steps), 0, 1)
+            denom = max(self._max_steps - self._warmup_steps, 1)
+            t = np.clip((step - self._warmup_steps) / denom, 0, 1)
             lr = np.exp(np.log(self._lr_init) * (1 - t) + np.log(self._lr_final) * t)
 
         return [lr] * len(self.base_lrs)
