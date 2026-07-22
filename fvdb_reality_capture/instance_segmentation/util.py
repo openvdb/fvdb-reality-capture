@@ -15,9 +15,11 @@ def compute_mask_cdf(pixel_to_mask_id: torch.Tensor) -> torch.Tensor:
     ~2K image), and dropping it from the cache roughly quarters the on-disk artifact and the (disk
     bound) write time.
 
-    Each mask is weighted by the log of its sampling probability (its area over the total masked
+    Each mask is weighted by ``-log`` of its sampling probability (its area over the total masked
     area) so that small masks are more likely to be selected for supervision; the ``-1`` padding is
-    excluded.
+    excluded. Pixels whose only mask has probability 1 (a lone mask) or which intersect no mask at
+    all fall back to a uniform distribution so the CDF always terminates at 1 on a real mask rather
+    than on padding.
 
     Args:
         pixel_to_mask_id: ``[H, W, MM]`` integer tensor mapping each pixel to the ids of the masks
@@ -38,15 +40,28 @@ def compute_mask_cdf(pixel_to_mask_id: torch.Tensor) -> torch.Tensor:
     probs = area_per_id / area_per_id.sum().clamp(min=1e-12)  # indexed by (id + 1)
     mask_probs = probs[shifted].view(pixel_to_mask_id.shape)  # [H, W, MM]
 
-    # Compute a CDF for each pixel which weighs each mask by its log probability of being sampled.
-    # Padding / never-masked slots have probability 0 (log -> -inf); exclude them and set them so
-    # they are effectively never selected.
-    mask_cdf = torch.log(mask_probs)
-    never_masked = mask_cdf.isinf()
-    mask_cdf[never_masked] = 0.0
-    mask_cdf = mask_cdf / (mask_cdf.sum(dim=-1, keepdim=True) + 1e-6)
-    mask_cdf = torch.cumsum(mask_cdf, dim=-1)  # [H, W, MM]
-    mask_cdf[never_masked] = 1.0
+    # Weight each valid mask by -log(prob) (>= 0 for prob in (0, 1]): smaller masks (smaller prob)
+    # get more weight, biasing sampling toward them. Padding / never-masked slots have prob 0
+    # (-log -> +inf) and are excluded.
+    weights = -torch.log(mask_probs)
+    valid = torch.isfinite(weights)
+    weights = torch.where(valid, weights, torch.zeros_like(weights))
+
+    # The per-pixel weight sum is 0 when a pixel's only mask has prob 1 (a lone mask, -log(1) = 0)
+    # or when a pixel intersects no mask at all. In the lone-mask case fall back to a uniform
+    # distribution over the pixel's valid masks so the CDF still reaches 1 on a real mask instead of
+    # collapsing to all zeros (which would make sampling select padding).
+    weight_sum = weights.sum(dim=-1, keepdim=True)
+    degenerate = weight_sum <= 0.0
+    valid_weights = valid.to(weights.dtype)
+    weights = torch.where(degenerate, valid_weights, weights)
+    weight_sum = torch.where(degenerate, valid_weights.sum(dim=-1, keepdim=True), weight_sum)
+
+    mask_pdf = weights / weight_sum.clamp(min=1e-12)
+    mask_cdf = torch.cumsum(mask_pdf, dim=-1)  # [H, W, MM]
+    # Push padding slots (and fully-unmasked pixels, whose pdf is all zero) to 1 so a uniform sample
+    # never selects padding when at least one real mask exists.
+    mask_cdf[~valid] = 1.0
     return mask_cdf
 
 
@@ -235,30 +250,28 @@ def unique_values_to_colors(tensor: torch.Tensor) -> torch.Tensor:
     unique_values, inverse_indices = torch.unique(tensor, return_inverse=True)
     num_unique = len(unique_values)
 
-    # Generate distinct colors using HSV color space
-    # We'll use evenly spaced hues and full saturation/value
-    hues = torch.linspace(0, 1, num_unique, device=tensor.device)
+    # Generate distinct colors using HSV color space with evenly spaced hues and full
+    # saturation/value. Exclude the endpoint (linspace of num_unique + 1, drop the last) so hue 0
+    # and hue 1 -- which are both red -- don't collide when the wheel is sampled.
+    hues = torch.linspace(0, 1, num_unique + 1, device=tensor.device)[:-1]  # [num_unique]
     saturation = torch.ones_like(hues)
     value = torch.ones_like(hues)
 
-    # Convert HSV to RGB
-    h = hues.unsqueeze(1).unsqueeze(2)  # [num_unique, 1, 1]
-    s = saturation.unsqueeze(1).unsqueeze(2)  # [num_unique, 1, 1]
-    v = value.unsqueeze(1).unsqueeze(2)  # [num_unique, 1, 1]
+    # HSV -> RGB (standard six-sector conversion): c is the chroma, x the second-largest component,
+    # and m the achromatic offset added to every channel. Which of (c, x, 0) each of R, G, B takes
+    # depends on the 60-degree hue sector, so the assignment must be permuted per sector rather than
+    # fixed to (R, G, B) = (c, x, m).
+    c = value * saturation  # [num_unique]
+    h6 = hues * 6.0
+    x = c * (1 - torch.abs(h6 % 2 - 1))
+    m = value - c
+    sector = torch.floor(h6).to(torch.long) % 6
 
-    # HSV to RGB conversion
-    c = v * s
-    x = c * (1 - torch.abs((h * 6) % 2 - 1))
-    m = v - c
-
-    # Create RGB components
-    rgb = torch.zeros((num_unique, 1, 1, 3), device=tensor.device)
-    rgb[:, 0, 0, 0] = c.squeeze()  # R
-    rgb[:, 0, 0, 1] = x.squeeze()  # G
-    rgb[:, 0, 0, 2] = m.squeeze()  # B
-
-    # Map each unique value to its color
-    color_map = rgb.squeeze(1).squeeze(1)  # [num_unique, 3]
+    zero = torch.zeros_like(c)
+    r = torch.where((sector == 0) | (sector == 5), c, torch.where((sector == 1) | (sector == 4), x, zero))
+    g = torch.where((sector == 1) | (sector == 2), c, torch.where((sector == 0) | (sector == 3), x, zero))
+    b = torch.where((sector == 3) | (sector == 4), c, torch.where((sector == 2) | (sector == 5), x, zero))
+    color_map = torch.stack((r + m, g + m, b + m), dim=-1)  # [num_unique, 3]
 
     # Create output tensor by mapping indices to colors
     output = color_map[inverse_indices.reshape(tensor.shape)]  # [H, W, 3]
