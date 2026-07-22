@@ -101,24 +101,35 @@ class RandomSelectMaskIDAndScale:
                 ).squeeze()
 
             scales = item["scales"]  # [NM] dtype: torch.float32
-            curr_scale = scales[per_pixel_mask]  # [H, W] dtype: torch.float32
+            # Pixels that intersect no mask carry a -1 padding id. Clamp the lookup so it never
+            # indexes ``scales`` with a negative id (which would silently select the last scale);
+            # the scale for these pixels is zeroed below while ``mask_ids`` stays -1 so downstream
+            # loss masking remains correct.
+            invalid_pixel = per_pixel_mask < 0
+            curr_lookup = per_pixel_mask.clamp(min=0)
+            curr_scale = scales[curr_lookup]  # [H, W] dtype: torch.float32
 
             # For pixels in the first group (random_index == 0), randomly scale down their scale value
             # between 0 and the full scale. This creates a smooth transition from zero to the first group's scale,
             # similar to how we interpolate between groups for other indices.
             curr_scale[random_index == 0] = (
-                scales[per_pixel_mask][random_index == 0] * random_vec_densify[random_index == 0]
+                scales[curr_lookup][random_index == 0] * random_vec_densify[random_index == 0]
             )
             # For each group, interpolate between the previous group's scale and the current group's scale,
             # based on the random_vec_densify value. This creates a smooth transition between groups.
-            for j in range(1, item["mask_cdf"].shape[-1]):
-                if (random_index == j).sum() == 0:
-                    continue
-                curr_scale[random_index == j] = (
-                    scales[per_pixel_mask_][random_index == j]  # type: ignore
-                    + (scales[per_pixel_mask][random_index == j] - scales[per_pixel_mask_][random_index == j])  # type: ignore
-                    * random_vec_densify[random_index == j]
-                ).squeeze()
+            if per_pixel_index.shape[-1] > 1:
+                prev_lookup = per_pixel_mask_.clamp(min=0)  # type: ignore
+                for j in range(1, item["mask_cdf"].shape[-1]):
+                    if (random_index == j).sum() == 0:
+                        continue
+                    curr_scale[random_index == j] = (
+                        scales[prev_lookup][random_index == j]
+                        + (scales[curr_lookup][random_index == j] - scales[prev_lookup][random_index == j])
+                        * random_vec_densify[random_index == j]
+                    ).squeeze()
+
+            # Background pixels get a zero scale; their -1 mask id is preserved below for loss masking.
+            curr_scale[invalid_pixel] = 0.0
 
             item["scales"] = curr_scale  # [rays_per_image] dtype: torch.float32
 
@@ -202,9 +213,16 @@ class GPURandomSelectMaskIDAndScale:
             # Create batch offsets expanded to [B, num_samples]
             batch_offsets = scales_offsets[:-1].unsqueeze(1).expand(-1, num_samples)  # [B, num_samples]
 
+            # Background pixels carry a -1 padding id. Clamp before adding the per-image offset so
+            # the index never goes negative and wraps into another image's scales (a cross-image,
+            # batch-order-dependent read). The interpolated scale for these pixels is zeroed below
+            # while their -1 mask id is preserved for downstream loss masking.
+            curr_lookup = per_pixel_mask.clamp(min=0)
+            prev_lookup = per_pixel_mask_prev.clamp(min=0)
+
             # Compute flat indices into scales_data
-            curr_flat_idx = batch_offsets + per_pixel_mask  # [B, num_samples]
-            prev_flat_idx = batch_offsets + per_pixel_mask_prev  # [B, num_samples]
+            curr_flat_idx = batch_offsets + curr_lookup  # [B, num_samples]
+            prev_flat_idx = batch_offsets + prev_lookup  # [B, num_samples]
 
             # Index into flat scales data
             curr_scale = scales_data[curr_flat_idx]  # [B, num_samples]
@@ -222,6 +240,11 @@ class GPURandomSelectMaskIDAndScale:
                 is_first_group,
                 curr_scale * random_densify,  # First group: scale down from 0
                 prev_scale + (curr_scale - prev_scale) * random_densify,  # Other groups: interpolate
+            )
+
+            # Zero the scale for background pixels (no intersecting mask); mask_ids stays -1.
+            interpolated_scale = torch.where(
+                per_pixel_mask < 0, torch.zeros_like(interpolated_scale), interpolated_scale
             )
 
             batch["scales"] = interpolated_scale  # [B, num_samples]
