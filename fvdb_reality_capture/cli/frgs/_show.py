@@ -45,7 +45,7 @@ class Show(BaseCommand):
     # The port to expose the viewer server on.
     viewer_port: Annotated[int, arg(aliases=["-p"])] = 8080
 
-    # The port to expose the viewer server on.
+    # The IP address to expose the viewer server on.
     viewer_ip_address: Annotated[str, arg(aliases=["-ip"])] = "127.0.0.1"
 
     # If True, then the viewer will log verbosely.
