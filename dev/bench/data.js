@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1784649120036,
+  "lastUpdate": 1784808669667,
   "repoUrl": "https://github.com/openvdb/fvdb-reality-capture",
   "entries": {
     "fvdb-reality-capture Benchmark with pytest-benchmark": [
@@ -13996,6 +13996,133 @@ window.BENCHMARK_DATA = {
             "unit": "iter/sec",
             "range": "stddev: 0.0003275187157345978",
             "extra": "mean: 17.6078106290062 msec\nrounds: 62"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "Matthew Cong",
+            "username": "matthewdcong",
+            "email": "1372750+matthewdcong@users.noreply.github.com"
+          },
+          "committer": {
+            "name": "GitHub",
+            "username": "web-flow",
+            "email": "noreply@github.com"
+          },
+          "id": "5162d4bb2d7d189250ca64cf5591e913e6868faf",
+          "message": "Fix unnecessary loss node and camera matrix transfers (#310)\n\nTwo minor optimizations:\n\n1. When camera pose optimization is enabled, we don't need to transfer\nthe `world_to_camera` matrix because it gets computed from the\n`camera_to_world` matrix after the optimizer update.\n2. Avoid unnecessary `loss + 0.0` which can create empty no-op autograd\nnodes.\n\nSigned-off-by: Matthew Cong <mcong@nvidia.com>",
+          "timestamp": "2026-07-22T17:46:12Z",
+          "url": "https://github.com/openvdb/fvdb-reality-capture/commit/5162d4bb2d7d189250ca64cf5591e913e6868faf"
+        },
+        "date": 1784808668828,
+        "tool": "pytest",
+        "benches": [
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_project_gaussians[garden-00000664]",
+            "value": 6984.008999252176,
+            "unit": "iter/sec",
+            "range": "stddev: 0.000013093201974651539",
+            "extra": "mean: 143.18423703449932 usec\nrounds: 6594"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_render_gaussians[garden-00000664]",
+            "value": 730.3047233464205,
+            "unit": "iter/sec",
+            "range": "stddev: 0.000052715360719718004",
+            "extra": "mean: 1.3692914314147868 msec\nrounds: 853"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_forward[garden-00000664]",
+            "value": 662.6810335972337,
+            "unit": "iter/sec",
+            "range": "stddev: 0.000020930416809395373",
+            "extra": "mean: 1.5090216096448341 msec\nrounds: 643"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_backward[garden-00000664]",
+            "value": 195.74518369491852,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00005868320041148323",
+            "extra": "mean: 5.1086825286008795 msec\nrounds: 944"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_project_gaussians[garden-00006640]",
+            "value": 338.99956026385127,
+            "unit": "iter/sec",
+            "range": "stddev: 0.0005126065665116205",
+            "extra": "mean: 2.9498563338007777 msec\nrounds: 6423"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_render_gaussians[garden-00006640]",
+            "value": 109.97439630172785,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00012059949191556761",
+            "extra": "mean: 9.093025591669363 msec\nrounds: 120"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_forward[garden-00006640]",
+            "value": 83.04275084804866,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00008176011410189798",
+            "extra": "mean: 12.041990297621481 msec\nrounds: 84"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_backward[garden-00006640]",
+            "value": 27.401261697818068,
+            "unit": "iter/sec",
+            "range": "stddev: 0.0002551595601731558",
+            "extra": "mean: 36.494669881556185 msec\nrounds: 591"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_project_gaussians[garden-00016600]",
+            "value": 277.1057263225691,
+            "unit": "iter/sec",
+            "range": "stddev: 0.0006294048281930544",
+            "extra": "mean: 3.6087309102949923 msec\nrounds: 6421"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_render_gaussians[garden-00016600]",
+            "value": 72.03419653472889,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00014672841879712553",
+            "extra": "mean: 13.882295466679958 msec\nrounds: 75"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_forward[garden-00016600]",
+            "value": 57.19642074601185,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00017250069622012874",
+            "extra": "mean: 17.48361150850033 msec\nrounds: 59"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_backward[garden-00016600]",
+            "value": 20.87610859637262,
+            "unit": "iter/sec",
+            "range": "stddev: 0.0007444569389577138",
+            "extra": "mean: 47.90164773207577 msec\nrounds: 530"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_forward_mcmc[garden-00000664]",
+            "value": 639.5750663959043,
+            "unit": "iter/sec",
+            "range": "stddev: 0.000040773130080302714",
+            "extra": "mean: 1.5635381248289446 msec\nrounds: 729"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_forward_mcmc[garden-00006640]",
+            "value": 82.50022989376204,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00017363391074690828",
+            "extra": "mean: 12.121178344444969 msec\nrounds: 90"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_forward_mcmc[garden-00016600]",
+            "value": 57.53004783260561,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00027915471564466385",
+            "extra": "mean: 17.382220903234536 msec\nrounds: 62"
           }
         ]
       }
