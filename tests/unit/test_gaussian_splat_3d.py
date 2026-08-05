@@ -1400,10 +1400,10 @@ class TestGaussianRender(BaseGaussianTestCase):
             torch.save(conics, "regression_conics.pt")
 
         # Regression test
-        test_radii = torch.load(self.data_path / "regression_radii.pt", weights_only=True)
-        test_means2d = torch.load(self.data_path / "regression_means2d.pt", weights_only=True)
-        test_depths = torch.load(self.data_path / "regression_depths.pt", weights_only=True)
-        test_conics = torch.load(self.data_path / "regression_conics.pt", weights_only=True)
+        test_radii = torch.load(self.data_path / "regression_radii.pt", map_location=self.device, weights_only=True)
+        test_means2d = torch.load(self.data_path / "regression_means2d.pt", map_location=self.device, weights_only=True)
+        test_depths = torch.load(self.data_path / "regression_depths.pt", map_location=self.device, weights_only=True)
+        test_conics = torch.load(self.data_path / "regression_conics.pt", map_location=self.device, weights_only=True)
 
         visible = (radii > 0).all(dim=-1)
         torch.testing.assert_close(radii, test_radii)
