@@ -1150,7 +1150,7 @@ class TestLoadAndSavePly(BaseGaussianTestCase):
         )
         gs3d_no_shN.save_ply(tf.name)
 
-        gs3d_loaded, metadata = GaussianSplat3d.from_ply(tf.name)
+        gs3d_loaded, metadata = GaussianSplat3d.from_ply(tf.name, device=self.device)
 
         self.assertTrue(torch.allclose(gs3d_loaded.means, gs3d_no_shN.means))
         self.assertTrue(torch.allclose(gs3d_loaded.quats, gs3d_no_shN.quats))
@@ -1247,7 +1247,7 @@ class TestLoadAndSavePly(BaseGaussianTestCase):
 
         self.gs3d.save_ply(tf.name)
 
-        gs3d_loaded, metadata = GaussianSplat3d.from_ply(tf.name)
+        gs3d_loaded, metadata = GaussianSplat3d.from_ply(tf.name, device=self.device)
 
         self.assertTrue(torch.allclose(gs3d_loaded.means, self.gs3d.means))
         self.assertTrue(torch.allclose(gs3d_loaded.quats, self.gs3d.quats))
@@ -1278,7 +1278,7 @@ class TestLoadAndSavePly(BaseGaussianTestCase):
         }
         self.gs3d.save_ply(tf.name, metadata=metadata_dict)
 
-        gs3d_loaded, training_info = GaussianSplat3d.from_ply(tf.name)
+        gs3d_loaded, training_info = GaussianSplat3d.from_ply(tf.name, device=self.device)
 
         self.assertTrue(torch.allclose(gs3d_loaded.means, self.gs3d.means))
         self.assertTrue(torch.allclose(gs3d_loaded.quats, self.gs3d.quats))
@@ -1305,7 +1305,7 @@ class TestLoadAndSavePly(BaseGaussianTestCase):
         metadata_dict = {"_a_key_key": "foo bar baz", "anotherkey": "qux quux corge"}
         self.gs3d.save_ply(tf.name, metadata=metadata_dict)
 
-        gs, meta = GaussianSplat3d.from_ply(tf.name)
+        gs, meta = GaussianSplat3d.from_ply(tf.name, device=self.device)
         self.assertEqual(meta["_a_key_key"], "foo bar baz")
         self.assertEqual(meta["anotherkey"], "qux quux corge")
 
@@ -1315,7 +1315,7 @@ class TestLoadAndSavePly(BaseGaussianTestCase):
         metadata_dict = {"_a_key_key": 42, "anotherkey": sys.maxsize}
         self.gs3d.save_ply(tf.name, metadata=metadata_dict)
 
-        gs, meta = GaussianSplat3d.from_ply(tf.name)
+        gs, meta = GaussianSplat3d.from_ply(tf.name, device=self.device)
         self.assertEqual(meta["_a_key_key"], 42)
         self.assertEqual(meta["anotherkey"], sys.maxsize)
 
@@ -1353,7 +1353,7 @@ class TestLoadAndSavePly(BaseGaussianTestCase):
         }
         self.gs3d.save_ply(tf.name, metadata_dict)
 
-        gs3d_loaded, training_info = GaussianSplat3d.from_ply(tf.name)
+        gs3d_loaded, training_info = GaussianSplat3d.from_ply(tf.name, device=self.device)
 
         self.assertTrue(torch.allclose(gs3d_loaded.means, self.gs3d.means))
         self.assertTrue(torch.allclose(gs3d_loaded.quats, self.gs3d.quats))
