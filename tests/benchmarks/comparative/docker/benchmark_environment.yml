@@ -42,7 +42,13 @@ dependencies:
   - psutil
   - pybind11
   - py-opencv>=4.10[build=headless*]
-  - pycolmap>=3.11
+  # Upper bound pending conda-forge pycolmap 4.x / libfaiss ABI fix: the 4.x conda builds
+  # declare only `libfaiss >=1.9.0,<2`, which is looser than faiss's actual ABI stability.
+  # libfaiss 1.14.3 (cuda130, uploaded 2026-08-04) satisfies that pin but drops the
+  # faiss::IndexIVFFlat ctor symbol pycolmap 4.1.1 was built against, so `import pycolmap`
+  # fails with an undefined symbol. The PyPI wheels are self-contained and unaffected, so
+  # this bound is deliberately scoped to the conda benchmark env and not to pyproject.toml.
+  - pycolmap>=3.11,<4
   - pytest-benchmark
   - python=3.12
   - pytorch-gpu=2.11.0
