@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1786116848551,
+  "lastUpdate": 1786116851271,
   "repoUrl": "https://github.com/openvdb/fvdb-reality-capture",
   "entries": {
     "fvdb-reality-capture Benchmark with pytest-benchmark": [
@@ -26733,6 +26733,88 @@ window.BENCHMARK_DATA = {
           {
             "name": "garden/fvdb_mcmc - peak_gpu_memory_gb",
             "value": 3.6355,
+            "unit": "GB"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "Mark Harris",
+            "username": "harrism",
+            "email": "mharris@nvidia.com"
+          },
+          "committer": {
+            "name": "GitHub",
+            "username": "web-flow",
+            "email": "noreply@github.com"
+          },
+          "id": "b16a401333835c527174aa183d5134767b04d964",
+          "message": "Pin pycolmap<4 in benchmark env to fix nightly libfaiss ABI break (#313)\n\n## Problem\n\nThe nightly benchmark jobs have failed since 2026-08-05 (e.g. [run\n31002481527](https://github.com/openvdb/fvdb-reality-capture/actions/runs/31002481527)).\nBoth **Unit Benchmarks** and **Comparative Benchmarks** fail at the step\nnamed *\"Download mipnerf360 dataset\"*, but the download is not what\nbreaks — that step imports `fvdb_reality_capture`, which imports\n`pycolmap`:\n\n```\nImportError: .../pycolmap/_core.cpython-312-x86_64-linux-gnu.so:\n  undefined symbol: _ZN5faiss12IndexIVFFlatC1EPNS_5IndexEmmNS_10MetricTypeE\n```\n\nDemangled: `faiss::IndexIVFFlat::IndexIVFFlat(faiss::Index*, size_t,\nsize_t, faiss::MetricType)`.\n\n## Root cause\n\nNo repository change triggered this — the last edit to\n`benchmark_environment.yml` was in June.\n\n| Nightly | `pycolmap` | `libfaiss` | Result |\n|---|---|---|---|\n| Aug 4 | 3.13.0 | *(not installed — 3.x has no faiss dep)* | pass |\n| Aug 5 | 4.1.1 `cpu_py312hc257519_1` | 1.14.3\n`cuda130h51947b1_200_cuda` | fail |\n\nconda-forge `pycolmap` 4.x requires `libfaiss * *_cuda` and `libfaiss\n>=1.9.0,<2`, and this env pins `cuda-version=13.0`. The only linux-64\nCUDA-13 `libfaiss` build ever published — `1.14.3\ncuda130h51947b1_200_cuda` — was uploaded **2026-08-04**, exactly between\nthe last passing and first failing nightly.\n\nBefore that build existed, `pycolmap` 4.x was unsatisfiable under\n`cuda-version=13.0` and the solver silently fell back to 3.13.0. Once it\nlanded, the solver resolved `pycolmap` 4.1.1 (built 2026-07-24 against\nan older faiss) against an ABI-incompatible `libfaiss`.\n\n`libfaiss >=1.9.0,<2` is far looser than faiss's actual ABI stability\nacross minor versions, so this is an upstream conda-forge feedstock\npackaging issue. An issue will be filed against\n`conda-forge/pycolmap-feedstock`.\n\n## Fix\n\nPin `pycolmap>=3.11,<4` in the benchmark conda env, restoring the 3.13.0\nresolution that passed on Aug 4.\n\n**Scope:** deliberately limited to this conda env. The PyPI `pycolmap`\nwheels are self-contained (27.8 MB, no external faiss linkage) and\nunaffected — Unit Tests on `main` install 4.1.1 from PyPI and pass — so\n`pyproject.toml` is intentionally left unpinned so as not to constrain\nusers.\n\nThis one file is used by both failing nightly jobs (`nightly.yml` lines\n296 and 487) and by `gsplat-l4-tests.yml`, so a single change covers all\nof them.\n\nThe pin should be removed once the feedstock ships `pycolmap` 4.x builds\nwith a correct `libfaiss` run-export pin.\n\n## Testing\n\n- YAML parses and the dependency list resolves as expected\n(`pycolmap>=3.11,<4`, `cuda-version=13.0` unchanged).\n- Verified no `pip:` entry in this env re-specifies `pycolmap`, and that\n`pip install` of `fvdb_reality_capture` (`pycolmap>=3.11`) is satisfied\nby the conda-installed 3.13.0 and will not upgrade it.\n- Full verification requires a nightly benchmark run; happy to trigger a\nmanual dispatch.\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n\nSigned-off-by: Mark Harris <mharris@nvidia.com>\nCo-authored-by: Claude Opus 5 (1M context) <noreply@anthropic.com>",
+          "timestamp": "2026-08-06T22:53:57Z",
+          "url": "https://github.com/openvdb/fvdb-reality-capture/commit/b16a401333835c527174aa183d5134767b04d964"
+        },
+        "date": 1786116850746,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "bicycle/fvdb_default - training_time",
+            "value": 755.89,
+            "unit": "seconds"
+          },
+          {
+            "name": "bicycle/fvdb_default - peak_gpu_memory_gb",
+            "value": 4.5287,
+            "unit": "GB"
+          },
+          {
+            "name": "bicycle/fvdb_mcmc - training_time",
+            "value": 369.46,
+            "unit": "seconds"
+          },
+          {
+            "name": "bicycle/fvdb_mcmc - peak_gpu_memory_gb",
+            "value": 1.4435,
+            "unit": "GB"
+          },
+          {
+            "name": "bonsai/fvdb_default - training_time",
+            "value": 474.86,
+            "unit": "seconds"
+          },
+          {
+            "name": "bonsai/fvdb_default - peak_gpu_memory_gb",
+            "value": 1.6148,
+            "unit": "GB"
+          },
+          {
+            "name": "bonsai/fvdb_mcmc - training_time",
+            "value": 641.79,
+            "unit": "seconds"
+          },
+          {
+            "name": "bonsai/fvdb_mcmc - peak_gpu_memory_gb",
+            "value": 1.5543,
+            "unit": "GB"
+          },
+          {
+            "name": "garden/fvdb_default - training_time",
+            "value": 931.81,
+            "unit": "seconds"
+          },
+          {
+            "name": "garden/fvdb_default - peak_gpu_memory_gb",
+            "value": 5.5743,
+            "unit": "GB"
+          },
+          {
+            "name": "garden/fvdb_mcmc - training_time",
+            "value": 749.02,
+            "unit": "seconds"
+          },
+          {
+            "name": "garden/fvdb_mcmc - peak_gpu_memory_gb",
+            "value": 3.6356,
             "unit": "GB"
           }
         ]
