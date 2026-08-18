@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1786635134584,
+  "lastUpdate": 1787053162112,
   "repoUrl": "https://github.com/openvdb/fvdb-reality-capture",
   "entries": {
     "fvdb-reality-capture Benchmark with pytest-benchmark": [
@@ -15393,6 +15393,133 @@ window.BENCHMARK_DATA = {
             "unit": "iter/sec",
             "range": "stddev: 0.0002862761143300319",
             "extra": "mean: 17.686306499986276 msec\nrounds: 62"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "Mark Harris",
+            "username": "harrism",
+            "email": "mharris@nvidia.com"
+          },
+          "committer": {
+            "name": "GitHub",
+            "username": "web-flow",
+            "email": "noreply@github.com"
+          },
+          "id": "b16a401333835c527174aa183d5134767b04d964",
+          "message": "Pin pycolmap<4 in benchmark env to fix nightly libfaiss ABI break (#313)\n\n## Problem\n\nThe nightly benchmark jobs have failed since 2026-08-05 (e.g. [run\n31002481527](https://github.com/openvdb/fvdb-reality-capture/actions/runs/31002481527)).\nBoth **Unit Benchmarks** and **Comparative Benchmarks** fail at the step\nnamed *\"Download mipnerf360 dataset\"*, but the download is not what\nbreaks — that step imports `fvdb_reality_capture`, which imports\n`pycolmap`:\n\n```\nImportError: .../pycolmap/_core.cpython-312-x86_64-linux-gnu.so:\n  undefined symbol: _ZN5faiss12IndexIVFFlatC1EPNS_5IndexEmmNS_10MetricTypeE\n```\n\nDemangled: `faiss::IndexIVFFlat::IndexIVFFlat(faiss::Index*, size_t,\nsize_t, faiss::MetricType)`.\n\n## Root cause\n\nNo repository change triggered this — the last edit to\n`benchmark_environment.yml` was in June.\n\n| Nightly | `pycolmap` | `libfaiss` | Result |\n|---|---|---|---|\n| Aug 4 | 3.13.0 | *(not installed — 3.x has no faiss dep)* | pass |\n| Aug 5 | 4.1.1 `cpu_py312hc257519_1` | 1.14.3\n`cuda130h51947b1_200_cuda` | fail |\n\nconda-forge `pycolmap` 4.x requires `libfaiss * *_cuda` and `libfaiss\n>=1.9.0,<2`, and this env pins `cuda-version=13.0`. The only linux-64\nCUDA-13 `libfaiss` build ever published — `1.14.3\ncuda130h51947b1_200_cuda` — was uploaded **2026-08-04**, exactly between\nthe last passing and first failing nightly.\n\nBefore that build existed, `pycolmap` 4.x was unsatisfiable under\n`cuda-version=13.0` and the solver silently fell back to 3.13.0. Once it\nlanded, the solver resolved `pycolmap` 4.1.1 (built 2026-07-24 against\nan older faiss) against an ABI-incompatible `libfaiss`.\n\n`libfaiss >=1.9.0,<2` is far looser than faiss's actual ABI stability\nacross minor versions, so this is an upstream conda-forge feedstock\npackaging issue. An issue will be filed against\n`conda-forge/pycolmap-feedstock`.\n\n## Fix\n\nPin `pycolmap>=3.11,<4` in the benchmark conda env, restoring the 3.13.0\nresolution that passed on Aug 4.\n\n**Scope:** deliberately limited to this conda env. The PyPI `pycolmap`\nwheels are self-contained (27.8 MB, no external faiss linkage) and\nunaffected — Unit Tests on `main` install 4.1.1 from PyPI and pass — so\n`pyproject.toml` is intentionally left unpinned so as not to constrain\nusers.\n\nThis one file is used by both failing nightly jobs (`nightly.yml` lines\n296 and 487) and by `gsplat-l4-tests.yml`, so a single change covers all\nof them.\n\nThe pin should be removed once the feedstock ships `pycolmap` 4.x builds\nwith a correct `libfaiss` run-export pin.\n\n## Testing\n\n- YAML parses and the dependency list resolves as expected\n(`pycolmap>=3.11,<4`, `cuda-version=13.0` unchanged).\n- Verified no `pip:` entry in this env re-specifies `pycolmap`, and that\n`pip install` of `fvdb_reality_capture` (`pycolmap>=3.11`) is satisfied\nby the conda-installed 3.13.0 and will not upgrade it.\n- Full verification requires a nightly benchmark run; happy to trigger a\nmanual dispatch.\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n\nSigned-off-by: Mark Harris <mharris@nvidia.com>\nCo-authored-by: Claude Opus 5 (1M context) <noreply@anthropic.com>",
+          "timestamp": "2026-08-06T22:53:57Z",
+          "url": "https://github.com/openvdb/fvdb-reality-capture/commit/b16a401333835c527174aa183d5134767b04d964"
+        },
+        "date": 1787053160729,
+        "tool": "pytest",
+        "benches": [
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_project_gaussians[garden-00000664]",
+            "value": 6838.2984146296085,
+            "unit": "iter/sec",
+            "range": "stddev: 0.000012263113997222292",
+            "extra": "mean: 146.23520931181304 usec\nrounds: 5757"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_render_gaussians[garden-00000664]",
+            "value": 713.7023423321459,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00005600877194002507",
+            "extra": "mean: 1.4011443436381712 msec\nrounds: 841"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_forward[garden-00000664]",
+            "value": 651.8637593525173,
+            "unit": "iter/sec",
+            "range": "stddev: 0.000021200413752498632",
+            "extra": "mean: 1.5340628860749665 msec\nrounds: 632"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_backward[garden-00000664]",
+            "value": 191.80343839903998,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00004519826288869995",
+            "extra": "mean: 5.21367087236224 msec\nrounds: 807"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_project_gaussians[garden-00006640]",
+            "value": 340.05477141746354,
+            "unit": "iter/sec",
+            "range": "stddev: 0.0005266570266958913",
+            "extra": "mean: 2.9407027457125836 msec\nrounds: 6064"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_render_gaussians[garden-00006640]",
+            "value": 107.91603101041191,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00007479656444435582",
+            "extra": "mean: 9.2664638482073 msec\nrounds: 112"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_forward[garden-00006640]",
+            "value": 81.71563531904437,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00009103304015394462",
+            "extra": "mean: 12.237560120479705 msec\nrounds: 83"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_backward[garden-00006640]",
+            "value": 26.945718966412564,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00024335995207450562",
+            "extra": "mean: 37.11164661245391 msec\nrounds: 578"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_project_gaussians[garden-00016600]",
+            "value": 276.155587572465,
+            "unit": "iter/sec",
+            "range": "stddev: 0.0006343582195975075",
+            "extra": "mean: 3.621147081579849 msec\nrounds: 6362"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_render_gaussians[garden-00016600]",
+            "value": 70.81857536692036,
+            "unit": "iter/sec",
+            "range": "stddev: 0.0001788790595229019",
+            "extra": "mean: 14.120589051938257 msec\nrounds: 77"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_forward[garden-00016600]",
+            "value": 56.395454298885454,
+            "unit": "iter/sec",
+            "range": "stddev: 0.0002063042952157898",
+            "extra": "mean: 17.73192560343934 msec\nrounds: 58"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_backward[garden-00016600]",
+            "value": 20.48728172240928,
+            "unit": "iter/sec",
+            "range": "stddev: 0.0006879076837597845",
+            "extra": "mean: 48.81077019144936 msec\nrounds: 538"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_forward_mcmc[garden-00000664]",
+            "value": 636.7051536774317,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00004697273337841243",
+            "extra": "mean: 1.5705856851075861 msec\nrounds: 705"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_forward_mcmc[garden-00006640]",
+            "value": 81.43768218466191,
+            "unit": "iter/sec",
+            "range": "stddev: 0.0001963188138531883",
+            "extra": "mean: 12.279327863635363 msec\nrounds: 88"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_forward_mcmc[garden-00016600]",
+            "value": 56.496405021226394,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00031771157213808916",
+            "extra": "mean: 17.70024127418882 msec\nrounds: 62"
           }
         ]
       }
