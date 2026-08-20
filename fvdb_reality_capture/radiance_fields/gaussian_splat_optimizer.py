@@ -16,7 +16,11 @@ from scipy.special import logit
 
 from fvdb_reality_capture.sfm_scene import SfmScene, SpatialScaleMode
 
-from .base_gaussian_splat_optimizer import BaseGaussianSplatOptimizer, splat_optimizer
+from .base_gaussian_splat_optimizer import (
+    BaseGaussianSplatOptimizer,
+    gaussian_scale_regularization_loss,
+    splat_optimizer,
+)
 from .gaussian_splatting import GaussianSplat3d
 
 
@@ -65,6 +69,14 @@ class GaussianSplatOptimizerConfig:
     """
     Initial scale of each Gaussian. This controls the initial size of the Gaussians in the scene.
     Each Gaussian's covariance matrix will be initialized to a diagonal matrix with this value on the diagonal.
+    """
+
+    scale_regularization: float = 0.0
+    """
+    Weight for scale regularization. The loss is the mean of the three linear scales of all Gaussians and continuously
+    discourages Gaussians from growing large.
+
+    Default: ``0.0`` (disabled).
     """
 
     max_gaussians: int = -1
@@ -231,6 +243,10 @@ class GaussianSplatOptimizerConfig:
     """
     Learning rate for the specular spherical harmonics (order > 0).
     """
+
+    def __post_init__(self) -> None:
+        if not math.isfinite(self.scale_regularization) or self.scale_regularization < 0.0:
+            raise ValueError("scale_regularization must be finite and >= 0.0")
 
     def make_optimizer(self, model: GaussianSplat3d, sfm_scene: SfmScene) -> BaseGaussianSplatOptimizer:
         return GaussianSplatOptimizer.from_model_and_scene(
@@ -687,12 +703,15 @@ class GaussianSplatOptimizer(BaseGaussianSplatOptimizer):
 
     def regularization_loss(self) -> torch.Tensor:
         """
-        No-op regularization loss for the basic optimizer.
+        Compute scale regularization for the current model.
 
         Returns:
-            regularization_loss (torch.Tensor): A zero tensor.
+            regularization_loss (torch.Tensor): A scalar regularization loss.
         """
-        return torch.zeros((), device=self._model.means.device)
+        return gaussian_scale_regularization_loss(
+            self._model.log_scales,
+            scale_regularization=self._config.scale_regularization,
+        )
 
     @torch.no_grad()
     def _reset_opacities(self):
