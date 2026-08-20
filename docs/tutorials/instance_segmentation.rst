@@ -12,7 +12,7 @@ First reconstruct the scene, then train GARfVDB against the same posed-image dat
 .. code-block:: console
 
    frgs reconstruct --run-name safety-park data/safety_park -o safety-park.ply
-   frgs instance-segmentation data/safety_park \
+   frgs segment-instances data/safety_park \
        --reconstruction-path safety-park.ply \
        --out-path safety-park.garfvdb
 

@@ -24,7 +24,7 @@ from ._common import DatasetType, load_sfm_scene, load_splats_from_file
 
 
 @dataclass
-class InstanceSegmentationWriterConfig(GARfVDBWriterConfig):
+class SegmentInstancesWriterConfig(GARfVDBWriterConfig):
     """Configure GARfVDB metrics, images, and training checkpoints."""
 
     log_path: pathlib.Path | None = pathlib.Path("frgs_logs")
@@ -35,11 +35,11 @@ class InstanceSegmentationWriterConfig(GARfVDBWriterConfig):
 
 
 @dataclass
-class InstanceSegmentation(BaseCommand):
+class SegmentInstances(BaseCommand):
     """Train a GARfVDB scale-conditioned instance feature field from an existing reconstruction.
 
     Example:
-        frgs instance-segmentation ./colmap_dataset \
+        frgs segment-instances ./colmap_dataset \
             --reconstruction-path scene.ply \
             --out-path scene.garfvdb
     """
@@ -83,7 +83,7 @@ class InstanceSegmentation(BaseCommand):
 
     cfg: GARfVDBTrainingConfig = field(default_factory=GARfVDBTrainingConfig)
     tx: GARfVDBTransformConfig = field(default_factory=GARfVDBTransformConfig)
-    io: InstanceSegmentationWriterConfig = field(default_factory=InstanceSegmentationWriterConfig)
+    io: SegmentInstancesWriterConfig = field(default_factory=SegmentInstancesWriterConfig)
 
     def execute(self) -> None:
         logging.basicConfig(
@@ -98,7 +98,7 @@ class InstanceSegmentation(BaseCommand):
         if not self.reconstruction_path.exists():
             raise FileNotFoundError(f"Reconstruction does not exist: {self.reconstruction_path}")
         if not self.cfg.model.use_grid:
-            raise ValueError("frgs instance-segmentation requires --cfg.model.use-grid")
+            raise ValueError("frgs segment-instances requires --cfg.model.use-grid")
 
         if self.viewer:
             # Vulkan must be initialized before any CUDA payloads (the Gaussian model) are loaded.
@@ -162,4 +162,4 @@ class InstanceSegmentation(BaseCommand):
         trainer.to_product().save(self.out_path)
 
 
-__all__ = ["InstanceSegmentation", "InstanceSegmentationWriterConfig"]
+__all__ = ["SegmentInstances", "SegmentInstancesWriterConfig"]

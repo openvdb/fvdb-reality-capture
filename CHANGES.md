@@ -4,7 +4,7 @@ fVDB-Reality-Capture Version History
 ## Version 0.6.0 - Unreleased
 
 - Added first-class GARfVDB scale-conditioned instance segmentation through the Python API and
-  `frgs instance-segmentation` command.
+  `frgs segment-instances` command.
 - Added portable `.garfvdb` bundles using NanoVDB encoder fields, safetensors network weights, and a PLY Gaussian
   carrier. Manifests carry an explicit `schema_version` used to select an exact reader for future compatibility.
   Added product-aware `frgs show` and `frgs resume` dispatch.

@@ -29,10 +29,10 @@ and visualization directly from the command line without requiring Python code.
 
 .. include:: frgs/mesh_basic.rst
 
-``frgs instance-segmentation``
+``frgs segment-instances``
 --------------------------------
 
-.. include:: frgs/instance_segmentation.rst
+.. include:: frgs/segment_instances.rst
 
 ``frgs mesh-dlnr``
 ----------------------

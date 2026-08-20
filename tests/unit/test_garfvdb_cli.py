@@ -5,14 +5,14 @@ import pathlib
 
 import tyro
 
-from fvdb_reality_capture.cli.frgs._instance_segmentation import InstanceSegmentation
 from fvdb_reality_capture.cli.frgs._resume import Resume
+from fvdb_reality_capture.cli.frgs._segment_instances import SegmentInstances
 from fvdb_reality_capture.cli.frgs._show import Show
 
 
-def test_instance_segmentation_cli_contract():
+def test_segment_instances_cli_contract():
     command = tyro.cli(
-        InstanceSegmentation,
+        SegmentInstances,
         args=[
             "dataset",
             "--reconstruction-path",

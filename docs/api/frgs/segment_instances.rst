@@ -1,12 +1,12 @@
 .. code-block:: text
 
-   usage: frgs instance-segmentation [-h] [INSTANCE-SEGMENTATION OPTIONS] PATH
+   usage: frgs segment-instances [-h] [SEGMENT-INSTANCES OPTIONS] PATH
 
    Train a GARfVDB scale-conditioned instance feature field from an existing Reality Capture reconstruction.
 
    Example:
 
-       frgs instance-segmentation ./colmap_dataset \
+       frgs segment-instances ./colmap_dataset \
            --reconstruction-path scene.ply \
            --out-path scene.garfvdb
 
