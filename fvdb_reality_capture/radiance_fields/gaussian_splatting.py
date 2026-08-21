@@ -1667,6 +1667,8 @@ class GaussianSplat3d:
         means2d: torch.Tensor,
         radii: torch.Tensor,
         depths: torch.Tensor,
+        conics: torch.Tensor,
+        opacities: torch.Tensor,
         C: int,
         tile_size: int,
         W: int,
@@ -1686,6 +1688,8 @@ class GaussianSplat3d:
             tile_size,
             num_tiles_h,
             num_tiles_w,
+            conics=conics,
+            opacities=opacities,
         )
         return tile_offsets, tile_gaussian_ids, num_tiles_h, num_tiles_w
 
@@ -1695,6 +1699,8 @@ class GaussianSplat3d:
         means2d: torch.Tensor,
         radii: torch.Tensor,
         depths: torch.Tensor,
+        conics: torch.Tensor,
+        opacities: torch.Tensor,
         C: int,
         tile_size: int,
         W: int,
@@ -1706,13 +1712,17 @@ class GaussianSplat3d:
         """
         num_tiles_h = math.ceil(H / tile_size)
         num_tiles_w = math.ceil(W / tile_size)
-        active_tiles, active_tile_mask, tile_pixel_mask, tile_pixel_cumsum, pixel_map = (
-            _C.build_sparse_gaussian_tile_layout(
-                tile_size,
-                num_tiles_w,
-                num_tiles_h,
-                pixels_jt._impl,
-            )
+        (
+            active_tiles,
+            active_tile_mask,
+            tile_pixel_mask,
+            tile_pixel_cumsum,
+            pixel_map,
+        ) = _C.build_sparse_gaussian_tile_layout(
+            tile_size,
+            num_tiles_w,
+            num_tiles_h,
+            pixels_jt._impl,
         )
         tile_offsets, tile_gaussian_ids = _C.intersect_gaussian_tiles_sparse(
             means2d,
@@ -1724,6 +1734,8 @@ class GaussianSplat3d:
             tile_size,
             num_tiles_h,
             num_tiles_w,
+            conics=conics,
+            opacities=opacities,
         )
         return tile_offsets, tile_gaussian_ids, active_tiles, tile_pixel_mask, tile_pixel_cumsum, pixel_map
 
@@ -1961,9 +1973,14 @@ class GaussianSplat3d:
         opacities = self._make_opacities(C, compensations, antialias)
         features = self._make_render_features(w2c, radii, depths, sh_degree_to_use, include_colors, include_depth)
 
-        tile_offsets, tile_gaussian_ids, active_tiles, tile_pixel_mask, tile_pixel_cumsum, pixel_map = (
-            self._intersect_tiles_sparse(render_pixels, means2d, radii, depths, C, tile_size, W, H)
-        )
+        (
+            tile_offsets,
+            tile_gaussian_ids,
+            active_tiles,
+            tile_pixel_mask,
+            tile_pixel_cumsum,
+            pixel_map,
+        ) = self._intersect_tiles_sparse(render_pixels, means2d, radii, depths, conics, opacities, C, tile_size, W, H)
 
         rendered_jdata, alphas_jdata = self._rasterize_screen_space_sparse(
             render_pixels,
@@ -2503,6 +2520,8 @@ class GaussianSplat3d:
                 tile_size,
                 num_tiles_h,
                 num_tiles_w,
+                conics=pg.inv_covar_2d,
+                opacities=pg.opacities,
             )
             features, alphas = cast(
                 tuple[torch.Tensor, torch.Tensor],
@@ -2528,6 +2547,8 @@ class GaussianSplat3d:
                 pg.means2d,
                 pg.radii,
                 pg.depths,
+                pg.inv_covar_2d,
+                pg.opacities,
                 C,
                 tile_size,
                 W,
@@ -2655,6 +2676,8 @@ class GaussianSplat3d:
             means2d,
             radii,
             depths,
+            conics,
+            opacities,
             C,
             tile_size,
             image_width,
@@ -2903,6 +2926,8 @@ class GaussianSplat3d:
             means2d,
             radii,
             depths,
+            conics,
+            opacities,
             C,
             tile_size,
             image_width,
@@ -3041,6 +3066,8 @@ class GaussianSplat3d:
             means2d,
             radii,
             depths,
+            conics,
+            opacities,
             C,
             tile_size,
             image_width,
@@ -3115,6 +3142,8 @@ class GaussianSplat3d:
             means2d,
             radii,
             depths,
+            conics,
+            opacities,
             C,
             tile_size,
             image_width,
@@ -3509,6 +3538,8 @@ class GaussianSplat3d:
             means2d,
             radii,
             depths,
+            conics,
+            opacities,
             C,
             tile_size,
             image_width,
@@ -3585,6 +3616,8 @@ class GaussianSplat3d:
             means2d,
             radii,
             depths,
+            conics,
+            opacities,
             C,
             tile_size,
             image_width,
@@ -3711,6 +3744,8 @@ class GaussianSplat3d:
                 means2d,
                 radii,
                 depths,
+                conics,
+                opacities,
                 C,
                 tile_size,
                 image_width,
@@ -3857,17 +3892,24 @@ class GaussianSplat3d:
             )
             C = world_to_camera_matrices.size(0)
             opacities = self._make_opacities(C, compensations, antialias)
-            tile_offsets, tile_gaussian_ids, active_tiles, tile_pixel_mask, tile_pixel_cumsum, pixel_map = (
-                self._intersect_tiles_sparse(
-                    unique_pixels_jt,
-                    means2d,
-                    radii,
-                    depths,
-                    C,
-                    tile_size,
-                    image_width,
-                    image_height,
-                )
+            (
+                tile_offsets,
+                tile_gaussian_ids,
+                active_tiles,
+                tile_pixel_mask,
+                tile_pixel_cumsum,
+                pixel_map,
+            ) = self._intersect_tiles_sparse(
+                unique_pixels_jt,
+                means2d,
+                radii,
+                depths,
+                conics,
+                opacities,
+                C,
+                tile_size,
+                image_width,
+                image_height,
             )
             result_ncg, result_alphas = _C.sparse_rasterize_num_contributing_gaussians(
                 means2d,
@@ -3983,6 +4025,8 @@ class GaussianSplat3d:
                 means2d,
                 radii,
                 depths,
+                conics,
+                opacities,
                 C,
                 tile_size,
                 image_width,
@@ -4144,17 +4188,24 @@ class GaussianSplat3d:
             )
             C = world_to_camera_matrices.size(0)
             opacities = self._make_opacities(C, compensations, antialias)
-            tile_offsets, tile_gaussian_ids, active_tiles, tile_pixel_mask, tile_pixel_cumsum, pixel_map = (
-                self._intersect_tiles_sparse(
-                    unique_pixels_jt,
-                    means2d,
-                    radii,
-                    depths,
-                    C,
-                    tile_size,
-                    image_width,
-                    image_height,
-                )
+            (
+                tile_offsets,
+                tile_gaussian_ids,
+                active_tiles,
+                tile_pixel_mask,
+                tile_pixel_cumsum,
+                pixel_map,
+            ) = self._intersect_tiles_sparse(
+                unique_pixels_jt,
+                means2d,
+                radii,
+                depths,
+                conics,
+                opacities,
+                C,
+                tile_size,
+                image_width,
+                image_height,
             )
             ncg_jt = None
             if top_k_contributors <= 0:
@@ -4669,6 +4720,7 @@ def gaussian_render_jagged(
     opacities_batched = opacities.jdata[gaussian_ids]
     if antialias:
         opacities_batched = opacities_batched * compensations
+    opacities_batched = opacities_batched.contiguous()
 
     debug_info: dict[str, torch.Tensor] = {}
     if return_debug_info:
@@ -4723,7 +4775,16 @@ def gaussian_render_jagged(
     num_tiles_h = math.ceil(image_height / tile_size)
     num_tiles_w = math.ceil(image_width / tile_size)
     tile_offsets, tile_gaussian_ids_t = _C.intersect_gaussian_tiles(
-        means2d, radii, depths, ccz, tile_size, num_tiles_h, num_tiles_w, camera_ids
+        means2d,
+        radii,
+        depths,
+        ccz,
+        tile_size,
+        num_tiles_h,
+        num_tiles_w,
+        camera_ids=camera_ids,
+        conics=conics,
+        opacities=opacities_batched,
     )
     if return_debug_info:
         debug_info["tile_offsets"] = tile_offsets
@@ -4734,7 +4795,7 @@ def gaussian_render_jagged(
         means2d,
         conics,
         render_quantities,
-        opacities_batched.contiguous(),
+        opacities_batched,
         image_width,
         image_height,
         0,  # image_origin_w
