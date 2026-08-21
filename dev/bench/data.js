@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1787311715940,
+  "lastUpdate": 1787324805315,
   "repoUrl": "https://github.com/openvdb/fvdb-reality-capture",
   "entries": {
     "fvdb-reality-capture Benchmark with pytest-benchmark": [
@@ -22014,6 +22014,88 @@ window.BENCHMARK_DATA = {
           {
             "name": "garden/fvdb_mcmc - SSIM",
             "value": 0.8668,
+            "unit": ""
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "Mark Harris",
+            "username": "harrism",
+            "email": "mharris@nvidia.com"
+          },
+          "committer": {
+            "name": "GitHub",
+            "username": "web-flow",
+            "email": "noreply@github.com"
+          },
+          "id": "79219f3af2bf40678ca80fd8c38d5370b228222d",
+          "message": "Sync benchmark env to PyTorch 2.13 to match fvdb-core build (#318)\n\n## Problem\n\nNightly benchmarks have failed since 2026-08-20 ([run\n32362276082](https://github.com/openvdb/fvdb-reality-capture/actions/runs/32362276082)).\nBoth benchmark jobs fail under the step named *\"Download mipnerf360\ndataset\"*, but the download isn't what breaks — that step invokes\n`frgs`, which imports fVDB:\n\n```\nImportError: .../site-packages/fvdb/libfvdb.so: undefined symbol:\n  _ZN3c1010ValueErrorC1ENS_14SourceLocationENSt7__cxx1112basic_stringIcSt11char_traitsIcESaIcEEE\n```\n\nDemangled: `c10::ValueError::ValueError(c10::SourceLocation,\nstd::string)` — a libtorch symbol.\n\n## Root cause\n\nThe nightly builds the fvdb-core wheel in one environment and installs\nit into another, and the PyTorch pins had drifted apart:\n\n| Env | File | PyTorch |\n|---|---|---|\n| Wheel build | `fvdb-core/env/build_environment.yml` | 2.13.0 |\n| Benchmark run |\n`tests/benchmarks/comparative/docker/benchmark_environment.yml` | 2.11.0\n|\n\nfvdb-core landed [PyTorch 2.13\n(openvdb/fvdb-core#738)](https://github.com/openvdb/fvdb-core/pull/738)\non 2026-08-20, bumping its build env from 2.11.0 to 2.13.0. This env was\nnot updated, so `fvdb_core-0.6.0.dev0-cp312-cp312-linux_x86_64.whl` was\ncompiled against libtorch 2.13 and then loaded against libtorch 2.11.\nThe Aug 19 nightly passed; Aug 20 was the first failure.\n\n## Fix\n\nBump `pytorch-gpu` to 2.13.0 to match fvdb-core.\n\nVerified by solving the full environment (linux-64,\n`CONDA_OVERRIDE_CUDA=13.0`) with only this line changed:\n\n```\npytorch      2.13.0   cuda130_mkl_py312_hcdc9d04_302\nlibtorch     2.13.0   cuda130_mkl_h1ca3d63_302\ntorchvision  0.28.0   cuda130_py312_haac1422_1\npycolmap     3.13.0   cpu_py312hac8e9dd_1\ncuda-version 13.0\n```\n\n`torchvision` follows to 0.28.0 automatically, `cuda-version=13.0` is\nunchanged, and the existing `pycolmap<4` bound still resolves to 3.13.0\n— so this change is isolated to the PyTorch stack.\n\n## Recurrence\n\nThis is the third time these two files have drifted: 1b6956f (2.8→2.10),\n6c2ede6 (2.10→2.11), and now 2.11→2.13. I've added a comment on the pin\nrecording that the two must move together, but a comment is not a guard\n— worth considering a CI check that compares the two pins, or having the\nfvdb-core torch bump update both. Happy to file a follow-up issue if\nuseful.\n\n## Testing\n\nThe real verification is a nightly benchmark run, which this PR's checks\ndon't exercise. Recommend a manual workflow dispatch after merge rather\nthan waiting for the schedule.\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n\nSigned-off-by: Mark Harris <mharris@nvidia.com>\nCo-authored-by: Claude Opus 5 (1M context) <noreply@anthropic.com>",
+          "timestamp": "2026-08-21T05:03:58Z",
+          "url": "https://github.com/openvdb/fvdb-reality-capture/commit/79219f3af2bf40678ca80fd8c38d5370b228222d"
+        },
+        "date": 1787324803546,
+        "tool": "customBiggerIsBetter",
+        "benches": [
+          {
+            "name": "bicycle/fvdb_default - PSNR",
+            "value": 25.18,
+            "unit": "dB"
+          },
+          {
+            "name": "bicycle/fvdb_default - SSIM",
+            "value": 0.7451,
+            "unit": ""
+          },
+          {
+            "name": "bicycle/fvdb_mcmc - PSNR",
+            "value": 24.972,
+            "unit": "dB"
+          },
+          {
+            "name": "bicycle/fvdb_mcmc - SSIM",
+            "value": 0.7298,
+            "unit": ""
+          },
+          {
+            "name": "bonsai/fvdb_default - PSNR",
+            "value": 32.583,
+            "unit": "dB"
+          },
+          {
+            "name": "bonsai/fvdb_default - SSIM",
+            "value": 0.9566,
+            "unit": ""
+          },
+          {
+            "name": "bonsai/fvdb_mcmc - PSNR",
+            "value": 32.74,
+            "unit": "dB"
+          },
+          {
+            "name": "bonsai/fvdb_mcmc - SSIM",
+            "value": 0.959,
+            "unit": ""
+          },
+          {
+            "name": "garden/fvdb_default - PSNR",
+            "value": 27.605,
+            "unit": "dB"
+          },
+          {
+            "name": "garden/fvdb_default - SSIM",
+            "value": 0.8657,
+            "unit": ""
+          },
+          {
+            "name": "garden/fvdb_mcmc - PSNR",
+            "value": 27.733,
+            "unit": "dB"
+          },
+          {
+            "name": "garden/fvdb_mcmc - SSIM",
+            "value": 0.8665,
             "unit": ""
           }
         ]
