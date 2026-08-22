@@ -8,9 +8,12 @@ import unittest
 
 import cv2
 import numpy as np
+import torch
+import torch.utils.data
 
 from fvdb_reality_capture import CameraModel
 from fvdb_reality_capture.radiance_fields.gaussian_splat_dataset import SfmDataset
+from fvdb_reality_capture.radiance_fields.gaussian_splat_reconstruction import _collate_cached_sfm_batch
 from fvdb_reality_capture.sfm_scene import SfmCache, SfmCameraMetadata, SfmPosedImageMetadata, SfmScene
 
 
@@ -32,10 +35,17 @@ class GaussianSplatDatasetTests(unittest.TestCase):
     def tearDown(self):
         self.temp_dir.cleanup()
 
-    def _make_scene(self) -> tuple[SfmScene, SfmCameraMetadata]:
+    def _make_scene(self, with_mask: bool = False) -> tuple[SfmScene, SfmCameraMetadata]:
         image_path = self.root / "image.png"
         image = np.zeros((8, 10, 3), dtype=np.uint8)
         self.assertTrue(cv2.imwrite(str(image_path), image))
+        mask_path = ""
+        if with_mask:
+            mask = np.zeros((8, 10), dtype=np.uint8)
+            mask[:4] = 255
+            mask_file = self.root / "mask.png"
+            self.assertTrue(cv2.imwrite(str(mask_file), mask))
+            mask_path = str(mask_file)
 
         camera_metadata = SfmCameraMetadata(
             img_width=10,
@@ -53,7 +63,7 @@ class GaussianSplatDatasetTests(unittest.TestCase):
             camera_metadata=camera_metadata,
             camera_id=1,
             image_path=str(image_path),
-            mask_path="",
+            mask_path=mask_path,
             point_indices=np.array([], dtype=np.int64),
             image_id=0,
         )
@@ -85,3 +95,63 @@ class GaussianSplatDatasetTests(unittest.TestCase):
         datum["distortion_coeffs"][0] = 999.0
 
         self.assertAlmostEqual(float(camera_metadata.distortion_coeffs[0]), 0.1)
+
+    def test_dataset_caches_images_and_masks_in_shared_memory(self):
+        scene, _ = self._make_scene(with_mask=True)
+
+        dataset = SfmDataset(scene, cache_images=True)
+        first = dataset[0]
+
+        self.assertTrue(dataset.images_cached)
+        self.assertIsInstance(first["image"], torch.Tensor)
+        self.assertIsInstance(first["mask"], torch.Tensor)
+        self.assertTrue(first["image"].is_shared())
+        self.assertTrue(first["mask"].is_shared())
+        self.assertEqual(tuple(first["image"].shape), (8, 10, 3))
+        self.assertEqual(tuple(first["mask"].shape), (8, 10))
+        self.assertTrue(torch.all(first["image"] == 0))
+        self.assertTrue(torch.all(first["mask"][:4]))
+        self.assertTrue(torch.all(~first["mask"][4:]))
+
+        # Changing the source files after construction must not change cached data.
+        self.assertTrue(cv2.imwrite(scene.images[0].image_path, np.full((8, 10, 3), 255, dtype=np.uint8)))
+        self.assertTrue(cv2.imwrite(scene.images[0].mask_path, np.zeros((8, 10), dtype=np.uint8)))
+        second = dataset[0]
+        self.assertEqual(first["image"].data_ptr(), second["image"].data_ptr())
+        self.assertEqual(first["mask"].data_ptr(), second["mask"].data_ptr())
+        self.assertTrue(torch.all(second["image"] == 0))
+        self.assertTrue(torch.all(second["mask"][:4]))
+
+        uncached = SfmDataset(scene)[0]
+        self.assertIsInstance(uncached["image"], np.ndarray)
+        self.assertTrue(np.all(uncached["image"] == 255))
+        self.assertFalse(np.any(uncached["mask"]))
+
+    def test_cached_batch_collation_does_not_copy_shared_rasters(self):
+        scene, _ = self._make_scene(with_mask=True)
+        datum = SfmDataset(scene, cache_images=True)[0]
+
+        collated = _collate_cached_sfm_batch([datum])
+
+        self.assertEqual(tuple(collated["image"].shape), (1, 8, 10, 3))
+        self.assertEqual(tuple(collated["mask"].shape), (1, 8, 10))
+        self.assertEqual(collated["image"].data_ptr(), datum["image"].data_ptr())
+        self.assertEqual(collated["mask"].data_ptr(), datum["mask"].data_ptr())
+
+    def test_dataloader_worker_reads_cached_shared_rasters(self):
+        scene, _ = self._make_scene(with_mask=True)
+        dataset = SfmDataset(scene, cache_images=True)
+        dataloader = torch.utils.data.DataLoader(
+            dataset,
+            batch_size=1,
+            num_workers=1,
+            collate_fn=_collate_cached_sfm_batch,
+        )
+
+        batches = list(dataloader)
+
+        self.assertEqual(len(batches), 1)
+        self.assertTrue(batches[0]["image"].is_shared())
+        self.assertTrue(batches[0]["mask"].is_shared())
+        self.assertTrue(torch.all(batches[0]["image"] == 0))
+        self.assertTrue(torch.all(batches[0]["mask"][:, :4]))

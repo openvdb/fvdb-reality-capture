@@ -10,6 +10,7 @@ import numpy as np
 import torch
 import torch.utils.data
 import torchvision
+import tqdm
 
 from fvdb_reality_capture.sfm_scene import (
     DepthMapAttribute,
@@ -45,6 +46,7 @@ class SfmDataset(torch.utils.data.Dataset, Iterable):
         patch_size: int | None = None,
         return_visible_points: bool = False,
         load_attributes: list[str] | None = None,
+        cache_images: bool = False,
     ):
         """
         Create a new SfmDataset instance.
@@ -57,6 +59,9 @@ class SfmDataset(torch.utils.data.Dataset, Iterable):
             load_attributes: Optional list of custom attribute names to load and include in each datum.
                 For :class:`PerImageRasterAttribute`, the raster file is loaded and included as a tensor.
                 For :class:`PerImageValueAttribute`, the in-memory value is included directly.
+            cache_images: If True, decode the dataset's images and masks once into shared host memory.
+                DataLoader worker processes then reuse the same read-only tensors instead of decoding the files
+                on every epoch. This can require substantial shared memory for high-resolution datasets.
         """
         self._logger = logging.getLogger(f"{self.__class__.__module__}.{self.__class__.__name__}")
 
@@ -117,6 +122,100 @@ class SfmDataset(torch.utils.data.Dataset, Iterable):
         dataset_indices = dataset_indices.astype(np.int64)
 
         self._indices: np.ndarray = dataset_indices
+        self._cached_images: dict[int, torch.Tensor] | None = None
+        self._cached_masks: dict[int, torch.Tensor] | None = None
+        if cache_images:
+            self._cache_images()
+
+    @staticmethod
+    def _decode_image(path: str) -> torch.Tensor:
+        """Decode an image into a contiguous HWC RGB tensor on the CPU."""
+        path_lower = path.lower()
+        if path_lower.endswith((".jpg", ".jpeg")):
+            encoded = torchvision.io.read_file(path)
+            image = torchvision.io.decode_jpeg(encoded, device="cpu")
+            assert isinstance(image, torch.Tensor)
+            image = image.permute(1, 2, 0)
+        elif path_lower.endswith(".png"):
+            encoded = torchvision.io.read_file(path)
+            image = torchvision.io.decode_png(encoded).permute(1, 2, 0)
+        else:
+            image_np = cv2.imread(path, cv2.IMREAD_UNCHANGED)
+            assert image_np is not None, f"Failed to load image: {path}"
+            image_np = cv2.cvtColor(image_np, cv2.COLOR_BGR2RGB)
+            image = torch.from_numpy(image_np)
+
+        if image.ndim == 2:
+            image = image[:, :, None]
+        return image.contiguous()
+
+    @staticmethod
+    def _decode_mask(path: str) -> torch.Tensor:
+        """Decode a mask into a contiguous HW boolean tensor on the CPU."""
+        path_lower = path.lower()
+        if path_lower.endswith((".jpg", ".jpeg")):
+            encoded = torchvision.io.read_file(path)
+            mask = torchvision.io.decode_jpeg(encoded, device="cpu")[0]
+        elif path_lower.endswith(".png"):
+            encoded = torchvision.io.read_file(path)
+            mask = torchvision.io.decode_png(encoded)[0]
+        else:
+            mask_np = cv2.imread(path, cv2.IMREAD_GRAYSCALE)
+            assert mask_np is not None, f"Failed to load mask: {path}"
+            mask = torch.from_numpy(mask_np)
+        return (mask > 127).contiguous()
+
+    def _cache_images(self) -> None:
+        """Decode this dataset's images and masks into read-only shared-memory tensors."""
+        unique_indices = list(dict.fromkeys(self._indices.tolist()))
+        self._logger.info(f"Caching {len(unique_indices):,} decoded images in shared host memory.")
+
+        cached_images_by_path: dict[str, torch.Tensor] = {}
+        cached_masks_by_path: dict[str, torch.Tensor] = {}
+        cached_images: dict[int, torch.Tensor] = {}
+        cached_masks: dict[int, torch.Tensor] = {}
+
+        try:
+            progress = tqdm.tqdm(unique_indices, unit="imgs", desc="Caching decoded training images")
+            for index in progress:
+                image_meta = self._sfm_scene.images[index]
+                image = cached_images_by_path.get(image_meta.image_path)
+                if image is None:
+                    image = self._decode_image(image_meta.image_path)
+                    image.share_memory_()
+                    cached_images_by_path[image_meta.image_path] = image
+                cached_images[index] = image
+
+                if image_meta.mask_path != "":
+                    mask = cached_masks_by_path.get(image_meta.mask_path)
+                    if mask is None:
+                        mask = self._decode_mask(image_meta.mask_path)
+                        mask.share_memory_()
+                        cached_masks_by_path[image_meta.mask_path] = mask
+                    cached_masks[index] = mask
+        except RuntimeError as error:
+            cached_images.clear()
+            cached_masks.clear()
+            cached_images_by_path.clear()
+            cached_masks_by_path.clear()
+            raise RuntimeError(
+                "Failed to cache decoded training images in shared memory. Increase the host/shared-memory "
+                "capacity or disable cache_training_images."
+            ) from error
+
+        self._cached_images = cached_images
+        self._cached_masks = cached_masks
+        image_bytes = sum(image.numel() * image.element_size() for image in cached_images_by_path.values())
+        mask_bytes = sum(mask.numel() * mask.element_size() for mask in cached_masks_by_path.values())
+        self._logger.info(
+            f"Cached {len(cached_images_by_path):,} decoded images and {len(cached_masks_by_path):,} masks "
+            f"using {(image_bytes + mask_bytes) / 2**30:.2f} GiB of shared host memory."
+        )
+
+    @property
+    def images_cached(self) -> bool:
+        """Whether images for this dataset are cached in shared host memory."""
+        return self._cached_images is not None
 
     @property
     def sfm_scene(self) -> SfmScene:
@@ -311,21 +410,10 @@ class SfmDataset(torch.utils.data.Dataset, Iterable):
         image_meta: SfmPosedImageMetadata = self._sfm_scene.images[index]
         camera_meta: SfmCameraMetadata = image_meta.camera_metadata
 
-        if image_meta.image_path.endswith(".jpg") or image_meta.image_path.endswith(".jpeg"):
-            data = torchvision.io.read_file(image_meta.image_path)
-            image = torchvision.io.decode_jpeg(data, device="cpu")
-            assert isinstance(image, torch.Tensor)
-            image = image.permute(1, 2, 0).numpy()
-        elif image_meta.image_path.endswith(".png"):
-            data = torchvision.io.read_file(image_meta.image_path)
-            image = torchvision.io.decode_png(data).permute(1, 2, 0).numpy()
+        if self._cached_images is not None:
+            image: torch.Tensor | np.ndarray = self._cached_images[index]
         else:
-            image = cv2.imread(image_meta.image_path, cv2.IMREAD_UNCHANGED)
-            assert image is not None, f"Failed to load image: {image_meta.image_path}"
-            image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-
-        if image.ndim == 2:
-            image = image[:, :, None]
+            image = self._decode_image(image_meta.image_path).numpy()
         projection_matrix = camera_meta.projection_matrix.copy()
         camera_to_world_matrix = image_meta.camera_to_world_matrix.copy()
         world_to_camera_matrix = image_meta.world_to_camera_matrix.copy()
@@ -356,16 +444,10 @@ class SfmDataset(torch.utils.data.Dataset, Iterable):
 
         # If you passed in masks, we'll set set these in the data dictionary
         if image_meta.mask_path != "":
-            if image_meta.mask_path.endswith(".jpg") or image_meta.mask_path.endswith(".jpeg"):
-                img_data = torchvision.io.read_file(image_meta.mask_path)
-                mask = torchvision.io.decode_jpeg(img_data, device="cpu")[0].numpy()
-            elif image_meta.mask_path.endswith(".png"):
-                img_data = torchvision.io.read_file(image_meta.mask_path)
-                mask = torchvision.io.decode_png(img_data)[0].numpy()
+            if self._cached_masks is not None:
+                mask: torch.Tensor | np.ndarray = self._cached_masks[index]
             else:
-                mask = cv2.imread(image_meta.mask_path, cv2.IMREAD_GRAYSCALE)
-                assert mask is not None, f"Failed to load mask: {image_meta.mask_path}"
-            mask = mask > 127
+                mask = self._decode_mask(image_meta.mask_path).numpy()
 
             data["mask_path"] = image_meta.mask_path
             data["mask"] = mask
