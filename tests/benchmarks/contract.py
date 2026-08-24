@@ -56,6 +56,7 @@ RECONSTRUCTION_CONFIG_KEYS = {
     "save_at_percent",
     "batch_size",
     "crops_per_image",
+    "cache_training_images",
     "sh_degree",
     "increase_sh_degree_every_epoch",
     "ssim_lambda",
