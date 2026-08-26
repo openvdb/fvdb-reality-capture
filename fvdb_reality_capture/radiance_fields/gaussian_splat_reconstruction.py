@@ -15,6 +15,7 @@ import torch
 import torch.nn.functional as nnf
 import torch.utils.data
 from torch.utils import _pytree
+from torch.utils.data import default_collate
 import tqdm
 from fvdb.utils.metrics import psnr, ssim
 from fvdb.viz import Scene
@@ -38,6 +39,30 @@ from .gaussian_splat_reconstruction_writer import (
     GaussianSplatReconstructionBaseWriter,
     GaussianSplatReconstructionWriter,
 )
+
+
+def _collate_cached_sfm_batch(batch: list[dict[str, Any]]) -> dict[str, Any]:
+    """Add a batch dimension to shared rasters without copying their storage.
+
+    This collator is used only for batch-size-one training with an in-memory image
+    cache. Metadata and uncached values retain PyTorch's standard collation behavior.
+    """
+    if len(batch) != 1:
+        return default_collate(batch)
+
+    datum = batch[0]
+    shared_rasters = {
+        key: value
+        for key, value in datum.items()
+        if key in ("image", "mask") and isinstance(value, torch.Tensor) and value.is_shared()
+    }
+    if not shared_rasters:
+        return default_collate(batch)
+
+    collated = default_collate([{key: value for key, value in datum.items() if key not in shared_rasters}])
+    for key, value in shared_rasters.items():
+        collated[key] = value.unsqueeze(0)
+    return collated
 
 
 def _scale_shift_invariant_l1(
@@ -157,6 +182,15 @@ class GaussianSplatReconstructionConfig:
     to run the forward pass on crops and accumulate gradients. This can help reduce memory usage.
 
     Default: ``1`` (no cropping, use full images).
+    """
+
+    cache_training_images: bool = False
+    """
+    Decode training images and masks once into shared host memory and reuse them across epochs and DataLoader
+    workers. This avoids repeated image decoding but can consume substantial host and shared memory for
+    high-resolution datasets. Validation images are not cached.
+
+    Default: ``False``
     """
 
     sh_degree: int = 3
@@ -828,6 +862,7 @@ class GaussianSplatReconstruction:
             dataset_indices=train_indices,
             return_visible_points=(self.config.sparse_depth_reg > 0.0),
             load_attributes=dense_depth_load,
+            cache_images=self.config.cache_training_images,
         )
         self._validation_dataset = SfmDataset(sfm_scene=sfm_scene, dataset_indices=val_indices)
 
@@ -1250,6 +1285,11 @@ class GaussianSplatReconstruction:
             num_workers=8,
             persistent_workers=True,
             pin_memory=True,
+            collate_fn=(
+                _collate_cached_sfm_batch
+                if self.config.batch_size == 1 and self.training_dataset.images_cached
+                else None
+            ),
         )
 
         if self.config.batch_size > 1:
