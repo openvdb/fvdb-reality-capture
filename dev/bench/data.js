@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1787671095867,
+  "lastUpdate": 1787856163748,
   "repoUrl": "https://github.com/openvdb/fvdb-reality-capture",
   "entries": {
     "fvdb-reality-capture Benchmark with pytest-benchmark": [
@@ -22723,6 +22723,88 @@ window.BENCHMARK_DATA = {
           {
             "name": "garden/fvdb_mcmc - SSIM",
             "value": 0.8669,
+            "unit": ""
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "Matthew Cong",
+            "username": "matthewdcong",
+            "email": "1372750+matthewdcong@users.noreply.github.com"
+          },
+          "committer": {
+            "name": "GitHub",
+            "username": "web-flow",
+            "email": "noreply@github.com"
+          },
+          "id": "aa291e3f7f672e31d3913817aa031502ec55be60",
+          "message": "Add option to cache training images on the host (#320)\n\nThis PR adds `--cfg.cache-training-images` which loads all of the images\ninto host memory prior to running the training. Even with the PyTorch\ndataloader running in separate parallel processes, this is often more\nefficient than re-reading and decoding the image each time it is needed\nduring training. In the early steps of a reconstruction, this can save\naround 20% off the time per training step.\n\n---------\n\nSigned-off-by: Matthew Cong <mcong@nvidia.com>",
+          "timestamp": "2026-08-26T21:37:13Z",
+          "url": "https://github.com/openvdb/fvdb-reality-capture/commit/aa291e3f7f672e31d3913817aa031502ec55be60"
+        },
+        "date": 1787856163081,
+        "tool": "customBiggerIsBetter",
+        "benches": [
+          {
+            "name": "bicycle/fvdb_default - PSNR",
+            "value": 25.156,
+            "unit": "dB"
+          },
+          {
+            "name": "bicycle/fvdb_default - SSIM",
+            "value": 0.7449,
+            "unit": ""
+          },
+          {
+            "name": "bicycle/fvdb_mcmc - PSNR",
+            "value": 25.01,
+            "unit": "dB"
+          },
+          {
+            "name": "bicycle/fvdb_mcmc - SSIM",
+            "value": 0.7304,
+            "unit": ""
+          },
+          {
+            "name": "bonsai/fvdb_default - PSNR",
+            "value": 32.576,
+            "unit": "dB"
+          },
+          {
+            "name": "bonsai/fvdb_default - SSIM",
+            "value": 0.9565,
+            "unit": ""
+          },
+          {
+            "name": "bonsai/fvdb_mcmc - PSNR",
+            "value": 32.806,
+            "unit": "dB"
+          },
+          {
+            "name": "bonsai/fvdb_mcmc - SSIM",
+            "value": 0.9591,
+            "unit": ""
+          },
+          {
+            "name": "garden/fvdb_default - PSNR",
+            "value": 27.651,
+            "unit": "dB"
+          },
+          {
+            "name": "garden/fvdb_default - SSIM",
+            "value": 0.8655,
+            "unit": ""
+          },
+          {
+            "name": "garden/fvdb_mcmc - PSNR",
+            "value": 27.711,
+            "unit": "dB"
+          },
+          {
+            "name": "garden/fvdb_mcmc - SSIM",
+            "value": 0.8666,
             "unit": ""
           }
         ]
