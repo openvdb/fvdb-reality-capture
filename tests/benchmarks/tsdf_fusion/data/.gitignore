@@ -1,0 +1,4 @@
+# Everything under this dir is downloaded at setup time, not committed.
+*
+!.gitignore
+!README.md
