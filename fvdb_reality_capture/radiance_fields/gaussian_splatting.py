@@ -5,27 +5,30 @@ from __future__ import annotations
 
 import math
 import pathlib
-from typing import Any, Mapping, Sequence, TypeVar, cast, overload
+from typing import Any, Mapping, Sequence, TypeVar, overload
 
 import torch
 import torch.nn.functional as F
 
+import gsplat
 from fvdb import _fvdb_cpp as _C
-from fvdb._fvdb_cpp import JaggedTensor as JaggedTensorCpp
-from ._gaussian_autograd import (
-    _EvaluateGaussianSHFn,
-    _ProjectGaussiansJaggedFn,
-    _ProjectGaussiansFn,
-    _RasterizeScreenSpaceGaussiansFn,
-    _RasterizeScreenSpaceGaussiansSparseFn,
-    _RasterizeWorldSpaceGaussiansFn,
-)
 from fvdb.grid import Grid
 from fvdb.grid_batch import GridBatch
 from fvdb.jagged_tensor import JaggedTensor
 from fvdb.types import DeviceIdentifier, cast_check, resolve_device
 
 from ..enums import CameraModel, ProjectionMethod
+from ._gaussian_autograd import _ProjectGaussiansJaggedFn
+from ._gsplat_ops import (
+    attach_projection_gradient_accumulators,
+    evaluate_spherical_harmonics as _evaluate_spherical_harmonics,
+    intersect_tiles as _gsplat_intersect_tiles,
+    intersect_tiles_sparse as _gsplat_intersect_tiles_sparse,
+    jagged_image_ids,
+    project_gaussians_analytic,
+    project_gaussians_unscented,
+    rasterize_world_space,
+)
 
 JaggedTensorOrTensorT = TypeVar("JaggedTensorOrTensorT", JaggedTensor, torch.Tensor)
 
@@ -69,6 +72,49 @@ def _apply_pixel_mask(
     features = features * mask_float + bg * (1.0 - mask_float)
     alphas = alphas * mask_float
     return features, alphas
+
+
+def _padded_contributors_to_jagged(
+    ids: torch.Tensor,
+    weights: torch.Tensor,
+    *,
+    counts: torch.Tensor | None = None,
+    pixels: JaggedTensor | None = None,
+) -> tuple[JaggedTensor, JaggedTensor]:
+    """Convert gsplat's padded per-pixel contributors to FVDB's nested jagged API."""
+    flat_ids = ids.reshape(-1, ids.shape[-1])
+    flat_weights = weights.reshape_as(flat_ids)
+    if counts is None:
+        flat_counts = (flat_ids >= 0).sum(dim=-1, dtype=torch.int64)
+    else:
+        flat_counts = counts.reshape(-1).to(torch.int64)
+
+    sample_ids = torch.arange(flat_ids.shape[-1], device=ids.device)
+    valid = sample_ids.unsqueeze(0) < flat_counts.unsqueeze(1)
+    ids_data = flat_ids[valid]
+    weights_data = flat_weights[valid]
+
+    offsets = torch.zeros(flat_counts.numel() + 1, dtype=torch.int64, device=ids.device)
+    offsets[1:] = flat_counts.cumsum(dim=0)
+
+    if pixels is None:
+        if ids.ndim != 4:
+            raise ValueError(f"Dense contributor tensors must have shape [C,H,W,K], got {tuple(ids.shape)}")
+        num_images, image_height, image_width = ids.shape[:3]
+        pixels_per_image = image_height * image_width
+        image_ids = torch.arange(num_images, dtype=torch.int32, device=ids.device).repeat_interleave(pixels_per_image)
+        pixel_ids = torch.arange(pixels_per_image, dtype=torch.int32, device=ids.device).repeat(num_images)
+    else:
+        image_ids = jagged_image_ids(pixels)
+        starts = pixels.joffsets[:-1].to(torch.int64)
+        pixel_ids = torch.arange(flat_counts.numel(), dtype=torch.int64, device=ids.device)
+        pixel_ids = (pixel_ids - starts[image_ids.to(torch.int64)]).to(torch.int32)
+    list_ids = torch.stack((image_ids, pixel_ids), dim=-1)
+
+    return (
+        JaggedTensor.from_data_offsets_and_list_ids(ids_data, offsets, list_ids),
+        JaggedTensor.from_data_offsets_and_list_ids(weights_data, offsets, list_ids),
+    )
 
 
 class ProjectedGaussianSplats:
@@ -1446,10 +1492,6 @@ class GaussianSplat3d:
     # ---------------------------------------------------------------------------
 
     @staticmethod
-    def _is_ortho(camera_model: CameraModel) -> bool:
-        return camera_model == CameraModel.ORTHOGRAPHIC
-
-    @staticmethod
     def _resolve_projection_method(camera_model: CameraModel, projection_method: ProjectionMethod) -> ProjectionMethod:
         if projection_method != ProjectionMethod.AUTO:
             return projection_method
@@ -1483,7 +1525,6 @@ class GaussianSplat3d:
         means = self._means
         quats = self._quats
         log_scales = self._log_scales
-        ortho = self._is_ortho(camera_model)
 
         C = w2c.size(0)
         if not K.is_contiguous():
@@ -1530,17 +1571,12 @@ class GaussianSplat3d:
             accum_max_radii = mr
 
         if self._use_ut(camera_model, projection_method):
-            if distortion_coeffs is None:
-                distortion_coeffs = torch.empty(C, 0, device=means.device, dtype=means.dtype)
-            result = _C.project_gaussians_unscented_fwd(
+            return project_gaussians_unscented(
                 means,
                 quats,
                 log_scales,
                 w2c,
-                w2c,
                 K,
-                distortion_coeffs,
-                self._camera_model_to_cpp(camera_model),
                 W,
                 H,
                 eps2d,
@@ -1548,13 +1584,11 @@ class GaussianSplat3d:
                 far,
                 min_radius,
                 antialias,
+                camera_model,
+                distortion_coeffs,
             )
-            radii, means2d, depths, conics, compensations = result
-            if not antialias:
-                compensations = None
-            return radii, means2d, depths, conics, compensations
 
-        result = _ProjectGaussiansFn.apply(
+        radii, means2d, depths, conics, compensations = project_gaussians_analytic(
             means,
             quats,
             log_scales,
@@ -1567,16 +1601,17 @@ class GaussianSplat3d:
             far,
             min_radius,
             antialias,
-            ortho,
+            camera_model,
+        )
+        attach_projection_gradient_accumulators(
+            means2d,
+            radii,
+            W,
+            H,
             accum_grad_norms,
             accum_step_counts,
             accum_max_radii,
         )
-        radii = result[0]
-        means2d = result[1]
-        depths = result[2]
-        conics = result[3]
-        compensations = result[4] if antialias and len(result) > 4 else None
         return radii, means2d, depths, conics, compensations
 
     def _eval_sh(
@@ -1589,39 +1624,13 @@ class GaussianSplat3d:
         means = self._means
         sh0 = self._sh0
         shN = self._shN
-        C = w2c.size(0)
 
         sh_degree = self.sh_degree
         if sh_degree_to_use < 0:
             sh_degree_to_use = sh_degree
 
-        if sh_degree_to_use > 0:
-            empty_ids = torch.empty(0, dtype=torch.int32, device=means.device)
-            return _EvaluateGaussianSHFn.apply(
-                sh_degree_to_use,
-                C,
-                means,
-                w2c,
-                empty_ids,
-                empty_ids,
-                sh0,
-                shN,
-                radii,
-            )
-        else:
-            shN = sh0.new_empty(sh0.shape[0], 0, sh0.shape[2])
-            empty_ids = torch.empty(0, dtype=torch.int32, device=means.device)
-            return _EvaluateGaussianSHFn.apply(
-                sh_degree_to_use,
-                C,
-                means,
-                w2c,
-                empty_ids,
-                empty_ids,
-                sh0,
-                shN,
-                radii,
-            )
+        coeffs = torch.cat((sh0, shN), dim=1) if sh_degree_to_use > 0 else sh0
+        return _evaluate_spherical_harmonics(sh_degree_to_use, means, w2c, coeffs, radii)
 
     def _make_render_features(
         self,
@@ -1680,7 +1689,7 @@ class GaussianSplat3d:
         """
         num_tiles_h = math.ceil(H / tile_size)
         num_tiles_w = math.ceil(W / tile_size)
-        tile_offsets, tile_gaussian_ids = _C.intersect_gaussian_tiles(
+        tile_offsets, tile_gaussian_ids = _gsplat_intersect_tiles(
             means2d,
             radii,
             depths,
@@ -1712,32 +1721,16 @@ class GaussianSplat3d:
         """
         num_tiles_h = math.ceil(H / tile_size)
         num_tiles_w = math.ceil(W / tile_size)
-        (
-            active_tiles,
-            active_tile_mask,
-            tile_pixel_mask,
-            tile_pixel_cumsum,
-            pixel_map,
-        ) = _C.build_sparse_gaussian_tile_layout(
-            tile_size,
-            num_tiles_w,
-            num_tiles_h,
-            pixels_jt._impl,
-        )
-        tile_offsets, tile_gaussian_ids = _C.intersect_gaussian_tiles_sparse(
+        return _gsplat_intersect_tiles_sparse(
+            pixels_jt,
             means2d,
             radii,
             depths,
-            active_tile_mask,
-            active_tiles,
             C,
             tile_size,
             num_tiles_h,
             num_tiles_w,
-            conics=conics,
-            opacities=opacities,
         )
-        return tile_offsets, tile_gaussian_ids, active_tiles, tile_pixel_mask, tile_pixel_cumsum, pixel_map
 
     def _rasterize_screen_space(
         self,
@@ -1753,24 +1746,18 @@ class GaussianSplat3d:
         backgrounds: torch.Tensor | None,
         tile_masks: torch.Tensor | None,
     ) -> tuple[torch.Tensor, torch.Tensor]:
-        return cast(
-            tuple[torch.Tensor, torch.Tensor],
-            _RasterizeScreenSpaceGaussiansFn.apply(
-                means2d,
-                conics,
-                features,
-                opacities,
-                W,
-                H,
-                0,
-                0,
-                tile_size,
-                tile_offsets,
-                tile_gaussian_ids,
-                False,
-                backgrounds,
-                tile_masks,
-            ),
+        return gsplat.rasterize_to_pixels(
+            means2d,
+            conics,
+            features,
+            opacities,
+            W,
+            H,
+            tile_size,
+            tile_offsets,
+            tile_gaussian_ids,
+            backgrounds=backgrounds,
+            masks=tile_masks,
         )
 
     def _rasterize_screen_space_sparse(
@@ -1792,29 +1779,27 @@ class GaussianSplat3d:
         backgrounds: torch.Tensor | None,
         masks: torch.Tensor | None,
     ) -> tuple[torch.Tensor, torch.Tensor]:
-        return cast(
-            tuple[torch.Tensor, torch.Tensor],
-            _RasterizeScreenSpaceGaussiansSparseFn.apply(
-                means2d,
-                conics,
-                features,
-                opacities,
-                pixels_jt,
-                W,
-                H,
-                0,
-                0,
-                tile_size,
-                tile_offsets,
-                tile_gaussian_ids,
-                active_tiles,
-                tile_pixel_mask,
-                tile_pixel_cumsum,
-                pixel_map,
-                False,
-                backgrounds,
-                masks,
-            ),
+        num_tiles_h = math.ceil(H / tile_size)
+        num_tiles_w = math.ceil(W / tile_size)
+        return gsplat.rasterize_to_pixels_sparse(
+            means2d,
+            conics,
+            features,
+            opacities,
+            jagged_image_ids(pixels_jt),
+            active_tiles,
+            tile_offsets,
+            tile_gaussian_ids,
+            tile_pixel_mask,
+            tile_pixel_cumsum,
+            pixel_map,
+            W,
+            H,
+            tile_size,
+            num_tiles_w,
+            num_tiles_h,
+            backgrounds=backgrounds,
+            masks=masks,
         )
 
     def _rasterize_world_space(
@@ -1833,30 +1818,23 @@ class GaussianSplat3d:
         backgrounds: torch.Tensor | None,
         tile_masks: torch.Tensor | None,
     ) -> tuple[torch.Tensor, torch.Tensor]:
-        return cast(
-            tuple[torch.Tensor, torch.Tensor],
-            _RasterizeWorldSpaceGaussiansFn.apply(
-                self._means,
-                self._quats,
-                self._log_scales,
-                features,
-                opacities,
-                w2c,
-                w2c,
-                K,
-                distortion_coeffs,
-                _C.RollingShutterType.NONE.value,
-                self._camera_model_to_cpp(camera_model).value,
-                W,
-                H,
-                0,
-                0,
-                tile_size,
-                tile_offsets,
-                tile_gaussian_ids,
-                backgrounds,
-                tile_masks,
-            ),
+        return rasterize_world_space(
+            self._means,
+            self._quats,
+            self._log_scales,
+            features,
+            opacities,
+            w2c,
+            K,
+            distortion_coeffs,
+            camera_model,
+            W,
+            H,
+            tile_size,
+            tile_offsets,
+            tile_gaussian_ids,
+            backgrounds,
+            tile_masks,
         )
 
     @staticmethod
@@ -2512,8 +2490,10 @@ class GaussianSplat3d:
         if is_crop:
             num_tiles_h = math.ceil(raster_h / tile_size)
             num_tiles_w = math.ceil(raster_w / tile_size)
-            tile_offsets, tile_gaussian_ids = _C.intersect_gaussian_tiles(
-                pg.means2d,
+            origin = pg.means2d.new_tensor([origin_w, origin_h])
+            local_means2d = pg.means2d - origin
+            tile_offsets, tile_gaussian_ids = _gsplat_intersect_tiles(
+                local_means2d,
                 pg.radii,
                 pg.depths,
                 C,
@@ -2523,24 +2503,18 @@ class GaussianSplat3d:
                 conics=pg.inv_covar_2d,
                 opacities=pg.opacities,
             )
-            features, alphas = cast(
-                tuple[torch.Tensor, torch.Tensor],
-                _RasterizeScreenSpaceGaussiansFn.apply(
-                    pg.means2d,
-                    pg.inv_covar_2d,
-                    pg.render_quantities,
-                    pg.opacities,
-                    raster_w,
-                    raster_h,
-                    origin_w,
-                    origin_h,
-                    tile_size,
-                    tile_offsets,
-                    tile_gaussian_ids,
-                    False,
-                    backgrounds,
-                    tile_masks,
-                ),
+            features, alphas = gsplat.rasterize_to_pixels(
+                local_means2d,
+                pg.inv_covar_2d,
+                pg.render_quantities,
+                pg.opacities,
+                raster_w,
+                raster_h,
+                tile_size,
+                tile_offsets,
+                tile_gaussian_ids,
+                backgrounds=backgrounds,
+                masks=tile_masks,
             )
         else:
             tile_offsets, tile_gaussian_ids, _, _ = self._intersect_tiles(
@@ -2786,7 +2760,7 @@ class GaussianSplat3d:
                 and 0 means the pixel is fully transparent, and 1 means the pixel is fully opaque.
         """
         if isinstance(pixels_to_render, torch.Tensor):
-            pixels_jt = JaggedTensor(impl=JaggedTensorCpp(pixels_to_render))
+            pixels_jt = JaggedTensor(pixels_to_render)
         elif isinstance(pixels_to_render, JaggedTensor):
             pixels_jt = pixels_to_render
         else:
@@ -3262,7 +3236,7 @@ class GaussianSplat3d:
                 and 0 means the pixel is fully transparent, and 1 means the pixel is fully opaque.
         """
         if isinstance(pixels_to_render, torch.Tensor):
-            pixels_jt = JaggedTensor(impl=JaggedTensorCpp(pixels_to_render))
+            pixels_jt = JaggedTensor(pixels_to_render)
         elif isinstance(pixels_to_render, JaggedTensor):
             pixels_jt = pixels_to_render
         else:
@@ -3388,7 +3362,7 @@ class GaussianSplat3d:
                 and 0 means the pixel is fully transparent, and 1 means the pixel is fully opaque.
         """
         if isinstance(pixels_to_render, torch.Tensor):
-            pixels_jt = JaggedTensor(impl=JaggedTensorCpp(pixels_to_render))
+            pixels_jt = JaggedTensor(pixels_to_render)
         elif isinstance(pixels_to_render, JaggedTensor):
             pixels_jt = pixels_to_render
         else:
@@ -3751,7 +3725,7 @@ class GaussianSplat3d:
                 image_width,
                 image_height,
             )
-            return _C.rasterize_num_contributing_gaussians(
+            return gsplat.rasterize_num_contributing_gaussians(
                 means2d,
                 conics,
                 opacities,
@@ -3759,8 +3733,6 @@ class GaussianSplat3d:
                 tile_gaussian_ids,
                 image_width,
                 image_height,
-                0,
-                0,
                 tile_size,
             )
 
@@ -3911,26 +3883,27 @@ class GaussianSplat3d:
                 image_width,
                 image_height,
             )
-            result_ncg, result_alphas = _C.sparse_rasterize_num_contributing_gaussians(
+            num_tiles_h = math.ceil(image_height / tile_size)
+            num_tiles_w = math.ceil(image_width / tile_size)
+            result_ncg, result_alphas = gsplat.rasterize_num_contributing_gaussians_sparse(
                 means2d,
                 conics,
                 opacities,
+                active_tiles,
                 tile_offsets,
                 tile_gaussian_ids,
-                unique_pixels_jt._impl,
-                active_tiles,
                 tile_pixel_mask,
                 tile_pixel_cumsum,
                 pixel_map,
                 image_width,
                 image_height,
-                0,
-                0,
                 tile_size,
+                num_tiles_w,
+                num_tiles_h,
             )
 
-        ncg_jt = JaggedTensor(impl=result_ncg)
-        alphas_jt = JaggedTensor(impl=result_alphas)
+        ncg_jt = unique_pixels_jt.jagged_like(result_ncg)
+        alphas_jt = unique_pixels_jt.jagged_like(result_alphas)
 
         if has_dups:
             ncg_jt = pixels_jt.jagged_like(ncg_jt.jdata.index_select(0, inverse_indices))
@@ -4032,9 +4005,8 @@ class GaussianSplat3d:
                 image_width,
                 image_height,
             )
-            ncg = None
             if top_k_contributors <= 0:
-                ncg, _ = _C.rasterize_num_contributing_gaussians(
+                ncg, _ = gsplat.rasterize_num_contributing_gaussians(
                     means2d,
                     conics,
                     opacities,
@@ -4042,11 +4014,21 @@ class GaussianSplat3d:
                     tile_gaussian_ids,
                     image_width,
                     image_height,
-                    0,
-                    0,
                     tile_size,
                 )
-            ids, weights = _C.rasterize_contributing_gaussian_ids(
+                ids, weights = gsplat.rasterize_contributing_gaussian_ids(
+                    means2d,
+                    conics,
+                    opacities,
+                    tile_offsets,
+                    tile_gaussian_ids,
+                    image_width,
+                    image_height,
+                    tile_size,
+                    ncg,
+                )
+                return _padded_contributors_to_jagged(ids, weights, counts=ncg)
+            ids, weights = gsplat.rasterize_top_contributing_gaussian_ids(
                 means2d,
                 conics,
                 opacities,
@@ -4054,13 +4036,10 @@ class GaussianSplat3d:
                 tile_gaussian_ids,
                 image_width,
                 image_height,
-                0,
-                0,
                 tile_size,
                 top_k_contributors,
-                ncg,
             )
-        return JaggedTensor(impl=ids), JaggedTensor(impl=weights)
+        return _padded_contributors_to_jagged(ids, weights)
 
     @overload
     def sparse_render_contributing_gaussian_ids(
@@ -4207,102 +4186,67 @@ class GaussianSplat3d:
                 image_width,
                 image_height,
             )
-            ncg_jt = None
+            num_tiles_h = math.ceil(image_height / tile_size)
+            num_tiles_w = math.ceil(image_width / tile_size)
+            counts = None
             if top_k_contributors <= 0:
-                ncg_jt, _ = _C.sparse_rasterize_num_contributing_gaussians(
+                counts, _ = gsplat.rasterize_num_contributing_gaussians_sparse(
                     means2d,
                     conics,
                     opacities,
+                    active_tiles,
                     tile_offsets,
                     tile_gaussian_ids,
-                    unique_pixels_jt._impl,
-                    active_tiles,
                     tile_pixel_mask,
                     tile_pixel_cumsum,
                     pixel_map,
                     image_width,
                     image_height,
-                    0,
-                    0,
                     tile_size,
+                    num_tiles_w,
+                    num_tiles_h,
                 )
-            ids, weights = _C.sparse_rasterize_contributing_gaussian_ids(
-                means2d,
-                conics,
-                opacities,
-                tile_offsets,
-                tile_gaussian_ids,
-                unique_pixels_jt._impl,
-                active_tiles,
-                tile_pixel_mask,
-                tile_pixel_cumsum,
-                pixel_map,
-                image_width,
-                image_height,
-                0,
-                0,
-                tile_size,
-                top_k_contributors,
-                ncg_jt,
-            )
-        ids_jt = JaggedTensor(impl=ids)
-        weights_jt = JaggedTensor(impl=weights)
+                ids, weights = gsplat.rasterize_contributing_gaussian_ids_sparse(
+                    means2d,
+                    conics,
+                    opacities,
+                    active_tiles,
+                    tile_offsets,
+                    tile_gaussian_ids,
+                    tile_pixel_mask,
+                    tile_pixel_cumsum,
+                    pixel_map,
+                    counts,
+                    image_width,
+                    image_height,
+                    tile_size,
+                    num_tiles_w,
+                    num_tiles_h,
+                )
+            else:
+                ids, weights = gsplat.rasterize_top_contributing_gaussian_ids_sparse(
+                    means2d,
+                    conics,
+                    opacities,
+                    active_tiles,
+                    tile_offsets,
+                    tile_gaussian_ids,
+                    tile_pixel_mask,
+                    tile_pixel_cumsum,
+                    pixel_map,
+                    image_width,
+                    image_height,
+                    tile_size,
+                    num_tiles_w,
+                    num_tiles_h,
+                    top_k_contributors,
+                )
         if has_dups:
-            # `ids`/`weights` are CONTRIBUTION-major: one row per (pixel, contributor),
-            # with each pixel owning a variable-length segment. They therefore cannot be
-            # indexed by pixel the way a per-pixel result can (see sparse_render, which
-            # does exactly that on a one-row-per-pixel array and is correct). A duplicated
-            # pixel needs a copy of its unique pixel's whole segment.
-            #
-            # Both tensors share the same jagged structure, so the index arithmetic is
-            # computed once and applied to each payload.
-            plan = self._contribution_expansion_plan(ids_jt, pixels_jt, inverse_indices)
-            ids_jt = self._apply_contribution_expansion(plan, ids_jt)
-            weights_jt = self._apply_contribution_expansion(plan, weights_jt)
-        return ids_jt, weights_jt
-
-    @staticmethod
-    def _contribution_expansion_plan(
-        unique_jt: JaggedTensor,
-        pixels_jt: JaggedTensor,
-        inverse_indices: torch.Tensor,
-    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-        """Index arithmetic for re-expanding a per-(pixel, contributor) result.
-
-        Maps the deduplicated pixel list back onto the caller's pixel list by repeating
-        each unique pixel's whole contribution segment. Depends only on the jagged
-        structure, not on the payload, so callers with several equally-shaped tensors
-        (ids and weights) build one plan and apply it to each.
-
-        Returns ``(gather, offsets, list_ids)`` for
-        :meth:`JaggedTensor.from_data_offsets_and_list_ids`.
-        """
-        device = unique_jt.jdata.device
-        offsets_unique = unique_jt.joffsets.to(device)
-        starts = offsets_unique[inverse_indices]  # segment start per output pixel
-        counts = offsets_unique[1:][inverse_indices] - starts  # segment length per output pixel
-
-        offsets = torch.zeros(counts.numel() + 1, dtype=torch.long, device=device)
-        offsets[1:] = counts.cumsum(0)
-
-        segment = torch.repeat_interleave(torch.arange(counts.numel(), device=device), counts)
-        within = torch.arange(int(offsets[-1]), device=device) - offsets[segment]
-        gather = starts[segment] + within
-
-        # Rebuild (camera, pixel-within-camera) ids from the ORIGINAL pixel list.
-        camera = pixels_jt.jidx.to(device).long()
-        within_camera = torch.arange(camera.numel(), device=device) - pixels_jt.joffsets.to(device)[camera]
-        list_ids = torch.stack([camera, within_camera], dim=1).to(torch.int32)
-        return gather, offsets, list_ids
-
-    @staticmethod
-    def _apply_contribution_expansion(
-        plan: tuple[torch.Tensor, torch.Tensor, torch.Tensor],
-        jt: JaggedTensor,
-    ) -> JaggedTensor:
-        """Apply a plan from :meth:`_contribution_expansion_plan` to one payload."""
-        gather, offsets, list_ids = plan
-        return JaggedTensor.from_data_offsets_and_list_ids(jt.jdata.index_select(0, gather), offsets, list_ids)
+            ids = ids.index_select(0, inverse_indices)
+            weights = weights.index_select(0, inverse_indices)
+            if counts is not None:
+                counts = counts.index_select(0, inverse_indices)
+        return _padded_contributors_to_jagged(ids, weights, counts=counts, pixels=pixels_jt)
 
     def relocate_gaussians(
         self,
@@ -4326,14 +4270,37 @@ class GaussianSplat3d:
         Returns:
             tuple[torch.Tensor, torch.Tensor]: Tuple of (logit_opacities_new [N], log_scales_new [N, 3]).
         """
-        return _C.mcmc_relocate_gaussians(
-            log_scales,
-            logit_opacities,
-            ratios,
+        opacities = torch.sigmoid(logit_opacities).contiguous()
+        scales = log_scales.exp().contiguous()
+        clamped_ratios = ratios.clamp(max=n_max).to(torch.int32).contiguous()
+        revised_opacities, revised_scales = torch.ops.gsplat.relocation(
+            opacities,
+            scales,
+            clamped_ratios,
             binomial_coeffs,
             n_max,
-            min_opacity,
+            0.0,
         )
+        max_opacity = 1.0 - torch.finfo(revised_opacities.dtype).eps
+        clamped_opacities = revised_opacities.clamp(min=min_opacity, max=max_opacity)
+
+        if bool((clamped_opacities != revised_opacities).any()):
+            # gsplat clamps the source opacity, whereas the legacy FVDB API clamps
+            # the post-split opacity before revising scale. Feed gsplat the source
+            # whose split opacity is the desired clamp, then restore FVDB's source
+            # opacity in the scale numerator.
+            adjusted_sources = -torch.expm1(clamped_ratios * torch.log1p(-clamped_opacities))
+            _, revised_scales = torch.ops.gsplat.relocation(
+                adjusted_sources.contiguous(),
+                scales,
+                clamped_ratios,
+                binomial_coeffs,
+                n_max,
+                0.0,
+            )
+            revised_scales = revised_scales * (opacities / adjusted_sources).unsqueeze(-1)
+
+        return torch.logit(clamped_opacities), revised_scales.log()
 
     def add_noise_to_means(self, noise_scale: float, t: float = 0.005, k: float = 100.0) -> None:
         """
@@ -4344,11 +4311,12 @@ class GaussianSplat3d:
             t (float): Parameter t for noise scaling. Defaults to 0.005.
             k (float): Parameter k for noise scaling. Defaults to 100.0.
         """
-        _C.mcmc_add_noise_to_means(
+        torch.ops.gsplat.mcmc_perturb_positions(
             self._means,
+            self._quats,
             self._log_scales,
             self._logit_opacities,
-            self._quats,
+            torch.randn_like(self._means),
             noise_scale,
             t,
             k,
@@ -4638,32 +4606,6 @@ class GaussianSplat3d:
             d["accumulated_max_2d_radii"] = self._accumulated_max_2d_radii
         return d
 
-    @staticmethod
-    def _camera_model_from_cpp(camera_model: _C.CameraModel) -> CameraModel:
-        try:
-            return CameraModel[camera_model.name]
-        except KeyError as exc:
-            raise ValueError(f"Invalid camera model: {camera_model}") from exc
-
-    @staticmethod
-    def _camera_model_to_cpp(camera_model: CameraModel) -> _C.CameraModel:
-        if isinstance(camera_model, CameraModel):
-            return getattr(_C.CameraModel, camera_model.name)
-        return camera_model
-
-    @staticmethod
-    def _projection_method_from_cpp(projection_method: _C.ProjectionMethod) -> ProjectionMethod:
-        try:
-            return ProjectionMethod[projection_method.name]
-        except KeyError as exc:
-            raise ValueError(f"Invalid projection method: {projection_method}") from exc
-
-    @staticmethod
-    def _projection_method_to_cpp(projection_method: ProjectionMethod) -> _C.ProjectionMethod:
-        if isinstance(projection_method, ProjectionMethod):
-            return getattr(_C.ProjectionMethod, projection_method.name)
-        return projection_method
-
 
 # TODO: Make a batched class to encapsulate this jagged rendering pipeline.
 def gaussian_render_jagged(
@@ -4788,45 +4730,26 @@ def gaussian_render_jagged(
     K = sh_coeffs.jdata.size(-2)
     actual_sh_degree = int(math.sqrt(K) - 1) if sh_degree_to_use < 0 else sh_degree_to_use
 
-    # Permute [total_G, K, D] → [K, total_G, D], then gather by gaussian_ids → [K, nnz, D]
-    sh_coeffs_batched = sh_coeffs.jdata.permute(1, 0, 2)[:, gaussian_ids, :]
-
+    sh_coeffs_batched = sh_coeffs.jdata[gaussian_ids.to(torch.int64)]
     if actual_sh_degree == 0:
-        sh0 = sh_coeffs_batched[0, :, :].unsqueeze(0)  # [1, nnz, D]
-        render_quantities = _EvaluateGaussianSHFn.apply(
-            actual_sh_degree,
-            1,
-            means.jdata,
-            viewmats.jdata,
-            camera_ids,
-            gaussian_ids,
-            sh0.permute(1, 0, 2),  # [nnz, 1, D]
-            None,
-            radii.unsqueeze(0),  # [1, nnz, 2] (per-axis)
-        )
-    else:
-        sh0 = sh_coeffs_batched[0, :, :].unsqueeze(0)  # [1, nnz, D]
-        shN = sh_coeffs_batched[1:, :, :]  # [K-1, nnz, D]
-        render_quantities = _EvaluateGaussianSHFn.apply(
-            actual_sh_degree,
-            1,
-            means.jdata,
-            viewmats.jdata,
-            camera_ids,
-            gaussian_ids,
-            sh0.permute(1, 0, 2),  # [nnz, 1, D]
-            shN.permute(1, 0, 2),  # [nnz, K-1, D]
-            radii.unsqueeze(0),  # [1, nnz, 2] (per-axis)
-        )
-    render_quantities = render_quantities.squeeze(0)  # [nnz, D]
+        sh_coeffs_batched = sh_coeffs_batched[:, :1]
+    render_quantities = _evaluate_spherical_harmonics(
+        actual_sh_degree,
+        means.jdata,
+        viewmats.jdata,
+        sh_coeffs_batched,
+        radii,
+        camera_ids=camera_ids,
+        gaussian_ids=gaussian_ids,
+    )
 
     if render_depth_channel:
-        render_quantities = torch.cat([render_quantities, depths[gaussian_ids].unsqueeze(-1)], dim=-1)
+        render_quantities = torch.cat([render_quantities, depths.unsqueeze(-1)], dim=-1)
 
     # --- Non-differentiable tile intersection ---
     num_tiles_h = math.ceil(image_height / tile_size)
     num_tiles_w = math.ceil(image_width / tile_size)
-    tile_offsets, tile_gaussian_ids_t = _C.intersect_gaussian_tiles(
+    tile_offsets, tile_gaussian_ids_t = _gsplat_intersect_tiles(
         means2d,
         radii,
         depths,
@@ -4834,30 +4757,28 @@ def gaussian_render_jagged(
         tile_size,
         num_tiles_h,
         num_tiles_w,
-        camera_ids=camera_ids,
         conics=conics,
         opacities=opacities_batched,
+        image_ids=camera_ids,
     )
     if return_debug_info:
         debug_info["tile_offsets"] = tile_offsets
         debug_info["tile_gaussian_ids"] = tile_gaussian_ids_t
 
     # --- Differentiable rasterization ---
-    rendered_images, rendered_alphas = _RasterizeScreenSpaceGaussiansFn.apply(
+    rendered_images, rendered_alphas = gsplat.rasterize_to_pixels(
         means2d,
         conics,
         render_quantities,
         opacities_batched,
         image_width,
         image_height,
-        0,  # image_origin_w
-        0,  # image_origin_h
         tile_size,
         tile_offsets,
         tile_gaussian_ids_t,
-        False,  # absgrad
-        backgrounds,
-        masks,
+        backgrounds=backgrounds,
+        masks=masks,
+        packed=True,
     )
 
     return rendered_images, rendered_alphas, debug_info
@@ -4901,23 +4822,13 @@ def evaluate_spherical_harmonics(
     if sh_degree > 0 and world_to_camera_matrices is None:
         raise ValueError("world_to_camera_matrices is required when sh_degree > 0")
     if world_to_camera_matrices is None:
-        world_to_camera_matrices = sh0.new_empty(0)
+        world_to_camera_matrices = torch.eye(4, device=sh0.device, dtype=sh0.dtype).expand(num_cameras, -1, -1)
     if shN is None:
         N, _, D = sh0.shape
         shN = sh0.new_empty(N, 0, D)
 
-    empty_ids = torch.empty(0, dtype=torch.int32, device=means.device)
-    return _EvaluateGaussianSHFn.apply(
-        sh_degree,
-        num_cameras,
-        means,
-        world_to_camera_matrices,
-        empty_ids,
-        empty_ids,
-        sh0,
-        shN,
-        radii,
-    )
+    coeffs = torch.cat((sh0, shN), dim=1)
+    return _evaluate_spherical_harmonics(sh_degree, means, world_to_camera_matrices, coeffs, radii)
 
 
 __all__ = [
