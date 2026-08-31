@@ -10,7 +10,6 @@ from .radiance_fields import (
     GaussianSplat3d,
     ProjectedGaussianSplats,
     evaluate_spherical_harmonics,
-    gaussian_render_jagged,
     gaussian_splat_to_view_data,
 )
 from . import dev, foundation_models, sfm_scene, tools, transforms
@@ -25,7 +24,6 @@ __all__ = [
     "__version__",
     "GaussianSplat3d",
     "ProjectedGaussianSplats",
-    "gaussian_render_jagged",
     "evaluate_spherical_harmonics",
     "gaussian_splat_to_view_data",
     "RollingShutterType",
