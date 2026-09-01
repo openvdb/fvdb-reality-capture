@@ -19,14 +19,14 @@ from fvdb.types import DeviceIdentifier, cast_check, resolve_device
 
 from ..enums import CameraModel, ProjectionMethod
 from ._gsplat_ops import (
-    attach_projection_gradient_accumulators,
+    camera_model_for_gsplat,
+    distortion_coeffs_for_gsplat,
     evaluate_spherical_harmonics as _evaluate_spherical_harmonics,
     intersect_tiles as _gsplat_intersect_tiles,
     intersect_tiles_sparse as _gsplat_intersect_tiles_sparse,
     jagged_image_ids,
     project_gaussians_analytic,
     project_gaussians_unscented,
-    rasterize_world_space,
 )
 
 JaggedTensorOrTensorT = TypeVar("JaggedTensorOrTensorT", JaggedTensor, torch.Tensor)
@@ -1602,15 +1602,21 @@ class GaussianSplat3d:
             antialias,
             camera_model,
         )
-        attach_projection_gradient_accumulators(
-            means2d,
-            radii,
-            W,
-            H,
-            accum_grad_norms,
-            accum_step_counts,
-            accum_max_radii,
-        )
+        if accum_grad_norms is not None and accum_step_counts is not None and means2d.requires_grad:
+            valid = (radii[..., 0] > 0) & (radii[..., 1] > 0)
+
+            def accumulate(grad: torch.Tensor) -> torch.Tensor:
+                with torch.no_grad():
+                    scale = grad.new_tensor([W * C / 2.0, H * C / 2.0])
+                    norms = torch.linalg.vector_norm(grad * scale, dim=-1)
+                    accum_grad_norms.add_((norms * valid).sum(dim=0))
+                    accum_step_counts.add_(valid.sum(dim=0, dtype=torch.int32))
+                    if accum_max_radii is not None:
+                        max_radii = radii.amax(dim=-1).masked_fill(~valid, 0).amax(dim=0)
+                        torch.maximum(accum_max_radii, max_radii, out=accum_max_radii)
+                return grad
+
+            means2d.register_hook(accumulate)
         return radii, means2d, depths, conics, compensations
 
     def _eval_sh(
@@ -1817,23 +1823,27 @@ class GaussianSplat3d:
         backgrounds: torch.Tensor | None,
         tile_masks: torch.Tensor | None,
     ) -> tuple[torch.Tensor, torch.Tensor]:
-        return rasterize_world_space(
+        radial, tangential, thin_prism = distortion_coeffs_for_gsplat(distortion_coeffs, camera_model)
+        return gsplat.rasterize_to_pixels_eval3d(
             self._means,
             self._quats,
-            self._log_scales,
+            self._log_scales.exp(),
             features,
             opacities,
             w2c,
             K,
-            distortion_coeffs,
-            camera_model,
             W,
             H,
             tile_size,
             tile_offsets,
             tile_gaussian_ids,
-            backgrounds,
-            tile_masks,
+            backgrounds=backgrounds,
+            masks=tile_masks,
+            camera_model=camera_model_for_gsplat(camera_model),
+            radial_coeffs=radial,
+            tangential_coeffs=tangential,
+            thin_prism_coeffs=thin_prism,
+            rolling_shutter=gsplat.RollingShutterType.GLOBAL,
         )
 
     @staticmethod
