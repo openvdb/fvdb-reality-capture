@@ -9,8 +9,6 @@ import gsplat
 import torch
 from gsplat.cuda._wrapper import UnscentedTransformParameters
 
-from fvdb.jagged_tensor import JaggedTensor
-
 from ..enums import CameraModel
 
 
@@ -130,11 +128,13 @@ def evaluate_spherical_harmonics(
     camera_ids: torch.Tensor | None = None,
     gaussian_ids: torch.Tensor | None = None,
 ) -> torch.Tensor:
-    masks = (radii[..., 0] > 0) & (radii[..., 1] > 0)
+    masks = (radii > 0).all(dim=-1)
+    if (camera_ids is None) != (gaussian_ids is None):
+        raise ValueError("camera_ids and gaussian_ids must be provided together")
+
     batch_ids = None
-    if camera_ids is not None or gaussian_ids is not None:
-        if camera_ids is None or gaussian_ids is None:
-            raise ValueError("camera_ids and gaussian_ids must be provided together")
+    if camera_ids is not None:
+        assert gaussian_ids is not None
         camera_ids = camera_ids.to(torch.int64)
         gaussian_ids = gaussian_ids.to(torch.int64)
         batch_ids = torch.zeros_like(camera_ids)
@@ -189,14 +189,9 @@ def intersect_tiles(
     return offsets.to(torch.int64).contiguous(), flatten_ids.contiguous()
 
 
-def jagged_image_ids(pixels: JaggedTensor) -> torch.Tensor:
-    if pixels.jidx.numel() == 0:
-        return torch.zeros(pixels.jdata.shape[0], dtype=torch.int32, device=pixels.device)
-    return pixels.jidx.to(torch.int32).contiguous()
-
-
 def intersect_tiles_sparse(
-    pixels: JaggedTensor,
+    pixels: torch.Tensor,
+    image_ids: torch.Tensor,
     means2d: torch.Tensor,
     radii: torch.Tensor,
     depths: torch.Tensor,
@@ -205,9 +200,8 @@ def intersect_tiles_sparse(
     tile_height: int,
     tile_width: int,
 ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
-    image_ids = jagged_image_ids(pixels)
     active_tiles, active_tile_mask, tile_pixel_mask, tile_pixel_cumsum, pixel_map = gsplat.build_sparse_tile_layout(
-        pixels.jdata.to(torch.int32), image_ids, num_images, tile_size, tile_width, tile_height
+        pixels.to(torch.int32), image_ids.to(torch.int32).contiguous(), num_images, tile_size, tile_width, tile_height
     )
     tile_offsets, flatten_ids = gsplat.isect_tiles_sparse(
         means2d,

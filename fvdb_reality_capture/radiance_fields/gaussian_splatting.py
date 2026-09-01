@@ -24,12 +24,17 @@ from ._gsplat_ops import (
     evaluate_spherical_harmonics as _evaluate_spherical_harmonics,
     intersect_tiles as _gsplat_intersect_tiles,
     intersect_tiles_sparse as _gsplat_intersect_tiles_sparse,
-    jagged_image_ids,
     project_gaussians_analytic,
     project_gaussians_unscented,
 )
 
 JaggedTensorOrTensorT = TypeVar("JaggedTensorOrTensorT", JaggedTensor, torch.Tensor)
+
+
+def _jagged_image_ids(tensor: JaggedTensor) -> torch.Tensor:
+    if tensor.jidx.numel() == 0:
+        return torch.zeros(tensor.jdata.shape[0], dtype=torch.int32, device=tensor.device)
+    return tensor.jidx.to(torch.int32).contiguous()
 
 
 def _pixel_mask_to_tile_mask(pixel_mask: torch.Tensor, tile_size: int) -> torch.Tensor:
@@ -104,7 +109,7 @@ def _padded_contributors_to_jagged(
         image_ids = torch.arange(num_images, dtype=torch.int32, device=ids.device).repeat_interleave(pixels_per_image)
         pixel_ids = torch.arange(pixels_per_image, dtype=torch.int32, device=ids.device).repeat(num_images)
     else:
-        image_ids = jagged_image_ids(pixels)
+        image_ids = _jagged_image_ids(pixels)
         starts = pixels.joffsets[:-1].to(torch.int64)
         pixel_ids = torch.arange(flat_counts.numel(), dtype=torch.int64, device=ids.device)
         pixel_ids = (pixel_ids - starts[image_ids.to(torch.int64)]).to(torch.int32)
@@ -1727,7 +1732,8 @@ class GaussianSplat3d:
         num_tiles_h = math.ceil(H / tile_size)
         num_tiles_w = math.ceil(W / tile_size)
         return _gsplat_intersect_tiles_sparse(
-            pixels_jt,
+            pixels_jt.jdata,
+            _jagged_image_ids(pixels_jt),
             means2d,
             radii,
             depths,
@@ -1791,7 +1797,7 @@ class GaussianSplat3d:
             conics,
             features,
             opacities,
-            jagged_image_ids(pixels_jt),
+            _jagged_image_ids(pixels_jt),
             active_tiles,
             tile_offsets,
             tile_gaussian_ids,
