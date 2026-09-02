@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1788348724397,
+  "lastUpdate": 1788361768103,
   "repoUrl": "https://github.com/openvdb/fvdb-reality-capture",
   "entries": {
     "fvdb-reality-capture Benchmark with pytest-benchmark": [
@@ -23059,6 +23059,88 @@ window.BENCHMARK_DATA = {
           {
             "name": "garden/fvdb_mcmc - SSIM",
             "value": 0.8666,
+            "unit": ""
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "Mark Harris",
+            "username": "harrism",
+            "email": "mharris@nvidia.com"
+          },
+          "committer": {
+            "name": "GitHub",
+            "username": "web-flow",
+            "email": "noreply@github.com"
+          },
+          "id": "56e349ea97471b04bf2ebd49017d4f97287079e2",
+          "message": "CI: use all three us-east-2 availability zones for EC2 runners (#326)\n\n## Problem\n\nRunner provisioning fails whenever the single pinned subnet's AZ is out\nof capacity, e.g. [this\nrun](https://github.com/openvdb/fvdb-reality-capture/actions/runs/33483320875/job/100041163560):\n\n```\nAttempting to start EC2 instance using 1 availability zone configuration(s)\nTrying availability zone configuration 1/1\n##[warning]Failed to start EC2 instance ... We currently do not have sufficient\ng6.xlarge capacity in the Availability Zone you requested (us-east-2b). ... You can\ncurrently get g6.xlarge capacity by ... choosing us-east-2a, us-east-2c.\n##[error]All availability zone configurations failed\n```\n\nAWS states outright that the other two zones had capacity.\n\nA subnet belongs to exactly one AZ, and **all seven** runner-start sites\nin this repo pinned `subnet-03f2320d6e6e0005b` (us-east-2b) — so one\nzone running short takes out GPU CI across `nightly`, `tests`,\n`gsplat-l4-tests` and `publish` simultaneously.\n\n## Change\n\n`machulav/ec2-github-runner` already supports this:\n`availability-zones-config` takes a JSON array of `{imageId, subnetId,\nsecurityGroupId}` and *\"will try each configuration in sequence until a\nsuccessful instance is launched\"*. The \"1 availability zone\nconfiguration(s)\" line above is its fallback when that input isn't\nsupplied.\n\n**fvdb-core already adopted this in openvdb/fvdb-core#705** (@swahtz,\nmerged 2026-07-27). This ports the same approach rather than inventing a\nsecond one:\n\n- `.github/versions.json` — mirrors fvdb-core's `aws` block, with all\nthree subnets\n- `.github/workflows/load-versions.yml` — reusable workflow exposing\n`aws-cpu-az-config` / `aws-gpu-az-config`, built with the same `jq`\nexpressions core uses\n- All seven start jobs gain `needs: versions` and swap\n`ec2-image-id`/`subnet-id`/`security-group-id` for the matching config\n\n| Workflow | Sites | Types |\n|---|---|---|\n| `nightly.yml` | 3 | `m6a.8xlarge`, `g6.xlarge` ×2 |\n| `tests.yml` | 2 | `m6a.8xlarge`, `g6.xlarge` |\n| `gsplat-l4-tests.yml` | 1 | `g6.xlarge` |\n| `publish.yml` | 1 | `g6.xlarge` |\n\nThis repo already used the **same AMIs, security group and region** as\nfvdb-core, so only the two extra subnets are new. AMIs are region-\nrather than zone-scoped, so they work unchanged across all three zones.\n\n## Testing\n\nCI provisioning can only really be proven by running it, but everything\nstatically checkable was verified:\n\n- `versions.json` parses; the `jq` expressions emit exactly the\n`imageId`/`subnetId`/`securityGroupId` array the action documents\n- All five workflows parse as YAML\n- Every start job resolves an az-config, depends on `versions`, and\nretains **no** stale `ec2-image-id`/`subnet-id`/`security-group-id`\n- CPU jobs (`m6a.8xlarge`) map to `aws-cpu-az-config`, GPU jobs\n(`g6.xlarge`) to `aws-gpu-az-config`\n\n## Note\n\n`versions.json` is intentionally minimal — only the `aws` block this\nneeds, rather than copying fvdb-core's cuda/python/torch/publish-matrix\nsections. It's a natural home if this repo later wants to centralise\nthose too. **The subnet list must stay in sync with fvdb-core's**; a\ncomment in the file says so.\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n\nSigned-off-by: Mark Harris <mharris@nvidia.com>\nCo-authored-by: Claude Opus 5 (1M context) <noreply@anthropic.com>",
+          "timestamp": "2026-09-02T01:34:26Z",
+          "url": "https://github.com/openvdb/fvdb-reality-capture/commit/56e349ea97471b04bf2ebd49017d4f97287079e2"
+        },
+        "date": 1788361767292,
+        "tool": "customBiggerIsBetter",
+        "benches": [
+          {
+            "name": "bicycle/fvdb_default - PSNR",
+            "value": 25.166,
+            "unit": "dB"
+          },
+          {
+            "name": "bicycle/fvdb_default - SSIM",
+            "value": 0.7456,
+            "unit": ""
+          },
+          {
+            "name": "bicycle/fvdb_mcmc - PSNR",
+            "value": 25.022,
+            "unit": "dB"
+          },
+          {
+            "name": "bicycle/fvdb_mcmc - SSIM",
+            "value": 0.7308,
+            "unit": ""
+          },
+          {
+            "name": "bonsai/fvdb_default - PSNR",
+            "value": 32.538,
+            "unit": "dB"
+          },
+          {
+            "name": "bonsai/fvdb_default - SSIM",
+            "value": 0.9567,
+            "unit": ""
+          },
+          {
+            "name": "bonsai/fvdb_mcmc - PSNR",
+            "value": 32.807,
+            "unit": "dB"
+          },
+          {
+            "name": "bonsai/fvdb_mcmc - SSIM",
+            "value": 0.9589,
+            "unit": ""
+          },
+          {
+            "name": "garden/fvdb_default - PSNR",
+            "value": 27.596,
+            "unit": "dB"
+          },
+          {
+            "name": "garden/fvdb_default - SSIM",
+            "value": 0.8652,
+            "unit": ""
+          },
+          {
+            "name": "garden/fvdb_mcmc - PSNR",
+            "value": 27.694,
+            "unit": "dB"
+          },
+          {
+            "name": "garden/fvdb_mcmc - SSIM",
+            "value": 0.8663,
             "unit": ""
           }
         ]
