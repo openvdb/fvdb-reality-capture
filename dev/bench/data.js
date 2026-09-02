@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1787930569809,
+  "lastUpdate": 1788348724397,
   "repoUrl": "https://github.com/openvdb/fvdb-reality-capture",
   "entries": {
     "fvdb-reality-capture Benchmark with pytest-benchmark": [
@@ -16155,6 +16155,133 @@ window.BENCHMARK_DATA = {
             "unit": "iter/sec",
             "range": "stddev: 0.00016007342553524186",
             "extra": "mean: 12.373478298851014 msec\nrounds: 87"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "Mark Harris",
+            "username": "harrism",
+            "email": "mharris@nvidia.com"
+          },
+          "committer": {
+            "name": "GitHub",
+            "username": "web-flow",
+            "email": "noreply@github.com"
+          },
+          "id": "56e349ea97471b04bf2ebd49017d4f97287079e2",
+          "message": "CI: use all three us-east-2 availability zones for EC2 runners (#326)\n\n## Problem\n\nRunner provisioning fails whenever the single pinned subnet's AZ is out\nof capacity, e.g. [this\nrun](https://github.com/openvdb/fvdb-reality-capture/actions/runs/33483320875/job/100041163560):\n\n```\nAttempting to start EC2 instance using 1 availability zone configuration(s)\nTrying availability zone configuration 1/1\n##[warning]Failed to start EC2 instance ... We currently do not have sufficient\ng6.xlarge capacity in the Availability Zone you requested (us-east-2b). ... You can\ncurrently get g6.xlarge capacity by ... choosing us-east-2a, us-east-2c.\n##[error]All availability zone configurations failed\n```\n\nAWS states outright that the other two zones had capacity.\n\nA subnet belongs to exactly one AZ, and **all seven** runner-start sites\nin this repo pinned `subnet-03f2320d6e6e0005b` (us-east-2b) — so one\nzone running short takes out GPU CI across `nightly`, `tests`,\n`gsplat-l4-tests` and `publish` simultaneously.\n\n## Change\n\n`machulav/ec2-github-runner` already supports this:\n`availability-zones-config` takes a JSON array of `{imageId, subnetId,\nsecurityGroupId}` and *\"will try each configuration in sequence until a\nsuccessful instance is launched\"*. The \"1 availability zone\nconfiguration(s)\" line above is its fallback when that input isn't\nsupplied.\n\n**fvdb-core already adopted this in openvdb/fvdb-core#705** (@swahtz,\nmerged 2026-07-27). This ports the same approach rather than inventing a\nsecond one:\n\n- `.github/versions.json` — mirrors fvdb-core's `aws` block, with all\nthree subnets\n- `.github/workflows/load-versions.yml` — reusable workflow exposing\n`aws-cpu-az-config` / `aws-gpu-az-config`, built with the same `jq`\nexpressions core uses\n- All seven start jobs gain `needs: versions` and swap\n`ec2-image-id`/`subnet-id`/`security-group-id` for the matching config\n\n| Workflow | Sites | Types |\n|---|---|---|\n| `nightly.yml` | 3 | `m6a.8xlarge`, `g6.xlarge` ×2 |\n| `tests.yml` | 2 | `m6a.8xlarge`, `g6.xlarge` |\n| `gsplat-l4-tests.yml` | 1 | `g6.xlarge` |\n| `publish.yml` | 1 | `g6.xlarge` |\n\nThis repo already used the **same AMIs, security group and region** as\nfvdb-core, so only the two extra subnets are new. AMIs are region-\nrather than zone-scoped, so they work unchanged across all three zones.\n\n## Testing\n\nCI provisioning can only really be proven by running it, but everything\nstatically checkable was verified:\n\n- `versions.json` parses; the `jq` expressions emit exactly the\n`imageId`/`subnetId`/`securityGroupId` array the action documents\n- All five workflows parse as YAML\n- Every start job resolves an az-config, depends on `versions`, and\nretains **no** stale `ec2-image-id`/`subnet-id`/`security-group-id`\n- CPU jobs (`m6a.8xlarge`) map to `aws-cpu-az-config`, GPU jobs\n(`g6.xlarge`) to `aws-gpu-az-config`\n\n## Note\n\n`versions.json` is intentionally minimal — only the `aws` block this\nneeds, rather than copying fvdb-core's cuda/python/torch/publish-matrix\nsections. It's a natural home if this repo later wants to centralise\nthose too. **The subnet list must stay in sync with fvdb-core's**; a\ncomment in the file says so.\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n\nSigned-off-by: Mark Harris <mharris@nvidia.com>\nCo-authored-by: Claude Opus 5 (1M context) <noreply@anthropic.com>",
+          "timestamp": "2026-09-02T01:34:26Z",
+          "url": "https://github.com/openvdb/fvdb-reality-capture/commit/56e349ea97471b04bf2ebd49017d4f97287079e2"
+        },
+        "date": 1788348723126,
+        "tool": "pytest",
+        "benches": [
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_project_gaussians[garden-00000664]",
+            "value": 6947.518288652095,
+            "unit": "iter/sec",
+            "range": "stddev: 0.000012114654359291644",
+            "extra": "mean: 143.9362889671518 usec\nrounds: 5665"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_render_gaussians[garden-00000664]",
+            "value": 908.7944179862213,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00003762198815719335",
+            "extra": "mean: 1.1003588712790284 msec\nrounds: 1041"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_forward[garden-00000664]",
+            "value": 812.1538360823698,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00005161054698447078",
+            "extra": "mean: 1.231293820914217 msec\nrounds: 765"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_backward[garden-00000664]",
+            "value": 199.76270059220744,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00004509078200371909",
+            "extra": "mean: 5.005939532432459 msec\nrounds: 370"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_project_gaussians[garden-00006640]",
+            "value": 339.1801625170226,
+            "unit": "iter/sec",
+            "range": "stddev: 0.0005072000897896908",
+            "extra": "mean: 2.9482856325650015 msec\nrounds: 6559"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_render_gaussians[garden-00006640]",
+            "value": 145.98806386708165,
+            "unit": "iter/sec",
+            "range": "stddev: 0.000059125881347598304",
+            "extra": "mean: 6.84987507547517 msec\nrounds: 159"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_forward[garden-00006640]",
+            "value": 101.91618315335725,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00008880514570553369",
+            "extra": "mean: 9.811984407768303 msec\nrounds: 103"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_backward[garden-00006640]",
+            "value": 27.987959730717396,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00020037874896689618",
+            "extra": "mean: 35.72964980732333 msec\nrounds: 628"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_project_gaussians[garden-00016600]",
+            "value": 276.74585636165995,
+            "unit": "iter/sec",
+            "range": "stddev: 0.0006400187322326201",
+            "extra": "mean: 3.6134235689988774 msec\nrounds: 6232"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_render_gaussians[garden-00016600]",
+            "value": 109.6384832406697,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00009146494212095902",
+            "extra": "mean: 9.120885025423778 msec\nrounds: 118"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_forward[garden-00016600]",
+            "value": 78.8121195390166,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00009129738343483525",
+            "extra": "mean: 12.688403837495343 msec\nrounds: 80"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_backward[garden-00016600]",
+            "value": 21.791800004739194,
+            "unit": "iter/sec",
+            "range": "stddev: 0.0007612266849364564",
+            "extra": "mean: 45.888820555554105 msec\nrounds: 558"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_forward_mcmc[garden-00000664]",
+            "value": 788.256803504867,
+            "unit": "iter/sec",
+            "range": "stddev: 0.000028444435252272196",
+            "extra": "mean: 1.2686220982218588 msec\nrounds: 845"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_forward_mcmc[garden-00006640]",
+            "value": 101.49334439049807,
+            "unit": "iter/sec",
+            "range": "stddev: 0.0001072370811200663",
+            "extra": "mean: 9.852862825689103 msec\nrounds: 109"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_forward_mcmc[garden-00016600]",
+            "value": 79.27780020670144,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00018299179987184692",
+            "extra": "mean: 12.613871694127418 msec\nrounds: 85"
           }
         ]
       }
