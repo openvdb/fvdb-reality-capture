@@ -396,17 +396,53 @@ jobs:
         with:
           role-to-assume: arn:aws:iam::420032683002:role/openvdb-fvdb-github-actions-role
           aws-region: us-east-2
-      - name: Start EC2 GPU runner
-        id: start-validation-runner
+      - name: Start EC2 GPU runner (attempt 1)
+        id: start-validation-runner-a1
+        continue-on-error: true
         uses: machulav/ec2-github-runner@v2.4.3
         with:
           mode: start
           github-token: ${{ secrets.GH_PERSONAL_ACCESS_TOKEN }}
           ec2-instance-type: g6.xlarge
           availability-zones-config: ${{ needs.versions.outputs.aws-gpu-az-config }}
+      - name: Back off before attempt 2
+        if: steps.start-validation-runner-a1.outcome == 'failure'
+        run: |
+          echo "::warning::Runner start attempt 1 found no capacity; retrying in 90s."
+          sleep 90
+      - name: Start EC2 GPU runner (attempt 2)
+        id: start-validation-runner-a2
+        if: steps.start-validation-runner-a1.outcome == 'failure'
+        continue-on-error: true
+        uses: machulav/ec2-github-runner@v2.4.3
+        with:
+          mode: start
+          github-token: ${{ secrets.GH_PERSONAL_ACCESS_TOKEN }}
+          ec2-instance-type: g6.xlarge
+          availability-zones-config: ${{ needs.versions.outputs.aws-gpu-az-config }}
+      - name: Back off before attempt 3
+        if: steps.start-validation-runner-a1.outcome == 'failure' && steps.start-validation-runner-a2.outcome == 'failure'
+        run: |
+          echo "::warning::Runner start attempt 2 found no capacity; retrying in 180s."
+          sleep 180
+      - name: Start EC2 GPU runner (attempt 3)
+        id: start-validation-runner-a3
+        if: steps.start-validation-runner-a1.outcome == 'failure' && steps.start-validation-runner-a2.outcome == 'failure'
+        continue-on-error: true
+        uses: machulav/ec2-github-runner@v2.4.3
+        with:
+          mode: start
+          github-token: ${{ secrets.GH_PERSONAL_ACCESS_TOKEN }}
+          ec2-instance-type: g6.xlarge
+          availability-zones-config: ${{ needs.versions.outputs.aws-gpu-az-config }}
+      - name: Fail if no attempt obtained capacity
+        if: steps.start-validation-runner-a1.outcome == 'failure' && steps.start-validation-runner-a2.outcome == 'failure' && steps.start-validation-runner-a3.outcome == 'failure'
+        run: |
+          echo "::error::Could not obtain an instance after 3 attempts across every configured availability zone; the region is likely out of this instance type."
+          exit 1
     outputs:
-      label: ${{ steps.start-validation-runner.outputs.label }}
-      ec2-instance-id: ${{ steps.start-validation-runner.outputs.ec2-instance-id }}
+      label: ${{ steps.start-validation-runner-a1.outputs.label || steps.start-validation-runner-a2.outputs.label || steps.start-validation-runner-a3.outputs.label }}
+      ec2-instance-id: ${{ steps.start-validation-runner-a1.outputs.ec2-instance-id || steps.start-validation-runner-a2.outputs.ec2-instance-id || steps.start-validation-runner-a3.outputs.ec2-instance-id }}
 
   validate-smoke-test:
     name: Smoke test fvdb-core + fvdb-reality-capture
