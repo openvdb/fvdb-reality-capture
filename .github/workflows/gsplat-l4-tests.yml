@@ -23,9 +23,14 @@ permissions:
   id-token: write
 
 jobs:
+  versions:
+    name: Load versions
+    uses: ./.github/workflows/load-versions.yml
+
   start-gpu-runner:
     if: ${{ github.repository == 'openvdb/fvdb-reality-capture' }}
     name: Start L4 GPU runner
+    needs: versions
     runs-on: ubuntu-latest
     outputs:
       label: ${{ steps.start-runner.outputs.label }}
@@ -42,10 +47,8 @@ jobs:
         with:
           mode: start
           github-token: ${{ secrets.EC2_RUNNERS_ACTION }}
-          ec2-image-id: ami-0f5c0b65fde08ae43
           ec2-instance-type: g6.xlarge
-          subnet-id: subnet-03f2320d6e6e0005b
-          security-group-id: sg-0cd08bd89d6212223
+          availability-zones-config: ${{ needs.versions.outputs.aws-gpu-az-config }}
 
   gsplat-tests:
     if: ${{ github.repository == 'openvdb/fvdb-reality-capture' }}

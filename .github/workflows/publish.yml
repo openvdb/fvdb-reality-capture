@@ -34,6 +34,10 @@ permissions:
   id-token: write
 
 jobs:
+  versions:
+    name: Load versions
+    uses: ./.github/workflows/load-versions.yml
+
   ##############################################################################
   # DETERMINE PUBLISH ROUTING
   ##############################################################################
@@ -383,7 +387,7 @@ jobs:
 
   start-validation-runner:
     name: Start GPU EC2 runner for validation
-    needs: [pr-flags, fvdb-rc-build, discover-fvdb-core]
+    needs: [pr-flags, fvdb-rc-build, discover-fvdb-core, versions]
     if: ${{ !cancelled() && needs.discover-fvdb-core.result == 'success' }}
     runs-on: ubuntu-latest
     steps:
@@ -398,10 +402,8 @@ jobs:
         with:
           mode: start
           github-token: ${{ secrets.GH_PERSONAL_ACCESS_TOKEN }}
-          ec2-image-id: ami-0f5c0b65fde08ae43
           ec2-instance-type: g6.xlarge
-          subnet-id: subnet-03f2320d6e6e0005b
-          security-group-id: sg-0cd08bd89d6212223
+          availability-zones-config: ${{ needs.versions.outputs.aws-gpu-az-config }}
     outputs:
       label: ${{ steps.start-validation-runner.outputs.label }}
       ec2-instance-id: ${{ steps.start-validation-runner.outputs.ec2-instance-id }}

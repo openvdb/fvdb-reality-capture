@@ -41,6 +41,10 @@ permissions:
   id-token: write
 
 jobs:
+  versions:
+    name: Load versions
+    uses: ./.github/workflows/load-versions.yml
+
   # Detect whether the PR touches source files or only docs/non-code paths.
   # The expensive build/test jobs are gated on this so docs-only PRs skip the
   # work while still reporting the required status checks (skipped == passed).
@@ -52,7 +56,7 @@ jobs:
   ##############################################################################
   start-build-runner:
     name: Start CPU-only EC2 runner for build
-    needs: check-changes
+    needs: [check-changes, versions]
     if: needs.check-changes.outputs.should_test == 'true'
     runs-on: ubuntu-latest
     outputs:
@@ -70,10 +74,8 @@ jobs:
         with:
           mode: start
           github-token: ${{ secrets.EC2_RUNNERS_ACTION }}
-          ec2-image-id: ami-0e14a711dad782a70
           ec2-instance-type: m6a.8xlarge
-          subnet-id: subnet-03f2320d6e6e0005b
-          security-group-id: sg-0cd08bd89d6212223
+          availability-zones-config: ${{ needs.versions.outputs.aws-cpu-az-config }}
   fvdb-reality-capture-build:
     name: fvdb-reality-capture Build
     needs: start-build-runner # required to start the main job when the runner is ready
@@ -204,7 +206,7 @@ jobs:
   ##############################################################################
   start-tests-gpu-runner:
     name: Start EC2 GPU runner for tests
-    needs: fvdb-reality-capture-build
+    needs: [fvdb-reality-capture-build, versions]
     runs-on: ubuntu-latest
     outputs:
       label: ${{ steps.start-tests-gpu-runner.outputs.label }}
@@ -221,10 +223,8 @@ jobs:
         with:
           mode: start
           github-token: ${{ secrets.EC2_RUNNERS_ACTION }}
-          ec2-image-id: ami-0f5c0b65fde08ae43
           ec2-instance-type: g6.xlarge # 4 CPU-core, L4 GPU
-          subnet-id: subnet-03f2320d6e6e0005b
-          security-group-id: sg-0cd08bd89d6212223
+          availability-zones-config: ${{ needs.versions.outputs.aws-gpu-az-config }}
 
   ##############################################################################
   # RUN FVDB REALITY CAPTURE UNIT TESTS
