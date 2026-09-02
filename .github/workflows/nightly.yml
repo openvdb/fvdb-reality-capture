@@ -287,6 +287,33 @@ jobs:
           role-to-assume: arn:aws:iam::420032683002:role/openvdb-fvdb-github-actions-role
           aws-region: us-east-2
 
+      - name: Generate benchmark env from fvdb-core pins
+        env:
+          FVDB_CORE_SHA: ${{ needs.get-fvdb-core-commit-hash.outputs.fvdb_core_commit_hash }}
+        run: |
+          set -euo pipefail
+          # Derive pytorch-gpu/cuda-version/python from the exact fvdb-core commit
+          # this run builds the wheel from, so the wheel and the environment it is
+          # installed into cannot disagree. A failure here (unreachable ref,
+          # unreadable pin) is fatal; a merely stale committed file is not, it is
+          # corrected in the working copy and reported below.
+          python3 scripts/generate_benchmark_env.py --ref "${FVDB_CORE_SHA}"
+          if git diff --quiet -- tests/benchmarks/comparative/docker/benchmark_environment.yml; then
+            echo "Committed benchmark env already matches fvdb-core." >> "$GITHUB_STEP_SUMMARY"
+          else
+            {
+              echo "### Benchmark env pins were stale"
+              echo "Regenerated from fvdb-core \`${FVDB_CORE_SHA}\`. This run is unaffected,"
+              echo "but the committed file should be refreshed by running:"
+              echo '```'
+              echo 'scripts/generate_benchmark_env.py'
+              echo '```'
+              echo '```diff'
+              git --no-pager diff -- tests/benchmarks/comparative/docker/benchmark_environment.yml
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
+
       - name: Set up benchmark Conda env
         uses: mamba-org/setup-micromamba@v2
         with:
@@ -475,6 +502,33 @@ jobs:
         with:
           fetch-depth: 0
           ref: ${{ github.event.inputs.branch || 'main' }}
+
+      - name: Generate benchmark env from fvdb-core pins
+        env:
+          FVDB_CORE_SHA: ${{ needs.get-fvdb-core-commit-hash.outputs.fvdb_core_commit_hash }}
+        run: |
+          set -euo pipefail
+          # Derive pytorch-gpu/cuda-version/python from the exact fvdb-core commit
+          # this run builds the wheel from, so the wheel and the environment it is
+          # installed into cannot disagree. A failure here (unreachable ref,
+          # unreadable pin) is fatal; a merely stale committed file is not, it is
+          # corrected in the working copy and reported below.
+          python3 scripts/generate_benchmark_env.py --ref "${FVDB_CORE_SHA}"
+          if git diff --quiet -- tests/benchmarks/comparative/docker/benchmark_environment.yml; then
+            echo "Committed benchmark env already matches fvdb-core." >> "$GITHUB_STEP_SUMMARY"
+          else
+            {
+              echo "### Benchmark env pins were stale"
+              echo "Regenerated from fvdb-core \`${FVDB_CORE_SHA}\`. This run is unaffected,"
+              echo "but the committed file should be refreshed by running:"
+              echo '```'
+              echo 'scripts/generate_benchmark_env.py'
+              echo '```'
+              echo '```diff'
+              git --no-pager diff -- tests/benchmarks/comparative/docker/benchmark_environment.yml
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
 
       - name: Set up benchmark Conda env
         uses: mamba-org/setup-micromamba@v2
