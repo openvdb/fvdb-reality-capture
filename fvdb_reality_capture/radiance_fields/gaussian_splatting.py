@@ -4248,9 +4248,61 @@ class GaussianSplat3d:
         ids_jt = JaggedTensor(impl=ids)
         weights_jt = JaggedTensor(impl=weights)
         if has_dups:
-            ids_jt = pixels_jt.jagged_like(ids_jt.jdata.index_select(0, inverse_indices))
-            weights_jt = pixels_jt.jagged_like(weights_jt.jdata.index_select(0, inverse_indices))
+            # `ids`/`weights` are CONTRIBUTION-major: one row per (pixel, contributor),
+            # with each pixel owning a variable-length segment. They therefore cannot be
+            # indexed by pixel the way a per-pixel result can (see sparse_render, which
+            # does exactly that on a one-row-per-pixel array and is correct). A duplicated
+            # pixel needs a copy of its unique pixel's whole segment.
+            #
+            # Both tensors share the same jagged structure, so the index arithmetic is
+            # computed once and applied to each payload.
+            plan = self._contribution_expansion_plan(ids_jt, pixels_jt, inverse_indices)
+            ids_jt = self._apply_contribution_expansion(plan, ids_jt)
+            weights_jt = self._apply_contribution_expansion(plan, weights_jt)
         return ids_jt, weights_jt
+
+    @staticmethod
+    def _contribution_expansion_plan(
+        unique_jt: JaggedTensor,
+        pixels_jt: JaggedTensor,
+        inverse_indices: torch.Tensor,
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        """Index arithmetic for re-expanding a per-(pixel, contributor) result.
+
+        Maps the deduplicated pixel list back onto the caller's pixel list by repeating
+        each unique pixel's whole contribution segment. Depends only on the jagged
+        structure, not on the payload, so callers with several equally-shaped tensors
+        (ids and weights) build one plan and apply it to each.
+
+        Returns ``(gather, offsets, list_ids)`` for
+        :meth:`JaggedTensor.from_data_offsets_and_list_ids`.
+        """
+        device = unique_jt.jdata.device
+        offsets_unique = unique_jt.joffsets.to(device)
+        starts = offsets_unique[inverse_indices]  # segment start per output pixel
+        counts = offsets_unique[1:][inverse_indices] - starts  # segment length per output pixel
+
+        offsets = torch.zeros(counts.numel() + 1, dtype=torch.long, device=device)
+        offsets[1:] = counts.cumsum(0)
+
+        segment = torch.repeat_interleave(torch.arange(counts.numel(), device=device), counts)
+        within = torch.arange(int(offsets[-1]), device=device) - offsets[segment]
+        gather = starts[segment] + within
+
+        # Rebuild (camera, pixel-within-camera) ids from the ORIGINAL pixel list.
+        camera = pixels_jt.jidx.to(device).long()
+        within_camera = torch.arange(camera.numel(), device=device) - pixels_jt.joffsets.to(device)[camera]
+        list_ids = torch.stack([camera, within_camera], dim=1).to(torch.int32)
+        return gather, offsets, list_ids
+
+    @staticmethod
+    def _apply_contribution_expansion(
+        plan: tuple[torch.Tensor, torch.Tensor, torch.Tensor],
+        jt: JaggedTensor,
+    ) -> JaggedTensor:
+        """Apply a plan from :meth:`_contribution_expansion_plan` to one payload."""
+        gather, offsets, list_ids = plan
+        return JaggedTensor.from_data_offsets_and_list_ids(jt.jdata.index_select(0, gather), offsets, list_ids)
 
     def relocate_gaussians(
         self,
