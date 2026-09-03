@@ -23,7 +23,7 @@ license="Apache-2.0"
 license-files = ["LICEN[CS]E*"]
 dependencies = [
     "fvdb-core>=0.6.0dev0",
-    "gsplat",
+    "gsplat @ git+https://github.com/nerfstudio-project/gsplat.git@main",
     "boto3",
     "dlnr_lite",
     "nanovdb-editor<0.2.0",
