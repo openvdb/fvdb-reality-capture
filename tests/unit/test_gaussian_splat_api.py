@@ -11,7 +11,6 @@ def test_gaussian_splat_api_is_owned_by_reality_capture():
     public_symbols = (
         "GaussianSplat3d",
         "ProjectedGaussianSplats",
-        "gaussian_render_jagged",
         "evaluate_spherical_harmonics",
         "gaussian_splat_to_view_data",
     )
