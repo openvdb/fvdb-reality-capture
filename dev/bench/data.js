@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1788361770971,
+  "lastUpdate": 1788435629876,
   "repoUrl": "https://github.com/openvdb/fvdb-reality-capture",
   "entries": {
     "fvdb-reality-capture Benchmark with pytest-benchmark": [
@@ -16282,6 +16282,133 @@ window.BENCHMARK_DATA = {
             "unit": "iter/sec",
             "range": "stddev: 0.00018299179987184692",
             "extra": "mean: 12.613871694127418 msec\nrounds: 85"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "Mark Harris",
+            "username": "harrism",
+            "email": "mharris@nvidia.com"
+          },
+          "committer": {
+            "name": "GitHub",
+            "username": "web-flow",
+            "email": "noreply@github.com"
+          },
+          "id": "0b07e712fa66570a6a392fdcca5ff0ba0ff5b17c",
+          "message": "CI: provision EC2 runners through shared workflows, with retry and backoff (#329)\n\n## Summary\n\nReplaces #327. CI keeps failing because us-east-2 has no capacity for\nthe requested instance type at the moment the runner is requested.\n`machulav/ec2-github-runner` sweeps the availability zones in\n`availability-zones-config` within one attempt (#326), but it never\nretries the sweep, so a transient region-wide shortage fails the whole\nrun. Retrying twice, 90s and then 180s later, turns most of those into a\nslow pass instead of a red build.\n\n#327 inlined that retry ladder at every call site — ~30 lines of\nnear-identical YAML in six places that can drift independently. This\nreplaces it: the ladder goes in a reusable workflow instead.\n\n## What changed\n\nTwo new local reusable workflows hold the retry policy, the action\nversion, the AWS OIDC step, the IAM role ARN and the teardown:\n\n* `.github/workflows/start-ec2-runner.yml`\n* `.github/workflows/stop-ec2-runner.yml`\n\n`tests.yml`, `nightly.yml`, `publish.yml` and `gsplat-l4-tests.yml` now\ncall them — six start jobs and six stop jobs. **226 lines of duplicated\nYAML removed, 84 added.**\n\nTwo things that were duplicated and are now single-sourced:\n\n* The IAM role ARN and `us-east-2` were repeated verbatim at all twelve\ncall sites. They are now defaults on the reusable workflows, so a call\nsite only names them if it differs.\n* The token forwards explicitly as `RUNNER_TOKEN`. That deliberately\npreserves the two secrets already in use — `EC2_RUNNERS_ACTION` for\ntests/nightly/gsplat, `GH_PERSONAL_ACCESS_TOKEN` for publish — at their\nexisting call sites rather than quietly consolidating them. Worth a\nfollow-up decision, but not smuggled into this PR.\n\n## Testing\n\n* `actionlint` 1.7.7: clean.\n* Parsed every reusable-workflow caller job to confirm none carries a\nkey incompatible with `uses:` (`runs-on`, `steps`, `env`, `container`,\n…), and that no dangling `steps.*` references remain.\n\nThe equivalent change for fvdb-core is openvdb/fvdb-core#760.\n\nBecause these workflows only run on the real EC2 fleet, the first\ngenuine exercise of the new provisioning path is the run after merge.\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n\nSigned-off-by: Mark Harris <mharris@nvidia.com>\nCo-authored-by: Claude Opus 5 (1M context) <noreply@anthropic.com>",
+          "timestamp": "2026-09-03T03:32:47Z",
+          "url": "https://github.com/openvdb/fvdb-reality-capture/commit/0b07e712fa66570a6a392fdcca5ff0ba0ff5b17c"
+        },
+        "date": 1788435628644,
+        "tool": "pytest",
+        "benches": [
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_project_gaussians[garden-00000664]",
+            "value": 7030.655942521198,
+            "unit": "iter/sec",
+            "range": "stddev: 0.000013748669085852337",
+            "extra": "mean: 142.2342393334923 usec\nrounds: 6188"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_render_gaussians[garden-00000664]",
+            "value": 919.8604079145524,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00003304093659357026",
+            "extra": "mean: 1.0871214712535946 msec\nrounds: 1061"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_forward[garden-00000664]",
+            "value": 819.3150452837548,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00001897606905800926",
+            "extra": "mean: 1.2205317182399211 msec\nrounds: 795"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_backward[garden-00000664]",
+            "value": 202.54368824379404,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00004636768941912064",
+            "extra": "mean: 4.937206430231183 msec\nrounds: 344"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_project_gaussians[garden-00006640]",
+            "value": 339.5550828019057,
+            "unit": "iter/sec",
+            "range": "stddev: 0.0005140864081436393",
+            "extra": "mean: 2.9450302782932973 msec\nrounds: 6371"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_render_gaussians[garden-00006640]",
+            "value": 148.35698798047906,
+            "unit": "iter/sec",
+            "range": "stddev: 0.0001387059975725588",
+            "extra": "mean: 6.7404981296302715 msec\nrounds: 162"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_forward[garden-00006640]",
+            "value": 103.24629724269168,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00006654099986261987",
+            "extra": "mean: 9.68557736893354 msec\nrounds: 103"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_backward[garden-00006640]",
+            "value": 28.29385665136242,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00026039001045569544",
+            "extra": "mean: 35.34336136363536 msec\nrounds: 594"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_project_gaussians[garden-00016600]",
+            "value": 276.96246415652087,
+            "unit": "iter/sec",
+            "range": "stddev: 0.0006468707894485068",
+            "extra": "mean: 3.610597569766227 msec\nrounds: 6099"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_render_gaussians[garden-00016600]",
+            "value": 111.78132269790248,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00009633017635261554",
+            "extra": "mean: 8.946038352959699 msec\nrounds: 119"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_forward[garden-00016600]",
+            "value": 79.65892533522747,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00006414825967442782",
+            "extra": "mean: 12.553521100011267 msec\nrounds: 80"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_backward[garden-00016600]",
+            "value": 22.09294194580976,
+            "unit": "iter/sec",
+            "range": "stddev: 0.0006147053396978301",
+            "extra": "mean: 45.26332447950257 msec\nrounds: 561"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_forward_mcmc[garden-00000664]",
+            "value": 801.9725694948837,
+            "unit": "iter/sec",
+            "range": "stddev: 0.000029621268454288218",
+            "extra": "mean: 1.2469254411405148 msec\nrounds: 875"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_forward_mcmc[garden-00006640]",
+            "value": 103.03173143884706,
+            "unit": "iter/sec",
+            "range": "stddev: 0.0001313779704599279",
+            "extra": "mean: 9.705747792790758 msec\nrounds: 111"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_forward_mcmc[garden-00016600]",
+            "value": 80.48368455865771,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00015619584548182299",
+            "extra": "mean: 12.424878476720147 msec\nrounds: 86"
           }
         ]
       }
