@@ -389,24 +389,12 @@ jobs:
     name: Start GPU EC2 runner for validation
     needs: [pr-flags, fvdb-rc-build, discover-fvdb-core, versions]
     if: ${{ !cancelled() && needs.discover-fvdb-core.result == 'success' }}
-    runs-on: ubuntu-latest
-    steps:
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          role-to-assume: arn:aws:iam::420032683002:role/openvdb-fvdb-github-actions-role
-          aws-region: us-east-2
-      - name: Start EC2 GPU runner
-        id: start-validation-runner
-        uses: machulav/ec2-github-runner@v2.4.3
-        with:
-          mode: start
-          github-token: ${{ secrets.GH_PERSONAL_ACCESS_TOKEN }}
-          ec2-instance-type: g6.xlarge
-          availability-zones-config: ${{ needs.versions.outputs.aws-gpu-az-config }}
-    outputs:
-      label: ${{ steps.start-validation-runner.outputs.label }}
-      ec2-instance-id: ${{ steps.start-validation-runner.outputs.ec2-instance-id }}
+    uses: ./.github/workflows/start-ec2-runner.yml
+    with:
+      instance-type: g6.xlarge
+      az-config: ${{ needs.versions.outputs.aws-gpu-az-config }}
+    secrets:
+      RUNNER_TOKEN: ${{ secrets.GH_PERSONAL_ACCESS_TOKEN }}
 
   validate-smoke-test:
     name: Smoke test fvdb-core + fvdb-reality-capture
@@ -539,18 +527,10 @@ jobs:
       - start-validation-runner
       - validate-smoke-test
       - validate-unit-tests
-    runs-on: ubuntu-latest
     if: ${{ always() && needs.start-validation-runner.result != 'skipped' }}
-    steps:
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          role-to-assume: arn:aws:iam::420032683002:role/openvdb-fvdb-github-actions-role
-          aws-region: us-east-2
-      - name: Stop EC2 runner
-        uses: machulav/ec2-github-runner@v2.4.3
-        with:
-          mode: stop
-          github-token: ${{ secrets.GH_PERSONAL_ACCESS_TOKEN }}
-          label: ${{ needs.start-validation-runner.outputs.label }}
-          ec2-instance-id: ${{ needs.start-validation-runner.outputs.ec2-instance-id }}
+    uses: ./.github/workflows/stop-ec2-runner.yml
+    with:
+      label: ${{ needs.start-validation-runner.outputs.label }}
+      ec2-instance-id: ${{ needs.start-validation-runner.outputs.ec2-instance-id }}
+    secrets:
+      RUNNER_TOKEN: ${{ secrets.GH_PERSONAL_ACCESS_TOKEN }}
