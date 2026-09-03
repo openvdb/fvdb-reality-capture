@@ -3953,6 +3953,88 @@ class TestGaussianRenderSparseDuplicatePixels(BaseGaussianTestCase):
             "Sparse alphas with duplicates does not match dense",
         )
 
+    def test_sparse_render_contributing_gaussian_ids_with_duplicates(self):
+        """A duplicated pixel must get a copy of its own contributor list.
+
+        Regression test: the re-expansion used to index a CONTRIBUTION-major array
+        with pixel indices, which handed pixels contributors belonging to other
+        pixels, and collapsed the result from a 2-level to a 1-level JaggedTensor.
+        """
+        pixels, _, _ = self._make_pixels_with_duplicates(num_unique=40, num_extra_dupes=10)
+        top_k = 8
+
+        def render(px):
+            return self.gs3d.sparse_render_contributing_gaussian_ids(
+                JaggedTensor([px]).to(self.device),
+                self.cam_to_world_mats[0:1],
+                self.projection_mats[0:1],
+                self.width,
+                self.height,
+                self.near_plane,
+                self.far_plane,
+                top_k_contributors=top_k,
+            )
+
+        ids, weights = render(pixels)
+
+        # Nesting must not depend on whether duplicates were present: one inner
+        # list per requested pixel, in the order they were requested.
+        self.assertEqual(ids.ldim, 2)
+        self.assertEqual(weights.ldim, 2)
+        self.assertEqual(len(ids.lshape[0]), pixels.size(0))
+
+        # Each pixel's contributor segment must equal that pixel rendered alone,
+        # including for both copies of a duplicated pixel.
+        offsets = ids.joffsets.cpu().tolist()
+        alone: dict[tuple[int, int], torch.Tensor] = {}
+        for i in range(pixels.size(0)):
+            key = (int(pixels[i, 0]), int(pixels[i, 1]))
+            if key not in alone:
+                alone[key] = render(pixels[i : i + 1])[0].jdata.flatten()
+            segment = ids.jdata.flatten()[offsets[i] : offsets[i + 1]]
+            self.assertTrue(
+                torch.equal(segment, alone[key]),
+                f"pixel {key} got contributors {segment.tolist()} " f"but renders {alone[key].tolist()} on its own",
+            )
+
+    def test_sparse_render_contributing_gaussian_ids_duplicates_match_unique(self):
+        """Rendering [a, b, a] must agree with rendering [a, b] on a and b."""
+        pixels, _, _ = self._make_pixels_with_duplicates(num_unique=20, num_extra_dupes=5)
+        unique_pixels = torch.unique(pixels, dim=0)
+
+        def render(px):
+            return self.gs3d.sparse_render_contributing_gaussian_ids(
+                JaggedTensor([px]).to(self.device),
+                self.cam_to_world_mats[0:1],
+                self.projection_mats[0:1],
+                self.width,
+                self.height,
+                self.near_plane,
+                self.far_plane,
+                top_k_contributors=8,
+            )
+
+        dup_ids, dup_weights = render(pixels)
+        uniq_ids, uniq_weights = render(unique_pixels)
+
+        dup_offsets = dup_ids.joffsets.cpu().tolist()
+        uniq_offsets = uniq_ids.joffsets.cpu().tolist()
+        index_of = {(int(r), int(c)): i for i, (r, c) in enumerate(unique_pixels.tolist())}
+        for i in range(pixels.size(0)):
+            j = index_of[(int(pixels[i, 0]), int(pixels[i, 1]))]
+            self.assertTrue(
+                torch.equal(
+                    dup_ids.jdata.flatten()[dup_offsets[i] : dup_offsets[i + 1]],
+                    uniq_ids.jdata.flatten()[uniq_offsets[j] : uniq_offsets[j + 1]],
+                )
+            )
+            self.assertTrue(
+                torch.allclose(
+                    dup_weights.jdata.flatten()[dup_offsets[i] : dup_offsets[i + 1]],
+                    uniq_weights.jdata.flatten()[uniq_offsets[j] : uniq_offsets[j + 1]],
+                )
+            )
+
     def test_sparse_render_images_with_duplicates(self):
         pixels, y_all, x_all = self._make_pixels_with_duplicates()
         pixels_to_render = JaggedTensor([pixels]).to(self.device)
@@ -4098,18 +4180,38 @@ class TestGaussianRenderSparseDuplicatePixels(BaseGaussianTestCase):
             self.far_plane,
         )
 
-        self.assertEqual(ids.jdata.size(0), pixels.size(0))
+        # One inner list per requested pixel. NOTE: this used to assert
+        # `ids.jdata.size(0) == pixels.size(0)`, i.e. one ROW per pixel, which
+        # described the old collapsed-and-misattributed output rather than the
+        # intended contract -- `jdata` is contribution-major, so its length is the
+        # total number of contributors, not the number of pixels.
+        self.assertEqual(ids.ldim, 2)
+        self.assertEqual(len(ids.lshape[0]), pixels.size(0))
+        self.assertEqual(len(weights.lshape[0]), pixels.size(0))
 
-        coords = pixels.to(self.device)
-        keys = coords[:, 0] * self.width + coords[:, 1]
-        unique_keys, inverse = keys.unique(return_inverse=True)
-        for i in range(unique_keys.size(0)):
-            mask = inverse == i
-            id_vals = ids.jdata[mask]
-            weight_vals = weights.jdata[mask]
-            self.assertTrue(torch.all(id_vals == id_vals[0:1]), "Duplicate pixels have different contributing IDs")
+        # Duplicated pixels must have identical contributor SEGMENTS. Comparing
+        # single rows would pass even when every pixel got another pixel's data.
+        offsets = ids.joffsets.cpu().tolist()
+        keys = (pixels[:, 0] * self.width + pixels[:, 1]).tolist()
+        first_seen: dict[int, int] = {}
+        for i, key in enumerate(keys):
+            j = first_seen.setdefault(key, i)
+            if j == i:
+                continue
             self.assertTrue(
-                torch.allclose(weight_vals, weight_vals[0:1], atol=1e-6, rtol=1e-8),
+                torch.equal(
+                    ids.jdata.flatten()[offsets[i] : offsets[i + 1]],
+                    ids.jdata.flatten()[offsets[j] : offsets[j + 1]],
+                ),
+                "Duplicate pixels have different contributing IDs",
+            )
+            self.assertTrue(
+                torch.allclose(
+                    weights.jdata.flatten()[offsets[i] : offsets[i + 1]],
+                    weights.jdata.flatten()[offsets[j] : offsets[j + 1]],
+                    atol=1e-6,
+                    rtol=1e-8,
+                ),
                 "Duplicate pixels have different contributing weights",
             )
 
