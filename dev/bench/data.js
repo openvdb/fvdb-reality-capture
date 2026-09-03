@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1788448756429,
+  "lastUpdate": 1788448759464,
   "repoUrl": "https://github.com/openvdb/fvdb-reality-capture",
   "entries": {
     "fvdb-reality-capture Benchmark with pytest-benchmark": [
@@ -30225,6 +30225,88 @@ window.BENCHMARK_DATA = {
           {
             "name": "garden/fvdb_mcmc - peak_gpu_memory_gb",
             "value": 3.6374,
+            "unit": "GB"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "Mark Harris",
+            "username": "harrism",
+            "email": "mharris@nvidia.com"
+          },
+          "committer": {
+            "name": "GitHub",
+            "username": "web-flow",
+            "email": "noreply@github.com"
+          },
+          "id": "0b07e712fa66570a6a392fdcca5ff0ba0ff5b17c",
+          "message": "CI: provision EC2 runners through shared workflows, with retry and backoff (#329)\n\n## Summary\n\nReplaces #327. CI keeps failing because us-east-2 has no capacity for\nthe requested instance type at the moment the runner is requested.\n`machulav/ec2-github-runner` sweeps the availability zones in\n`availability-zones-config` within one attempt (#326), but it never\nretries the sweep, so a transient region-wide shortage fails the whole\nrun. Retrying twice, 90s and then 180s later, turns most of those into a\nslow pass instead of a red build.\n\n#327 inlined that retry ladder at every call site — ~30 lines of\nnear-identical YAML in six places that can drift independently. This\nreplaces it: the ladder goes in a reusable workflow instead.\n\n## What changed\n\nTwo new local reusable workflows hold the retry policy, the action\nversion, the AWS OIDC step, the IAM role ARN and the teardown:\n\n* `.github/workflows/start-ec2-runner.yml`\n* `.github/workflows/stop-ec2-runner.yml`\n\n`tests.yml`, `nightly.yml`, `publish.yml` and `gsplat-l4-tests.yml` now\ncall them — six start jobs and six stop jobs. **226 lines of duplicated\nYAML removed, 84 added.**\n\nTwo things that were duplicated and are now single-sourced:\n\n* The IAM role ARN and `us-east-2` were repeated verbatim at all twelve\ncall sites. They are now defaults on the reusable workflows, so a call\nsite only names them if it differs.\n* The token forwards explicitly as `RUNNER_TOKEN`. That deliberately\npreserves the two secrets already in use — `EC2_RUNNERS_ACTION` for\ntests/nightly/gsplat, `GH_PERSONAL_ACCESS_TOKEN` for publish — at their\nexisting call sites rather than quietly consolidating them. Worth a\nfollow-up decision, but not smuggled into this PR.\n\n## Testing\n\n* `actionlint` 1.7.7: clean.\n* Parsed every reusable-workflow caller job to confirm none carries a\nkey incompatible with `uses:` (`runs-on`, `steps`, `env`, `container`,\n…), and that no dangling `steps.*` references remain.\n\nThe equivalent change for fvdb-core is openvdb/fvdb-core#760.\n\nBecause these workflows only run on the real EC2 fleet, the first\ngenuine exercise of the new provisioning path is the run after merge.\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n\nSigned-off-by: Mark Harris <mharris@nvidia.com>\nCo-authored-by: Claude Opus 5 (1M context) <noreply@anthropic.com>",
+          "timestamp": "2026-09-03T03:32:47Z",
+          "url": "https://github.com/openvdb/fvdb-reality-capture/commit/0b07e712fa66570a6a392fdcca5ff0ba0ff5b17c"
+        },
+        "date": 1788448758818,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "bicycle/fvdb_default - training_time",
+            "value": 661.92,
+            "unit": "seconds"
+          },
+          {
+            "name": "bicycle/fvdb_default - peak_gpu_memory_gb",
+            "value": 4.5437,
+            "unit": "GB"
+          },
+          {
+            "name": "bicycle/fvdb_mcmc - training_time",
+            "value": 328.69,
+            "unit": "seconds"
+          },
+          {
+            "name": "bicycle/fvdb_mcmc - peak_gpu_memory_gb",
+            "value": 1.4436,
+            "unit": "GB"
+          },
+          {
+            "name": "bonsai/fvdb_default - training_time",
+            "value": 442.99,
+            "unit": "seconds"
+          },
+          {
+            "name": "bonsai/fvdb_default - peak_gpu_memory_gb",
+            "value": 1.6105,
+            "unit": "GB"
+          },
+          {
+            "name": "bonsai/fvdb_mcmc - training_time",
+            "value": 587.52,
+            "unit": "seconds"
+          },
+          {
+            "name": "bonsai/fvdb_mcmc - peak_gpu_memory_gb",
+            "value": 1.5567,
+            "unit": "GB"
+          },
+          {
+            "name": "garden/fvdb_default - training_time",
+            "value": 861.31,
+            "unit": "seconds"
+          },
+          {
+            "name": "garden/fvdb_default - peak_gpu_memory_gb",
+            "value": 5.5814,
+            "unit": "GB"
+          },
+          {
+            "name": "garden/fvdb_mcmc - training_time",
+            "value": 682.96,
+            "unit": "seconds"
+          },
+          {
+            "name": "garden/fvdb_mcmc - peak_gpu_memory_gb",
+            "value": 3.6372,
             "unit": "GB"
           }
         ]
