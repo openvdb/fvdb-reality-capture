@@ -108,24 +108,12 @@ jobs:
     if: ${{ github.repository == 'openvdb/fvdb-reality-capture' && needs.get-fvdb-core-commit-hash.outputs.should_skip != 'true' }}
     name: Start CPU-only EC2 runner for build
     needs: [get-fvdb-core-commit-hash, versions]
-    runs-on: ubuntu-latest
-    outputs:
-      label: ${{ steps.start-build-runner.outputs.label }}
-      ec2-instance-id: ${{ steps.start-build-runner.outputs.ec2-instance-id }}
-    steps:
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          role-to-assume: arn:aws:iam::420032683002:role/openvdb-fvdb-github-actions-role
-          aws-region: us-east-2
-      - name: Start EC2 runner
-        id: start-build-runner
-        uses: machulav/ec2-github-runner@v2.4.3
-        with:
-          mode: start
-          github-token: ${{ secrets.EC2_RUNNERS_ACTION }}
-          ec2-instance-type: m6a.8xlarge
-          availability-zones-config: ${{ needs.versions.outputs.aws-cpu-az-config }}
+    uses: ./.github/workflows/start-ec2-runner.yml
+    with:
+      instance-type: m6a.8xlarge
+      az-config: ${{ needs.versions.outputs.aws-cpu-az-config }}
+    secrets:
+      RUNNER_TOKEN: ${{ secrets.EC2_RUNNERS_ACTION }}
   fvdb-reality-capture-build:
     if: ${{ github.repository == 'openvdb/fvdb-reality-capture' }}
     name: fvdb-reality-capture Build
@@ -213,21 +201,12 @@ jobs:
     needs:
       - start-build-runner # required to get output from the start-build-runner job
       - fvdb-reality-capture-build # required to wait when the main job is done
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          role-to-assume: arn:aws:iam::420032683002:role/openvdb-fvdb-github-actions-role
-          aws-region: us-east-2
-      - name: Stop EC2 runner
-        uses: machulav/ec2-github-runner@v2.4.3
-        with:
-          mode: stop
-          github-token: ${{ secrets.EC2_RUNNERS_ACTION }}
-          label: ${{ needs.start-build-runner.outputs.label }}
-          ec2-instance-id: ${{ needs.start-build-runner.outputs.ec2-instance-id }}
+    uses: ./.github/workflows/stop-ec2-runner.yml
+    with:
+      label: ${{ needs.start-build-runner.outputs.label }}
+      ec2-instance-id: ${{ needs.start-build-runner.outputs.ec2-instance-id }}
+    secrets:
+      RUNNER_TOKEN: ${{ secrets.EC2_RUNNERS_ACTION }}
 
 
   ##############################################################################
@@ -237,24 +216,12 @@ jobs:
     if: ${{ github.repository == 'openvdb/fvdb-reality-capture' }}
     name: Start EC2 GPU runner for benchmarks
     needs: [fvdb-reality-capture-build, versions]
-    runs-on: ubuntu-latest
-    outputs:
-      label: ${{ steps.start-tests-gpu-runner.outputs.label }}
-      ec2-instance-id: ${{ steps.start-tests-gpu-runner.outputs.ec2-instance-id }}
-    steps:
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          role-to-assume: arn:aws:iam::420032683002:role/openvdb-fvdb-github-actions-role
-          aws-region: us-east-2
-      - name: Start EC2 GPU runner
-        id: start-tests-gpu-runner
-        uses: machulav/ec2-github-runner@v2.4.3
-        with:
-          mode: start
-          github-token: ${{ secrets.EC2_RUNNERS_ACTION }}
-          ec2-instance-type: g6.xlarge # 4 CPU-core, L4 GPU
-          availability-zones-config: ${{ needs.versions.outputs.aws-gpu-az-config }}
+    uses: ./.github/workflows/start-ec2-runner.yml
+    with:
+      instance-type: g6.xlarge # 4 CPU-core, L4 GPU
+      az-config: ${{ needs.versions.outputs.aws-gpu-az-config }}
+    secrets:
+      RUNNER_TOKEN: ${{ secrets.EC2_RUNNERS_ACTION }}
 
   ##############################################################################
   # RUN FVDB REALITY CAPTURE UNIT BENCHMARKS
@@ -409,20 +376,12 @@ jobs:
     needs:
       - start-benchmarks-gpu-runner
       - fvdb-reality-capture-unit-benchmarks
-    runs-on: ubuntu-latest
-    steps:
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          role-to-assume: arn:aws:iam::420032683002:role/openvdb-fvdb-github-actions-role
-          aws-region: us-east-2
-      - name: Stop EC2 runner
-        uses: machulav/ec2-github-runner@v2.4.3
-        with:
-          mode: stop
-          github-token: ${{ secrets.EC2_RUNNERS_ACTION }}
-          label: ${{ needs.start-benchmarks-gpu-runner.outputs.label }}
-          ec2-instance-id: ${{ needs.start-benchmarks-gpu-runner.outputs.ec2-instance-id }}
+    uses: ./.github/workflows/stop-ec2-runner.yml
+    with:
+      label: ${{ needs.start-benchmarks-gpu-runner.outputs.label }}
+      ec2-instance-id: ${{ needs.start-benchmarks-gpu-runner.outputs.ec2-instance-id }}
+    secrets:
+      RUNNER_TOKEN: ${{ secrets.EC2_RUNNERS_ACTION }}
 
   ##############################################################################
   # START COMPARATIVE BENCHMARKS GPU RUNNER
@@ -431,24 +390,12 @@ jobs:
     if: ${{ github.repository == 'openvdb/fvdb-reality-capture' }}
     name: Start EC2 GPU runner for comparative benchmarks
     needs: [fvdb-reality-capture-build, versions]
-    runs-on: ubuntu-latest
-    outputs:
-      label: ${{ steps.start-runner.outputs.label }}
-      ec2-instance-id: ${{ steps.start-runner.outputs.ec2-instance-id }}
-    steps:
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          role-to-assume: arn:aws:iam::420032683002:role/openvdb-fvdb-github-actions-role
-          aws-region: us-east-2
-      - name: Start EC2 GPU runner
-        id: start-runner
-        uses: machulav/ec2-github-runner@v2.4.3
-        with:
-          mode: start
-          github-token: ${{ secrets.EC2_RUNNERS_ACTION }}
-          ec2-instance-type: g6.xlarge
-          availability-zones-config: ${{ needs.versions.outputs.aws-gpu-az-config }}
+    uses: ./.github/workflows/start-ec2-runner.yml
+    with:
+      instance-type: g6.xlarge # 4 CPU-core, L4 GPU
+      az-config: ${{ needs.versions.outputs.aws-gpu-az-config }}
+    secrets:
+      RUNNER_TOKEN: ${{ secrets.EC2_RUNNERS_ACTION }}
 
   ##############################################################################
   # RUN COMPARATIVE BENCHMARKS
@@ -613,17 +560,9 @@ jobs:
     needs:
       - start-comparative-gpu-runner
       - fvdb-reality-capture-comparative-benchmarks
-    runs-on: ubuntu-latest
-    steps:
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          role-to-assume: arn:aws:iam::420032683002:role/openvdb-fvdb-github-actions-role
-          aws-region: us-east-2
-      - name: Stop EC2 runner
-        uses: machulav/ec2-github-runner@v2.4.3
-        with:
-          mode: stop
-          github-token: ${{ secrets.EC2_RUNNERS_ACTION }}
-          label: ${{ needs.start-comparative-gpu-runner.outputs.label }}
-          ec2-instance-id: ${{ needs.start-comparative-gpu-runner.outputs.ec2-instance-id }}
+    uses: ./.github/workflows/stop-ec2-runner.yml
+    with:
+      label: ${{ needs.start-comparative-gpu-runner.outputs.label }}
+      ec2-instance-id: ${{ needs.start-comparative-gpu-runner.outputs.ec2-instance-id }}
+    secrets:
+      RUNNER_TOKEN: ${{ secrets.EC2_RUNNERS_ACTION }}

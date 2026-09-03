@@ -1,0 +1,57 @@
+# Copyright Contributors to the OpenVDB Project
+# SPDX-License-Identifier: Apache-2.0
+#
+# De-register and terminate a self-hosted EC2 runner started by
+# start-ec2-runner.yml. Callers keep their own `needs:` and
+# `if: always() && needs.<start-job>.result != 'skipped'` guards; this workflow
+# is only the teardown itself.
+name: Stop EC2 Runner
+
+on:
+  workflow_call:
+    inputs:
+      label:
+        description: Runner label emitted by start-ec2-runner.yml.
+        type: string
+        required: true
+      ec2-instance-id:
+        description: Instance id emitted by start-ec2-runner.yml.
+        type: string
+        required: true
+      aws-role:
+        description: IAM role to assume via OIDC.
+        type: string
+        required: false
+        default: arn:aws:iam::420032683002:role/openvdb-fvdb-github-actions-role
+      aws-region:
+        description: AWS region the instance is running in.
+        type: string
+        required: false
+        default: us-east-2
+    secrets:
+      RUNNER_TOKEN:
+        description: Token used to de-register the runner.
+        required: true
+
+permissions:
+  contents: read
+  id-token: write # Need ID token write permission to use OIDC
+
+jobs:
+  stop:
+    name: Stop EC2 runner
+    runs-on: ubuntu-latest
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ inputs.aws-role }}
+          aws-region: ${{ inputs.aws-region }}
+
+      - name: Stop EC2 runner
+        uses: machulav/ec2-github-runner@v2.4.3
+        with:
+          mode: stop
+          github-token: ${{ secrets.RUNNER_TOKEN }}
+          label: ${{ inputs.label }}
+          ec2-instance-id: ${{ inputs.ec2-instance-id }}
