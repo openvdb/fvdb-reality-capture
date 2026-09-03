@@ -4,8 +4,17 @@
 
 from importlib.metadata import PackageNotFoundError, version
 
+from . import (
+    checkpoints,
+    dev,
+    foundation_models,
+    instance_segmentation,
+    radiance_fields,
+    sfm_scene,
+    tools,
+    transforms,
+)
 from .enums import CameraModel, ProjectionMethod, RollingShutterType
-from . import radiance_fields
 from .radiance_fields import (
     GaussianSplat3d,
     ProjectedGaussianSplats,
@@ -13,7 +22,6 @@ from .radiance_fields import (
     gaussian_render_jagged,
     gaussian_splat_to_view_data,
 )
-from . import dev, foundation_models, sfm_scene, tools, transforms
 from .tools import download_example_data
 
 try:
@@ -31,8 +39,10 @@ __all__ = [
     "RollingShutterType",
     "CameraModel",
     "ProjectionMethod",
+    "checkpoints",
     "dev",
     "foundation_models",
+    "instance_segmentation",
     "radiance_fields",
     "sfm_scene",
     "tools",

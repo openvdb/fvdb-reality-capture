@@ -1,0 +1,359 @@
+# Copyright Contributors to the OpenVDB Project
+# SPDX-License-Identifier: Apache-2.0
+
+import hashlib
+import pathlib
+import tempfile
+from unittest import mock
+
+import cv2
+import numpy as np
+import pytest
+import torch
+from fvdb_reality_capture import CameraModel
+
+from fvdb_reality_capture.instance_segmentation.config import GARfVDBTransformConfig
+from fvdb_reality_capture.instance_segmentation.scene_attribute import (
+    GARFVDB_MASK_ATTRIBUTE_NAME,
+    GARFVDB_MASK_DATA_SCHEMA_VERSION,
+    GARfVDBMaskAttribute,
+)
+from fvdb_reality_capture.instance_segmentation.scene_transforms import (
+    ApplyReconstructionCameraPoses,
+    GenerateGARfVDBMasks,
+)
+from fvdb_reality_capture.instance_segmentation.training.dataset import SegmentationDataset
+from fvdb_reality_capture.sfm_scene import (
+    PerImageValueAttribute,
+    SfmCache,
+    SfmCameraMetadata,
+    SfmPosedImageMetadata,
+    SfmScene,
+)
+from fvdb_reality_capture.transforms import CropScene, Identity, SceneTransformConfig, UndistortImages
+
+
+def _make_scene(
+    directory: pathlib.Path,
+    num_images: int = 2,
+    *,
+    camera_model: CameraModel = CameraModel.PINHOLE,
+    distortion_coeffs: np.ndarray | None = None,
+) -> SfmScene:
+    cache = SfmCache.get_cache(directory, name="garfvdb_transform_test", description="GARfVDB transform test")
+    if distortion_coeffs is None:
+        distortion_coeffs = np.zeros(0, dtype=np.float32)
+    camera = SfmCameraMetadata(
+        img_width=8,
+        img_height=6,
+        fx=6.0,
+        fy=6.0,
+        cx=4.0,
+        cy=3.0,
+        camera_model=camera_model,
+        distortion_coeffs=distortion_coeffs,
+    )
+    image_paths = []
+    for index in range(num_images):
+        image_path = directory / f"image_{index}.png"
+        assert cv2.imwrite(str(image_path), np.zeros((6, 8, 3), dtype=np.uint8))
+        image_paths.append(image_path)
+    images = [
+        SfmPosedImageMetadata(
+            world_to_camera_matrix=np.eye(4),
+            camera_to_world_matrix=np.eye(4),
+            camera_metadata=camera,
+            camera_id=1,
+            image_path=str(image_paths[index]),
+            mask_path="",
+            point_indices=None,
+            image_id=index,
+        )
+        for index in range(num_images)
+    ]
+    return SfmScene(
+        cameras={1: camera},
+        images=images,
+        points=np.zeros((0, 3), dtype=np.float32),
+        points_err=np.zeros(0, dtype=np.float32),
+        points_rgb=np.zeros((0, 3), dtype=np.uint8),
+        scene_bbox=None,
+        transformation_matrix=None,
+        cache=cache,
+        attributes={"other_method": PerImageValueAttribute(list(range(num_images)))},
+    )
+
+
+def _mask_data(index: int) -> dict[str, torch.Tensor | int]:
+    return {
+        "schema_version": GARFVDB_MASK_DATA_SCHEMA_VERSION,
+        "scales": torch.tensor([0.1 + index]),
+        "pixel_to_mask_id": torch.zeros((6, 8, 1), dtype=torch.int16),
+        "mask_cdf": torch.ones((6, 8, 1)),
+    }
+
+
+def test_garfvdb_mask_attribute_round_trip_and_scene_operations():
+    with tempfile.TemporaryDirectory() as directory:
+        root = pathlib.Path(directory)
+        paths = []
+        for index in range(3):
+            path = root / f"mask_{index}.pt"
+            torch.save(_mask_data(index), path)
+            paths.append(path)
+
+        attribute = GARfVDBMaskAttribute(paths, provenance={"generator": "test"})
+        restored = GARfVDBMaskAttribute.from_state_dict(attribute.state_dict())
+        assert restored.paths == [str(path.absolute()) for path in paths]
+        assert restored.provenance == {"generator": "test"}
+        assert torch.equal(restored.load(1)["scales"], torch.tensor([1.1]))
+        assert restored.on_filter_images(np.array([True, False, True])).paths == [
+            str(paths[0].absolute()),
+            str(paths[2].absolute()),
+        ]
+        assert restored.on_select_images(np.array([2, 0])).paths == [
+            str(paths[2].absolute()),
+            str(paths[0].absolute()),
+        ]
+
+        with pytest.raises(ValueError, match="after all image transforms"):
+            restored.on_downsample_images("garfvdb_masks", 2, None)
+        with pytest.raises(ValueError, match="after all crop transforms"):
+            restored.on_crop_scene("garfvdb_masks", np.zeros(6), None)
+        with pytest.raises(ValueError, match="scene alignment"):
+            restored.on_spatial_transform(np.eye(4))
+
+
+def test_cached_mask_transform_attaches_attribute_without_replacing_scene_state():
+    with tempfile.TemporaryDirectory() as directory:
+        scene = _make_scene(pathlib.Path(directory))
+        gaussians_hash = hashlib.sha256(b"test gaussians").hexdigest()
+        camera_parameters_hash = GenerateGARfVDBMasks._camera_parameters_sha256(scene)
+        transform = GenerateGARfVDBMasks(
+            gs3d=None,
+            gs3d_hash=gaussians_hash,
+            checkpoint="large",
+            points_per_side=4,
+            pred_iou_thresh=0.8,
+            stability_score_thresh=0.8,
+            device="cpu",
+        )
+        cache = scene.cache.make_folder(
+            f"garfvdb_masks_v1_{gaussians_hash}_p4_i80_s80_c{camera_parameters_hash}",
+            description="cached GARfVDB masks",
+        )
+        for index in range(scene.num_images):
+            cache.write_file(
+                name=f"masks_{index:03d}",
+                data=_mask_data(index),
+                data_type="pt",
+                metadata={
+                    "points_per_side": 4,
+                    "pred_iou_thresh": 0.8,
+                    "stability_score_thresh": 0.8,
+                    "gs3d_hash": gaussians_hash,
+                    "camera_parameters_sha256": camera_parameters_hash,
+                },
+            )
+
+        transformed = transform(scene)
+        assert transformed.cache.current_folder_id == scene.cache.current_folder_id
+        assert transformed.has_attribute("other_method")
+        assert transformed.has_attribute(GARFVDB_MASK_ATTRIBUTE_NAME)
+        attribute = transformed.get_attribute(GARFVDB_MASK_ATTRIBUTE_NAME)
+        assert isinstance(attribute, GARfVDBMaskAttribute)
+        assert len(attribute.paths) == scene.num_images
+
+        dataset = SegmentationDataset(transformed, cache_loaded_masks=False, cache_images=False)
+        assert torch.equal(dataset.scales, torch.tensor([0.1, 1.1]))
+
+        restored_scene = SfmScene.from_state_dict(transformed.state_dict())
+        restored_attribute = restored_scene.get_attribute(GARFVDB_MASK_ATTRIBUTE_NAME)
+        assert isinstance(restored_attribute, GARfVDBMaskAttribute)
+        assert restored_attribute.paths == attribute.paths
+
+
+def test_mask_cache_without_cdf_recomputes_on_load():
+    from fvdb_reality_capture.instance_segmentation.util import compute_mask_cdf
+
+    with tempfile.TemporaryDirectory() as directory:
+        scene = _make_scene(pathlib.Path(directory), num_images=1)
+        gaussians_hash = hashlib.sha256(b"test gaussians").hexdigest()
+        camera_parameters_hash = GenerateGARfVDBMasks._camera_parameters_sha256(scene)
+        transform = GenerateGARfVDBMasks(
+            gs3d=None,
+            gs3d_hash=gaussians_hash,
+            checkpoint="large",
+            points_per_side=4,
+            pred_iou_thresh=0.8,
+            stability_score_thresh=0.8,
+            device="cpu",
+        )
+        cache = scene.cache.make_folder(
+            f"garfvdb_masks_v1_{gaussians_hash}_p4_i80_s80_c{camera_parameters_hash}",
+            description="cached GARfVDB masks without mask_cdf",
+        )
+
+        # Build a pixel_to_mask_id with contiguous mask ids {-1, 0, 1} and deliberately omit mask_cdf,
+        # mirroring the newer cache format.
+        pixel_to_mask_id = torch.full((6, 8, 2), -1, dtype=torch.int16)
+        pixel_to_mask_id[:3, :, 0] = 0
+        pixel_to_mask_id[3:, :, 0] = 1
+        pixel_to_mask_id[0, 0, 1] = 1
+        cache.write_file(
+            name="masks_000",
+            data={
+                "schema_version": GARFVDB_MASK_DATA_SCHEMA_VERSION,
+                "scales": torch.tensor([0.1, 0.2]),
+                "pixel_to_mask_id": pixel_to_mask_id,
+            },
+            data_type="pt",
+            metadata={
+                "points_per_side": 4,
+                "pred_iou_thresh": 0.8,
+                "stability_score_thresh": 0.8,
+                "gs3d_hash": gaussians_hash,
+                "camera_parameters_sha256": camera_parameters_hash,
+            },
+        )
+
+        transformed = transform(scene)
+        attribute = transformed.get_attribute(GARFVDB_MASK_ATTRIBUTE_NAME)
+        assert isinstance(attribute, GARfVDBMaskAttribute)
+        # The loader passes through the cache contents verbatim -- no mask_cdf on disk.
+        assert "mask_cdf" not in attribute.load(0)
+
+        dataset = SegmentationDataset(transformed, cache_loaded_masks=False, cache_images=False)
+        mask_cdf, mask_ids, scales = dataset._get_mask_data(0)
+        # mask_cdf is recomputed from pixel_to_mask_id and matches the canonical computation.
+        assert torch.equal(mask_cdf, compute_mask_cdf(pixel_to_mask_id))
+        assert mask_ids.dtype == torch.int32
+        assert torch.equal(scales, torch.tensor([0.1, 0.2]))
+
+
+def test_reconstruction_camera_poses_are_matched_by_stable_image_id():
+    with tempfile.TemporaryDirectory() as directory:
+        scene = _make_scene(pathlib.Path(directory), num_images=3)
+        original_middle_pose = scene.images[1].camera_to_world_matrix.copy()
+        optimized_poses = np.stack([np.eye(4), np.eye(4)])
+        optimized_poses[0, :3, 3] = [2.0, 3.0, 4.0]  # image ID 2
+        optimized_poses[1, :3, 3] = [5.0, 6.0, 7.0]  # image ID 0
+
+        transform = ApplyReconstructionCameraPoses(optimized_poses, image_ids=np.array([2, 0]))
+        transformed = transform(scene)
+
+        np.testing.assert_allclose(transformed.images[0].camera_to_world_matrix, optimized_poses[1])
+        np.testing.assert_allclose(transformed.images[1].camera_to_world_matrix, original_middle_pose)
+        np.testing.assert_allclose(transformed.images[2].camera_to_world_matrix, optimized_poses[0])
+        for image in transformed.images:
+            np.testing.assert_allclose(image.world_to_camera_matrix, np.linalg.inv(image.camera_to_world_matrix))
+        np.testing.assert_array_equal(transformed.points, scene.points)
+        assert GenerateGARfVDBMasks._camera_parameters_sha256(
+            transformed
+        ) != GenerateGARfVDBMasks._camera_parameters_sha256(scene)
+
+        restored = ApplyReconstructionCameraPoses.from_state_dict(transform.state_dict())
+        np.testing.assert_allclose(restored._camera_to_world_matrices, optimized_poses)
+        np.testing.assert_array_equal(restored._image_ids, np.array([2, 0]))
+
+
+def test_reconstruction_camera_poses_without_ids_use_positional_matching():
+    with tempfile.TemporaryDirectory() as directory:
+        scene = _make_scene(pathlib.Path(directory), num_images=2)
+        optimized_poses = np.stack([np.eye(4), np.eye(4)])
+        optimized_poses[0, 0, 3] = 1.0
+        optimized_poses[1, 1, 3] = 2.0
+
+        transformed = ApplyReconstructionCameraPoses(optimized_poses)(scene)
+
+        np.testing.assert_allclose(transformed.camera_to_world_matrices, optimized_poses)
+
+        with pytest.raises(ValueError, match="same number of images"):
+            ApplyReconstructionCameraPoses(np.eye(4)[None])(scene)
+
+
+def test_standard_scene_pipeline_places_product_transform_last():
+    common = SceneTransformConfig(crop_bbox=(-1, -1, -1, 1, 1, 1))
+    terminal = Identity()
+    pipeline = common.build_scene_transform(
+        alignment_transform=Identity(),
+        terminal_transforms=[terminal],
+    )
+    assert isinstance(pipeline.transforms[-2], CropScene)
+    assert pipeline.transforms[-1] is terminal
+
+    with mock.patch(
+        "fvdb_reality_capture.instance_segmentation.config.GenerateGARfVDBMasks",
+        return_value=terminal,
+    ):
+        garfvdb_pipeline = GARfVDBTransformConfig(crop_bbox=(-1, -1, -1, 1, 1, 1)).build_scene_transforms(
+            gs3d=mock.Mock(),
+            normalization_transform=None,
+            reconstruction_camera_to_world_matrices=torch.eye(4).unsqueeze(0),
+            reconstruction_image_ids=torch.tensor([0]),
+        )
+    assert isinstance(garfvdb_pipeline.transforms[-4], CropScene)
+    assert isinstance(garfvdb_pipeline.transforms[-3], ApplyReconstructionCameraPoses)
+    assert isinstance(garfvdb_pipeline.transforms[-2], UndistortImages)
+    assert garfvdb_pipeline.transforms[-1] is terminal
+
+
+def test_garfvdb_mask_erosion_removes_boundaries_without_expanding_masks():
+    masks = torch.zeros((2, 5, 5), dtype=torch.bool)
+    masks[:, 1:4, 1:4] = True
+    masks[1, 2, 2] = False
+
+    eroded = GenerateGARfVDBMasks._erode_masks(masks)
+
+    expected = torch.zeros_like(masks)
+    expected[0, 2, 2] = True
+    assert torch.equal(eroded, expected)
+    assert torch.all(~eroded | masks)
+
+
+def test_garfvdb_mask_generation_uses_materialized_pinhole_images():
+    with tempfile.TemporaryDirectory() as directory:
+        scene = _make_scene(pathlib.Path(directory), num_images=1)
+        bgr_image = np.full((6, 8, 3), (11, 22, 33), dtype=np.uint8)
+        assert cv2.imwrite(scene.images[0].image_path, bgr_image)
+        gaussians = mock.Mock()
+        gaussians.means = torch.tensor([[0.0, 0.0, 0.0], [1.0, 1.0, 1.0]])
+        with mock.patch(
+            "fvdb_reality_capture.instance_segmentation.scene_transforms.image_segmentation_masks.SAM2Model"
+        ):
+            transform = GenerateGARfVDBMasks(gs3d=gaussians, device="cpu")
+        mask_data = _mask_data(0)
+        with mock.patch.object(
+            transform,
+            "_generate_segmentation_mask",
+            return_value=(mask_data["scales"], mask_data["pixel_to_mask_id"]),
+        ) as generate:
+            transformed = transform(scene)
+
+        assert transformed.has_attribute(GARFVDB_MASK_ATTRIBUTE_NAME)
+        generated_image = generate.call_args.args[1]
+        assert generated_image.shape == (6, 8, 3)
+        np.testing.assert_array_equal(generated_image[0, 0], np.array([33, 22, 11], dtype=np.uint8))
+
+
+def test_garfvdb_mask_generation_rejects_distorted_scene():
+    with tempfile.TemporaryDirectory() as directory:
+        distortion_coeffs = np.zeros(12, dtype=np.float32)
+        distortion_coeffs[0] = 0.1
+        scene = _make_scene(
+            pathlib.Path(directory),
+            num_images=1,
+            camera_model=CameraModel.OPENCV_RADTAN_5,
+            distortion_coeffs=distortion_coeffs,
+        )
+        transform = GenerateGARfVDBMasks(gs3d=None, gs3d_hash="unused", device="cpu")
+
+        with pytest.raises(ValueError, match="Apply UndistortImages"):
+            transform(scene)
+
+
+def test_segmentation_dataset_requires_namespaced_garfvdb_attribute():
+    with tempfile.TemporaryDirectory() as directory:
+        scene = _make_scene(pathlib.Path(directory), num_images=1)
+        with pytest.raises(ValueError, match=GARFVDB_MASK_ATTRIBUTE_NAME):
+            SegmentationDataset(scene)

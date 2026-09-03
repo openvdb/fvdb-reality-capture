@@ -56,7 +56,7 @@
     │ -p INT, --viewer-port INT                                                                    │
     │     The port to expose the viewer server on. (default: 8080)                                 │
     │ -ip STR, --viewer-ip-address STR                                                             │
-    │     The port to expose the viewer server on. (default: 127.0.0.1)                            │
+    │     The IP address to expose the viewer server on. (default: 127.0.0.1)                      │
     │ -v, --verbose, --no-verbose                                                                  │
     │     If True, then the viewer will log verbosely. (default: False)                            │
     │ -ppf FLOAT, --points-percentile-filter FLOAT                                                 │

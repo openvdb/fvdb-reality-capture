@@ -21,6 +21,7 @@ opencv-python-headless
 pycolmap>=3.11
 pyproj
 requests
+safetensors
 scikit-image
 scipy
 torch==2.8.0+cpu

@@ -14,14 +14,16 @@ from typing import Any
 
 import yaml
 
+from fvdb_reality_capture.checkpoints import parse_training_checkpoint
 from fvdb_reality_capture.radiance_fields import (
     GaussianSplatOptimizerConfig,
     GaussianSplatOptimizerMCMCConfig,
     GaussianSplatReconstruction,
     GaussianSplatReconstructionConfig,
 )
+from fvdb_reality_capture.radiance_fields.checkpoint import GAUSSIAN_SPLAT_RECONSTRUCTION_METHOD
 
-CONTRACT_VERSION = 4
+CONTRACT_VERSION = 5
 """
 Semantic version of the benchmark contract.
 
@@ -170,8 +172,16 @@ def validate_checkpoint_contract(state: dict[str, Any]) -> None:
 
     This is intentionally strict: missing or extra keys are treated as errors.
     """
-    if not isinstance(state, dict):
-        _raise_contract_error("Checkpoint state must be a dict", details={"type": type(state).__name__})
+    try:
+        checkpoint = parse_training_checkpoint(state)
+    except ValueError as exc:
+        _raise_contract_error("Invalid training checkpoint container", details={"error": str(exc)})
+    if checkpoint.method != GAUSSIAN_SPLAT_RECONSTRUCTION_METHOD:
+        _raise_contract_error(
+            "Checkpoint method mismatch",
+            details={"method": checkpoint.method, "expected": GAUSSIAN_SPLAT_RECONSTRUCTION_METHOD},
+        )
+    state = checkpoint.state
 
     missing = TOP_LEVEL_CHECKPOINT_KEYS - set(state.keys())
     if missing:

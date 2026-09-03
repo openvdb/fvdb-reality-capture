@@ -9,6 +9,8 @@ import pathlib
 import re
 import signal
 import sqlite3
+import threading
+import time
 from typing import Any
 
 import cv2
@@ -81,20 +83,55 @@ class FileLock:
             os_open_flags |= os.O_CREAT
         fd = os.open(self._lock_file_path, os_open_flags)
 
-        signal.signal(signal.SIGALRM, self._timeout_signal_handler)
-        signal.alarm(self._timeout_seconds)
-
+        # signal.signal()/signal.alarm() only work in the main thread of the main interpreter, so the
+        # SIGALRM-based timeout can only be used there. Worker threads (e.g. a background cache
+        # writer) instead poll a non-blocking flock so they also honor timeout_seconds rather than
+        # blocking forever on a lock held by a crashed or deadlocked writer.
         try:
-            fcntl.flock(fd, fcntl.LOCK_EX if self._exclusive else fcntl.LOCK_SH)
+            if threading.current_thread() is threading.main_thread():
+                self._acquire_with_signal_timeout(fd)
+            else:
+                self._acquire_with_polling_timeout(fd)
         except OSError as exception:
             os.close(fd)
+            # TimeoutError is a subclass of OSError; its errno is None so it falls through to re-raise.
             if exception.errno == errno.ENOSYS:
                 raise NotImplementedError("FileSystem does not support flock") from exception
+            raise
         else:
             self._lock_fd = fd
+
+    def _acquire_with_signal_timeout(self, fd: int) -> None:
+        """Acquire the flock on the main thread, using a SIGALRM alarm to enforce the timeout."""
+        signal.signal(signal.SIGALRM, self._timeout_signal_handler)
+        signal.alarm(self._timeout_seconds)
+        try:
+            fcntl.flock(fd, fcntl.LOCK_EX if self._exclusive else fcntl.LOCK_SH)
         finally:
             signal.alarm(0)
             signal.signal(signal.SIGALRM, signal.SIG_DFL)
+
+    def _acquire_with_polling_timeout(self, fd: int) -> None:
+        """Acquire the flock from a non-main thread, where SIGALRM is unavailable.
+
+        Polls a non-blocking flock until it succeeds or ``timeout_seconds`` elapses, raising
+        ``TimeoutError`` on expiry so a background writer never blocks forever on a lock held by a
+        crashed or deadlocked process.
+        """
+        lock_flags = (fcntl.LOCK_EX if self._exclusive else fcntl.LOCK_SH) | fcntl.LOCK_NB
+        deadline = time.monotonic() + self._timeout_seconds
+        while True:
+            try:
+                fcntl.flock(fd, lock_flags)
+                return
+            except OSError as exception:
+                # EAGAIN/EWOULDBLOCK just means the lock is currently held; anything else (e.g.
+                # ENOSYS) is a real error and propagates to __enter__.
+                if exception.errno not in (errno.EAGAIN, errno.EWOULDBLOCK):
+                    raise
+                if time.monotonic() >= deadline:
+                    raise TimeoutError("File lock acquisition timed out.") from exception
+                time.sleep(0.05)
 
     def __exit__(self, exc_type, exc_value, traceback):
         fd = int(self._lock_fd) if self._lock_fd is not None else None

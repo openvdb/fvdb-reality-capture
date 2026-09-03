@@ -1,7 +1,19 @@
 fVDB-Reality-Capture Version History
 ====================================
 
-## Unreleased
+## Version 0.6.0 - Unreleased
+
+- Added first-class GARfVDB scale-conditioned instance segmentation through the Python API and
+  `frgs segment-instances` command.
+- Added portable `.garfvdb` bundles using NanoVDB encoder fields, safetensors network weights, and a PLY Gaussian
+  carrier. Manifests carry an explicit `schema_version` used to select an exact reader for future compatibility.
+  Added product-aware `frgs show` and `frgs resume` dispatch.
+- Integrated GARfVDB preprocessing with the standard scene-transform pipeline. SAM2 supervision is represented by a
+  registered, namespaced scene attribute so it composes with other derived scene products without replacing the
+  scene cache or discarding existing attributes.
+- Added a method-neutral, versioned training-checkpoint envelope and resume-handler registry. `frgs resume` now
+  dispatches stable method IDs without relying on product extensions or falling through unknown methods to Gaussian
+  reconstruction.
 
 ### Gaussian Splatting API
 

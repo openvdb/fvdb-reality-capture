@@ -67,6 +67,6 @@
    │ -o PATH, --output-path PATH                                                                    │
    │                         Path to save the extracted mesh (default is "mesh.ply"). (default:     │
    │                         mesh.ply)                                                              │
-   │ -d STR, --device STR    Extract a mesh from a Gaussian Splat reconstruction. (default: cuda)   │
+   │ -d STR, --device STR    Device to use for computation (default is "cuda:0"). (default: cuda:0) │
    ╰────────────────────────────────────────────────────────────────────────────────────────────────╯
 
