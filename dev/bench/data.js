@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1788448759464,
+  "lastUpdate": 1788521478526,
   "repoUrl": "https://github.com/openvdb/fvdb-reality-capture",
   "entries": {
     "fvdb-reality-capture Benchmark with pytest-benchmark": [
@@ -16409,6 +16409,133 @@ window.BENCHMARK_DATA = {
             "unit": "iter/sec",
             "range": "stddev: 0.00015619584548182299",
             "extra": "mean: 12.424878476720147 msec\nrounds: 86"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "Mark Harris",
+            "username": "harrism",
+            "email": "mharris@nvidia.com"
+          },
+          "committer": {
+            "name": "GitHub",
+            "username": "web-flow",
+            "email": "noreply@github.com"
+          },
+          "id": "e0b64e78fb5e4e8098baf219e49a53eefc08b405",
+          "message": "Fix misattributed contributors when sparse rendering duplicate pixels (#331)\n\nFixes #328.\n\n## The bug\n\n`sparse_render_contributing_gaussian_ids` re-expanded its deduplicated\nresult with\n\n```python\nids_jt = pixels_jt.jagged_like(ids_jt.jdata.index_select(0, inverse_indices))\n```\n\nbut `ids_jt.jdata` is **contribution-major** — one row per *(pixel,\ncontributor)*, with each pixel owning a variable-length segment.\n`inverse_indices` is **pixel-indexed**. So this indexes a contribution\narray using pixel indices: row *k* is the *k*-th contributor overall,\nwhich for small *k* belongs to the first unique pixel. Pixels are handed\ncontributors that belong to **other pixels**.\n\nVerified against per-pixel ground truth (each pixel also rendered alone,\n`top_k=24`):\n\n```\npixel (32,32) -> id 325 | belongs to this pixel? YES at contributor #1\npixel (30,30) -> id   0 | belongs to this pixel? YES at contributor #0\npixel (34,34) -> id 362 | belongs to this pixel? YES at contributor #1\npixel (31,33) -> id  44 | belongs to this pixel? NO   <-- belongs only to (30,30)\npixel (32,32) -> id 325 | belongs to this pixel? YES at contributor #1\n```\n\nRows that look plausible do so only because the gaussians overlap\nheavily; that is coincidence, not correctness. The result also collapses\nfrom a 2-level to a 1-level `JaggedTensor`, so consumers cannot reduce\nper pixel either — which is what surfaced this, via GARfVDB (#308),\nwhere a single duplicated pixel silently changes the code path for a\nwhole 4096-sample batch.\n\nTwo neighbouring sites that look identical are **correct and left\nalone**: `sparse_render` (`:2005`) and\n`sparse_rasterize_num_contributing_gaussians` (`:3936`) both index\narrays that genuinely are one row per pixel.\n\n## The fix\n\nRepeat each unique pixel's whole contribution **segment** rather than a\nsingle row.\n\nThe index arithmetic depends only on the jagged structure — and `ids`\nand `weights` share it exactly (verified: identical `joffsets`, `ldim`,\n`lshape`) — so it is computed once as a plan and applied to each\npayload:\n\n| | 4096 samples, 41278 contributor rows |\n|---|---|\n| expand twice, recomputing indices | 0.551 ms |\n| **plan once + apply twice** | **0.232 ms (58% faster)** |\n\nOutput is bit-identical between the two.\n\n## The existing test asserted the bug\n\n`test_sparse_render_contributing_ids_with_duplicates` required\n\n```python\nself.assertEqual(ids.jdata.size(0), pixels.size(0))\n```\n\n— the collapsed shape — and then only checked that duplicated pixels\nagreed **with each other**, which two copies of a wrong answer satisfy.\nIt was self-consistent and vacuous on correctness, which is why this\nsurvived. Corrected to compare contributor *segments*, and joined by two\ntests that check against ground truth:\n\n* each pixel's segment vs that pixel rendered alone;\n* the deduplicated path vs a render of the unique set.\n\nAll three fail on `main` and pass here. Full\n`test_gaussian_splat_3d.py`: **159 passed**.\n\n## Related\n\nThe gsplat port in #325 changes the underlying representation to padded\npixel-major, which makes its `index_select` correct by accident — but it\nkeeps the collapsed 1-level return shape and an explicit comment calling\nit \"the established duplicate-pixel API\". Commented there separately;\nthat special case can simply be deleted once this lands.\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n\nSigned-off-by: Mark Harris <mharris@nvidia.com>\nCo-authored-by: Claude Opus 5 (1M context) <noreply@anthropic.com>",
+          "timestamp": "2026-09-03T20:59:41Z",
+          "url": "https://github.com/openvdb/fvdb-reality-capture/commit/e0b64e78fb5e4e8098baf219e49a53eefc08b405"
+        },
+        "date": 1788521477245,
+        "tool": "pytest",
+        "benches": [
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_project_gaussians[garden-00000664]",
+            "value": 6962.6908215786725,
+            "unit": "iter/sec",
+            "range": "stddev: 0.000015067639245678836",
+            "extra": "mean: 143.62263464303402 usec\nrounds: 5652"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_render_gaussians[garden-00000664]",
+            "value": 914.1773529614619,
+            "unit": "iter/sec",
+            "range": "stddev: 0.000030871539734884915",
+            "extra": "mean: 1.0938796468327694 msec\nrounds: 1042"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_forward[garden-00000664]",
+            "value": 813.2933370741595,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00002019387204231475",
+            "extra": "mean: 1.22956866165598 msec\nrounds: 798"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_backward[garden-00000664]",
+            "value": 202.25313510870396,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00006279031839333051",
+            "extra": "mean: 4.944299130208958 msec\nrounds: 384"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_project_gaussians[garden-00006640]",
+            "value": 340.0012757430404,
+            "unit": "iter/sec",
+            "range": "stddev: 0.0005237939534295564",
+            "extra": "mean: 2.9411654347901934 msec\nrounds: 6134"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_render_gaussians[garden-00006640]",
+            "value": 147.08747656756384,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00008390759887396941",
+            "extra": "mean: 6.798675341613161 msec\nrounds: 161"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_forward[garden-00006640]",
+            "value": 102.7764918603105,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00007048638340679325",
+            "extra": "mean: 9.7298514660255 msec\nrounds: 103"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_backward[garden-00006640]",
+            "value": 28.186943925656884,
+            "unit": "iter/sec",
+            "range": "stddev: 0.0002546455194944116",
+            "extra": "mean: 35.47741829115997 msec\nrounds: 577"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_project_gaussians[garden-00016600]",
+            "value": 277.43824073748056,
+            "unit": "iter/sec",
+            "range": "stddev: 0.0006644697856134311",
+            "extra": "mean: 3.604405785380634 msec\nrounds: 5787"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_render_gaussians[garden-00016600]",
+            "value": 111.48044880673653,
+            "unit": "iter/sec",
+            "range": "stddev: 0.0000859558173364586",
+            "extra": "mean: 8.970182760329648 msec\nrounds: 121"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_forward[garden-00016600]",
+            "value": 79.65229336591399,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00006517690698876041",
+            "extra": "mean: 12.554566324990901 msec\nrounds: 80"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_backward[garden-00016600]",
+            "value": 22.035049662574433,
+            "unit": "iter/sec",
+            "range": "stddev: 0.0006265869532073945",
+            "extra": "mean: 45.38224398461222 msec\nrounds: 520"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_forward_mcmc[garden-00000664]",
+            "value": 793.9993854037674,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00003391990060596559",
+            "extra": "mean: 1.2594468187043701 msec\nrounds: 866"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_forward_mcmc[garden-00006640]",
+            "value": 102.35409105617805,
+            "unit": "iter/sec",
+            "range": "stddev: 0.0001710700025908421",
+            "extra": "mean: 9.770005181826491 msec\nrounds: 110"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_forward_mcmc[garden-00016600]",
+            "value": 80.10869042793419,
+            "unit": "iter/sec",
+            "range": "stddev: 0.0001645013423282888",
+            "extra": "mean: 12.48304016278484 msec\nrounds: 86"
           }
         ]
       }
