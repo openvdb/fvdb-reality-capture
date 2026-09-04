@@ -51,9 +51,12 @@ dependencies:
   - pycolmap>=3.11,<4
   - pytest-benchmark
   - python=3.12
-  # Keep in sync with fvdb-core's env/build_environment.yml: the nightly builds the
-  # fvdb-core wheel in that env and installs it here, so a mismatch is an ABI break
-  # (undefined libtorch symbols at `import fvdb`), not a version warning.
+  # python, cuda-version and pytorch-gpu are DERIVED from fvdb-core's
+  # env/build_environment.yml -- the environment its wheel is compiled in. A
+  # mismatch is an ABI break (undefined libtorch symbols at `import fvdb`), not a
+  # version warning. Do not hand-edit these three; run:
+  #     scripts/generate_benchmark_env.py                 # match fvdb-core main
+  #     scripts/generate_benchmark_env.py --from-local ../fvdb-core
   - pytorch-gpu=2.13.0
   - rich
   - scikit-build-core
