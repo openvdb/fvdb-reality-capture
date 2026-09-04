@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1788521478526,
+  "lastUpdate": 1788534524402,
   "repoUrl": "https://github.com/openvdb/fvdb-reality-capture",
   "entries": {
     "fvdb-reality-capture Benchmark with pytest-benchmark": [
@@ -23477,6 +23477,88 @@ window.BENCHMARK_DATA = {
           {
             "name": "garden/fvdb_mcmc - SSIM",
             "value": 0.8665,
+            "unit": ""
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "Mark Harris",
+            "username": "harrism",
+            "email": "mharris@nvidia.com"
+          },
+          "committer": {
+            "name": "GitHub",
+            "username": "web-flow",
+            "email": "noreply@github.com"
+          },
+          "id": "e0b64e78fb5e4e8098baf219e49a53eefc08b405",
+          "message": "Fix misattributed contributors when sparse rendering duplicate pixels (#331)\n\nFixes #328.\n\n## The bug\n\n`sparse_render_contributing_gaussian_ids` re-expanded its deduplicated\nresult with\n\n```python\nids_jt = pixels_jt.jagged_like(ids_jt.jdata.index_select(0, inverse_indices))\n```\n\nbut `ids_jt.jdata` is **contribution-major** — one row per *(pixel,\ncontributor)*, with each pixel owning a variable-length segment.\n`inverse_indices` is **pixel-indexed**. So this indexes a contribution\narray using pixel indices: row *k* is the *k*-th contributor overall,\nwhich for small *k* belongs to the first unique pixel. Pixels are handed\ncontributors that belong to **other pixels**.\n\nVerified against per-pixel ground truth (each pixel also rendered alone,\n`top_k=24`):\n\n```\npixel (32,32) -> id 325 | belongs to this pixel? YES at contributor #1\npixel (30,30) -> id   0 | belongs to this pixel? YES at contributor #0\npixel (34,34) -> id 362 | belongs to this pixel? YES at contributor #1\npixel (31,33) -> id  44 | belongs to this pixel? NO   <-- belongs only to (30,30)\npixel (32,32) -> id 325 | belongs to this pixel? YES at contributor #1\n```\n\nRows that look plausible do so only because the gaussians overlap\nheavily; that is coincidence, not correctness. The result also collapses\nfrom a 2-level to a 1-level `JaggedTensor`, so consumers cannot reduce\nper pixel either — which is what surfaced this, via GARfVDB (#308),\nwhere a single duplicated pixel silently changes the code path for a\nwhole 4096-sample batch.\n\nTwo neighbouring sites that look identical are **correct and left\nalone**: `sparse_render` (`:2005`) and\n`sparse_rasterize_num_contributing_gaussians` (`:3936`) both index\narrays that genuinely are one row per pixel.\n\n## The fix\n\nRepeat each unique pixel's whole contribution **segment** rather than a\nsingle row.\n\nThe index arithmetic depends only on the jagged structure — and `ids`\nand `weights` share it exactly (verified: identical `joffsets`, `ldim`,\n`lshape`) — so it is computed once as a plan and applied to each\npayload:\n\n| | 4096 samples, 41278 contributor rows |\n|---|---|\n| expand twice, recomputing indices | 0.551 ms |\n| **plan once + apply twice** | **0.232 ms (58% faster)** |\n\nOutput is bit-identical between the two.\n\n## The existing test asserted the bug\n\n`test_sparse_render_contributing_ids_with_duplicates` required\n\n```python\nself.assertEqual(ids.jdata.size(0), pixels.size(0))\n```\n\n— the collapsed shape — and then only checked that duplicated pixels\nagreed **with each other**, which two copies of a wrong answer satisfy.\nIt was self-consistent and vacuous on correctness, which is why this\nsurvived. Corrected to compare contributor *segments*, and joined by two\ntests that check against ground truth:\n\n* each pixel's segment vs that pixel rendered alone;\n* the deduplicated path vs a render of the unique set.\n\nAll three fail on `main` and pass here. Full\n`test_gaussian_splat_3d.py`: **159 passed**.\n\n## Related\n\nThe gsplat port in #325 changes the underlying representation to padded\npixel-major, which makes its `index_select` correct by accident — but it\nkeeps the collapsed 1-level return shape and an explicit comment calling\nit \"the established duplicate-pixel API\". Commented there separately;\nthat special case can simply be deleted once this lands.\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n\nSigned-off-by: Mark Harris <mharris@nvidia.com>\nCo-authored-by: Claude Opus 5 (1M context) <noreply@anthropic.com>",
+          "timestamp": "2026-09-03T20:59:41Z",
+          "url": "https://github.com/openvdb/fvdb-reality-capture/commit/e0b64e78fb5e4e8098baf219e49a53eefc08b405"
+        },
+        "date": 1788534523280,
+        "tool": "customBiggerIsBetter",
+        "benches": [
+          {
+            "name": "bicycle/fvdb_default - PSNR",
+            "value": 25.142,
+            "unit": "dB"
+          },
+          {
+            "name": "bicycle/fvdb_default - SSIM",
+            "value": 0.7459,
+            "unit": ""
+          },
+          {
+            "name": "bicycle/fvdb_mcmc - PSNR",
+            "value": 24.976,
+            "unit": "dB"
+          },
+          {
+            "name": "bicycle/fvdb_mcmc - SSIM",
+            "value": 0.7298,
+            "unit": ""
+          },
+          {
+            "name": "bonsai/fvdb_default - PSNR",
+            "value": 32.482,
+            "unit": "dB"
+          },
+          {
+            "name": "bonsai/fvdb_default - SSIM",
+            "value": 0.9564,
+            "unit": ""
+          },
+          {
+            "name": "bonsai/fvdb_mcmc - PSNR",
+            "value": 32.778,
+            "unit": "dB"
+          },
+          {
+            "name": "bonsai/fvdb_mcmc - SSIM",
+            "value": 0.9591,
+            "unit": ""
+          },
+          {
+            "name": "garden/fvdb_default - PSNR",
+            "value": 27.643,
+            "unit": "dB"
+          },
+          {
+            "name": "garden/fvdb_default - SSIM",
+            "value": 0.8657,
+            "unit": ""
+          },
+          {
+            "name": "garden/fvdb_mcmc - PSNR",
+            "value": 27.736,
+            "unit": "dB"
+          },
+          {
+            "name": "garden/fvdb_mcmc - SSIM",
+            "value": 0.8668,
             "unit": ""
           }
         ]
