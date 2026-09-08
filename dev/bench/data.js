@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1788867163877,
+  "lastUpdate": 1788880259551,
   "repoUrl": "https://github.com/openvdb/fvdb-reality-capture",
   "entries": {
     "fvdb-reality-capture Benchmark with pytest-benchmark": [
@@ -23686,6 +23686,88 @@ window.BENCHMARK_DATA = {
           {
             "name": "garden/fvdb_mcmc - SSIM",
             "value": 0.8668,
+            "unit": ""
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "Mark Harris",
+            "username": "harrism",
+            "email": "mharris@nvidia.com"
+          },
+          "committer": {
+            "name": "GitHub",
+            "username": "web-flow",
+            "email": "noreply@github.com"
+          },
+          "id": "13f6262b09ec48d5fb758b7d54d54145e2b38b97",
+          "message": "CI: pick the winning runner attempt by outcome, and clean up the losers (#330)\n\n## Summary\n\nFollow-up to #329. The retry ladder it shipped handles only one of the\ntwo ways a runner start can fail, and picks its outputs in a way that is\nwrong in the other. Nothing has hit this yet — every start since #329\nmerged has succeeded on attempt 1, so the backoff path has never\nactually executed — so this corrects the fault before it can bite rather\nthan after.\n\n## The bug\n\n`machulav/ec2-github-runner` publishes its outputs as soon as the\ninstance launches, **before** it waits for the runner to register\n([`src/index.js`](https://github.com/machulav/ec2-github-runner/blob/v2.4.3/src/index.js)):\n\n```js\nconst result = await aws.startEc2Instance(label, ...);\nsetOutput(label, ec2InstanceId, region);                 // <-- here\nawait aws.waitForInstanceRunning(ec2InstanceId, region); // can throw\nawait gh.waitForRunnerRegistered(label, pollCallback);   // 5-min timeout, throws\n```\n\nThat gives two distinct failure classes:\n\n| | Outputs after failure |\n|---|---|\n| **No capacity** — throws in `startEc2Instance` | empty |\n| **Launched but never registered** — registration timeout, bad AMI,\nuserdata failure | **populated** |\n\n#329 selected outputs with `${{ steps.a1.outputs.label \\|\\|\nsteps.a2.outputs.label \\|\\| ... }}`, which takes the first *non-empty*\nvalue rather than the *successful* one. Those coincide in the first\nclass and diverge in the second, where the ladder would hand back the\n**dead** attempt's label and instance id:\n\n1. The dependent job's `runs-on:` gets a label whose runner never\nregistered, so it **queues until timeout instead of failing fast** — a\nred build becomes a hung one.\n2. Teardown gets the dead attempt's instance id, so the instance the\nretry actually provisioned **leaks**, billing until someone notices.\n\n## The fix\n\n* **Select on `outcome`, not emptiness**, in an explicit step that also\nraises the terminal error when no attempt succeeded. Keying on the\noutcome is what makes \"the attempt that worked\" and \"the first attempt\nwith an output\" the same thing again.\n* **Stop the instance a failed attempt left running, before retrying.**\nNeeded even with correct selection: nothing else knows those instances\nexist, because only the winner ever reaches the stop job. Uses the\naction's own `mode: stop` (terminates *and* de-registers) with\n`continue-on-error: true`, since de-registration legitimately fails for\na runner that never registered.\n\n## Testing\n\nExercised the selection logic against all five outcome combinations:\n\n| scenario | old result | new result |\n|---|---|---|\n| a1 succeeds | a1 ✓ | a1 ✓ |\n| a1 no capacity, a2 wins | a2 ✓ | a2 ✓ |\n| **a1 launched but unregistered, a2 wins** | **a1 ✗ (dead label)** |\n**a2 ✓** |\n| a1+a2 unregistered, a3 wins | a1 ✗ | a3 ✓ |\n| all three fail | error ✓ | error ✓ |\n\n`actionlint` clean. The equivalent fix for fvdb-core is\nopenvdb/fvdb-core#760, which has not merged yet, so it carries the\ncorrection rather than needing a follow-up.\n\nNote this was not introduced by the reusable-workflow refactor — the\ninline version in #327 had the same `||` chain. The refactor is why the\nfix is one file rather than six call sites.\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n\nSigned-off-by: Mark Harris <mharris@nvidia.com>\nCo-authored-by: Claude Opus 5 (1M context) <noreply@anthropic.com>",
+          "timestamp": "2026-09-08T00:28:56Z",
+          "url": "https://github.com/openvdb/fvdb-reality-capture/commit/13f6262b09ec48d5fb758b7d54d54145e2b38b97"
+        },
+        "date": 1788880258727,
+        "tool": "customBiggerIsBetter",
+        "benches": [
+          {
+            "name": "bicycle/fvdb_default - PSNR",
+            "value": 25.144,
+            "unit": "dB"
+          },
+          {
+            "name": "bicycle/fvdb_default - SSIM",
+            "value": 0.7458,
+            "unit": ""
+          },
+          {
+            "name": "bicycle/fvdb_mcmc - PSNR",
+            "value": 24.98,
+            "unit": "dB"
+          },
+          {
+            "name": "bicycle/fvdb_mcmc - SSIM",
+            "value": 0.7308,
+            "unit": ""
+          },
+          {
+            "name": "bonsai/fvdb_default - PSNR",
+            "value": 32.604,
+            "unit": "dB"
+          },
+          {
+            "name": "bonsai/fvdb_default - SSIM",
+            "value": 0.9569,
+            "unit": ""
+          },
+          {
+            "name": "bonsai/fvdb_mcmc - PSNR",
+            "value": 32.722,
+            "unit": "dB"
+          },
+          {
+            "name": "bonsai/fvdb_mcmc - SSIM",
+            "value": 0.9588,
+            "unit": ""
+          },
+          {
+            "name": "garden/fvdb_default - PSNR",
+            "value": 27.636,
+            "unit": "dB"
+          },
+          {
+            "name": "garden/fvdb_default - SSIM",
+            "value": 0.8656,
+            "unit": ""
+          },
+          {
+            "name": "garden/fvdb_mcmc - PSNR",
+            "value": 27.685,
+            "unit": "dB"
+          },
+          {
+            "name": "garden/fvdb_mcmc - SSIM",
+            "value": 0.8662,
             "unit": ""
           }
         ]
