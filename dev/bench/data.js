@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1788534530203,
+  "lastUpdate": 1788867163877,
   "repoUrl": "https://github.com/openvdb/fvdb-reality-capture",
   "entries": {
     "fvdb-reality-capture Benchmark with pytest-benchmark": [
@@ -16536,6 +16536,133 @@ window.BENCHMARK_DATA = {
             "unit": "iter/sec",
             "range": "stddev: 0.0001645013423282888",
             "extra": "mean: 12.48304016278484 msec\nrounds: 86"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "Mark Harris",
+            "username": "harrism",
+            "email": "mharris@nvidia.com"
+          },
+          "committer": {
+            "name": "GitHub",
+            "username": "web-flow",
+            "email": "noreply@github.com"
+          },
+          "id": "13f6262b09ec48d5fb758b7d54d54145e2b38b97",
+          "message": "CI: pick the winning runner attempt by outcome, and clean up the losers (#330)\n\n## Summary\n\nFollow-up to #329. The retry ladder it shipped handles only one of the\ntwo ways a runner start can fail, and picks its outputs in a way that is\nwrong in the other. Nothing has hit this yet — every start since #329\nmerged has succeeded on attempt 1, so the backoff path has never\nactually executed — so this corrects the fault before it can bite rather\nthan after.\n\n## The bug\n\n`machulav/ec2-github-runner` publishes its outputs as soon as the\ninstance launches, **before** it waits for the runner to register\n([`src/index.js`](https://github.com/machulav/ec2-github-runner/blob/v2.4.3/src/index.js)):\n\n```js\nconst result = await aws.startEc2Instance(label, ...);\nsetOutput(label, ec2InstanceId, region);                 // <-- here\nawait aws.waitForInstanceRunning(ec2InstanceId, region); // can throw\nawait gh.waitForRunnerRegistered(label, pollCallback);   // 5-min timeout, throws\n```\n\nThat gives two distinct failure classes:\n\n| | Outputs after failure |\n|---|---|\n| **No capacity** — throws in `startEc2Instance` | empty |\n| **Launched but never registered** — registration timeout, bad AMI,\nuserdata failure | **populated** |\n\n#329 selected outputs with `${{ steps.a1.outputs.label \\|\\|\nsteps.a2.outputs.label \\|\\| ... }}`, which takes the first *non-empty*\nvalue rather than the *successful* one. Those coincide in the first\nclass and diverge in the second, where the ladder would hand back the\n**dead** attempt's label and instance id:\n\n1. The dependent job's `runs-on:` gets a label whose runner never\nregistered, so it **queues until timeout instead of failing fast** — a\nred build becomes a hung one.\n2. Teardown gets the dead attempt's instance id, so the instance the\nretry actually provisioned **leaks**, billing until someone notices.\n\n## The fix\n\n* **Select on `outcome`, not emptiness**, in an explicit step that also\nraises the terminal error when no attempt succeeded. Keying on the\noutcome is what makes \"the attempt that worked\" and \"the first attempt\nwith an output\" the same thing again.\n* **Stop the instance a failed attempt left running, before retrying.**\nNeeded even with correct selection: nothing else knows those instances\nexist, because only the winner ever reaches the stop job. Uses the\naction's own `mode: stop` (terminates *and* de-registers) with\n`continue-on-error: true`, since de-registration legitimately fails for\na runner that never registered.\n\n## Testing\n\nExercised the selection logic against all five outcome combinations:\n\n| scenario | old result | new result |\n|---|---|---|\n| a1 succeeds | a1 ✓ | a1 ✓ |\n| a1 no capacity, a2 wins | a2 ✓ | a2 ✓ |\n| **a1 launched but unregistered, a2 wins** | **a1 ✗ (dead label)** |\n**a2 ✓** |\n| a1+a2 unregistered, a3 wins | a1 ✗ | a3 ✓ |\n| all three fail | error ✓ | error ✓ |\n\n`actionlint` clean. The equivalent fix for fvdb-core is\nopenvdb/fvdb-core#760, which has not merged yet, so it carries the\ncorrection rather than needing a follow-up.\n\nNote this was not introduced by the reusable-workflow refactor — the\ninline version in #327 had the same `||` chain. The refactor is why the\nfix is one file rather than six call sites.\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n\nSigned-off-by: Mark Harris <mharris@nvidia.com>\nCo-authored-by: Claude Opus 5 (1M context) <noreply@anthropic.com>",
+          "timestamp": "2026-09-08T00:28:56Z",
+          "url": "https://github.com/openvdb/fvdb-reality-capture/commit/13f6262b09ec48d5fb758b7d54d54145e2b38b97"
+        },
+        "date": 1788867162717,
+        "tool": "pytest",
+        "benches": [
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_project_gaussians[garden-00000664]",
+            "value": 6814.118153127619,
+            "unit": "iter/sec",
+            "range": "stddev: 0.000013832662601049517",
+            "extra": "mean: 146.754132747318 usec\nrounds: 5454"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_render_gaussians[garden-00000664]",
+            "value": 918.8820988207416,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00004342523329575376",
+            "extra": "mean: 1.088278900289125 msec\nrounds: 1033"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_forward[garden-00000664]",
+            "value": 812.6016897103104,
+            "unit": "iter/sec",
+            "range": "stddev: 0.000020315314752017104",
+            "extra": "mean: 1.2306152111946709 msec\nrounds: 786"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_backward[garden-00000664]",
+            "value": 202.46617279632034,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00005991988524823725",
+            "extra": "mean: 4.939096670760866 msec\nrounds: 407"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_project_gaussians[garden-00006640]",
+            "value": 341.19252519014174,
+            "unit": "iter/sec",
+            "range": "stddev: 0.0005485747039892081",
+            "extra": "mean: 2.9308965647553804 msec\nrounds: 5567"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_render_gaussians[garden-00006640]",
+            "value": 147.51280234714912,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00009195304803751944",
+            "extra": "mean: 6.779072623450342 msec\nrounds: 162"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_forward[garden-00006640]",
+            "value": 102.72711205271716,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00006502434428543979",
+            "extra": "mean: 9.734528500001279 msec\nrounds: 104"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_backward[garden-00006640]",
+            "value": 28.20052212109719,
+            "unit": "iter/sec",
+            "range": "stddev: 0.0002661382630516079",
+            "extra": "mean: 35.46033636206638 msec\nrounds: 580"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_project_gaussians[garden-00016600]",
+            "value": 276.6125477096467,
+            "unit": "iter/sec",
+            "range": "stddev: 0.0006336725668875297",
+            "extra": "mean: 3.6151649962375347 msec\nrounds: 6378"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_render_gaussians[garden-00016600]",
+            "value": 110.73269144212647,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00009596072810776785",
+            "extra": "mean: 9.030756743799023 msec\nrounds: 121"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_forward[garden-00016600]",
+            "value": 79.34118712048564,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00010537023068784799",
+            "extra": "mean: 12.6037942749889 msec\nrounds: 80"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_backward[garden-00016600]",
+            "value": 21.977778449872375,
+            "unit": "iter/sec",
+            "range": "stddev: 0.0006840840565201682",
+            "extra": "mean: 45.500504169738186 msec\nrounds: 542"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_forward_mcmc[garden-00000664]",
+            "value": 793.2492804184719,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00003163570841635789",
+            "extra": "mean: 1.2606377650572322 msec\nrounds: 830"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_forward_mcmc[garden-00006640]",
+            "value": 101.9478854587905,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00016956757696924457",
+            "extra": "mean: 9.808933216218803 msec\nrounds: 111"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_forward_mcmc[garden-00016600]",
+            "value": 79.453186049072,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00020743661884547183",
+            "extra": "mean: 12.586027694123914 msec\nrounds: 85"
           }
         ]
       }
