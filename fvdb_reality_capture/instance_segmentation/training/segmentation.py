@@ -47,63 +47,6 @@ if TYPE_CHECKING:
     from fvdb_reality_capture.instance_segmentation.garfvdb import GARfVDB
 
 
-class TensorboardLogger:
-    """Utility class for logging training metrics to TensorBoard."""
-
-    def __init__(
-        self,
-        log_dir: pathlib.Path,
-        log_every_step: int = 100,
-        log_images_to_tensorboard: bool = False,
-    ) -> None:
-        """Initialize TensorBoard logger.
-
-        Args:
-            log_dir: Directory to save TensorBoard event files.
-            log_every_step: Logging frequency in training steps.
-            log_images_to_tensorboard: Whether to log rendered images.
-        """
-        self._log_every_step = log_every_step
-        self._log_dir = log_dir
-        self._log_images_to_tensorboard = log_images_to_tensorboard
-        # Imported lazily so importing this module (and the fvdb_reality_capture package) does not require
-        # the optional `tensorboard` package unless TensorBoard logging is actually used. Mirrors the lazy
-        # import in segmentation_writer.py.
-        from torch.utils.tensorboard import SummaryWriter
-
-        self._tb_writer = SummaryWriter(log_dir=log_dir)
-
-    def log_training_iteration(
-        self,
-        step: int,
-        metrics: dict[str, torch.Tensor],
-        mem: float,
-        gt_img: torch.Tensor | None,
-        pred_img: torch.Tensor | None,
-    ):
-        """
-        Log training metrics to TensorBoard.
-
-        Args:
-            step: Current training step.
-            metrics: Dictionary of metrics to log.
-            mem: Maximum GPU memory allocated in GB.
-            gt_img: Ground truth image for visualization.
-            pred_img: Predicted image for visualization.
-        """
-        if self._log_every_step > 0 and step % self._log_every_step == 0 and self._tb_writer is not None:
-            mem = torch.cuda.max_memory_allocated() / 1024**3
-            # Log loss components to tensorboard
-            for key, value in metrics.items():
-                self._tb_writer.add_scalar(f"train/{key}", value.item(), step)
-            self._tb_writer.add_scalar("train/mem", mem, step)
-            if self._log_images_to_tensorboard and gt_img is not None and pred_img is not None:
-                canvas = torch.cat([gt_img, pred_img], dim=2).detach().cpu().numpy()
-                canvas = canvas.reshape(-1, *canvas.shape[2:])
-                self._tb_writer.add_image("train/render", canvas, step)
-            self._tb_writer.flush()
-
-
 class GARfVDBTrainer:
     """Training and evaluation engine for scale-conditioned Gaussian splat segmentation.
 
