@@ -253,6 +253,25 @@ class GPURandomSelectMaskIDAndScale:
             return batch
 
 
+def _sample_distinct_indices(total: int, num_samples: int) -> torch.Tensor:
+    """Draw ``num_samples`` distinct indices uniformly from ``range(total)``.
+
+    Draws with replacement, deduplicates, and tops up any shortfall. Duplicates
+    are rare when ``num_samples`` is small relative to ``total``, so the top-up
+    loop almost never runs and no ``total``-sized tensor is ever allocated. When
+    the sample count approaches ``total`` that stops holding, so fall back to a
+    full permutation. The result is sorted, which nothing downstream depends on.
+    """
+    if num_samples * 2 > total:
+        return torch.randperm(total)[:num_samples]
+
+    indices = torch.randint(0, total, (num_samples,)).unique()
+    while indices.numel() < num_samples:
+        extra = torch.randint(0, total, (num_samples - indices.numel(),))
+        indices = torch.cat([indices, extra]).unique()
+    return indices
+
+
 class RandomSamplePixels:
     """Transform that randomly samples pixels from an image.
 
@@ -339,11 +358,9 @@ class RandomSamplePixels:
                     pixels[:, 1] = flat_indices % w  # col
             else:
                 with nvtx.range("uniform_sampling"):
-                    # Uniform random sampling (with replacement, but duplicates are negligible)
-                    # For 4096 samples from 2M pixels: ~4 expected duplicates (0.1%)
                     total_pixels = h * w
                     num_samples = min(self.num_samples_per_image, total_pixels)
-                    flat_indices = torch.randint(0, total_pixels, (num_samples,))
+                    flat_indices = _sample_distinct_indices(total_pixels, num_samples)
                     pixels = torch.empty((num_samples, 2), dtype=torch.long)
                     pixels[:, 0] = flat_indices // w  # row
                     pixels[:, 1] = flat_indices % w  # col

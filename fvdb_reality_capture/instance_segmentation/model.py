@@ -652,7 +652,7 @@ class GARfVDBModel(torch.nn.Module):
             else:
                 # Edge case: no valid IDs at all
                 # Determine feature dimension from encoder config
-                feat_dim_total = grid_count * self.enc_features.shape[-1]
+                feat_dim_total = grid_count * self.enc_features.eshape[-1]
                 total_samples = ids.jdata.shape[0]
                 enc_feats_data = torch.zeros(total_samples, feat_dim_total, device=ids.jdata.device)
 
@@ -661,12 +661,18 @@ class GARfVDBModel(torch.nn.Module):
             if not self.model_config.enc_feats_one_idx_per_ray:
                 # Weighted sum of the enc_feats and transmittance weights
                 enc_feats.jdata = enc_feats.jdata * weights.jdata.unsqueeze(-1)
-                # When every pixel has exactly 1 contributor, fvdb returns a
-                # 1-level JaggedTensor [C,[R]] instead of 2-level [C,[R,[K]]].
-                # jsum(dim=0) on a 1-level tensor would collapse pixels within
-                # each camera rather than depth samples within each pixel.
-                if isinstance(enc_feats.lshape[0], list):
-                    enc_feats = enc_feats.jsum(dim=0, keepdim=True)
+
+                # The contributing-gaussian render always returns a 2-level
+                # JaggedTensor [C,[R,[K]]]. A 1-level result means the per-pixel
+                # contribution segments were lost upstream, and jsum(dim=0) would
+                # then collapse pixels within each camera instead of depth samples
+                # within each pixel. Fail rather than train on the wrong features.
+                if not isinstance(enc_feats.lshape[0], list):
+                    raise RuntimeError(
+                        "Contributing-gaussian render returned a 1-level JaggedTensor; expected 2-level "
+                        "[C,[R,[K]]]. Per-pixel contributions cannot be reduced correctly from this shape."
+                    )
+                enc_feats = enc_feats.jsum(dim=0, keepdim=True)
 
             epsilon = 1e-6
             enc_feats.jdata = enc_feats.jdata / (torch.linalg.norm(enc_feats.jdata, dim=-1, keepdim=True) + epsilon)

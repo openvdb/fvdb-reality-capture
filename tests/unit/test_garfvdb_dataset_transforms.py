@@ -4,7 +4,55 @@
 import torch
 
 from fvdb_reality_capture.instance_segmentation.training.dataset import SegmentationDataItem
-from fvdb_reality_capture.instance_segmentation.training.dataset_transforms import Resize
+from fvdb_reality_capture.instance_segmentation.training.dataset_transforms import (
+    RandomSamplePixels,
+    Resize,
+    _sample_distinct_indices,
+)
+
+
+def test_sample_distinct_indices_has_no_duplicates():
+    torch.manual_seed(0)
+    # 4096 of 2M would contain a duplicate on ~98% of draws with replacement.
+    for total, num_samples in [(778 * 519, 256), (2_000_000, 4096), (1000, 999), (10, 10)]:
+        for _ in range(20):
+            indices = _sample_distinct_indices(total, num_samples)
+            assert indices.shape == (num_samples,)
+            assert indices.unique().numel() == num_samples
+            assert indices.min() >= 0 and indices.max() < total
+
+
+def test_sample_distinct_indices_covers_small_ranges():
+    torch.manual_seed(0)
+    # Sampling every index must return exactly the full range.
+    indices = _sample_distinct_indices(7, 7)
+    torch.testing.assert_close(indices.sort().values, torch.arange(7))
+
+
+def test_random_sample_pixels_returns_distinct_pixels():
+    torch.manual_seed(0)
+    h, w, num_samples = 12, 16, 100
+    item: SegmentationDataItem = {
+        "image": torch.arange(h * w * 3, dtype=torch.float32).reshape(h, w, 3),
+        "projection": torch.eye(3),
+        "camera_to_world": torch.eye(4),
+        "world_to_camera": torch.eye(4),
+        "scales": torch.tensor([0.1]),
+        "mask_cdf": torch.ones((h, w, 1)),
+        "mask_ids": torch.zeros((h, w, 1), dtype=torch.int32),
+        "image_h": h,
+        "image_w": w,
+    }
+
+    sampled = RandomSamplePixels(num_samples)(item)
+
+    coords = sampled["pixel_coords"]
+    assert coords.shape == (num_samples, 2)
+    flat = coords[:, 0] * w + coords[:, 1]
+    assert flat.unique().numel() == num_samples
+    assert coords[:, 0].max() < h and coords[:, 1].max() < w
+    assert sampled["image"].shape == (num_samples, 3)
+    torch.testing.assert_close(sampled["image"], sampled["image_full"][coords[:, 0], coords[:, 1]])
 
 
 def test_resize_scales_intrinsics_by_actual_rounded_dimensions():
