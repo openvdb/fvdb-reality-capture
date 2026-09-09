@@ -80,11 +80,8 @@ def _sum_loss_per_view(
     """
     pair_losses, pair_row_indices = per_pair_data
     view_ids = pair_row_indices // samples_per_img
-    per_view = []
-    for v in range(num_views):
-        v_mask = view_ids == v
-        per_view.append(pair_losses[v_mask].to(torch.float32).sum())
-    return torch.stack(per_view)
+    per_view = torch.zeros(num_views, device=pair_losses.device, dtype=torch.float32)
+    return per_view.index_add_(0, view_ids, pair_losses.to(torch.float32))
 
 
 def calculate_loss(
@@ -216,7 +213,7 @@ def calculate_loss(
     instance_loss_1_sum = instance_loss_1.nansum()
     return_loss_dict["instance_loss_1"] = instance_loss_1_sum
     return_loss_dict["instance_loss_1_per_pair"] = (instance_loss_1, mask[0])
-    logging.debug(f"Loss 1: {instance_loss_1_sum.item()}, using {mask[0].shape[0]} pairs")
+    logging.debug("Loss 1: %s, using %d pairs", instance_loss_1_sum.detach(), mask[0].shape[0])
     del instance_loss_1_sum
 
     if return_loss_images:
@@ -249,7 +246,7 @@ def calculate_loss(
     instance_loss_2_nansum = instance_loss_2.nansum()
     return_loss_dict["instance_loss_2"] = instance_loss_2_nansum
     return_loss_dict["instance_loss_2_per_pair"] = (instance_loss_2, mask[0])
-    logging.debug(f"Loss 2: {instance_loss_2_nansum.item()}, using {mask[0].shape[0]} pairs")
+    logging.debug("Loss 2: %s, using %d pairs", instance_loss_2_nansum.detach(), mask[0].shape[0])
     del instance_loss_2_nansum
 
     if return_loss_images:
@@ -275,7 +272,7 @@ def calculate_loss(
     instance_loss_4_nansum = instance_loss_4.to(torch.float32).nansum()
     return_loss_dict["instance_loss_4"] = instance_loss_4_nansum
     return_loss_dict["instance_loss_4_per_pair"] = (instance_loss_4, mask[0])
-    logging.debug(f"Loss 4: {instance_loss_4_nansum.item()}, using {mask[0].shape[0]} pairs")
+    logging.debug("Loss 4: %s, using %d pairs", instance_loss_4_nansum.detach(), mask[0].shape[0])
     del instance_loss_4_nansum
 
     if return_loss_images:
@@ -289,30 +286,21 @@ def calculate_loss(
             del loss_4_img
     del instance_loss_4
 
-    # Per-view loss normalization: compute normalized loss per view, then average.
+    # Per-view loss normalization: normalize each view by its own pair count, then average.
     # This ensures each view contributes equally regardless of its instance distribution
     # (views with more instances produce more pairs, which would otherwise dominate).
-    if num_chunks > 1:
-        per_view_pair_counts = torch.zeros(num_chunks, device=block_mask.device, dtype=torch.float32)
-        for v in range(num_chunks):
-            s = v * samples_per_img
-            e = (v + 1) * samples_per_img
-            per_view_pair_counts[v] = block_mask[s:e, s:e].sum().float()
+    # With a single view this reduces to total pairs loss / total pair count.
+    #
+    # block_mask is block-diagonal by view, so summing its row sums within each view's
+    # block of rows gives that view's pair count without slicing the mask per view.
+    per_view_pair_counts = block_mask.sum(dim=1).view(num_chunks, samples_per_img).sum(dim=1).float()
+    per_view_pair_counts = per_view_pair_counts.clamp(min=1.0)
 
-        per_view_pair_counts = per_view_pair_counts.clamp(min=1.0)
+    per_view_total = torch.zeros(num_chunks, device=block_mask.device, dtype=torch.float32)
+    for loss_key in ("instance_loss_1", "instance_loss_2", "instance_loss_4"):
+        per_view_total += _sum_loss_per_view(return_loss_dict[loss_key + "_per_pair"], num_chunks, samples_per_img)
 
-        per_view_total = torch.zeros(num_chunks, device=block_mask.device, dtype=torch.float32)
-        for loss_key in ("instance_loss_1", "instance_loss_2", "instance_loss_4"):
-            per_view_total += _sum_loss_per_view(return_loss_dict[loss_key + "_per_pair"], num_chunks, samples_per_img)
-
-        return_loss_dict["total_loss"] = (per_view_total / per_view_pair_counts).mean()
-    else:
-        pair_count = torch.sum(block_mask).float().clamp(min=1.0)
-        return_loss_dict["total_loss"] = (
-            return_loss_dict["instance_loss_1"]
-            + return_loss_dict["instance_loss_2"]
-            + return_loss_dict["instance_loss_4"]
-        ) / pair_count
+    return_loss_dict["total_loss"] = (per_view_total / per_view_pair_counts).mean()
 
     for key in [k for k in return_loss_dict if k.endswith("_per_pair")]:
         del return_loss_dict[key]

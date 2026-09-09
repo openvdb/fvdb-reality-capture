@@ -468,7 +468,7 @@ class GenerateGARfVDBMasks(BaseTransform):
 
         # Compute a tensor that maps pixels to the set of masks which intersect that pixel (sorted by area)
         # i.e. pixel_to_mask_id[i, j] = [m1, m2, m3, ...] where m1, m2, ... are the integer ids of the masks
-        # which contain pixel [i, j] and area(m1) <= area(m2) <= area(m3) <= ...
+        # which contain pixel [i, j] and area(m1) >= area(m2) >= area(m3) >= ...
         num_masks, mask_h, mask_w = eroded_masks.shape
         max_masks = int(eroded_masks.sum(dim=0).max().item()) if num_masks > 0 else 0
         pixel_to_mask_id = torch.full(

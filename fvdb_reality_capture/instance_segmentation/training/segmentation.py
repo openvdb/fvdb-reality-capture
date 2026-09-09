@@ -944,7 +944,8 @@ class GARfVDBTrainer:
             with nvtx.range("loss_calculation"):
                 loss_dict = calculate_loss(self._model, cam_enc_feats, minibatch)
                 loss = loss_dict["total_loss"]
-                logging.debug(f"Loss: {loss.item()}")
+                # Lazy formatting so the device sync only happens when debug logging is on.
+                logging.debug("Loss: %s", loss.detach())
 
             # Scale loss by accumulation steps to maintain same effective learning rate
             loss = loss / gradient_accumulation_steps
@@ -1111,7 +1112,7 @@ class GARfVDBTrainer:
 
         with nvtx.range("eval_get_mask_output"):
             val_mask_output, mask_alpha = self._model.get_mask_output(val_batch, desired_scale.item())
-        logging.debug(f"mask_alpha zeros: {mask_alpha.sum()}")
+        logging.debug("mask_alpha sum: %s", mask_alpha.sum())
 
         with nvtx.range("eval_pca_projection"):
             pca_output = pca_projection_fast(val_mask_output, 3, mask=mask_alpha.squeeze(-1) > 0)
