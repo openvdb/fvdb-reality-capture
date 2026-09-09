@@ -103,33 +103,6 @@ class TensorboardLogger:
                 self._tb_writer.add_image("train/render", canvas, step)
             self._tb_writer.flush()
 
-    def log_evaluation_iteration(
-        self,
-        step: int,
-        loss: float,
-        beauty_output: torch.Tensor,
-        beauty_gt: torch.Tensor,
-        sample_mask: torch.Tensor,
-        sample_image: torch.Tensor,
-    ):
-        """
-        Log evaluation metrics to TensorBoard.
-
-        Args:
-            step: The training step after which the evaluation was performed.
-            loss: Loss value for the evaluation (averaged over all images in the validation set).
-            beauty_output: Gaussian splat rendered beauty output for the evaluation
-            beauty_gt: Ground truth beauty image from validation set for the evaluation
-            sample_mask: Mask for the evaluation
-            sample_image: Sample blended image with beauty output and mask for the evaluation
-        """
-
-        self._tb_writer.add_scalar("eval/loss", loss, step)
-        self._tb_writer.add_image("eval/beauty_output", beauty_output, step)
-        self._tb_writer.add_image("eval/beauty_gt", beauty_gt, step)
-        self._tb_writer.add_image("eval/sample_mask", sample_mask, step)
-        self._tb_writer.add_image("eval/sample_image", sample_image, step)
-
 
 class GARfVDBTrainer:
     """Training and evaluation engine for scale-conditioned Gaussian splat segmentation.
@@ -268,6 +241,11 @@ class GARfVDBTrainer:
         self._logger.info(
             f"Created dataset training and test datasets with {len(self._training_dataset)} training images and {len(self._validation_dataset)} test images."
         )
+        if len(self._validation_dataset) == 0 and len(self._cfg.eval_at_percent) > 0:
+            self._logger.warning(
+                "eval_at_percent is set but the validation set is empty, so no evaluation will run. "
+                "Hold out validation images (e.g. use_every_n_as_val > 0) to enable it."
+            )
 
         self._model = model
         self._optimizer = optimizer
@@ -1019,8 +997,8 @@ class GARfVDBTrainer:
 
                 # Run evaluation if we've reached a percentage of the total epochs specified in eval_at_percent
                 if epoch in [pct * self._cfg.max_epochs // 100 for pct in self._cfg.eval_at_percent]:
-                    logging.info(f"Running evaluation at epoch {epoch}")
                     if len(self._validation_dataset) > 0 and self._global_step > self._start_step:
+                        self._logger.info(f"Running evaluation at epoch {epoch}")
                         self.eval(log_tag=log_tag + "_eval")
 
             # Check if we've reached max_steps or max_epochs
