@@ -371,7 +371,7 @@ class GARfVDBTrainer:
         # Note: RandomSelectMaskIDAndScale is applied on GPU after data transfer for better performance
         train_transforms = torchvision.transforms.Compose(
             [
-                RandomSamplePixels(config.sample_pixels_per_image, scale_bias_strength=0.0),
+                RandomSamplePixels(config.sample_pixels_per_image, scale_bias_strength=config.scale_bias_strength),
             ]
         )
         val_transforms = torchvision.transforms.Compose(
@@ -555,7 +555,7 @@ class GARfVDBTrainer:
         # Create transforms (same as in new())
         train_transforms = torchvision.transforms.Compose(
             [
-                RandomSamplePixels(config.sample_pixels_per_image, scale_bias_strength=0.0),
+                RandomSamplePixels(config.sample_pixels_per_image, scale_bias_strength=config.scale_bias_strength),
                 RandomSelectMaskIDAndScale(),
             ]
         )

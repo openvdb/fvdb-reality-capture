@@ -67,6 +67,12 @@ class GARfVDBTrainingConfig:
     sample_pixels_per_image: int = 256
     """Number of pixels to sample per image for training."""
 
+    scale_bias_strength: float = 0.0
+    """Bias training pixel sampling toward pixels whose covering mask has a small 3D scale.
+    0.0 samples uniformly. Values above 0.0 weight each pixel by 1 / scale**strength, which favors
+    small objects and fine structure. This is a scale bias, not a boundary-distance bias.
+    Applies to training only; validation always samples uniformly."""
+
     batch_size: int = 1
     """Number of images per training batch."""
 

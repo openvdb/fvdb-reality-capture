@@ -55,6 +55,34 @@ def test_random_sample_pixels_returns_distinct_pixels():
     torch.testing.assert_close(sampled["image"], sampled["image_full"][coords[:, 0], coords[:, 1]])
 
 
+def test_random_sample_pixels_scale_bias_favors_small_scale_masks():
+    torch.manual_seed(0)
+    h, w, num_samples = 20, 20, 50
+    # Left half is covered by a small-scale mask, right half by a large-scale mask.
+    mask_ids = torch.full((h, w, 1), 1, dtype=torch.int32)
+    mask_ids[:, : w // 2] = 0
+    item: SegmentationDataItem = {
+        "image": torch.zeros((h, w, 3)),
+        "projection": torch.eye(3),
+        "camera_to_world": torch.eye(4),
+        "world_to_camera": torch.eye(4),
+        "scales": torch.tensor([0.01, 1.0]),
+        "mask_cdf": torch.ones((h, w, 1)),
+        "mask_ids": mask_ids,
+        "image_h": h,
+        "image_w": w,
+    }
+
+    sampled = RandomSamplePixels(num_samples, scale_bias_strength=1.0)(item)
+
+    coords = sampled["pixel_coords"]
+    assert coords.shape == (num_samples, 2)
+    flat = coords[:, 0] * w + coords[:, 1]
+    assert flat.unique().numel() == num_samples
+    # With 100:1 weighting nearly every sample should land in the small-scale half.
+    assert (coords[:, 1] < w // 2).float().mean() > 0.9
+
+
 def test_resize_scales_intrinsics_by_actual_rounded_dimensions():
     projection = torch.tensor(
         [
