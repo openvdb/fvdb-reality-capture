@@ -37,7 +37,6 @@ from fvdb_reality_capture.instance_segmentation.training.dataset import (
 from fvdb_reality_capture.instance_segmentation.training.dataset_transforms import (
     GPURandomSelectMaskIDAndScale,
     RandomSamplePixels,
-    RandomSelectMaskIDAndScale,
     TransformedSegmentationDataset,
 )
 from fvdb_reality_capture.instance_segmentation.training.segmentation_writer import GARfVDBWriter
@@ -45,6 +44,29 @@ from fvdb_reality_capture.instance_segmentation.util import pca_projection_fast
 
 if TYPE_CHECKING:
     from fvdb_reality_capture.instance_segmentation.garfvdb import GARfVDB
+
+
+def make_pixel_transforms(
+    config: GARfVDBTrainingConfig,
+) -> tuple[torchvision.transforms.Compose, torchvision.transforms.Compose]:
+    """Build the per-item dataset transforms for training and validation.
+
+    Both only sample pixels. Mask selection and scale interpolation run afterwards on the GPU
+    via ``GPURandomSelectMaskIDAndScale``, which needs the full ``[num_samples, MM]`` mask ids
+    and CDF, so the CPU ``RandomSelectMaskIDAndScale`` must not be applied here. Training may
+    bias sampling toward small-scale masks; validation always samples uniformly.
+    """
+    train_transforms = torchvision.transforms.Compose(
+        [
+            RandomSamplePixels(config.sample_pixels_per_image, scale_bias_strength=config.scale_bias_strength),
+        ]
+    )
+    val_transforms = torchvision.transforms.Compose(
+        [
+            RandomSamplePixels(config.sample_pixels_per_image),
+        ]
+    )
+    return train_transforms, val_transforms
 
 
 class GARfVDBTrainer:
@@ -366,21 +388,7 @@ class GARfVDBTrainer:
             train_indices = indices
             val_indices = np.array([], dtype=int)
 
-        ## SegmentationDataset transforms
-        # For training, randomly sample pixels from each image
-        # Note: RandomSelectMaskIDAndScale is applied on GPU after data transfer for better performance
-        train_transforms = torchvision.transforms.Compose(
-            [
-                RandomSamplePixels(config.sample_pixels_per_image, scale_bias_strength=config.scale_bias_strength),
-            ]
-        )
-        val_transforms = torchvision.transforms.Compose(
-            [
-                RandomSamplePixels(config.sample_pixels_per_image),
-            ]
-        )
-        # For testing, use the full image, scaled down for memory reasons
-        # test_dataset = TransformedSegmentationDataset(test_dataset, Compose([Resize(1 / 6), RandomSelectMaskIDAndScale()]))
+        train_transforms, val_transforms = make_pixel_transforms(config)
 
         ## Initialize Model
         # Scale grouping stats
@@ -552,19 +560,7 @@ class GARfVDBTrainer:
         else:
             logger.info("Restored GARfVDB segmentation model")
 
-        # Create transforms (same as in new())
-        train_transforms = torchvision.transforms.Compose(
-            [
-                RandomSamplePixels(config.sample_pixels_per_image, scale_bias_strength=config.scale_bias_strength),
-                RandomSelectMaskIDAndScale(),
-            ]
-        )
-        val_transforms = torchvision.transforms.Compose(
-            [
-                RandomSamplePixels(config.sample_pixels_per_image),
-                RandomSelectMaskIDAndScale(),
-            ]
-        )
+        train_transforms, val_transforms = make_pixel_transforms(config)
 
         # Initialize optimizer
         base_lr = 1e-5
