@@ -1,0 +1,47 @@
+# Copyright Contributors to the OpenVDB Project
+# SPDX-License-Identifier: Apache-2.0
+
+name: Load Versions
+on:
+  workflow_call:
+    outputs:
+      aws-role:
+        value: ${{ jobs.load.outputs.aws-role }}
+      aws-region:
+        value: ${{ jobs.load.outputs.aws-region }}
+      aws-cpu-az-config:
+        value: ${{ jobs.load.outputs.aws-cpu-az-config }}
+      aws-gpu-az-config:
+        value: ${{ jobs.load.outputs.aws-gpu-az-config }}
+
+permissions:
+  contents: read
+
+jobs:
+  load:
+    runs-on: ubuntu-latest
+    outputs:
+      aws-role: ${{ steps.parse.outputs.aws-role }}
+      aws-region: ${{ steps.parse.outputs.aws-region }}
+      aws-cpu-az-config: ${{ steps.parse.outputs.aws-cpu-az-config }}
+      aws-gpu-az-config: ${{ steps.parse.outputs.aws-gpu-az-config }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: .github/versions.json
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
+      - name: Parse versions.json
+        id: parse
+        run: |
+          set -euo pipefail
+          CFG=".github/versions.json"
+          # One entry per availability zone. machulav/ec2-github-runner tries each
+          # in sequence, so a zone that is out of capacity for the requested
+          # instance type no longer fails the whole job.
+          {
+            echo "aws-role=$(jq -r '.aws.role' $CFG)"
+            echo "aws-region=$(jq -r '.aws.region' $CFG)"
+            echo "aws-cpu-az-config=$(jq -c '.aws as $a | [$a.subnets[] | {imageId: $a.cpu_ami, subnetId: .id, securityGroupId: $a.security_group}]' $CFG)"
+            echo "aws-gpu-az-config=$(jq -c '.aws as $a | [$a.subnets[] | {imageId: $a.gpu_ami, subnetId: .id, securityGroupId: $a.security_group}]' $CFG)"
+          } >> "$GITHUB_OUTPUT"

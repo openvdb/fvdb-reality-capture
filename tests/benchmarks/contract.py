@@ -58,6 +58,7 @@ RECONSTRUCTION_CONFIG_KEYS = {
     "save_at_percent",
     "batch_size",
     "crops_per_image",
+    "cache_training_images",
     "sh_degree",
     "increase_sh_degree_every_epoch",
     "ssim_lambda",
@@ -96,6 +97,7 @@ but the contract constrains the *set* of valid keys.
 OPTIMIZER_CONFIG_KEYS = {
     "initial_opacity",
     "initial_covariance_scale",
+    "scale_regularization",
     "max_gaussians",
     "insertion_grad_2d_threshold_mode",
     "deletion_opacity_threshold",
@@ -130,7 +132,6 @@ MCMC_OPTIMIZER_EXTRA_KEYS = {
     "insertion_rate",
     "binomial_coeffs_n_max",
     "opacity_regularization",
-    "scale_regularization",
 }
 """
 Extra fields allowed only when using `GaussianSplatOptimizerMCMCConfig`.

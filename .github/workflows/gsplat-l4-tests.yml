@@ -23,29 +23,20 @@ permissions:
   id-token: write
 
 jobs:
+  versions:
+    name: Load versions
+    uses: ./.github/workflows/load-versions.yml
+
   start-gpu-runner:
     if: ${{ github.repository == 'openvdb/fvdb-reality-capture' }}
     name: Start L4 GPU runner
-    runs-on: ubuntu-latest
-    outputs:
-      label: ${{ steps.start-runner.outputs.label }}
-      ec2-instance-id: ${{ steps.start-runner.outputs.ec2-instance-id }}
-    steps:
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          role-to-assume: arn:aws:iam::420032683002:role/openvdb-fvdb-github-actions-role
-          aws-region: us-east-2
-      - name: Start EC2 GPU runner
-        id: start-runner
-        uses: machulav/ec2-github-runner@v2.4.3
-        with:
-          mode: start
-          github-token: ${{ secrets.EC2_RUNNERS_ACTION }}
-          ec2-image-id: ami-0f5c0b65fde08ae43
-          ec2-instance-type: g6.xlarge
-          subnet-id: subnet-03f2320d6e6e0005b
-          security-group-id: sg-0cd08bd89d6212223
+    needs: versions
+    uses: ./.github/workflows/start-ec2-runner.yml
+    with:
+      instance-type: g6.xlarge
+      az-config: ${{ needs.versions.outputs.aws-gpu-az-config }}
+    secrets:
+      RUNNER_TOKEN: ${{ secrets.EC2_RUNNERS_ACTION }}
 
   gsplat-tests:
     if: ${{ github.repository == 'openvdb/fvdb-reality-capture' }}
@@ -119,17 +110,9 @@ jobs:
     needs:
       - start-gpu-runner
       - gsplat-tests
-    runs-on: ubuntu-latest
-    steps:
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          role-to-assume: arn:aws:iam::420032683002:role/openvdb-fvdb-github-actions-role
-          aws-region: us-east-2
-      - name: Stop EC2 runner
-        uses: machulav/ec2-github-runner@v2.4.3
-        with:
-          mode: stop
-          github-token: ${{ secrets.EC2_RUNNERS_ACTION }}
-          label: ${{ needs.start-gpu-runner.outputs.label }}
-          ec2-instance-id: ${{ needs.start-gpu-runner.outputs.ec2-instance-id }}
+    uses: ./.github/workflows/stop-ec2-runner.yml
+    with:
+      label: ${{ needs.start-gpu-runner.outputs.label }}
+      ec2-instance-id: ${{ needs.start-gpu-runner.outputs.ec2-instance-id }}
+    secrets:
+      RUNNER_TOKEN: ${{ secrets.EC2_RUNNERS_ACTION }}

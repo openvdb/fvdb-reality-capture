@@ -15,6 +15,28 @@ REGISTERED_OPTIMIZERS = {}
 DerivedOptimizer = TypeVar("DerivedOptimizer", bound=type)
 
 
+def gaussian_scale_regularization_loss(
+    log_scales: torch.Tensor,
+    scale_regularization: float,
+) -> torch.Tensor:
+    """
+    Compute scale regularization for a set of Gaussians.
+
+    Args:
+        log_scales: Gaussian log scales with shape ``(N, 3)``.
+        scale_regularization: Weight applied to the mean linear scale.
+
+    Returns:
+        A scalar regularization loss.
+    """
+    if log_scales.numel() == 0:
+        return log_scales.new_zeros(())
+
+    if scale_regularization <= 0.0:
+        return log_scales.new_zeros(())
+    return scale_regularization * torch.exp(log_scales).mean()
+
+
 def splat_optimizer(cls: DerivedOptimizer) -> DerivedOptimizer:
     """
     Decorator to register an optimizer class which inherits from :class:`BaseGaussianSplatOptimizer`.

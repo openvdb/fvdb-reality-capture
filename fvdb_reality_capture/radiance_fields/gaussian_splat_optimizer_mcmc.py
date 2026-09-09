@@ -12,6 +12,7 @@ import torch
 
 from fvdb_reality_capture.radiance_fields.base_gaussian_splat_optimizer import (
     BaseGaussianSplatOptimizer,
+    gaussian_scale_regularization_loss,
     splat_optimizer,
 )
 from fvdb_reality_capture.radiance_fields.gaussian_splat_optimizer import (
@@ -80,10 +81,7 @@ class GaussianSplatOptimizerMCMCConfig(GaussianSplatOptimizerConfig):
 
     scale_regularization: float = 0.01
     """
-    Weight for scale regularization loss :math:`L_{scale} = \\frac{1}{N} \\sum_i |scale_i|`.
-
-    This loss encourages the scales of the Gaussians to be small, which in turn encourages Gaussians to
-    disapear in areas where they are not needed.
+    Weight for scale regularization. This overrides the base optimizer default for MCMC optimization.
 
     Default: ``0.01``.
     """
@@ -367,12 +365,13 @@ class GaussianSplatOptimizerMCMC(BaseGaussianSplatOptimizer):
             reg_loss (torch.Tensor): A scalar tensor representing the regularization loss.
         """
 
-        # Rgularize opacity to ensure Gaussian's don't become too opaque
+        # Regularize opacity to ensure Gaussians don't become too opaque.
         loss = self._config.opacity_regularization * self._model.opacities.mean()
 
-        # Regularize scales to ensure Gaussians don't become too large
-        loss = loss + self._config.scale_regularization * self._model.scales.mean()
-
+        loss = loss + gaussian_scale_regularization_loss(
+            self._model.log_scales,
+            scale_regularization=self._config.scale_regularization,
+        )
         return loss
 
     @staticmethod
