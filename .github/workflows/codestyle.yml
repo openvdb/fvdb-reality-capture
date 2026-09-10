@@ -75,3 +75,21 @@ jobs:
           set +e
           git grep -n "	" -- ':!*/codestyle.yml' ':!*.svg' ':!*.cmd' ':!*.png' ':!*.wlt' ':!*.jpg' ':!*.gif' ':!*.mp4' ':!*.pt' ':!*.pth' ':!*.nvdb' ':!*.npz' ':!*.gitmodules'
           test $? -eq 1
+
+  # The nightly builds the fvdb-core wheel from fvdb-core's env/build_environment.yml
+  # and installs it into the benchmark env in this repo. If those pins disagree the
+  # wheel is compiled against one libtorch and loaded against another, and the run
+  # dies at `import fvdb`. The nightly regenerates the pins itself, so a stale file
+  # no longer breaks CI -- but it still breaks `docker build` and anyone creating the
+  # env locally, so keep the committed file honest here.
+  #
+  # This blocks rather than warns: a GitHub `::warning::` is an annotation, so a
+  # green check would hide it and the staleness would persist.
+  check-benchmark-env-current:
+    name: Benchmark env pins current
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - name: Check pins match fvdb-core
+      run: python3 scripts/generate_benchmark_env.py --check
+
