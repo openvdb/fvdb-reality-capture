@@ -45,6 +45,6 @@
     │ -s, --save-images, --no-save-images                                                            │
     │     Whether to save the rendered images. Defaults to True. (default: True)                     │
     │ --device STR|DEVICE                                                                            │
-    │     Device to use for computation. Defaults to "cuda". (default: cuda)                         │
+    │     Device to use for computation. Defaults to "cuda:0". (default: cuda:0)                     │
     ╰────────────────────────────────────────────────────────────────────────────────────────────────╯
 

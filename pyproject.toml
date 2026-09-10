@@ -35,6 +35,7 @@ dependencies = [
     "pyproj",
     "requests",
     "sam2==1.1.0",
+    "safetensors",
     "scikit-image",
     "scipy",
     "tensorboard",

@@ -2,7 +2,8 @@
 
 fVDB-Reality-Capture is a reality-capture toolbox built on top of [fVDB](https://fvdb-core.readthedocs.io). It
 provides high-level abstractions and APIs for common reality capture tasks, such as loading sensor data, reconstructing
-radiance fields, extracting meshes and point clouds, visualization, and exporting results across standard formats such
+radiance fields, learning scale-conditioned instance feature fields, extracting meshes and point clouds, visualization,
+and exporting results across standard formats such
 as PLY and USD (USDC/USDZ).
 
 By leveraging the power of fVDB, fVDB-Reality-Capture can scale reconstruction to very large or dense

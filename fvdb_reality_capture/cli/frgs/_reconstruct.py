@@ -13,7 +13,6 @@ from pathlib import Path
 from typing import Annotated, Literal
 
 import fvdb.viz as fviz
-import numpy as np
 import torch
 import tqdm
 from tyro.conf import Positional, arg
@@ -31,13 +30,8 @@ from fvdb_reality_capture.radiance_fields import (
 from fvdb_reality_capture.sfm_scene import SfmScene
 from fvdb_reality_capture.transforms import (
     BaseTransform,
-    Compose,
-    CropScene,
-    CropSceneToPoints,
-    DownsampleImages,
-    FilterImagesWithLowPoints,
     NormalizeScene,
-    PercentileFilterPoints,
+    SceneTransformConfig as BaseSceneTransformConfig,
 )
 
 from ._common import (
@@ -49,48 +43,22 @@ from ._common import (
 
 
 @dataclass
-class SceneTransformConfig:
+class SceneTransformConfig(BaseSceneTransformConfig):
     """
     Configure how an SfmScene is transformed before optimization.
     """
 
-    # Downsample images by this factor
     image_downsample_factor: int = 4
-    # JPEG quality to use when resaving images after downsampling
-    rescale_jpeg_quality: int = 95
-    # Percentile of points to filter out based on their distance from the median point
-    points_percentile_filter: float = 0.0
+    """Downsample images by this factor."""
+
     # Type of normalization to apply to the scene
     normalization_type: Literal["none", "pca", "ecef2enu", "similarity"] = "pca"
-    # Optional bounding box (in the normalized space) to crop the scene to (xmin, xmax, ymin, ymax, zmin, zmax)
-    crop_bbox: tuple[float, float, float, float, float, float] | None = None
-    # Whether to crop the scene to the bounding box or not
-    crop_to_points: bool = False
-    # Minimum number of 3D points that must be visible in an image for it to be included in the optimization
-    min_points_per_image: int = 5
-    # Bounding box to which we crop the scene (in the original space) (xmin, xmax, ymin, ymax, zmin, zmax)
-    crop_bbox: tuple[float, float, float, float, float, float] | None = None
 
     @property
     def scene_transform(self) -> BaseTransform:
-        # Dataset transform
-        transforms = [
-            NormalizeScene(normalization_type=self.normalization_type),
-            PercentileFilterPoints(
-                percentile_min=np.full((3,), self.points_percentile_filter),
-                percentile_max=np.full((3,), 100.0 - self.points_percentile_filter),
-            ),
-            DownsampleImages(
-                image_downsample_factor=self.image_downsample_factor,
-                rescaled_jpeg_quality=self.rescale_jpeg_quality,
-            ),
-            FilterImagesWithLowPoints(min_num_points=self.min_points_per_image),
-        ]
-        if self.crop_bbox is not None:
-            transforms.append(CropScene(self.crop_bbox))
-        if self.crop_to_points:
-            transforms.append(CropSceneToPoints(margin=0.0))
-        return Compose(*transforms)
+        return self.build_scene_transform(
+            alignment_transform=NormalizeScene(normalization_type=self.normalization_type),
+        )
 
 
 @dataclass
@@ -153,8 +121,8 @@ class Reconstruct(BaseCommand):
 
     # Which device to use for reconstruction. Must be a cuda device. You can pass in a specific device index via
     # cuda:N where N is the device index, or "cuda" to use the default cuda device.
-    # CPU is not supported. Default is "cuda".
-    device: Annotated[str | torch.device, arg(aliases=["-d"])] = "cuda"
+    # CPU is not supported. Default is "cuda:0".
+    device: Annotated[str | torch.device, arg(aliases=["-d"])] = "cuda:0"
 
     # If set, show verbose debug messages.
     verbose: Annotated[bool, arg(aliases=["-v"])] = False
