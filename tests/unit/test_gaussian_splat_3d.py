@@ -24,7 +24,6 @@ from fvdb_reality_capture import (
     GaussianSplat3d,
     ProjectionMethod,
     evaluate_spherical_harmonics,
-    gaussian_render_jagged,
 )
 
 
@@ -1048,7 +1047,6 @@ class TestGaussianSplatIndex(BaseGaussianTestCase):
         ]
     )
     def test_gaussian_slice_selection(self, accumulate_mean_2d_gradients, track_max_2d_radii, empty_shN):
-
         def check_is_view(selected, gtidx):
             if not accumulate_mean_2d_gradients and not track_max_2d_radii:
                 selected.means += 10.0
@@ -1375,7 +1373,6 @@ class TestLoadAndSavePly(BaseGaussianTestCase):
 
 
 class TestGaussianRender(BaseGaussianTestCase):
-
     def setUp(self):
         super().setUp()
 
@@ -1407,7 +1404,9 @@ class TestGaussianRender(BaseGaussianTestCase):
 
         visible = (radii > 0).all(dim=-1)
         torch.testing.assert_close(radii, test_radii)
-        torch.testing.assert_close(means2d[visible], test_means2d[visible])
+        # The gsplat projection kernel is numerically equivalent to the former
+        # fvdb-core kernel, but differs slightly in floating-point evaluation order.
+        torch.testing.assert_close(means2d[visible], test_means2d[visible], atol=5e-5, rtol=1e-5)
         torch.testing.assert_close(depths[visible], test_depths[visible])
         torch.testing.assert_close(conics[visible], test_conics[visible], atol=1e-5, rtol=1e-4)
 
@@ -1512,76 +1511,8 @@ class TestGaussianRender(BaseGaussianTestCase):
             f"Gaussian renders for Torch tensors differ from reference image at {cmp.nfail} pixels",
         )
 
-    def test_gaussian_render_jagged(self):
-        # There are two scenes
-        jt_means = JaggedTensor([self.gs3d.means, self.gs3d.means]).to(self.device)
-        jt_quats = JaggedTensor([self.gs3d.quats, self.gs3d.quats]).to(self.device)
-        jt_scales = JaggedTensor([self.gs3d.scales, self.gs3d.scales]).to(self.device)
-        jt_opacities = JaggedTensor([self.gs3d.opacities, self.gs3d.opacities]).to(self.device)
-
-        sh_coeffs = torch.cat([self.gs3d.sh0, self.gs3d.shN], dim=1)  # [N, K, 3]
-        jt_sh_coeffs = JaggedTensor([sh_coeffs, sh_coeffs]).to(self.device)
-
-        # The first scene renders to 2 views and the second scene renders to a single view
-        jt_viewmats = JaggedTensor([self.cam_to_world_mats[:2], self.cam_to_world_mats[2:]]).to(self.device)
-        jt_Ks = JaggedTensor([self.projection_mats[:2], self.projection_mats[2:]]).to(self.device)
-
-        # g_sizes = means.joffsets[1:] - means.joffsets[:-1]
-        # c_sizes = Ks.joffsets[1:] - Ks.joffsets[:-1]
-        # tt = g_sizes.repeat_interleave(c_sizes)
-        # camera_ids = torch.arange(viewmats.rshape[0], device=device).repeat_interleave(tt, dim=0)
-
-        # dd0 = means.joffsets[:-1].repeat_interleave(c_sizes, 0)
-        # dd1 = means.joffsets[1:].repeat_interleave(c_sizes, 0)
-        # shifts = dd0[1:] - dd1[:-1]
-        # shifts = torch.cat([torch.tensor([0], device=device), shifts])  # [0, -1000, 0]
-        # shifts_cumsum = shifts.cumsum(0)  # [0, -1000, -1000]
-        # gaussian_ids = torch.arange(len(camera_ids), device=device)  # [0, 1, 2, ..., 2999]
-        # gaussian_ids = gaussian_ids + shifts_cumsum.repeat_interleave(tt, dim=0)
-
-        render_colors, render_alphas, _ = gaussian_render_jagged(
-            jt_means,
-            jt_quats,
-            jt_scales,
-            jt_opacities,
-            jt_sh_coeffs,
-            jt_viewmats,
-            jt_Ks,
-            self.width,
-            self.height,
-            self.near_plane,  # near_plane
-            self.far_plane,  # far_plane
-            self.sh_degree,  # sh_degree_to_use
-            16,  # tile_size
-            0.0,  # radius_clip
-            0.3,  # eps2d
-            False,  # antialias
-            False,  # return depth
-            False,  # return debug info
-            False,  # ortho
-        )
-
-        pixels = self._tensors_to_pixel(render_colors, render_alphas)
-        differ, cmp = compare_images(pixels, str(self.data_path / "regression_gaussian_render_jagged_result.png"))
-
-        if self.save_image_data:
-            import cv2
-
-            cv2.imwrite(str(self.data_path / "output_gaussian_render_jagged.png"), pixels)
-
-        if self.save_regression_data:
-            import cv2
-
-            cv2.imwrite("regression_gaussian_render_jagged_result.png", pixels)
-
-        self.assertFalse(
-            differ,
-            f"Gaussian renders for jagged tensors differ from reference image at {cmp.nfail} pixels",
-        )
-
 
 class TestGaussianContributingGaussianIdsRender(BaseGaussianTestCase):
-
     def setUp(self):
         super().setUp()
         # Reducing width/height to reduce file size of reference test data
@@ -1596,6 +1527,12 @@ class TestGaussianContributingGaussianIdsRender(BaseGaussianTestCase):
             expected_alpha += accumulated_transparency * opacity
             accumulated_transparency *= 1.0 - opacity
         return expected_alpha
+
+    def _assert_jagged_close(self, actual: JaggedTensor, expected: JaggedTensor) -> None:
+        self.assertEqual(actual.ldim, expected.ldim)
+        self.assertTrue(torch.equal(actual.joffsets, expected.joffsets))
+        self.assertTrue(torch.equal(actual.jlidx, expected.jlidx))
+        torch.testing.assert_close(actual.jdata, expected.jdata, atol=5e-5, rtol=5e-5)
 
     def test_gaussians_center_render(self):
         h = 1024
@@ -1707,7 +1644,7 @@ class TestGaussianContributingGaussianIdsRender(BaseGaussianTestCase):
         for ids_no_topk, ids_with_topk in zip(ids.unbind(), ids_topk.unbind()):
             self.assertTrue(torch.equal(ids_no_topk[0], ids_with_topk[0]))
         for weights_no_topk, weights_with_topk in zip(weights.unbind(), weights_topk.unbind()):
-            self.assertTrue(torch.equal(weights_no_topk[0], weights_with_topk[0]))
+            torch.testing.assert_close(weights_no_topk[0], weights_with_topk[0], atol=1e-5, rtol=1e-5)
 
         # sparse rendering
         # render the center pixel
@@ -1732,7 +1669,12 @@ class TestGaussianContributingGaussianIdsRender(BaseGaussianTestCase):
         )
 
         # test the center pixel should have the correct alpha
-        self.assertTrue(torch.equal(sparse_alphas.unbind()[0][0], alphas[0][h // 2 - 1][w // 2 - 1]))
+        torch.testing.assert_close(
+            sparse_alphas.unbind()[0][0],
+            alphas[0][h // 2 - 1][w // 2 - 1],
+            atol=5e-5,
+            rtol=5e-5,
+        )
 
         # test sparse render top contributing gaussian ids
         sparse_ids, sparse_weights = gs3d.sparse_render_contributing_gaussian_ids(
@@ -1747,7 +1689,7 @@ class TestGaussianContributingGaussianIdsRender(BaseGaussianTestCase):
 
         self.assertTrue(torch.equal(sparse_ids.unbind()[0][0], middle_pixel_ids))
 
-        self.assertTrue(torch.equal(sparse_weights.unbind()[0][0], middle_pixel_weights))
+        torch.testing.assert_close(sparse_weights.unbind()[0][0], middle_pixel_weights, atol=1e-5, rtol=1e-5)
 
         # Test that sparse_render_contributing_gaussian_ids with top_k_contributors
         # set to max(num_contributing_gaussians) produces identical results
@@ -1767,7 +1709,7 @@ class TestGaussianContributingGaussianIdsRender(BaseGaussianTestCase):
         for ids_no_topk, ids_with_topk in zip(sparse_ids.unbind(), sparse_ids_topk.unbind()):
             self.assertTrue(torch.equal(ids_no_topk[0], ids_with_topk[0]))
         for weights_no_topk, weights_with_topk in zip(sparse_weights.unbind(), sparse_weights_topk.unbind()):
-            self.assertTrue(torch.equal(weights_no_topk[0], weights_with_topk[0]))
+            torch.testing.assert_close(weights_no_topk[0], weights_with_topk[0], atol=1e-5, rtol=1e-5)
 
     def test_gaussians_grid_render(self):
         h = 1024
@@ -1927,7 +1869,7 @@ class TestGaussianContributingGaussianIdsRender(BaseGaussianTestCase):
         for ids_no_topk, ids_with_topk in zip(ids.unbind(), ids_topk.unbind()):
             self.assertTrue(torch.equal(ids_no_topk[0], ids_with_topk[0]))
         for weights_no_topk, weights_with_topk in zip(weights.unbind(), weights_topk.unbind()):
-            self.assertTrue(torch.equal(weights_no_topk[0], weights_with_topk[0]))
+            torch.testing.assert_close(weights_no_topk[0], weights_with_topk[0], atol=1e-5, rtol=1e-5)
 
         ##########################################################
         ## Sparse Rendering- use pixels that we know have gaussians (center pixels)
@@ -1972,7 +1914,7 @@ class TestGaussianContributingGaussianIdsRender(BaseGaussianTestCase):
             x_coords = pixels[:, 1]  # [num_pixels_to_render]
             # Index reference_alphas using the coordinates
             selected_reference_alphas = reference_alphas[y_coords, x_coords]
-            self.assertTrue(torch.equal(sparse_alphas, selected_reference_alphas))
+            torch.testing.assert_close(sparse_alphas, selected_reference_alphas, atol=5e-5, rtol=5e-5)
 
         # test sparse render contributing gaussian ids
         sparse_ids, sparse_weights = gs3d.sparse_render_contributing_gaussian_ids(
@@ -2005,7 +1947,7 @@ class TestGaussianContributingGaussianIdsRender(BaseGaussianTestCase):
 
                 # Compare
                 self.assertTrue(torch.equal(sparse_pixel_ids, reference_pixel_ids))
-                self.assertTrue(torch.equal(sparse_pixel_weights, reference_pixel_weights))
+                torch.testing.assert_close(sparse_pixel_weights, reference_pixel_weights, atol=1e-5, rtol=1e-5)
 
         # Test that sparse_render_contributing_gaussian_ids with top_k_contributors
         # set to max(num_contributing_gaussians) produces identical results
@@ -2025,7 +1967,7 @@ class TestGaussianContributingGaussianIdsRender(BaseGaussianTestCase):
         for ids_no_topk, ids_with_topk in zip(sparse_ids.unbind(), sparse_ids_topk.unbind()):
             self.assertTrue(torch.equal(ids_no_topk[0], ids_with_topk[0]))
         for weights_no_topk, weights_with_topk in zip(sparse_weights.unbind(), sparse_weights_topk.unbind()):
-            self.assertTrue(torch.equal(weights_no_topk[0], weights_with_topk[0]))
+            torch.testing.assert_close(weights_no_topk[0], weights_with_topk[0], atol=1e-5, rtol=1e-5)
 
     def test_gaussian_contributors_scene_render(self):
         # Test render num contributing gaussians
@@ -2063,7 +2005,7 @@ class TestGaussianContributingGaussianIdsRender(BaseGaussianTestCase):
         )
 
         self.assertTrue(torch.equal(num_contributing_gaussians, num_contributing_gaussians_regression))
-        self.assertTrue(torch.equal(alphas, alphas_regression))
+        torch.testing.assert_close(alphas, alphas_regression, atol=5e-5, rtol=5e-5)
 
         # Test render top contributing gaussian ids
         ids, weights = self.gs3d.render_contributing_gaussian_ids(
@@ -2086,7 +2028,7 @@ class TestGaussianContributingGaussianIdsRender(BaseGaussianTestCase):
         )
 
         self.assertTrue(ids == ids_regression)
-        self.assertTrue(weights == weights_regression)
+        self._assert_jagged_close(weights, weights_regression)
 
     def test_gaussian_contributors_scene_sparse_render(self):
         # sparse rendering
@@ -2105,8 +2047,24 @@ class TestGaussianContributingGaussianIdsRender(BaseGaussianTestCase):
         pixels_to_render = JaggedTensor(pixels_per_camera).to(self.device)
 
         # Test render num contributing gaussians
-        num_contributing_gaussians, num_contributing_gaussians_alphas = (
-            self.gs3d.sparse_render_num_contributing_gaussians(
+        (
+            num_contributing_gaussians,
+            num_contributing_gaussians_alphas,
+        ) = self.gs3d.sparse_render_num_contributing_gaussians(
+            pixels_to_render,
+            self.cam_to_world_mats,
+            self.projection_mats,
+            self.width,
+            self.height,
+            0.01,
+            10000.0,
+        )
+        prev_num_contributing_gaussians = num_contributing_gaussians
+        for _ in range(50):
+            (
+                num_contributing_gaussians,
+                num_contributing_gaussians_alphas,
+            ) = self.gs3d.sparse_render_num_contributing_gaussians(
                 pixels_to_render,
                 self.cam_to_world_mats,
                 self.projection_mats,
@@ -2114,20 +2072,6 @@ class TestGaussianContributingGaussianIdsRender(BaseGaussianTestCase):
                 self.height,
                 0.01,
                 10000.0,
-            )
-        )
-        prev_num_contributing_gaussians = num_contributing_gaussians
-        for _ in range(50):
-            num_contributing_gaussians, num_contributing_gaussians_alphas = (
-                self.gs3d.sparse_render_num_contributing_gaussians(
-                    pixels_to_render,
-                    self.cam_to_world_mats,
-                    self.projection_mats,
-                    self.width,
-                    self.height,
-                    0.01,
-                    10000.0,
-                )
             )
             self.assertTrue(torch.equal(num_contributing_gaussians.jdata, prev_num_contributing_gaussians.jdata))
             prev_num_contributing_gaussians = num_contributing_gaussians
@@ -2162,7 +2106,7 @@ class TestGaussianContributingGaussianIdsRender(BaseGaussianTestCase):
             x_coords = pixels[:, 1]  # [num_pixels_to_render]
             # Index reference_alphas using the coordinates
             selected_reference_alphas = reference_alphas[y_coords, x_coords]
-            self.assertTrue(torch.equal(sparse_alphas, selected_reference_alphas))
+            torch.testing.assert_close(sparse_alphas, selected_reference_alphas, atol=5e-5, rtol=5e-5)
 
         # Test render top contributing gaussian ids
         sparse_ids, sparse_weights = self.gs3d.sparse_render_contributing_gaussian_ids(
@@ -2212,7 +2156,7 @@ class TestGaussianContributingGaussianIdsRender(BaseGaussianTestCase):
             selected_tensors = [reference_weights_list[idx.item()] for idx in pixel_indices]  # type: ignore
             selected_reference_weights = JaggedTensor(selected_tensors)
 
-            self.assertTrue(image_sparse_weights == selected_reference_weights)
+            self._assert_jagged_close(image_sparse_weights, selected_reference_weights)
 
     def test_gaussian_contributors_scene_dense_pixels_sparse_render(self):
         # Test that the sparse render works with dense pixel specification
@@ -2271,7 +2215,7 @@ class TestGaussianContributingGaussianIdsRender(BaseGaussianTestCase):
             x_coords = pixels[:, 1]  # [num_pixels_to_render]
             # Index reference_alphas using the coordinates
             selected_reference_alphas = reference_alphas[y_coords, x_coords]
-            self.assertTrue(torch.equal(sparse_alphas, selected_reference_alphas))
+            torch.testing.assert_close(sparse_alphas, selected_reference_alphas, atol=5e-5, rtol=5e-5)
 
         # test sparse render top contributing gaussian ids
         sparse_ids, sparse_weights = self.gs3d.sparse_render_contributing_gaussian_ids(
@@ -2321,7 +2265,7 @@ class TestGaussianContributingGaussianIdsRender(BaseGaussianTestCase):
             selected_tensors = [reference_weights_list[idx.item()] for idx in pixel_indices]  # type: ignore
             selected_reference_weights = JaggedTensor(selected_tensors)
 
-            self.assertTrue(image_sparse_weights == selected_reference_weights)
+            self._assert_jagged_close(image_sparse_weights, selected_reference_weights)
 
 
 class TestGaussianRenderSparse(BaseGaussianTestCase):
@@ -2944,82 +2888,6 @@ class TestGaussianRenderBackgrounds(BaseGaussianTestCase):
         expected_colors = colors_no_bg + (1.0 - alphas_no_bg) * backgrounds_expanded
 
         self.assertTrue(torch.allclose(colors_with_bg, expected_colors, atol=1e-5, rtol=1e-5))
-
-    def test_jagged_render_with_backgrounds(self):
-        """Test jagged tensor rendering with backgrounds"""
-        # Use the existing test gaussians, create two scenes from the same data
-        jt_means = JaggedTensor([self.gs3d.means, self.gs3d.means]).to(self.device)
-        jt_quats = JaggedTensor([self.gs3d.quats, self.gs3d.quats]).to(self.device)
-        jt_scales = JaggedTensor([self.gs3d.scales, self.gs3d.scales]).to(self.device)
-        jt_opacities = JaggedTensor([self.gs3d.opacities, self.gs3d.opacities]).to(self.device)
-
-        sh_coeffs = torch.cat([self.gs3d.sh0, self.gs3d.shN], dim=1)  # [N, K, 3]
-        jt_sh_coeffs = JaggedTensor([sh_coeffs, sh_coeffs]).to(self.device)
-
-        # Two scenes, one camera each
-        jt_viewmats = JaggedTensor([self.cam_to_world_mats[0:1], self.cam_to_world_mats[0:1]]).to(self.device)
-        jt_Ks = JaggedTensor([self.projection_mats[0:1], self.projection_mats[0:1]]).to(self.device)
-
-        # Create backgrounds (2 cameras total: 1 per scene)
-        num_cameras = 2
-        backgrounds = torch.zeros((num_cameras, 3), device=self.device, dtype=torch.float32)
-        backgrounds[0] = torch.tensor([1.0, 0.0, 0.0], device=self.device)  # Red
-        backgrounds[1] = torch.tensor([0.0, 1.0, 0.0], device=self.device)  # Green
-
-        # Render without backgrounds
-        colors_no_bg, alphas_no_bg, _ = gaussian_render_jagged(
-            jt_means,
-            jt_quats,
-            jt_scales,
-            jt_opacities,
-            jt_sh_coeffs,
-            jt_viewmats,
-            jt_Ks,
-            self.width,
-            self.height,
-            self.near_plane,
-            self.far_plane,
-            self.sh_degree,
-        )
-
-        # Render with backgrounds
-        colors_with_bg, alphas_with_bg, _ = gaussian_render_jagged(
-            jt_means,
-            jt_quats,
-            jt_scales,
-            jt_opacities,
-            jt_sh_coeffs,
-            jt_viewmats,
-            jt_Ks,
-            self.width,
-            self.height,
-            self.near_plane,
-            self.far_plane,
-            self.sh_degree,
-            backgrounds=backgrounds,
-        )
-
-        # Alphas should be identical
-        self.assertTrue(torch.allclose(alphas_no_bg, alphas_with_bg))
-
-        # Verify blending for each camera
-        # Colors and alphas are returned as [C, H, W, D] tensors (NOT [C*H, W, D])
-        for cam_idx in range(num_cameras):
-            # Extract this camera's data
-            cam_colors_no_bg = colors_no_bg[cam_idx]  # [H, W, 3]
-            cam_colors_with_bg = colors_with_bg[cam_idx]  # [H, W, 3]
-            cam_alphas_no_bg = alphas_no_bg[cam_idx]  # [H, W, 1]
-
-            # Compute expected colors with background blending
-            bg = backgrounds[cam_idx].view(1, 1, 3)
-            expected = cam_colors_no_bg + (1.0 - cam_alphas_no_bg) * bg
-
-            max_diff = torch.abs(cam_colors_with_bg - expected).max().item()
-
-            self.assertTrue(
-                torch.allclose(cam_colors_with_bg, expected, atol=1e-4, rtol=1e-4),
-                f"Camera {cam_idx}: max diff {max_diff} exceeds tolerance",
-            )
 
 
 class TestGaussianSplatMCMC(BaseGaussianTestCase):
@@ -3812,92 +3680,6 @@ class TestGaussianRenderMasks(BaseGaussianTestCase):
         )
         self.assertTrue(torch.allclose(ref.jdata, out.jdata, atol=1e-5))
         self.assertTrue(torch.allclose(ref_a.jdata, out_a.jdata, atol=1e-5))
-
-    # -- Jagged: gaussian_render_jagged --------------------------------------
-
-    def test_jagged_render_with_masks(self):
-        jt_means = JaggedTensor([self.gs3d.means]).to(self.device)
-        jt_quats = JaggedTensor([self.gs3d.quats]).to(self.device)
-        jt_scales = JaggedTensor([self.gs3d.scales]).to(self.device)
-        jt_opacities = JaggedTensor([self.gs3d.opacities]).to(self.device)
-        sh_coeffs = torch.cat([self.gs3d.sh0, self.gs3d.shN], dim=1)
-        jt_sh_coeffs = JaggedTensor([sh_coeffs]).to(self.device)
-        jt_viewmats = JaggedTensor([self.cam_to_world_mats[0:1]]).to(self.device)
-        jt_Ks = JaggedTensor([self.projection_mats[0:1]]).to(self.device)
-
-        C = 1
-        bg = torch.tensor([[0.1, -0.2, 0.3]], device=self.device, dtype=torch.float32)
-
-        ref, ref_a, _ = gaussian_render_jagged(
-            jt_means,
-            jt_quats,
-            jt_scales,
-            jt_opacities,
-            jt_sh_coeffs,
-            jt_viewmats,
-            jt_Ks,
-            self.width,
-            self.height,
-            self.near_plane,
-            self.far_plane,
-            self.sh_degree,
-            tile_size=self.tile_size,
-            backgrounds=bg,
-        )
-        out, out_a, _ = gaussian_render_jagged(
-            jt_means,
-            jt_quats,
-            jt_scales,
-            jt_opacities,
-            jt_sh_coeffs,
-            jt_viewmats,
-            jt_Ks,
-            self.width,
-            self.height,
-            self.near_plane,
-            self.far_plane,
-            self.sh_degree,
-            tile_size=self.tile_size,
-            backgrounds=bg,
-            masks=self._all_ones_tile_mask(C),
-        )
-        self.assertTrue(torch.allclose(ref, out, atol=1e-5))
-        self.assertTrue(torch.allclose(ref_a, out_a, atol=1e-5))
-
-    def test_jagged_render_all_zeros_mask_produces_background(self):
-        jt_means = JaggedTensor([self.gs3d.means]).to(self.device)
-        jt_quats = JaggedTensor([self.gs3d.quats]).to(self.device)
-        jt_scales = JaggedTensor([self.gs3d.scales]).to(self.device)
-        jt_opacities = JaggedTensor([self.gs3d.opacities]).to(self.device)
-        sh_coeffs = torch.cat([self.gs3d.sh0, self.gs3d.shN], dim=1)
-        jt_sh_coeffs = JaggedTensor([sh_coeffs]).to(self.device)
-        jt_viewmats = JaggedTensor([self.cam_to_world_mats[0:1]]).to(self.device)
-        jt_Ks = JaggedTensor([self.projection_mats[0:1]]).to(self.device)
-
-        C = 1
-        D = 3
-        bg = torch.tensor([[0.1, -0.2, 0.3]], device=self.device, dtype=torch.float32)
-
-        out, out_a, _ = gaussian_render_jagged(
-            jt_means,
-            jt_quats,
-            jt_scales,
-            jt_opacities,
-            jt_sh_coeffs,
-            jt_viewmats,
-            jt_Ks,
-            self.width,
-            self.height,
-            self.near_plane,
-            self.far_plane,
-            self.sh_degree,
-            tile_size=self.tile_size,
-            backgrounds=bg,
-            masks=self._all_zeros_tile_mask(C),
-        )
-        expected = bg.view(C, 1, 1, D).expand(C, self.height, self.width, D)
-        self.assertTrue(torch.equal(out_a, torch.zeros_like(out_a)))
-        self.assertTrue(torch.equal(out, expected))
 
 
 class TestGaussianRenderSparseDuplicatePixels(BaseGaussianTestCase):
@@ -4906,7 +4688,7 @@ class TestGaussianCameraApi(unittest.TestCase):
 
 class TestProjectionGradsMultiCamera(unittest.TestCase):
     """Verify that all Gaussian parameter gradients are correctly summed across
-    cameras in the projection backward pass (both dense and jagged).
+    cameras in the dense projection backward pass.
 
     The projection backward kernels use warp-level reductions (warpSum) to
     accumulate per-camera gradient contributions for each Gaussian.  A missing
@@ -4926,7 +4708,6 @@ class TestProjectionGradsMultiCamera(unittest.TestCase):
     DEVICE = "cuda:0"
 
     DENSE_PARAMS = ("means", "quats", "log_scales", "logit_opacities", "sh0", "shN")
-    JAGGED_PARAMS = ("means", "quats", "scales", "opacities", "sh_coeffs")
 
     @staticmethod
     def _look_at(eye, target, up):
@@ -4976,7 +4757,7 @@ class TestProjectionGradsMultiCamera(unittest.TestCase):
         K = torch.tensor([[fx, 0.0, cx], [0.0, fy, cy], [0.0, 0.0, 1.0]], device=device)
         Ks = K.unsqueeze(0).expand(self.C, -1, -1).contiguous()
 
-        return means, quats, log_scales, logit_opacities, sh0, shN, sh_coeffs, viewmats, Ks
+        return means, quats, log_scales, logit_opacities, sh0, shN, viewmats, Ks
 
     def _build_gs3d(self, means, quats, log_scales, logit_opacities, sh0, shN):
         gs3d = GaussianSplat3d.from_tensors(
@@ -4992,7 +4773,7 @@ class TestProjectionGradsMultiCamera(unittest.TestCase):
 
     def test_dense_projection_grads_multicamera(self):
         """Dense path: GaussianProjectionBackward.cu -- all parameter gradients."""
-        means, quats, log_scales, logit_opacities, sh0, shN, _sh_coeffs, viewmats, Ks = self._make_test_data()
+        means, quats, log_scales, logit_opacities, sh0, shN, viewmats, Ks = self._make_test_data()
 
         gs3d = self._build_gs3d(means, quats, log_scales, logit_opacities, sh0, shN)
         images, _ = gs3d.render_images(viewmats, Ks, self.W, self.H, near=0.01, far=1e10)
@@ -5019,62 +4800,6 @@ class TestProjectionGradsMultiCamera(unittest.TestCase):
                 atol=1e-4,
                 rtol=1e-4,
                 msg=f"Dense multi-camera {name} grad != sum of per-camera grads (warp reduction bug?)",
-            )
-
-    def test_jagged_projection_grads_multicamera(self):
-        """Jagged path: GaussianProjectionJaggedBackward.cu -- all parameter gradients."""
-        means, quats, log_scales, logit_opacities, _sh0, _shN, sh_coeffs, viewmats, Ks = self._make_test_data()
-
-        scales = torch.exp(log_scales)
-        opacities = torch.sigmoid(logit_opacities)
-
-        def _render_jagged(cam_viewmats, cam_Ks):
-            """Render one jagged scene and return {param_name: leaf_tensor} plus render output."""
-            leaves = {
-                "means": means.clone().detach().requires_grad_(True),
-                "quats": quats.clone().detach().requires_grad_(True),
-                "scales": scales.clone().detach().requires_grad_(True),
-                "opacities": opacities.clone().detach().requires_grad_(True),
-                "sh_coeffs": sh_coeffs.clone().detach().requires_grad_(True),
-            }
-            rc, _, _ = gaussian_render_jagged(
-                JaggedTensor([leaves["means"]]),
-                JaggedTensor([leaves["quats"]]),
-                JaggedTensor([leaves["scales"]]),
-                JaggedTensor([leaves["opacities"]]),
-                JaggedTensor([leaves["sh_coeffs"]]),
-                JaggedTensor([cam_viewmats]),
-                JaggedTensor([cam_Ks]),
-                self.W,
-                self.H,
-                0.01,
-                1e10,
-                self.SH_DEGREE,
-            )
-            return rc, leaves
-
-        rc_all, leaves_all = _render_jagged(viewmats, Ks)
-        rc_all.sum().backward()
-        multi_cam_grads = {name: leaves_all[name].grad.clone() for name in self.JAGGED_PARAMS}
-
-        accumulated_grads = {name: torch.zeros_like(multi_cam_grads[name]) for name in self.JAGGED_PARAMS}
-        for i in range(self.C):
-            rc_i, leaves_i = _render_jagged(viewmats[i : i + 1], Ks[i : i + 1])
-            rc_i.sum().backward()
-            for name in self.JAGGED_PARAMS:
-                accumulated_grads[name] += leaves_i[name].grad
-
-        for name in self.JAGGED_PARAMS:
-            self.assertTrue(
-                multi_cam_grads[name].abs().sum() > 0,
-                f"Jagged multi-camera {name} grad is all zeros; test is vacuous",
-            )
-            torch.testing.assert_close(
-                multi_cam_grads[name],
-                accumulated_grads[name],
-                atol=1e-4,
-                rtol=1e-4,
-                msg=f"Jagged multi-camera {name} grad != sum of per-camera grads (warp reduction bug?)",
             )
 
 

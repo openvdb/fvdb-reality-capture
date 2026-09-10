@@ -5,7 +5,7 @@ fVDB-Reality-Capture Version History
 
 ### Gaussian Splatting API
 
-- Moved the high-level `GaussianSplat3d`, `ProjectedGaussianSplats`, `gaussian_render_jagged`, and `evaluate_spherical_harmonics` APIs from `fvdb` to `fvdb_reality_capture`. This is a breaking import-path change; the low-level compiled kernels and supporting tensor types remain in fVDB-core.
+- Moved the high-level `GaussianSplat3d`, `ProjectedGaussianSplats`, and `evaluate_spherical_harmonics` APIs from `fvdb` to `fvdb_reality_capture`. This is a breaking import-path change; the low-level compiled kernels and supporting tensor types remain in fVDB-core.
 - Moved `RollingShutterType`, `CameraModel`, and `ProjectionMethod` from `fvdb` to `fvdb_reality_capture`, preserving their member names and values. This is also a breaking import-path change.
 - Added `gaussian_splat_to_view_data`, a zero-copy adapter from `GaussianSplat3d` to the core-owned `fvdb.viz.GaussianSplatViewData` contract. Pass the adapted data to `fvdb.viz.Scene.add_gaussian_splat_3d` instead of coupling the viewer directly to the reality-capture model. The minimum `fvdb-core` version is now `0.6.0dev0` for this contract.
 

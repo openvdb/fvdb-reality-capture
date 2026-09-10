@@ -83,6 +83,7 @@ autodoc_mock_imports = [
     "_fvdb_cpp",
     "dlnr_lite",
     "fvdb",
+    "gsplat",
     "open_clip",
     "point_cloud_utils",
     "pxr",
