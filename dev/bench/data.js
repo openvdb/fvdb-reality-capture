@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1789139897934,
+  "lastUpdate": 1789139900802,
   "repoUrl": "https://github.com/openvdb/fvdb-reality-capture",
   "entries": {
     "fvdb-reality-capture Benchmark with pytest-benchmark": [
@@ -31389,6 +31389,88 @@ window.BENCHMARK_DATA = {
           {
             "name": "garden/fvdb_mcmc - peak_gpu_memory_gb",
             "value": 3.6358,
+            "unit": "GB"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "Mark Harris",
+            "username": "harrism",
+            "email": "mharris@nvidia.com"
+          },
+          "committer": {
+            "name": "GitHub",
+            "username": "web-flow",
+            "email": "noreply@github.com"
+          },
+          "id": "5d7815581467c3f2b6cef966302f1148b7e19d9b",
+          "message": "Generate benchmark env pins from fvdb-core instead of gating on drift (#319)\n\n## Problem\n\nThe nightly builds the fvdb-core wheel using fvdb-core's\n`env/build_environment.yml`, then installs it into the benchmark env in\nthis repo. When those pins disagree, the wheel is compiled against one\nlibtorch and loaded against another and the run dies at `import fvdb`:\n\n```\nImportError: .../site-packages/fvdb/libfvdb.so: undefined symbol:\n  _ZN3c1010ValueErrorC1ENS_14SourceLocationENSt7__cxx1112basic_stringIcSt11char_traitsIcESaIcEEE\n```\n\nThis has happened three times: `1b6956f` (2.8→2.10), `6c2ede6`\n(2.10→2.11), and #318 (2.11→2.13).\n\n## Change of approach\n\nThis PR originally added a gate that failed the nightly on drift. Per\nreview feedback from @swahtz, **detection is the weaker answer** — a\ngate still needs a human to notice and hand-edit a version, which is\nprecisely the toil that kept recurring. Derive the value instead.\n\n`scripts/generate_benchmark_env.py` reads `pytorch-gpu`, `cuda-version`\nand `python` from fvdb-core and rewrites those three lines in the\nbenchmark env.\n\nIt **rewrites lines rather than rendering a template**, deliberately:\nthe file stays a normal committed conda environment, so\n`docker/Dockerfile` (which `COPY`s it) and anyone creating the env by\nhand keep working unchanged. Standard library only, so it needs no\nenvironment to bootstrap.\n\n```\nscripts/generate_benchmark_env.py                          # match fvdb-core main\nscripts/generate_benchmark_env.py --ref <sha>              # match a specific commit\nscripts/generate_benchmark_env.py --from-local ../fvdb-core\nscripts/generate_benchmark_env.py --check                  # stale? exit 1 + diff\n```\n\n## Wiring\n\n| Where | Behaviour |\n|---|---|\n| Both nightly benchmark jobs | Regenerate from the **exact fvdb-core\ncommit the run builds the wheel from**, so wheel and env cannot disagree\neven if the committed file is stale |\n| `check-benchmark-env-current` (PR) | Blocks if the committed file is\nstale, with a one-command fix |\n| Dockerfile / local use | Unchanged — the file is still committed and\nvalid |\n\n**On what happens when CI has to update the pins** (asked during\nreview): the nightly does *not* fail. Once it derives, staleness no\nlonger breaks the run, so failing would reintroduce the \"nightly red for\na reason unrelated to the benchmarks\" problem this removes. It corrects\nthe working copy, proceeds, and reports the diff to the job summary. The\nenforcing signal is the PR check, where the fix is one command. A\nscheduled bot could open that PR automatically later — note it would\nneed a PAT or App token, since PRs created with `GITHUB_TOKEN` do not\ntrigger workflows.\n\n`--from-local` matches a locally built wheel and needs no network —\nsomething CI-side derivation alone could not offer.\n\n## Testing\n\n- `--check` passes when synced; fails with a unified diff when not\n- With a **committed** stale pin (2.11.0), the nightly step corrects the\nenv to 2.13.0 so the run is unaffected, and reports the staleness to the\njob summary\n- `--from-local ../fvdb-core` resolves correctly offline\n- `black --target-version=py311 --line-length=120` clean\n\n## Supersedes\n\nopenvdb/fvdb-core#746 (the mirror-image gate on the fvdb-core side) is\nclosed in favour of this — with derivation, that gate protects nothing\nin CI.\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n\nSigned-off-by: Mark Harris <mharris@nvidia.com>\nCo-authored-by: Claude Opus 5 (1M context) <noreply@anthropic.com>",
+          "timestamp": "2026-09-10T00:34:11Z",
+          "url": "https://github.com/openvdb/fvdb-reality-capture/commit/5d7815581467c3f2b6cef966302f1148b7e19d9b"
+        },
+        "date": 1789139900167,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "bicycle/fvdb_default - training_time",
+            "value": 657.7,
+            "unit": "seconds"
+          },
+          {
+            "name": "bicycle/fvdb_default - peak_gpu_memory_gb",
+            "value": 4.5369,
+            "unit": "GB"
+          },
+          {
+            "name": "bicycle/fvdb_mcmc - training_time",
+            "value": 328.42,
+            "unit": "seconds"
+          },
+          {
+            "name": "bicycle/fvdb_mcmc - peak_gpu_memory_gb",
+            "value": 1.443,
+            "unit": "GB"
+          },
+          {
+            "name": "bonsai/fvdb_default - training_time",
+            "value": 449.38,
+            "unit": "seconds"
+          },
+          {
+            "name": "bonsai/fvdb_default - peak_gpu_memory_gb",
+            "value": 1.6154,
+            "unit": "GB"
+          },
+          {
+            "name": "bonsai/fvdb_mcmc - training_time",
+            "value": 584.15,
+            "unit": "seconds"
+          },
+          {
+            "name": "bonsai/fvdb_mcmc - peak_gpu_memory_gb",
+            "value": 1.5543,
+            "unit": "GB"
+          },
+          {
+            "name": "garden/fvdb_default - training_time",
+            "value": 856.78,
+            "unit": "seconds"
+          },
+          {
+            "name": "garden/fvdb_default - peak_gpu_memory_gb",
+            "value": 5.5744,
+            "unit": "GB"
+          },
+          {
+            "name": "garden/fvdb_mcmc - training_time",
+            "value": 682.48,
+            "unit": "seconds"
+          },
+          {
+            "name": "garden/fvdb_mcmc - peak_gpu_memory_gb",
+            "value": 3.6367,
             "unit": "GB"
           }
         ]
