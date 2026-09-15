@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1789139900802,
+  "lastUpdate": 1789472483933,
   "repoUrl": "https://github.com/openvdb/fvdb-reality-capture",
   "entries": {
     "fvdb-reality-capture Benchmark with pytest-benchmark": [
@@ -16917,6 +16917,133 @@ window.BENCHMARK_DATA = {
             "unit": "iter/sec",
             "range": "stddev: 0.0001543100213824406",
             "extra": "mean: 12.441871093023808 msec\nrounds: 86"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "Mark Harris",
+            "username": "harrism",
+            "email": "mharris@nvidia.com"
+          },
+          "committer": {
+            "name": "GitHub",
+            "username": "web-flow",
+            "email": "noreply@github.com"
+          },
+          "id": "5d7815581467c3f2b6cef966302f1148b7e19d9b",
+          "message": "Generate benchmark env pins from fvdb-core instead of gating on drift (#319)\n\n## Problem\n\nThe nightly builds the fvdb-core wheel using fvdb-core's\n`env/build_environment.yml`, then installs it into the benchmark env in\nthis repo. When those pins disagree, the wheel is compiled against one\nlibtorch and loaded against another and the run dies at `import fvdb`:\n\n```\nImportError: .../site-packages/fvdb/libfvdb.so: undefined symbol:\n  _ZN3c1010ValueErrorC1ENS_14SourceLocationENSt7__cxx1112basic_stringIcSt11char_traitsIcESaIcEEE\n```\n\nThis has happened three times: `1b6956f` (2.8→2.10), `6c2ede6`\n(2.10→2.11), and #318 (2.11→2.13).\n\n## Change of approach\n\nThis PR originally added a gate that failed the nightly on drift. Per\nreview feedback from @swahtz, **detection is the weaker answer** — a\ngate still needs a human to notice and hand-edit a version, which is\nprecisely the toil that kept recurring. Derive the value instead.\n\n`scripts/generate_benchmark_env.py` reads `pytorch-gpu`, `cuda-version`\nand `python` from fvdb-core and rewrites those three lines in the\nbenchmark env.\n\nIt **rewrites lines rather than rendering a template**, deliberately:\nthe file stays a normal committed conda environment, so\n`docker/Dockerfile` (which `COPY`s it) and anyone creating the env by\nhand keep working unchanged. Standard library only, so it needs no\nenvironment to bootstrap.\n\n```\nscripts/generate_benchmark_env.py                          # match fvdb-core main\nscripts/generate_benchmark_env.py --ref <sha>              # match a specific commit\nscripts/generate_benchmark_env.py --from-local ../fvdb-core\nscripts/generate_benchmark_env.py --check                  # stale? exit 1 + diff\n```\n\n## Wiring\n\n| Where | Behaviour |\n|---|---|\n| Both nightly benchmark jobs | Regenerate from the **exact fvdb-core\ncommit the run builds the wheel from**, so wheel and env cannot disagree\neven if the committed file is stale |\n| `check-benchmark-env-current` (PR) | Blocks if the committed file is\nstale, with a one-command fix |\n| Dockerfile / local use | Unchanged — the file is still committed and\nvalid |\n\n**On what happens when CI has to update the pins** (asked during\nreview): the nightly does *not* fail. Once it derives, staleness no\nlonger breaks the run, so failing would reintroduce the \"nightly red for\na reason unrelated to the benchmarks\" problem this removes. It corrects\nthe working copy, proceeds, and reports the diff to the job summary. The\nenforcing signal is the PR check, where the fix is one command. A\nscheduled bot could open that PR automatically later — note it would\nneed a PAT or App token, since PRs created with `GITHUB_TOKEN` do not\ntrigger workflows.\n\n`--from-local` matches a locally built wheel and needs no network —\nsomething CI-side derivation alone could not offer.\n\n## Testing\n\n- `--check` passes when synced; fails with a unified diff when not\n- With a **committed** stale pin (2.11.0), the nightly step corrects the\nenv to 2.13.0 so the run is unaffected, and reports the staleness to the\njob summary\n- `--from-local ../fvdb-core` resolves correctly offline\n- `black --target-version=py311 --line-length=120` clean\n\n## Supersedes\n\nopenvdb/fvdb-core#746 (the mirror-image gate on the fvdb-core side) is\nclosed in favour of this — with derivation, that gate protects nothing\nin CI.\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n\nSigned-off-by: Mark Harris <mharris@nvidia.com>\nCo-authored-by: Claude Opus 5 (1M context) <noreply@anthropic.com>",
+          "timestamp": "2026-09-10T00:34:11Z",
+          "url": "https://github.com/openvdb/fvdb-reality-capture/commit/5d7815581467c3f2b6cef966302f1148b7e19d9b"
+        },
+        "date": 1789472482704,
+        "tool": "pytest",
+        "benches": [
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_project_gaussians[garden-00000664]",
+            "value": 7083.059652323166,
+            "unit": "iter/sec",
+            "range": "stddev: 0.000011893026364757085",
+            "extra": "mean: 141.1819254793387 usec\nrounds: 5891"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_render_gaussians[garden-00000664]",
+            "value": 938.5601792458494,
+            "unit": "iter/sec",
+            "range": "stddev: 0.0000256932658445802",
+            "extra": "mean: 1.0654617808348938 msec\nrounds: 1054"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_forward[garden-00000664]",
+            "value": 832.1550342706123,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00002074902639026383",
+            "extra": "mean: 1.2016991531830419 msec\nrounds: 816"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_backward[garden-00000664]",
+            "value": 205.9664254401663,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00005834010499999656",
+            "extra": "mean: 4.855160242077912 msec\nrounds: 347"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_project_gaussians[garden-00006640]",
+            "value": 339.5371200820209,
+            "unit": "iter/sec",
+            "range": "stddev: 0.0005117135412611892",
+            "extra": "mean: 2.945186080857472 msec\nrounds: 6431"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_render_gaussians[garden-00006640]",
+            "value": 149.96453867683402,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00010266817591070628",
+            "extra": "mean: 6.668243098156354 msec\nrounds: 163"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_forward[garden-00006640]",
+            "value": 104.2532008570185,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00006908692093867399",
+            "extra": "mean: 9.59203162856825 msec\nrounds: 105"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_backward[garden-00006640]",
+            "value": 28.62199283315927,
+            "unit": "iter/sec",
+            "range": "stddev: 0.0002181715807182574",
+            "extra": "mean: 34.93816820614517 msec\nrounds: 553"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_project_gaussians[garden-00016600]",
+            "value": 276.79977440414774,
+            "unit": "iter/sec",
+            "range": "stddev: 0.0006410972111045511",
+            "extra": "mean: 3.6127197074226203 msec\nrounds: 6224"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_render_gaussians[garden-00016600]",
+            "value": 113.57275799996508,
+            "unit": "iter/sec",
+            "range": "stddev: 0.0000719971748175057",
+            "extra": "mean: 8.804928379042336 msec\nrounds: 124"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_forward[garden-00016600]",
+            "value": 80.71207725964986,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00006362904646286925",
+            "extra": "mean: 12.389719530857953 msec\nrounds: 81"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_backward[garden-00016600]",
+            "value": 22.405043061541186,
+            "unit": "iter/sec",
+            "range": "stddev: 0.0007711172127076069",
+            "extra": "mean: 44.632808660677156 msec\nrounds: 557"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_forward_mcmc[garden-00000664]",
+            "value": 814.77157936585,
+            "unit": "iter/sec",
+            "range": "stddev: 0.000025668591695164943",
+            "extra": "mean: 1.2273378518901166 msec\nrounds: 871"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_forward_mcmc[garden-00006640]",
+            "value": 104.29579084570645,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00012037850254848688",
+            "extra": "mean: 9.58811464864756 msec\nrounds: 111"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_forward_mcmc[garden-00016600]",
+            "value": 81.51659774915238,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00013724241221059767",
+            "extra": "mean: 12.267440344814906 msec\nrounds: 87"
           }
         ]
       }
