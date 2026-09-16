@@ -88,5 +88,21 @@ class GARfVDBEncodedFeaturesTests(unittest.TestCase):
             self.model.get_encoded_features(_make_input(self.device, pixels))
 
 
+class GARfVDBUnimplementedOptionsTests(unittest.TestCase):
+    def test_use_grid_conv_raises_not_implemented(self):
+        config = GARfVDBConfig(use_grid_conv=True)
+        generator = torch.Generator().manual_seed(7)
+        means = torch.rand((4, 3), generator=generator)
+        quats = torch.rand((4, 4), generator=generator)
+        quats = quats / quats.norm(dim=-1, keepdim=True)
+        log_scales = torch.full((4, 3), -2.0)
+        logit_opacities = torch.full((4,), 2.0)
+        sh0 = torch.rand((4, 1, 3), generator=generator)
+        shN = torch.zeros((4, 0, 3))
+        gaussians = GaussianSplat3d.from_tensors(means, quats, log_scales, logit_opacities, sh0, shN)
+        with self.assertRaises(NotImplementedError):
+            GARfVDBModel(gaussians, torch.tensor([0.05, 0.1, 0.2, 0.4]), config)
+
+
 if __name__ == "__main__":
     unittest.main()

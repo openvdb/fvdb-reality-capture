@@ -379,6 +379,9 @@ class GARfVDBTrainer:
             indices = np.array([i for i in indices if i not in exclude_set], dtype=int)
             logger.info(f"Excluding {len(exclude_indices)} images from training: {list(exclude_indices)}")
 
+        if use_every_n_as_val == 1:
+            raise ValueError("use_every_n_as_val must not be 1, since that sends every image to validation")
+
         if use_every_n_as_val > 0:
             mask = np.ones(len(indices), dtype=bool)
             mask[::use_every_n_as_val] = False
@@ -440,6 +443,7 @@ class GARfVDBTrainer:
             log_interval_steps=log_interval_steps,
             viewer_update_interval_epochs=viewer_update_interval_epochs,
             start_step=0,
+            grouping_scale_stats=grouping_scale_stats,
             viz_callback=viz_callback,
             cache_dataset=cache_dataset,
             reconstruction_metadata=reconstruction_metadata,
@@ -462,6 +466,8 @@ class GARfVDBTrainer:
         writer: GARfVDBWriter | None = None,
         device: str | torch.device = "cuda:0",
         eval_only: bool = False,
+        log_interval_steps: int = 10,
+        viewer_update_interval_epochs: int = -1,
     ) -> "GARfVDBTrainer":
         """
         Load a :class:`GARfVDBTrainer` instance from a state dictionary.
@@ -479,6 +485,8 @@ class GARfVDBTrainer:
             device (str | torch.device): Device to load the model onto.
             eval_only (bool): If True, disables gradients on all model parameters for evaluation only.
                 This is useful when loading for visualization where training is not needed.
+            log_interval_steps (int): How often to log metrics to TensorBoard.
+            viewer_update_interval_epochs (int): How often to update the viewer.
 
         Returns:
             GARfVDBTrainer: A restored instance ready for evaluation or continued training.
@@ -606,8 +614,8 @@ class GARfVDBTrainer:
             train_transform=train_transforms,
             val_transform=val_transforms,
             writer=writer,
-            log_interval_steps=10,
-            viewer_update_interval_epochs=-1,
+            log_interval_steps=log_interval_steps,
+            viewer_update_interval_epochs=viewer_update_interval_epochs,
             start_step=global_step,
             grouping_scale_stats=grouping_scale_stats,
             reconstruction_metadata=state_dict.get("reconstruction_metadata", {}),
@@ -651,6 +659,8 @@ class GARfVDBTrainer:
         writer: GARfVDBWriter | None = None,
         device: str | torch.device = "cuda:0",
         reconstruction_path: pathlib.Path | None = None,
+        log_interval_steps: int = 10,
+        viewer_update_interval_epochs: int = -1,
     ) -> "GARfVDBTrainer":
         """Restore a trainer and gaussians from already loaded method state."""
         from fvdb_reality_capture.radiance_fields import load_splats_from_file
@@ -682,6 +692,8 @@ class GARfVDBTrainer:
             gs_model_path=gaussians_path,
             writer=writer,
             device=device,
+            log_interval_steps=log_interval_steps,
+            viewer_update_interval_epochs=viewer_update_interval_epochs,
         )
 
     def to_product(self) -> "GARfVDB":

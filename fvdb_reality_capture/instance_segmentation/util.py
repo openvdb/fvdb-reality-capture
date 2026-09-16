@@ -135,6 +135,14 @@ def pca_projection_fast(
         features = features[mask]
     features_flat = features.reshape(-1, C)
 
+    if features_flat.shape[0] < n_components:
+        # Too few valid pixels to fit or project onto n_components axes (e.g. a validation
+        # view whose render alpha is zero everywhere). Return zeros rather than crashing the
+        # eval pass on one bad frame.
+        if mask is not None:
+            return torch.zeros(B, H, W, n_components, device=features.device)
+        return torch.zeros(features_flat.shape[0], n_components, device=features.device)
+
     # Center the data
     features_centered = center_features(features_flat)
 
@@ -191,6 +199,19 @@ def fit_pca_projection(
     if mask is not None:
         features = features[mask]
     features_flat = features.reshape(-1, features.shape[-1])
+    C = features_flat.shape[-1]
+
+    if features_flat.shape[0] < n_components:
+        # Too few valid pixels to fit n_components axes (e.g. a view whose render alpha is
+        # zero everywhere). Return a degenerate all-zero transform rather than crashing.
+        device = features_flat.device
+        return PCAProjectionState(
+            mean=torch.zeros(1, C, device=device),
+            basis=torch.zeros(C, n_components, device=device),
+            mins=torch.zeros(1, n_components, device=device),
+            maxs=torch.ones(1, n_components, device=device),
+        )
+
     mean = torch.mean(features_flat, dim=0, keepdim=True)
     features_centered = features_flat - mean
     basis = calculate_pca_projection(features_centered, n_components, center=False)

@@ -11,6 +11,7 @@ import torch
 from fvdb_reality_capture.instance_segmentation.util import (
     apply_pca_projection,
     fit_pca_projection,
+    pca_projection_fast,
 )
 from fvdb_reality_capture.instance_segmentation.viewer import (
     _LOCK_WIDGET_NAME,
@@ -258,3 +259,26 @@ def test_locked_projection_maps_same_feature_to_same_color():
     rgb_b = apply_pca_projection(feats_b, state)
     # The frozen transform maps the identical feature to the identical color across frames.
     assert torch.allclose(rgb_a[5 * 10 + 5], rgb_b[0], atol=1e-5)
+
+
+def test_fit_pca_projection_handles_empty_mask_without_crashing():
+    # A view whose render alpha is zero everywhere selects no pixels; pca_lowrank would
+    # otherwise raise since it needs at least n_components rows.
+    feats = torch.randn(1, 10, 10, 6)
+    mask = torch.zeros(1, 10, 10, dtype=torch.bool)
+
+    state = fit_pca_projection(feats, n_components=3, mask=mask)
+
+    rgb = apply_pca_projection(feats, state, mask=mask)
+    assert rgb.shape == (1, 10, 10, 3)
+    assert torch.all(rgb == 0)
+
+
+def test_pca_projection_fast_handles_empty_mask_without_crashing():
+    feats = torch.randn(1, 10, 10, 6)
+    mask = torch.zeros(1, 10, 10, dtype=torch.bool)
+
+    result = pca_projection_fast(feats, n_components=3, mask=mask)
+
+    assert result.shape == (1, 10, 10, 3)
+    assert torch.all(result == 0)

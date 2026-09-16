@@ -444,9 +444,15 @@ class GenerateGARfVDBMasks(BaseTransform):
         with torch.autocast("cuda", dtype=torch.bfloat16):
             sam_masks = self._sam2.predict_masks(img)
             sam_masks = sorted(sam_masks, key=(lambda x: x["area"]), reverse=True)
-            sam_masks = torch.stack([torch.from_numpy(m["segmentation"]) for m in sam_masks]).to(
-                self._device
-            )  # [M, H, W]
+            # SAM2 can return zero masks for a blank frame, or one where every candidate is
+            # filtered out by the IoU/stability thresholds. Keep the pipeline running with an
+            # empty mask set instead of aborting the whole dataset pass.
+            if len(sam_masks) > 0:
+                sam_masks = torch.stack([torch.from_numpy(m["segmentation"]) for m in sam_masks]).to(
+                    self._device
+                )  # [M, H, W]
+            else:
+                sam_masks = torch.zeros((0, h, w), dtype=torch.bool, device=self._device)
         # Erode masks to remove noise at the boundary.
         # We're going to compute the scale of each mask by taking the standard deviation of the 3D points
         # within that mask, and the points at the boundary of masks are usually noisy.
@@ -461,10 +467,15 @@ class GenerateGARfVDBMasks(BaseTransform):
         # deduplicate on the (integer) gaussian id rather than the (float3) world point, which is both cheaper
         # and equivalent as long as distinct gaussians have distinct means.
         g_ids_2d = g_ids.squeeze(-1)  # [H, W]
-        scales = torch.stack([gs3d.means[g_ids_2d[mask].unique()].std(dim=0).norm() for mask in eroded_masks])  # [M]
-        keep = scales < max_scale  # [M]
-        eroded_masks = eroded_masks[keep]  # [M', H, W]
-        scales = scales[keep]  # [M']
+        if eroded_masks.shape[0] > 0:
+            scales = torch.stack(
+                [gs3d.means[g_ids_2d[mask].unique()].std(dim=0).norm() for mask in eroded_masks]
+            )  # [M]
+            keep = scales < max_scale  # [M]
+            eroded_masks = eroded_masks[keep]  # [M', H, W]
+            scales = scales[keep]  # [M']
+        else:
+            scales = torch.zeros((0,), device=self._device)
 
         # Compute a tensor that maps pixels to the set of masks which intersect that pixel (sorted by area)
         # i.e. pixel_to_mask_id[i, j] = [m1, m2, m3, ...] where m1, m2, ... are the integer ids of the masks

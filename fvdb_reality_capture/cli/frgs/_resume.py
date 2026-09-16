@@ -117,6 +117,8 @@ class Resume(BaseCommand):
 def _resume_garfvdb(checkpoint: TrainingCheckpoint, command: ResumeContext, out_path: pathlib.Path) -> None:
     if command.update_viz_every > 0:
         raise ValueError("Live GARfVDB resume visualization is unsupported; resume first, then use frgs show.")
+    if out_path.exists():
+        raise FileExistsError(f"Output path already exists: {out_path}")
     writer_config = GARfVDBWriterConfig(
         save_images=command.io.save_images,
         save_checkpoints=command.io.save_checkpoints,
@@ -136,6 +138,7 @@ def _resume_garfvdb(checkpoint: TrainingCheckpoint, command: ResumeContext, out_
         writer=writer,
         device=command.device,
         reconstruction_path=command.reconstruction_path,
+        log_interval_steps=command.io.log_every,
     )
     trainer.train()
     logging.getLogger(__name__).info("Saving resumed GARfVDB product to %s", out_path)

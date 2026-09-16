@@ -147,6 +147,10 @@ class GARfVDBModel(torch.nn.Module):
         self.gs_model = gs_model
         if self.model_config.use_grid and (self.model_config.num_grids < 4 or self.model_config.num_grids % 2 != 0):
             raise ValueError("GARfVDBConfig.num_grids must be an even integer greater than or equal to 4")
+        if self.model_config.use_grid_conv:
+            raise NotImplementedError(
+                "GARfVDBConfig.use_grid_conv is a research option that is not yet implemented."
+            )
 
         # Quantile lookup tensors are buffers so the portable inference artifact does not
         # need the training-time mask statistics.
@@ -570,7 +574,13 @@ class GARfVDBModel(torch.nn.Module):
 
                     for per_ray_weights, per_ray_weight_sum in zip(per_cam_weights, per_cam_weight_sum):
                         if len(per_ray_weights) == 0:
-                            cam_probs.append(torch.empty([0, per_ray_weights.eshape[-1]]))
+                            cam_probs.append(
+                                torch.empty(
+                                    [0, per_ray_weights.eshape[-1]],
+                                    device=per_ray_weights.jdata.device,
+                                    dtype=per_ray_weights.jdata.dtype,
+                                )
+                            )
                         else:
                             cam_probs.append(fvdb.relu(per_ray_weights.jdata / (per_ray_weight_sum.jdata + 1e-10)))
                     probs.append(cam_probs)
@@ -581,7 +591,9 @@ class GARfVDBModel(torch.nn.Module):
                     depth_sample_indices_cam = []
                     for per_ray_probs in per_cam_probs:
                         if len(per_ray_probs) == 0:
-                            depth_sample_indices_cam.append(torch.empty([0]))
+                            depth_sample_indices_cam.append(
+                                torch.empty([0], device=per_ray_probs.jdata.device, dtype=torch.long)
+                            )
                         else:
                             depth_sample_indices_cam.append(torch.multinomial(per_ray_probs.jdata, num_samples=1))
                     depth_sample_indices.append(depth_sample_indices_cam)
@@ -594,7 +606,9 @@ class GARfVDBModel(torch.nn.Module):
                     cam_ids = []
                     for per_ray_ids, per_ray_depth_sample_indices in zip(per_cam_ids, per_cam_depth_sample_indices):
                         if len(per_ray_ids) == 0:
-                            cam_ids.append(torch.empty([0]))
+                            cam_ids.append(
+                                torch.empty([0], device=per_ray_ids.jdata.device, dtype=per_ray_ids.jdata.dtype)
+                            )
                         else:
                             cam_ids.append(per_ray_ids.jdata[per_ray_depth_sample_indices.jdata])
                             # cam_ids.append(

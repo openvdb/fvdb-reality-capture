@@ -30,7 +30,7 @@ class GARfVDBConfig:
     """Use 3D feature grids (GARField-style). First-class training and products require ``True``."""
 
     use_grid_conv: bool = False
-    """If True, apply sparse convolutions to grid features."""
+    """If True, apply sparse convolutions to grid features. Not yet implemented; raises NotImplementedError."""
 
     enc_feats_one_idx_per_ray: bool = False
     """If True, stochastically sample one feature per ray instead of weighted averaging."""

@@ -352,6 +352,36 @@ def test_garfvdb_mask_generation_rejects_distorted_scene():
             transform(scene)
 
 
+def test_generate_segmentation_mask_handles_zero_sam2_masks():
+    import fvdb
+
+    h, w = 6, 8
+    gaussians = mock.Mock()
+    gaussians.means = torch.tensor([[0.0, 0.0, 0.0], [1.0, 1.0, 1.0]])
+    g_ids = fvdb.JaggedTensor.from_data_and_offsets(
+        torch.zeros(h * w, dtype=torch.int64),
+        torch.arange(0, h * w + 1, dtype=torch.int64),
+    )
+    gaussians.render_contributing_gaussian_ids = mock.Mock(return_value=(g_ids, None))
+
+    with mock.patch(
+        "fvdb_reality_capture.instance_segmentation.scene_transforms.image_segmentation_masks.SAM2Model"
+    ):
+        transform = GenerateGARfVDBMasks(gs3d=gaussians, device="cpu")
+    transform._sam2.predict_masks = mock.Mock(return_value=[])  # blank frame, or everything filtered out
+
+    scales, pixel_to_mask_id = transform._generate_segmentation_mask(
+        gaussians,
+        img=np.zeros((h, w, 3), dtype=np.uint8),
+        projection_matrix=np.eye(3, dtype=np.float32),
+        world_to_camera_matrix=np.eye(4, dtype=np.float32),
+        max_scale=1.0,
+    )
+
+    assert scales.shape == (0,)
+    assert pixel_to_mask_id.shape == (h, w, 0)
+
+
 def test_segmentation_dataset_requires_namespaced_garfvdb_attribute():
     with tempfile.TemporaryDirectory() as directory:
         scene = _make_scene(pathlib.Path(directory), num_images=1)
