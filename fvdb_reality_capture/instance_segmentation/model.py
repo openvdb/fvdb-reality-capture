@@ -148,9 +148,7 @@ class GARfVDBModel(torch.nn.Module):
         if self.model_config.use_grid and (self.model_config.num_grids < 4 or self.model_config.num_grids % 2 != 0):
             raise ValueError("GARfVDBConfig.num_grids must be an even integer greater than or equal to 4")
         if self.model_config.use_grid_conv:
-            raise NotImplementedError(
-                "GARfVDBConfig.use_grid_conv is a research option that is not yet implemented."
-            )
+            raise NotImplementedError("GARfVDBConfig.use_grid_conv is a research option that is not yet implemented.")
 
         # Quantile lookup tensors are buffers so the portable inference artifact does not
         # need the training-time mask statistics.

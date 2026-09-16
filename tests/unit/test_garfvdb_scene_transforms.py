@@ -10,8 +10,8 @@ import cv2
 import numpy as np
 import pytest
 import torch
-from fvdb_reality_capture import CameraModel
 
+from fvdb_reality_capture import CameraModel
 from fvdb_reality_capture.instance_segmentation.config import GARfVDBTransformConfig
 from fvdb_reality_capture.instance_segmentation.scene_attribute import (
     GARFVDB_MASK_ATTRIBUTE_NAME,
@@ -22,7 +22,9 @@ from fvdb_reality_capture.instance_segmentation.scene_transforms import (
     ApplyReconstructionCameraPoses,
     GenerateGARfVDBMasks,
 )
-from fvdb_reality_capture.instance_segmentation.training.dataset import SegmentationDataset
+from fvdb_reality_capture.instance_segmentation.training.dataset import (
+    SegmentationDataset,
+)
 from fvdb_reality_capture.sfm_scene import (
     PerImageValueAttribute,
     SfmCache,
@@ -30,7 +32,12 @@ from fvdb_reality_capture.sfm_scene import (
     SfmPosedImageMetadata,
     SfmScene,
 )
-from fvdb_reality_capture.transforms import CropScene, Identity, SceneTransformConfig, UndistortImages
+from fvdb_reality_capture.transforms import (
+    CropScene,
+    Identity,
+    SceneTransformConfig,
+    UndistortImages,
+)
 
 
 def _make_scene(
@@ -364,9 +371,7 @@ def test_generate_segmentation_mask_handles_zero_sam2_masks():
     )
     gaussians.render_contributing_gaussian_ids = mock.Mock(return_value=(g_ids, None))
 
-    with mock.patch(
-        "fvdb_reality_capture.instance_segmentation.scene_transforms.image_segmentation_masks.SAM2Model"
-    ):
+    with mock.patch("fvdb_reality_capture.instance_segmentation.scene_transforms.image_segmentation_masks.SAM2Model"):
         transform = GenerateGARfVDBMasks(gs3d=gaussians, device="cpu")
     transform._sam2.predict_masks = mock.Mock(return_value=[])  # blank frame, or everything filtered out
 
