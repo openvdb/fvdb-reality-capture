@@ -88,6 +88,8 @@ class GenerateGARfVDBMasks(BaseTransform):
     @staticmethod
     def _smallest_int_dtype(values: torch.Tensor) -> torch.dtype:
         """Return the smallest signed integer dtype that can hold values in [min_val, max_val]."""
+        if values.numel() == 0:
+            return torch.int8
         min_val, max_val = int(values.min().item()), int(values.max().item())
         if min_val >= -128 and max_val <= 127:
             return torch.int8

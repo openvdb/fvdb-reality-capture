@@ -243,7 +243,9 @@ class GARfVDBTrainer:
         self._optimizer = optimizer
         self._scheduler = scheduler
         if isinstance(self._scheduler, ExponentialLRWithRampUpScheduler):
-            self._scheduler.max_steps = self.total_steps
+            # total_steps counts samples, but the scheduler advances once per optimizer step.
+            samples_per_optimizer_step = self._cfg.batch_size * self._cfg.accumulate_grad_steps
+            self._scheduler.max_steps = max(1, self.total_steps // samples_per_optimizer_step)
 
         self._global_step: int = 0
 

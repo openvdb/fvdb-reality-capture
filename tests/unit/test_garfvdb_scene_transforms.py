@@ -343,6 +343,31 @@ def test_garfvdb_mask_generation_uses_materialized_pinhole_images():
         np.testing.assert_array_equal(generated_image[0, 0], np.array([33, 22, 11], dtype=np.uint8))
 
 
+def test_garfvdb_mask_generation_writes_empty_entry_for_image_without_masks():
+    with tempfile.TemporaryDirectory() as directory:
+        scene = _make_scene(pathlib.Path(directory), num_images=2)
+        gaussians = mock.Mock()
+        gaussians.means = torch.tensor([[0.0, 0.0, 0.0], [1.0, 1.0, 1.0]])
+        with mock.patch(
+            "fvdb_reality_capture.instance_segmentation.scene_transforms.image_segmentation_masks.SAM2Model"
+        ):
+            transform = GenerateGARfVDBMasks(gs3d=gaussians, device="cpu")
+        normal = _mask_data(0)
+        empty = (torch.zeros(0), torch.zeros((6, 8, 0), dtype=torch.long))
+        with mock.patch.object(
+            transform,
+            "_generate_segmentation_mask",
+            side_effect=[(normal["scales"], normal["pixel_to_mask_id"].to(torch.long)), empty],
+        ):
+            transformed = transform(scene)
+
+        attribute = transformed.get_attribute(GARFVDB_MASK_ATTRIBUTE_NAME)
+        assert isinstance(attribute, GARfVDBMaskAttribute)
+        loaded = attribute.load(1)
+        assert loaded["scales"].numel() == 0
+        assert loaded["pixel_to_mask_id"].shape == (6, 8, 0)
+
+
 def test_garfvdb_mask_generation_rejects_distorted_scene():
     with tempfile.TemporaryDirectory() as directory:
         distortion_coeffs = np.zeros(12, dtype=np.float32)

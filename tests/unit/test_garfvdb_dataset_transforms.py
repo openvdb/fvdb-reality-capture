@@ -9,6 +9,7 @@ from fvdb_reality_capture.instance_segmentation.training.dataset import GARfVDBI
 from fvdb_reality_capture.instance_segmentation.training.dataset_transforms import (
     GPURandomSelectMaskIDAndScale,
     RandomSamplePixels,
+    RandomSelectMaskIDAndScale,
     Resize,
     _sample_distinct_indices,
 )
@@ -62,6 +63,18 @@ def test_gpu_mask_selection_handles_batch_with_no_masks():
 
     assert torch.equal(batch["mask_ids"], torch.full((1, 16), -1, dtype=torch.int32))
     assert torch.equal(batch["scales"], torch.zeros((1, 16)))
+
+
+def test_cpu_mask_selection_handles_image_with_no_masks():
+    item = _make_multi_mask_item()
+    item["scales"] = torch.zeros(0)
+    item["mask_ids"] = torch.zeros((8, 8, 0), dtype=torch.int32)
+    item["mask_cdf"] = torch.zeros((8, 8, 0))
+
+    item = RandomSelectMaskIDAndScale()(item)
+
+    assert torch.equal(item["mask_ids"], torch.full((8, 8), -1, dtype=torch.int32))
+    assert torch.equal(item["scales"], torch.zeros((8, 8)))
 
 
 def test_sample_distinct_indices_has_no_duplicates():

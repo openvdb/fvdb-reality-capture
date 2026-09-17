@@ -75,6 +75,11 @@ class RandomSelectMaskIDAndScale:
         """
         with nvtx.range("RandomSelectMaskIDAndScale"):
             per_pixel_index = item["mask_ids"]  # [H, W, MM] or [num_samples, MM]
+            if per_pixel_index.shape[-1] == 0:
+                # The image has no masks. Every pixel is background: -1 id, zero scale.
+                item["mask_ids"] = torch.full(per_pixel_index.shape[:-1], -1, dtype=per_pixel_index.dtype)
+                item["scales"] = torch.zeros(per_pixel_index.shape[:-1], dtype=item["scales"].dtype)
+                return item
             random_vec_sampling = torch.full(per_pixel_index.shape[:-1], torch.rand((1,)).item()).unsqueeze(
                 -1
             )  # [H, W, 1]
