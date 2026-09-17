@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1789572050383,
+  "lastUpdate": 1789645365060,
   "repoUrl": "https://github.com/openvdb/fvdb-reality-capture",
   "entries": {
     "fvdb-reality-capture Benchmark with pytest-benchmark": [
@@ -17171,6 +17171,133 @@ window.BENCHMARK_DATA = {
             "unit": "iter/sec",
             "range": "stddev: 0.0001911106717189213",
             "extra": "mean: 12.506508988222134 msec\nrounds: 85"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "Jonathan Swartz",
+            "username": "swahtz",
+            "email": "jonathan@jswartz.info"
+          },
+          "committer": {
+            "name": "GitHub",
+            "username": "web-flow",
+            "email": "noreply@github.com"
+          },
+          "id": "718f6146c3219d8e39aaf29b63056e660dc4b12c",
+          "message": "GARfVDB (#308)\n\n## Summary\n\n- Adds GARfVDB scale-conditioned instance segmentation as a first-class\nfvdb-reality-capture method (Python API plus `frgs segment-instances`),\nwhere an existing Gaussian reconstruction is consumed as input and the\nlearned scale-conditioned feature field is the product.\n- Introduces a portable, pickle-free `.garfvdb` bundle containing\nNanoVDBs (encoder grids and features), safetensors (dense network\nweights and scale-quantile buffers), and a PLY Gaussian model, with\nexplicit schema versioning, checksums, and validation on load. This is\nthe trained end-product of a GARfVDB model (i.e. the equivalent of a\n`.ply` file for the optimized Gaussian splat reconstruction scene), not\na resumable checkpoint.\n- Adds shared, method-neutral infrastructure so GARfVDB and any future,\nnon-Gaussian products fit cleanly:\n  - versioned training-checkpoint container with a reader registry\n  - a CLI resume-handler registry\n  - a reusable scene-transform configuration\n  - a namespaced scene attribute for per-image mask supervision\n\n`> frgs segment-instances DATASET --reconstruction-path scene.ply\n--out-path scene.garfvdb` trains from an existing reconstruction and\nwrites a portable bundle\n\n## Motivation\n\nGARfVDB previously lived as a standalone project in fvdb-examples that\nwas already coupled to fvdb-reality-capture for SfM loading and Gaussian\nreconstruction, but its deliverable is a second learned product (based\non a filtered Gaussian scene) rather than more Gaussians. This is the\nfirst fvdb-reality-capture method whose product is not a Gaussian splat,\nso the integration deliberately separates shared workflow infrastructure\nfrom product-specific behavior instead of bolting a training script onto\nthe Gaussian commands. The shared pieces are designed against a concrete\nsecond method (for example integrating the LangSplatV2 method that also\nuses SAM2) so they generalize rather than hard-coding GARfVDB.\n\n## Artifact contract\n\nThe `.garfvdb/` bundle is the trained end-product of the instance\nsegmentation method (equivalent to what the `.ply` file is to the\n`reconstruct` process).\n\n- A `*.garfvdb/` bundle contains no PyTorch pickle files:\n`manifest.json`, `encoder.nvdb`, `network.safetensors`, and\n`gaussians.ply`.\n- `encoder.nvdb` stores all encoder grid topologies and their learned\nper-voxel features through fVDB NanoVDB I/O with compression; grids are\nnamed deterministically (`encoder_00` ... `encoder_NN`) and that order\nis validated on load.\n- `network.safetensors` stores the MLP weights, optional\nsparse-convolution weights, maximum scale, and scale-quantile lookup\nbuffers as named dense tensors.\n- `gaussians.ply` stores the exact filtered `GaussianSplat3d` model plus\nreconstruction and camera metadata.\n\n\nNote: The manifest carries an explicit integer `schema_version` and\nper-payload SHA-256 checksums. Loading dispatches through a\nversion-specific reader that validates canonical grid names and order,\ngrid/voxel counts, voxel sizes and origins, feature shape and dtype,\nGaussian count, and every payload checksum. Missing, renamed, reordered,\ncorrupted, or incompatible payloads fail with clear errors, and\nnewer-than-supported bundle versions fail before any payload is read.\n\n## Checkpoint and resume architecture\n\nTo accommodate checkpoints beyond the reconstruction method checkpoints\nbeing resumed (and without specific methods needed to be invoked by\nusers `resume-instance-segmentation`, etc.), this method formalizes the\ncheckpoint **container** concept.\n\n- New training checkpoints use a generic **container**: `schema`,\n`schema_version`, `method`, `method_version`, and method-owned `state`.\nParsing first validates the container, selects an exact schema-version\nreader, and can consult registered legacy adapters for pre-container\nformats.\n- The container carries two independent versions on orthogonal axes. \n- `schema`/`schema_version` version the container format itself — the\nfixed top-level keys and how they are parsed; `schema` is a constant\nshared by every method and `schema_version` is owned centrally, bumped\nonly when the wrapper structure changes (which affects all methods at\nonce).\n- `method`/`method_version` version the method-owned payload in `state`:\n`method` is the stable id of the producing method and `method_version`,\nowned by the method's package as a single source of truth, versions that\nmethod's `state` layout and is bumped only when that one method's state\nchanges. Everything method-specific — model weights, optimizer/scheduler\nstate, config, global step, and method metadata — lives opaquely inside\n`state`; the container layer never interprets it.\n- The generic module contains no method names, CLI options, or product\nextensions. Method identity and legacy recognition are owned by their\npackages:\n- `radiance_fields.checkpoint` defines the Gaussian method id\n(`radiance_fields.gaussian_splat`) and a legacy adapter for released\nflat Gaussian checkpoints;\n- `instance_segmentation.checkpoint` defines the GARfVDB method id\n(`instance_segmentation.garfvdb`).\n- Each method exposes a single version constant that both its\n`state_dict`/`from_state_dict` and its disk writer container derive\nfrom, so the recorded container version and the method state version\ncannot drift.\n- `frgs resume` loads one validated container, resolves the stable\nmethod id, and invokes a CLI-owned resume handler that also owns the\ndefault output name. Unknown methods fail explicitly.\n- The Gaussian reconstruction writer and reader now use the same\ncontainer, and previously released flat Gaussian checkpoints remain\nloadable through the legacy adapter.\n\n## Transform and scene-attribute integration\n\n\nSo that a second, non-Gaussian method can reuse the reconstruction's\nscene preprocessing without duplicating it or overwriting shared scene\nstate, the standard transform stages are factored into a reusable\n`SceneTransformConfig`, and each method's per-image supervision is\ncarried as a namespaced scene attribute rather than by replacing the\nscene cache.\n- A reusable `SceneTransformConfig` builds the standard alignment, point\nfiltering, image downsampling, low-point image filtering, and cropping\nstages; both reconstruction and GARfVDB build on it. Reconstruction\nsupplies normalization while GARfVDB injects the reconstruction's saved\nalignment transform.\n- SAM2 mask and scene-unit scale supervision is attached as a\nregistered, namespaced `GARfVDBMaskAttribute` on `SfmScene` rather than\nreplacing the scene cache, so existing caches and attributes are\npreserved and the dataset consumes only its named attribute.\n- Mask generation runs last and rejects later downsample, crop, or\nspatial transforms, because resizing or rescaling after generation would\ninvalidate mask pixels or scene-unit scales. Other segmentation methods\ncan attach their own attribute types and generators through the same\ngeneric mechanism without adopting the GARfVDB supervision format.\n\n## Interactive viewer\n\nUpdated the viewer to be able to visualize the segmentation mask output\n(using PCA to project the mask to a 3-channel RGB visualization) as an\noverlay with interactive parameters to control the visualization.\n\n- Adds `GARfVDBOverlayViewer`, which renders the GARfVDB feature field\nas a live overlay on the Gaussians in the fvdb viewer with interactive\n\"Scene Params\" widgets:\n- a normalized grouping-scale slider (mapped to the model's maximum\ngrouping scale)\n  - an overlay-opacity slider, a show/hide checkbox for the overlay \n- a \"Lock PCA colors\" checkbox that freezes the PCA-to-RGB transform so\nthe feature coloring does not flicker during camera movement\n- A single shared core drives both the offline `frgs show` viewer and a\nnew live training viewer enabled with `frgs segment-instances --viewer`,\nwhich pumps overlay renders from the training loop between steps so the\nin-progress feature field can be inspected while training runs.\n- The offline viewer renders continuously while the camera or any widget\nis changing\n\n## SAM2 mask-generation performance\n\nIn addition to porting the SAM2 mask-generation transforms from\n`fvdb-examples`, this PR also makes some performance improvements during\nthe transition:\n\n- Vectorizes the two hottest per-image post-processing steps in mask\ngeneration: `pixel_to_mask_id` construction becomes a single\ncumulative-sum plus scatter instead of an `O(masks * max_overlap)`\nPython loop that forced a device synchronization on every inner\niteration, and per-mask scale computation deduplicates on integer\ngaussian ids rather than sorting float3 world points. Both are\nequivalent to the originals.\n- Stops storing the per-pixel mask-selection CDF on disk (the largest\nfield in the mask cache, a full `[H, W, max_overlap]` float32 tensor)\nand recomputes it from `pixel_to_mask_id` at load time via\n`instance_segmentation.util.compute_mask_cdf`. This roughly quarters\nboth the on-disk artifact size and the disk-bound write time.\n- Overlaps cache writes with computation by handing each image's disk\nwrite to a background writer thread while the next image's SAM2 pass\nruns on the GPU. `SfmCache`'s `FileLock` now only arms its SIGALRM-based\ntimeout on the main thread and falls back to a plain blocking `flock` on\nworker threads, since signal-based timeouts cannot be used off the main\nthread.\n- Exposes and raises SAM2 `points_per_batch` so more point prompts are\nprocessed per mask-decoder forward pass.\n\n## Device defaults and import updates\n\n- Defaults the compute device to `cuda:0` across the CLI, foundation\nmodels, config, and docs, because the current fvdb build requires an\nexplicit device index and `cuda` alone raises \"Device must specify an\nindex\".\n\n## Dependencies\n\n- Requires `fvdb-core>=0.6.0` and adds `safetensors`.\n- The new `fvdb.viz` features that bring the API changes to add\ninteractive, definable parameters require this PR to merge before this\nbranch will work: https://github.com/openvdb/fvdb-core/pull/649\n- cuML clustering, NVOS evaluation, and discrete-instance export remain\nout of the core dependency set and stay in fvdb-examples for the moment.\n\n## Documentation\n\n- Adds an instance-segmentation tutorial and API pages, a checkpoints\nAPI page, and resume/show/transforms updates describing the bundle\nlayout, grid naming, coordinate transforms, versioning, and how future\nreaders or migrations are introduced.\n\n## Testing\n\n- Ported training math is at parity with the prototype for loss\n(including per-view pair-count normalization), mask-CDF sampling, scale\ninterpolation, pixel sampling, encoder feature extraction, MLP forward\npaths, and SAM2 mask/scale preprocessing. The port additionally fixes\nthe prototype's scheduler-resume gap by checkpointing and restoring\nscheduler state.\n- The interactive viewer is covered by `unit/test_garfvdb_viewer.py`\n(widget registration, normalized-to-raw scale mapping, camera/widget\nchange detection and the render/idle contract, show/hide, and PCA lock),\nand the vectorized mask post-processing and recomputed mask CDF were\nchecked for equivalence against the original implementations, including\nagainst a real on-disk cache file.\n\n## Backwards compatibility and follow-ups\n\n- Released flat Gaussian reconstruction checkpoints remain loadable and\nresumable through the registered legacy adapter; a Gaussian `.ply`\nremains an export product and is not resumable.\n- Standalone fvdb-examples GARfVDB checkpoints are intentionally not\nmigrated; there is no importer for the prototype format, and old SAM2\nmask caches must be regenerated because supervision is now a versioned\nscene attribute.\n- `use_grid_conv=True` remains experimental and is not exercised by the\nfirst-class path; the per-Gaussian affinity path references a grid\nattribute that does not exist and would fail if enabled. First-class\ntraining and products require `use_grid=True`, so this does not affect\nthe supported configuration, but the option should be fixed or gated\nbefore it is advertised as supported.\n- The overlay-opacity slider depends on an upstream nanovdb-editor fix\n(its `image2d.slang` composited the image view opaquely and ignored\nper-pixel alpha) https://github.com/openvdb/nanovdb-editor/pull/217\n\n---------\n\nSigned-off-by: Jonathan Swartz <jonathan@jswartz.info>\nCo-authored-by: Claude Opus 4.8 <noreply@anthropic.com>\nCo-authored-by: Mark Harris <mharris@nvidia.com>\nCo-authored-by: Copilot Autofix powered by AI <175728472+Copilot@users.noreply.github.com>",
+          "timestamp": "2026-09-17T03:16:14Z",
+          "url": "https://github.com/openvdb/fvdb-reality-capture/commit/718f6146c3219d8e39aaf29b63056e660dc4b12c"
+        },
+        "date": 1789645363740,
+        "tool": "pytest",
+        "benches": [
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_project_gaussians[garden-00000664]",
+            "value": 7171.362347999475,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00000904014801752939",
+            "extra": "mean: 139.44351874493697 usec\nrounds: 6375"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_render_gaussians[garden-00000664]",
+            "value": 910.2976288883488,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00003458061265848059",
+            "extra": "mean: 1.0985418046416262 msec\nrounds: 1034"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_forward[garden-00000664]",
+            "value": 813.1730493927016,
+            "unit": "iter/sec",
+            "range": "stddev: 0.000024282985572751048",
+            "extra": "mean: 1.2297505441760834 msec\nrounds: 781"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_backward[garden-00000664]",
+            "value": 199.02644236564055,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00003719937569536999",
+            "extra": "mean: 5.024457997208503 msec\nrounds: 358"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_project_gaussians[garden-00006640]",
+            "value": 339.71191669658367,
+            "unit": "iter/sec",
+            "range": "stddev: 0.0005179994448158767",
+            "extra": "mean: 2.9436706540181743 msec\nrounds: 6272"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_render_gaussians[garden-00006640]",
+            "value": 146.77785745859347,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00006187273395828123",
+            "extra": "mean: 6.813016740499181 msec\nrounds: 158"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_forward[garden-00006640]",
+            "value": 102.54025798468717,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00008364763146623502",
+            "extra": "mean: 9.75226725243206 msec\nrounds: 103"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_backward[garden-00006640]",
+            "value": 28.151296018868468,
+            "unit": "iter/sec",
+            "range": "stddev: 0.0002039098479920709",
+            "extra": "mean: 35.522343245928994 msec\nrounds: 614"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_project_gaussians[garden-00016600]",
+            "value": 276.69033168474334,
+            "unit": "iter/sec",
+            "range": "stddev: 0.0006366417981536416",
+            "extra": "mean: 3.6141486907442233 msec\nrounds: 6299"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_render_gaussians[garden-00016600]",
+            "value": 111.09447890646075,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00010996278835824288",
+            "extra": "mean: 9.00134741027031 msec\nrounds: 117"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_forward[garden-00016600]",
+            "value": 79.62416026818603,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00009313450838017364",
+            "extra": "mean: 12.559002149998832 msec\nrounds: 80"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_backward[garden-00016600]",
+            "value": 22.02726614036729,
+            "unit": "iter/sec",
+            "range": "stddev: 0.0006401623872701506",
+            "extra": "mean: 45.39828018727183 msec\nrounds: 550"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_forward_mcmc[garden-00000664]",
+            "value": 794.8984871807285,
+            "unit": "iter/sec",
+            "range": "stddev: 0.000028209890789140212",
+            "extra": "mean: 1.2580222709275826 msec\nrounds: 860"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_forward_mcmc[garden-00006640]",
+            "value": 102.46550285288657,
+            "unit": "iter/sec",
+            "range": "stddev: 0.0001617655182527129",
+            "extra": "mean: 9.759382154555334 msec\nrounds: 110"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_forward_mcmc[garden-00016600]",
+            "value": 80.00346292192673,
+            "unit": "iter/sec",
+            "range": "stddev: 0.0001752035722765045",
+            "extra": "mean: 12.499458941869475 msec\nrounds: 86"
           }
         ]
       }
