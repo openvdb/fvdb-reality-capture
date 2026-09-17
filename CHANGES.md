@@ -3,23 +3,100 @@ fVDB-Reality-Capture Version History
 
 ## Version 0.6.0 - Unreleased
 
-- Added first-class GARfVDB scale-conditioned instance segmentation through the Python API and
-  `frgs segment-instances` command.
-- Added portable `.garfvdb` bundles using NanoVDB encoder fields, safetensors network weights, and a PLY Gaussian
-  carrier. Manifests carry an explicit `schema_version` used to select an exact reader for future compatibility.
-  Added product-aware `frgs show` and `frgs resume` dispatch.
-- Integrated GARfVDB preprocessing with the standard scene-transform pipeline. SAM2 supervision is represented by a
-  registered, namespaced scene attribute so it composes with other derived scene products without replacing the
-  scene cache or discarding existing attributes.
-- Added a method-neutral, versioned training-checkpoint envelope and resume-handler registry. `frgs resume` now
-  dispatches stable method IDs without relying on product extensions or falling through unknown methods to Gaussian
-  reconstruction.
+*19 commits, 131 files changed, 3 contributors.*
 
-### Gaussian Splatting API
+This release tracks fVDB 0.6.0. It brings GARfVDB scale-conditioned instance segmentation into the Python API and CLI, moves the high-level Gaussian splatting API from fVDB-core into reality-capture, improves reconstruction and rendering efficiency, and introduces shared checkpoint and scene-transform infrastructure for multiple reconstruction products. It also fixes legacy NuRec export and makes benchmark environments and GPU CI more reliable.
 
-- Moved the high-level `GaussianSplat3d`, `ProjectedGaussianSplats`, `gaussian_render_jagged`, and `evaluate_spherical_harmonics` APIs from `fvdb` to `fvdb_reality_capture`. This is a breaking import-path change; the low-level compiled kernels and supporting tensor types remain in fVDB-core.
-- Moved `RollingShutterType`, `CameraModel`, and `ProjectionMethod` from `fvdb` to `fvdb_reality_capture`, preserving their member names and values. This is also a breaking import-path change.
-- Added `gaussian_splat_to_view_data`, a zero-copy adapter from `GaussianSplat3d` to the core-owned `fvdb.viz.GaussianSplatViewData` contract. Pass the adapted data to `fvdb.viz.Scene.add_gaussian_splat_3d` instead of coupling the viewer directly to the reality-capture model. The minimum `fvdb-core` version is now `0.6.0dev0` for this contract.
+**Highlights:**
+
+- Added GARfVDB instance-segmentation training from existing Gaussian reconstructions, portable `.garfvdb` bundles, and an interactive feature-overlay viewer for inspecting grouping scales during and after training.
+- Moved the high-level Gaussian splatting APIs and camera enums from `fvdb` to `fvdb_reality_capture`, a breaking import-path change, with a zero-copy adapter for the fVDB-core viewer.
+- Added optional host-memory image caching and scale regularization for Gaussian reconstruction, enabled more efficient Gaussian isocontour tile intersection, and reduced training synchronization and transfer overhead.
+- Added versioned training-checkpoint containers and method-based `frgs resume` dispatch, retaining support for released Gaussian reconstruction checkpoints.
+- Fixed incorrect Gaussian contributors for duplicate pixels in sparse rendering, full-image crop handling, and legacy NuRec USDZ export for SH degrees 1 and 2.
+- Derived nightly benchmark environment pins from the exact fVDB-core build commit and added shared EC2 runner provisioning with availability-zone fallback, retries, and cleanup.
+
+**Contributors:** @harrism, @matthewdcong, @swahtz
+
+---
+
+### Instance Segmentation (GARfVDB)
+
+**New Features:**
+
+- Added first-class GARfVDB scale-conditioned instance segmentation through the Python API and `frgs segment-instances`. Training consumes an existing Gaussian reconstruction and learns a separate feature field using SAM2 mask supervision (#308 - @swahtz).
+- Added portable, pickle-free `.garfvdb` directory bundles containing NanoVDB encoder fields, safetensors network weights, and a PLY Gaussian model. Versioned manifests and payload checksums validate compatibility and integrity on load; bundles can be loaded without the original dataset or reconstruction (#308 - @swahtz).
+- Added an interactive GARfVDB feature-overlay viewer to `frgs show` and live training via `frgs segment-instances --viewer`, with grouping-scale, opacity, visibility, and PCA color-lock controls (#308 - @swahtz).
+- Applied the reconstruction's saved alignment and optimized camera poses before generating segmentation supervision, with camera parameters and SAM2 checkpoint identity included in mask-cache keys (#308 - @swahtz).
+
+**Optimizations:**
+
+- Vectorized SAM2 mask post-processing, recomputed mask-selection distributions on load to reduce cache storage, and overlapped background cache writes with GPU mask generation (#308 - @swahtz).
+
+---
+
+### Gaussian Splatting API & Rendering
+
+**Breaking API Changes:**
+
+- Moved `GaussianSplat3d`, `ProjectedGaussianSplats`, `gaussian_render_jagged`, and `evaluate_spherical_harmonics` from `fvdb` to `fvdb_reality_capture`. The low-level compiled kernels and supporting tensor types remain in fVDB-core (#306 - @matthewdcong).
+- Moved `RollingShutterType`, `CameraModel`, and `ProjectionMethod` from `fvdb` to `fvdb_reality_capture`, preserving their member names and values (#306 - @matthewdcong).
+- Added `gaussian_splat_to_view_data`, a zero-copy adapter from `GaussianSplat3d` to the core-owned `fvdb.viz.GaussianSplatViewData` contract. Pass the adapted data to `fvdb.viz.Scene.add_gaussian_splat_3d` (#306 - @matthewdcong).
+
+**Optimizations:**
+
+- Enabled Gaussian isocontour (ellipse-tile) intersection across dense, sparse, and jagged rendering paths, using fVDB-core's more efficient tile-intersection kernels (fVDB-core #742; #316 - @matthewdcong).
+
+**Bug Fixes:**
+
+- Fixed `sparse_render_contributing_gaussian_ids` returning contributors from the wrong pixels when the input contains duplicates. Duplicate pixels now retain their complete contributor IDs and weights, preserving the two-level jagged structure (#331 - @harrism).
+- Fixed a crop covering the full image being incorrectly treated as a partial crop (#317 - @matthewdcong).
+
+---
+
+### Reconstruction & Optimization
+
+**New Features:**
+
+- Added optional `--cfg.cache-training-images` / `cache_training_images` support to decode training images and masks once into shared host memory for reuse across epochs and DataLoader workers. Batch-size-one training reuses the cached raster storage without a collation copy; caching is disabled by default and trades host/shared memory for less decoding work (#320 - @matthewdcong).
+- Added `scale_regularization` to the standard Gaussian splat optimizer, sharing the scale-loss implementation with MCMC. Defaults remain unchanged: disabled for the standard optimizer and `0.01` for MCMC (#315 - @matthewdcong).
+
+**Optimizations:**
+
+- Removed an unnecessary host-device synchronization by using `torch.linalg.inv_ex` for camera-matrix inversion (#309 - @matthewdcong).
+- Avoided redundant camera-matrix transfers during pose optimization and unnecessary autograd nodes when adding zero regularization loss (#310 - @matthewdcong).
+
+---
+
+### Checkpoints, Scene Handling & Command-Line Tools
+
+- Added a method-neutral, versioned training-checkpoint container and resume-handler registry. `frgs resume` dispatches Gaussian reconstruction and GARfVDB checkpoints by stable method ID and rejects unknown methods explicitly. Previously released flat Gaussian checkpoints remain loadable and resumable; `.garfvdb` bundles are inference products, not resumable checkpoints (#308 - @swahtz).
+- Added reusable `SceneTransformConfig` preprocessing for reconstruction and segmentation, and registered SAM2 supervision as a namespaced `GARfVDBMaskAttribute` that preserves existing scene caches and attributes. Mask generation runs last, with subsequent transforms that would invalidate supervision rejected (#308 - @swahtz).
+- Made `SfmCache` file locking usable from worker threads while retaining acquisition timeouts, enabling background cache writes (#308 - @swahtz).
+- Standardized compute-device defaults on `cuda:0` across the CLI and foundation models to satisfy fVDB's requirement for an explicit CUDA device index (#308 - @swahtz).
+
+---
+
+### USD Export & Isaac Sim Integration
+
+- Fixed legacy NuRec USDZ exports of SH-degree-1 and SH-degree-2 models that could hang on import in Isaac Sim. These exports now zero-pad directional coefficients to degree 3, preserving rendered radiance; degree-0 and degree-3 exports retain their existing representation (#307 - @harrism).
+- Added `target_sh_degree` to the legacy USD export API and `--target-sh-degree` to `frgs convert`, allowing explicit degree-0 or degree-3 output with validation. The default `ParticleField3DGaussianSplat` export retains the model's native SH degree (#307 - @harrism).
+
+---
+
+### Dependencies & Documentation
+
+- Raised the minimum `fvdb-core` version to `0.6.0dev0` for the migrated Gaussian splatting and viewer APIs, and added `safetensors` for portable GARfVDB network weights (#306, #308 - @matthewdcong, @swahtz).
+- Added Gaussian splatting and camera-enum API documentation, an instance-segmentation tutorial and API reference, and checkpoint documentation; updated CLI and reconstruction examples for the migrated APIs and new workflows (#306, #308 - @matthewdcong, @swahtz).
+
+---
+
+### Benchmarks, Tests & CI
+
+- Pinned the benchmark conda environment to `pycolmap>=3.11,<4` to avoid a libfaiss ABI mismatch that broke nightly imports; the package's PyPI dependency remains unchanged (#313 - @harrism).
+- Synced the benchmark environment to PyTorch 2.13, then added `scripts/generate_benchmark_env.py` to derive Python, PyTorch, and CUDA pins from fVDB-core. Nightly benchmarks regenerate pins from the exact commit used to build the wheel, and a PR check detects stale committed pins (#318, #319 - @harrism).
+- Made Gaussian splatting PLY and projection tests independent of the default CUDA device and the device recorded in saved checkpoints (#311 - @matthewdcong).
+- Expanded EC2 runner provisioning to all three us-east-2 availability zones and consolidated startup/teardown into shared workflows with retry and backoff. Runner selection now uses the successful attempt's outcome and cleans up instances left by failed attempts, preventing stalled jobs and leaked runners (#326, #329, #330 - @harrism).
 
 ## Version 0.5.0 - July 1, 2026
 
