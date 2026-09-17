@@ -146,7 +146,7 @@ def test_cached_mask_transform_attaches_attribute_without_replacing_scene_state(
             device="cpu",
         )
         cache = scene.cache.make_folder(
-            f"garfvdb_masks_v1_{gaussians_hash}_p4_i80_s80_c{camera_parameters_hash}",
+            f"garfvdb_masks_v1_{gaussians_hash}_mlarge_p4_i80_s80_c{camera_parameters_hash}",
             description="cached GARfVDB masks",
         )
         for index in range(scene.num_images):
@@ -155,6 +155,7 @@ def test_cached_mask_transform_attaches_attribute_without_replacing_scene_state(
                 data=_mask_data(index),
                 data_type="pt",
                 metadata={
+                    "checkpoint": "large",
                     "points_per_side": 4,
                     "pred_iou_thresh": 0.8,
                     "stability_score_thresh": 0.8,
@@ -197,7 +198,7 @@ def test_mask_cache_without_cdf_recomputes_on_load():
             device="cpu",
         )
         cache = scene.cache.make_folder(
-            f"garfvdb_masks_v1_{gaussians_hash}_p4_i80_s80_c{camera_parameters_hash}",
+            f"garfvdb_masks_v1_{gaussians_hash}_mlarge_p4_i80_s80_c{camera_parameters_hash}",
             description="cached GARfVDB masks without mask_cdf",
         )
 
@@ -216,6 +217,7 @@ def test_mask_cache_without_cdf_recomputes_on_load():
             },
             data_type="pt",
             metadata={
+                "checkpoint": "large",
                 "points_per_side": 4,
                 "pred_iou_thresh": 0.8,
                 "stability_score_thresh": 0.8,

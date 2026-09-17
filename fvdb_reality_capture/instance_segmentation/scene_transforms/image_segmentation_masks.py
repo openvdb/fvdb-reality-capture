@@ -199,7 +199,7 @@ class GenerateGARfVDBMasks(BaseTransform):
         camera_parameters_hash = self._camera_parameters_sha256(input_scene)
 
         cache_prefix = (
-            f"garfvdb_masks_v{GARFVDB_MASK_DATA_SCHEMA_VERSION}_{hash_str}_p{self._points_per_side}_"
+            f"garfvdb_masks_v{GARFVDB_MASK_DATA_SCHEMA_VERSION}_{hash_str}_m{self._checkpoint}_p{self._points_per_side}_"
             f"i{int(self._pred_iou_thresh * 100)}_s{int(self._stability_score_thresh * 100)}_"
             f"c{camera_parameters_hash}"
         )
@@ -249,6 +249,7 @@ class GenerateGARfVDBMasks(BaseTransform):
             cache_file_meta = output_cache.get_file_metadata(cache_image_filename)
             mask_paths.append(str(cache_file_meta["path"]))
             value_meta = cache_file_meta["metadata"]
+            checkpoint = value_meta.get("checkpoint", "")
             points_per_side = value_meta.get("points_per_side", -1)
             pred_iou_thresh = value_meta.get("pred_iou_thresh", -1)
             stability_score_thresh = value_meta.get("stability_score_thresh", -1)
@@ -257,6 +258,7 @@ class GenerateGARfVDBMasks(BaseTransform):
 
             if (
                 cache_file_meta.get("data_type", "") != self._image_type
+                or checkpoint != self._checkpoint
                 or points_per_side != self._points_per_side
                 or pred_iou_thresh != self._pred_iou_thresh
                 or stability_score_thresh != self._stability_score_thresh
@@ -297,6 +299,7 @@ class GenerateGARfVDBMasks(BaseTransform):
 
             def _submit_write(name: str, data: dict[str, Any]) -> None:
                 metadata = {
+                    "checkpoint": self._checkpoint,
                     "points_per_side": self._points_per_side,
                     "pred_iou_thresh": self._pred_iou_thresh,
                     "stability_score_thresh": self._stability_score_thresh,

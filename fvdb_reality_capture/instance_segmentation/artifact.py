@@ -92,6 +92,11 @@ def save_garfvdb_bundle(product: GARfVDB, path: str | pathlib.Path) -> pathlib.P
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
     temporary_path = pathlib.Path(tempfile.mkdtemp(prefix=f".{output_path.name}.", dir=output_path.parent))
+    # mkdtemp creates the directory owner-only (0700). The bundle is meant to be shared, so give it
+    # the mode a plain mkdir would have produced under the current umask.
+    umask = os.umask(0)
+    os.umask(umask)
+    os.chmod(temporary_path, 0o777 & ~umask)
     try:
         encoder_path = temporary_path / ENCODER_NAME
         network_path = temporary_path / NETWORK_NAME

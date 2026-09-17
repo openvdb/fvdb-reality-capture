@@ -123,15 +123,13 @@ class GARfVDBTransformConfig(SceneTransformConfig):
     sam2_stability_score_thresh: float = 0.80
     """SAM2 stability score threshold for mask filtering."""
 
-    device: torch.device | str = "cuda:0"
-    """Device for SAM2 model inference."""
-
     def build_scene_transforms(
         self,
         gs3d: GaussianSplat3d,
         normalization_transform: torch.Tensor | None,
         reconstruction_camera_to_world_matrices: torch.Tensor | np.ndarray | None = None,
         reconstruction_image_ids: torch.Tensor | np.ndarray | None = None,
+        device: torch.device | str = "cuda:0",
     ):
         alignment_transform = (
             TransformScene(normalization_transform.cpu().numpy()) if normalization_transform is not None else Identity()
@@ -155,7 +153,7 @@ class GARfVDBTransformConfig(SceneTransformConfig):
                         points_per_batch=self.sam2_points_per_batch,
                         pred_iou_thresh=self.sam2_pred_iou_thresh,
                         stability_score_thresh=self.sam2_stability_score_thresh,
-                        device=self.device,
+                        device=device,
                     ),
                 ]
             )
