@@ -157,6 +157,138 @@ class _ProjectGaussiansFn(torch.autograd.Function):
 
 
 # ---------------------------------------------------------------------------
+#  Projection (unscented transform / distorted cameras)
+# ---------------------------------------------------------------------------
+
+
+class _ProjectGaussiansUnscentedFn(torch.autograd.Function):
+    """Python autograd wrapper for the unscented-transform Gaussian projection forward/backward.
+
+    Companion to `_ProjectGaussiansFn` above, for camera models that require distortion handling
+    (every COLMAP camera model except SIMPLE_PINHOLE/PINHOLE). Before `_C.project_gaussians_
+    unscented_bwd` existed, `_do_projection`'s UT branch called `_C.project_gaussians_
+    unscented_fwd` directly instead of through a `torch.autograd.Function`, so it was
+    structurally disconnected from the autograd graph -- the photometric/image loss produced
+    zero gradient on `means`/`quats`/`log_scales` for any such scene. See
+    `ProjectGaussiansUnscentedBackward.h` (fvdb-core) for the derivation and its scope.
+
+    Scope (matching the CUDA kernel): only `DistortionModel.OPENCV_RADTAN_5` (COLMAP's
+    SIMPLE_RADIAL/RADIAL/OPENCV) is supported, `calc_compensations` (antialiasing) is not yet
+    supported, and there is no gradient w.r.t. `world_to_cam` (camera-pose optimization) or
+    `distortion_coeffs` (calibration is not optimized by any current caller) on this path yet.
+    """
+
+    @staticmethod
+    def forward(
+        ctx,
+        means: torch.Tensor,
+        quats: torch.Tensor,
+        log_scales: torch.Tensor,
+        world_to_cam: torch.Tensor,
+        projection_matrices: torch.Tensor,
+        distortion_coeffs: torch.Tensor,
+        camera_model,
+        image_width: int,
+        image_height: int,
+        eps2d: float,
+        near: float,
+        far: float,
+        min_radius_2d: float,
+        calc_compensations: bool,
+    ):
+        if calc_compensations:
+            raise NotImplementedError(
+                "Antialiasing (calc_compensations=True) is not yet supported by the "
+                "differentiable unscented-transform projection backward."
+            )
+        if int(camera_model) != int(_C.CameraModel.OPENCV_RADTAN_5):
+            raise NotImplementedError(
+                f"The differentiable unscented-transform projection backward currently only "
+                f"supports DistortionModel.OPENCV_RADTAN_5 (COLMAP's SIMPLE_RADIAL/RADIAL/OPENCV "
+                f"camera models); got {camera_model!r}. OPENCV_RATIONAL_8 and the "
+                f"*_THIN_PRISM_* variants are not yet implemented."
+            )
+
+        result = _C.project_gaussians_unscented_fwd(
+            means,
+            quats,
+            log_scales,
+            world_to_cam,
+            world_to_cam,
+            projection_matrices,
+            distortion_coeffs,
+            camera_model,
+            image_width,
+            image_height,
+            eps2d,
+            near,
+            far,
+            min_radius_2d,
+            False,
+        )
+        radii: torch.Tensor = result[0]
+        means2d: torch.Tensor = result[1]
+        depths: torch.Tensor = result[2]
+        conics: torch.Tensor = result[3]
+
+        ctx.save_for_backward(means, quats, log_scales, world_to_cam, projection_matrices, distortion_coeffs, radii, conics)
+        ctx.camera_model = camera_model
+        ctx.image_width = image_width
+        ctx.image_height = image_height
+        ctx.eps2d = eps2d
+
+        return radii, means2d, depths, conics, None
+
+    @staticmethod
+    def backward(ctx: Any, *grad_outputs: torch.Tensor | None) -> tuple[torch.Tensor | None, ...]:
+        grad_means2d = grad_outputs[1]
+        grad_depths = grad_outputs[2]
+        grad_conics = grad_outputs[3]
+        assert grad_means2d is not None
+        assert grad_depths is not None
+        assert grad_conics is not None
+
+        means, quats, log_scales, world_to_cam, projection_matrices, distortion_coeffs, radii, conics = (
+            ctx.saved_tensors
+        )
+
+        d_means, d_quats, d_log_scales = _C.project_gaussians_unscented_bwd(
+            means,
+            quats,
+            log_scales,
+            world_to_cam,
+            projection_matrices,
+            ctx.camera_model,
+            distortion_coeffs,
+            ctx.image_width,
+            ctx.image_height,
+            ctx.eps2d,
+            radii,
+            conics,
+            grad_means2d.contiguous(),
+            grad_depths.contiguous(),
+            grad_conics.contiguous(),
+        )
+
+        return (
+            d_means,
+            d_quats,
+            d_log_scales,
+            None,  # world_to_cam: no camera-pose gradient on this path yet
+            None,  # projection_matrices
+            None,  # distortion_coeffs
+            None,  # camera_model
+            None,  # image_width
+            None,  # image_height
+            None,  # eps2d
+            None,  # near
+            None,  # far
+            None,  # min_radius_2d
+            None,  # calc_compensations
+        )
+
+
+# ---------------------------------------------------------------------------
 #  Projection (analytic, jagged)
 # ---------------------------------------------------------------------------
 
