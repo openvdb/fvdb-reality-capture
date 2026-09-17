@@ -11,7 +11,7 @@ import os
 import pathlib
 import shutil
 import tempfile
-from dataclasses import asdict
+from dataclasses import asdict, fields
 from importlib.metadata import PackageNotFoundError, version
 from typing import TYPE_CHECKING, Any
 
@@ -208,7 +208,16 @@ def _load_garfvdb_bundle_v1(
     network_path = _payload_path(bundle_path, manifest, "network")
     gaussians_path = _payload_path(bundle_path, manifest, "gaussians")
 
-    model_config = GARfVDBConfig(**manifest.get("model_config", {}))
+    model_config_state = manifest.get("model_config", {})
+    if not isinstance(model_config_state, dict):
+        raise GARfVDBArtifactError("Manifest model_config must be a mapping")
+    unknown_fields = sorted(set(model_config_state) - {field.name for field in fields(GARfVDBConfig)})
+    if unknown_fields:
+        raise GARfVDBArtifactVersionError(
+            f"Manifest model_config has fields this version does not recognize: {unknown_fields}. "
+            "The bundle was likely written by a newer fvdb_reality_capture; upgrade to load it."
+        )
+    model_config = GARfVDBConfig(**model_config_state)
     if not model_config.use_grid:
         raise GARfVDBArtifactError("Portable GARfVDB artifacts require model_config.use_grid=True")
 

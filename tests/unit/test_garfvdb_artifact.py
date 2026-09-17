@@ -219,6 +219,20 @@ class GARfVDBArtifactTests(unittest.TestCase):
             with self.assertRaisesRegex(GARfVDBArtifactError, "grid names"):
                 GARfVDB.load(path, device="cuda:0")
 
+    def test_unknown_model_config_fields_report_a_version_error(self):
+        # A bundle written by a newer release that added a GARfVDBConfig field without bumping the
+        # schema version should tell the reader to upgrade, not leak a TypeError from the dataclass.
+        product = _make_product()
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "scene.garfvdb"
+            product.save(path)
+            manifest_path = path / MANIFEST_NAME
+            manifest = json.loads(manifest_path.read_text())
+            manifest["model_config"]["some_new_field"] = 3
+            manifest_path.write_text(json.dumps(manifest))
+            with self.assertRaisesRegex(GARfVDBArtifactVersionError, "some_new_field"):
+                GARfVDB.load(path, device="cuda:0")
+
     def test_reordered_nanovdb_grid_names_are_rejected(self):
         product = _make_product()
         with tempfile.TemporaryDirectory() as directory:
