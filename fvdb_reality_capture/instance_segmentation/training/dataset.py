@@ -197,8 +197,12 @@ class SegmentationDataset(SfmDataset):
                     image_w=sfm_item["image"].shape[1],
                 )
 
-    @property
-    def scales(self) -> torch.Tensor:
+    def per_image_scales(self) -> list[torch.Tensor]:
+        """Per-mask scales for every image in the dataset, one ``[num_masks_i]`` tensor per image.
+
+        An image with no masks (SAM2 found nothing, or every mask was filtered by the scale
+        threshold) yields an empty tensor.
+        """
         scales = []
         for index in self._indices:
             # Use cache if available, otherwise read from disk
@@ -207,7 +211,11 @@ class SegmentationDataset(SfmDataset):
             else:
                 data = self._mask_attribute.load(int(index))
                 scales.append(data["scales"])
-        return torch.cat(scales)
+        return scales
+
+    @property
+    def scales(self) -> torch.Tensor:
+        return torch.cat(self.per_image_scales())
 
     @property
     def camera_to_world_matrices(self) -> np.ndarray:

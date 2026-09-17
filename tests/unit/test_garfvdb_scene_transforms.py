@@ -387,6 +387,35 @@ def test_generate_segmentation_mask_handles_zero_sam2_masks():
     assert pixel_to_mask_id.shape == (h, w, 0)
 
 
+def test_images_without_masks_are_dropped_from_the_split():
+    import logging
+
+    from fvdb_reality_capture.instance_segmentation.training.segmentation import drop_images_without_masks
+
+    with tempfile.TemporaryDirectory() as directory:
+        root = pathlib.Path(directory)
+        scene = _make_scene(root, num_images=3)
+        paths = []
+        for index in range(3):
+            data = _mask_data(index)
+            if index == 1:
+                data["scales"] = torch.zeros(0)
+                data["pixel_to_mask_id"] = torch.zeros((6, 8, 0), dtype=torch.int16)
+                del data["mask_cdf"]
+            path = root / f"mask_{index}.pt"
+            torch.save(data, path)
+            paths.append(path)
+        scene = scene.with_attributes(**{GARFVDB_MASK_ATTRIBUTE_NAME: GARfVDBMaskAttribute(paths)})
+
+        dataset = SegmentationDataset(scene, cache_loaded_masks=False, cache_images=False)
+        per_image_scales = dataset.per_image_scales()
+        assert [s.numel() for s in per_image_scales] == [1, 0, 1]
+        assert torch.equal(dataset.scales, torch.cat(per_image_scales))
+
+        kept = drop_images_without_masks(np.array([2, 1, 0]), dataset.indices, per_image_scales, logging.getLogger())
+        np.testing.assert_array_equal(kept, np.array([2, 0]))
+
+
 def test_segmentation_dataset_requires_namespaced_garfvdb_attribute():
     with tempfile.TemporaryDirectory() as directory:
         scene = _make_scene(pathlib.Path(directory), num_images=1)

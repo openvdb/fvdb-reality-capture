@@ -69,6 +69,33 @@ def make_pixel_transforms(
     return train_transforms, val_transforms
 
 
+def drop_images_without_masks(
+    indices: np.ndarray,
+    dataset_indices: np.ndarray,
+    per_image_scales: list[torch.Tensor],
+    logger: logging.Logger,
+) -> np.ndarray:
+    """Remove images that have no masks from a candidate index set.
+
+    Such images carry no supervision (every pixel is background), and alone in a batch they
+    cannot go through mask selection at all, so they are excluded from both splits.
+
+    Args:
+        indices: Candidate image indices into the SfmScene.
+        dataset_indices: Image indices in the same order as ``per_image_scales``.
+        per_image_scales: Per-image mask scales, as returned by ``SegmentationDataset.per_image_scales``.
+        logger: Logger used to report dropped images.
+
+    Returns:
+        ``indices`` with images that have no masks removed, order preserved.
+    """
+    empty = {int(index) for index, scales in zip(dataset_indices, per_image_scales) if scales.numel() == 0}
+    dropped = [int(i) for i in indices if int(i) in empty]
+    if dropped:
+        logger.warning(f"Dropping {len(dropped)} images with no segmentation masks: {dropped}")
+    return np.array([i for i in indices if int(i) not in empty], dtype=int)
+
+
 class GARfVDBTrainer:
     """Training and evaluation engine for scale-conditioned Gaussian splat segmentation.
 
@@ -382,6 +409,16 @@ class GARfVDBTrainer:
         if use_every_n_as_val == 1:
             raise ValueError("use_every_n_as_val must not be 1, since that sends every image to validation")
 
+        # Scale grouping stats over every image. The same pass tells us which images have no masks.
+        full_dataset = SegmentationDataset(
+            sfm_scene,
+            cache_loaded_masks=cache_dataset,
+            cache_images=cache_dataset,
+        )
+        per_image_scales = full_dataset.per_image_scales()
+        grouping_scale_stats = torch.cat(per_image_scales)
+        indices = drop_images_without_masks(indices, full_dataset.indices, per_image_scales, logger)
+
         if use_every_n_as_val > 0:
             mask = np.ones(len(indices), dtype=bool)
             mask[::use_every_n_as_val] = False
@@ -391,16 +428,12 @@ class GARfVDBTrainer:
             train_indices = indices
             val_indices = np.array([], dtype=int)
 
+        if len(train_indices) == 0:
+            raise ValueError("No training images remain after excluding images and dropping those without masks.")
+
         train_transforms, val_transforms = make_pixel_transforms(config)
 
         ## Initialize Model
-        # Scale grouping stats
-        full_dataset = SegmentationDataset(
-            sfm_scene,
-            cache_loaded_masks=cache_dataset,
-            cache_images=cache_dataset,
-        )
-        grouping_scale_stats = full_dataset.scales
 
         gs_model = filter_splats_above_scale(gs_model, 0.1)
         # gs_model = filter_splat_means(gs_model, [0.95, 0.95, 0.95, 0.95, 0.95, 0.999])

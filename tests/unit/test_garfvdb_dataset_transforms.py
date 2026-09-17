@@ -48,6 +48,22 @@ def test_pixel_transforms_feed_gpu_mask_selection(split):
     assert batch["scales"].shape == (2, 16)
 
 
+def test_gpu_mask_selection_handles_batch_with_no_masks():
+    # An image with zero masks has mask_ids of shape [num_samples, 0]. Alone in a batch (the
+    # default batch size, and always in eval) nothing pads it, so MM is 0 at the transform.
+    item = _make_multi_mask_item()
+    item["scales"] = torch.zeros(0)
+    item["mask_ids"] = torch.zeros((8, 8, 0), dtype=torch.int32)
+    item["mask_cdf"] = torch.zeros((8, 8, 0))
+    batch = GARfVDBInputCollateFn([RandomSamplePixels(16)(item)], include_mask_cdf=True)
+    assert batch["mask_ids"].shape == (1, 16, 0)
+
+    batch = GPURandomSelectMaskIDAndScale()(batch)
+
+    assert torch.equal(batch["mask_ids"], torch.full((1, 16), -1, dtype=torch.int32))
+    assert torch.equal(batch["scales"], torch.zeros((1, 16)))
+
+
 def test_sample_distinct_indices_has_no_duplicates():
     torch.manual_seed(0)
     # 4096 of 2M would contain a duplicate on ~98% of draws with replacement.

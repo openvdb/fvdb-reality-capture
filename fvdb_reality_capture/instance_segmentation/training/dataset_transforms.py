@@ -186,6 +186,12 @@ class GPURandomSelectMaskIDAndScale:
             B, num_samples, MM = mask_ids.shape
             device = mask_ids.device
 
+            if MM == 0:
+                # No image in the batch has any mask. Every pixel is background: -1 id, zero scale.
+                batch["mask_ids"] = torch.full((B, num_samples), -1, dtype=mask_ids.dtype, device=device)
+                batch["scales"] = torch.zeros((B, num_samples), dtype=scales_data.dtype, device=device)
+                return batch
+
             # Generate random values - one per batch element (matching CPU behavior)
             # Each image in batch gets same random value for all its pixels
             random_sampling = torch.rand(B, 1, 1, device=device).expand(-1, num_samples, 1)  # [B, num_samples, 1]
