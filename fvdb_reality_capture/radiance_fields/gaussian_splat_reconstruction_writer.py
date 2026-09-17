@@ -13,6 +13,12 @@ import cv2
 import numpy as np
 import torch
 from fvdb.types import NumericScalar, to_FloatingScalar
+from fvdb_reality_capture.checkpoints import create_training_checkpoint
+
+from .checkpoint import (
+    GAUSSIAN_SPLAT_RECONSTRUCTION_METHOD,
+    GAUSSIAN_SPLAT_RECONSTRUCTION_METHOD_VERSION,
+)
 
 from .gaussian_splatting import GaussianSplat3d
 
@@ -543,8 +549,12 @@ class GaussianSplatReconstructionWriter(GaussianSplatReconstructionBaseWriter):
                 default_suffix=".pt",
             )
 
-            # Save checkpoint using torch.save
-            torch.save(checkpoint, ckpt_path)
+            container = create_training_checkpoint(
+                GAUSSIAN_SPLAT_RECONSTRUCTION_METHOD,
+                checkpoint,
+                method_version=GAUSSIAN_SPLAT_RECONSTRUCTION_METHOD_VERSION,
+            )
+            torch.save(container.to_dict(), ckpt_path)
 
     @torch.no_grad()
     def save_ply(

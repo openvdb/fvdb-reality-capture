@@ -35,4 +35,7 @@
 
 .. autoclass:: fvdb_reality_capture.transforms.Identity
     :members:
+
+.. autoclass:: fvdb_reality_capture.transforms.SceneTransformConfig
+    :members:
     :special-members: __init__, __call__

@@ -58,7 +58,7 @@ class OpenCLIPModel:
         model_type: str = "ViT-B-16",
         pretrained: str = "laion2b_s34b_b88k",
         dtype: torch.dtype = torch.float16,
-        device: torch.device | str = "cuda",
+        device: torch.device | str = "cuda:0",
     ):
         """
         Initialize the OpenCLIP model.

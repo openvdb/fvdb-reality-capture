@@ -1264,12 +1264,14 @@ class TestLoadAndSavePly(BaseGaussianTestCase):
         num_cams = 88
         normalization_tx = torch.randn(4, 4)
         cam_to_worlds = torch.randn(num_cams, 4, 4)
+        image_ids = torch.arange(num_cams, dtype=torch.int64).to(torch.uint32)
         cam_types = torch.full((num_cams,), 8).to(torch.int32)
         proj_params = torch.randn(num_cams, 4, 5, 7)
 
         metadata_dict = {
             "normalization_transform": normalization_tx,
             "camera_to_world_matrices": cam_to_worlds,
+            "image_ids": image_ids,
             "projection_types": cam_types,
             "projection_parameters": proj_params,
             "string_parameter": "The Quick brown fox jumps over the lazy dog",
@@ -1289,10 +1291,12 @@ class TestLoadAndSavePly(BaseGaussianTestCase):
 
         assert isinstance(training_info["normalization_transform"], torch.Tensor)
         assert isinstance(training_info["camera_to_world_matrices"], torch.Tensor)
+        assert isinstance(training_info["image_ids"], torch.Tensor)
         assert isinstance(training_info["projection_types"], torch.Tensor)
         assert isinstance(training_info["projection_parameters"], torch.Tensor)
         self.assertTrue(torch.allclose(training_info["normalization_transform"], normalization_tx.to(self.device)))
         self.assertTrue(torch.allclose(training_info["camera_to_world_matrices"], cam_to_worlds.to(self.device)))
+        self.assertTrue(torch.equal(training_info["image_ids"], image_ids.to(self.device)))
         self.assertTrue(torch.equal(training_info["projection_types"], cam_types.to(self.device)))
         self.assertTrue(torch.allclose(training_info["projection_parameters"], proj_params.to(self.device)))
         self.assertEqual(training_info["float_param"], 0.121243243523524650345740953)

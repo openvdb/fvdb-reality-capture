@@ -17,6 +17,8 @@ from tyro.conf import arg
 
 from fvdb_reality_capture import gaussian_splat_to_view_data
 from fvdb_reality_capture.cli import BaseCommand
+from fvdb_reality_capture.instance_segmentation import is_garfvdb_bundle
+from fvdb_reality_capture.instance_segmentation.viewer import show_garfvdb_bundle
 
 from ._common import load_splats_from_file
 
@@ -24,8 +26,8 @@ from ._common import load_splats_from_file
 @dataclass
 class Show(BaseCommand):
     """
-    Visualize a Gaussian splat radiance field in a saved PLY or checkpoint file. This will plot the splats in an interactive viewer
-    shown in a browser window.
+    Visualize a saved Reality Capture product in an interactive browser viewer. Supported inputs are Gaussian PLY/checkpoint
+    files and portable GARfVDB bundles.
 
     # Example usage:
 
@@ -37,25 +39,61 @@ class Show(BaseCommand):
 
     """
 
-    # Path to the input PLY or checkpoint file. Must end in .ply, .pt, or .pth.
+    # Path to a PLY, checkpoint, or .garfvdb bundle.
     input_path: tyro.conf.Positional[pathlib.Path]
 
     # The port to expose the viewer server on.
     viewer_port: Annotated[int, arg(aliases=["-p"])] = 8080
 
-    # The port to expose the viewer server on.
+    # The IP address to expose the viewer server on.
     viewer_ip_address: Annotated[str, arg(aliases=["-ip"])] = "127.0.0.1"
 
     # If True, then the viewer will log verbosely.
     verbose: Annotated[bool, arg(aliases=["-v"])] = False
 
-    # Device to use for computation (default is "cuda").
-    device: str | torch.device = "cuda"
+    # Device to use for computation (default is "cuda:0").
+    device: str | torch.device = "cuda:0"
+
+    scale_fraction: float = 0.1
+    """Initial GARfVDB grouping scale as a fraction in ``[0, 1]`` of the artifact's maximum scale.
+    Adjustable live via the viewer's grouping-scale slider."""
+
+    mask_blend: float = 0.5
+    """Initial GARfVDB feature-overlay opacity in ``[0, 1]``. Adjustable live via the viewer's opacity slider."""
+
+    lock_pca_colors: bool = False
+    """Initial state of the viewer's "Lock PCA colors" toggle, which freezes the feature coloring so it does
+    not flicker as the camera moves. Toggleable live in the viewer."""
+
+    overlay_width: int = 1440
+    """GARfVDB overlay width in pixels."""
+
+    overlay_height: int = 720
+    """GARfVDB overlay height in pixels."""
+
+    overlay_downsample: int = 2
+    """GARfVDB render downsample factor."""
 
     @torch.no_grad()
     def execute(self) -> None:
         logging.basicConfig(level=logging.INFO, format="%(levelname)s : %(message)s")
         logger = logging.getLogger(__name__)
+
+        if self.input_path.suffix == ".garfvdb" or is_garfvdb_bundle(self.input_path):
+            show_garfvdb_bundle(
+                self.input_path,
+                viewer_port=self.viewer_port,
+                viewer_ip_address=self.viewer_ip_address,
+                verbose=self.verbose,
+                device=self.device,
+                scale_fraction=self.scale_fraction,
+                mask_blend=self.mask_blend,
+                lock_pca_colors=self.lock_pca_colors,
+                overlay_width=self.overlay_width,
+                overlay_height=self.overlay_height,
+                overlay_downsample=self.overlay_downsample,
+            )
+            return
 
         logger.info(f"Starting viewer server on {self.viewer_ip_address}:{self.viewer_port}")
         fviz.init(ip_address=self.viewer_ip_address, port=self.viewer_port, verbose=self.verbose)

@@ -29,6 +29,7 @@ from ._gaussian_splat_viz import gaussian_splat_to_view_data
 from ._private.lpips import LPIPSLoss
 from ._private.utils import crop_image_batch
 from .camera_pose_adjust import CameraPoseAdjustment
+from .checkpoint import GAUSSIAN_SPLAT_RECONSTRUCTION_METHOD_VERSION
 from .gaussian_splat_dataset import SfmDataset
 from .gaussian_splatting import GaussianSplat3d
 from .gaussian_splat_optimizer import (
@@ -460,7 +461,7 @@ class GaussianSplatReconstruction:
     These methods allow you to pause and resume reconstructions from checkpoints.
     """
 
-    version = "0.1.0"
+    version = GAUSSIAN_SPLAT_RECONSTRUCTION_METHOD_VERSION
 
     _magic = "GaussianSplattingCheckpoint"
 
@@ -502,7 +503,7 @@ class GaussianSplatReconstruction:
         use_every_n_as_val: int = -1,
         viz_update_interval_epochs: float = 10,
         log_interval_steps: int = 10,
-        device: str | torch.device = "cuda",
+        device: str | torch.device = "cuda:0",
     ):
         """
         Create a :class:`GaussianSplatReconstruction` instance from an :class:`~fvdb_reality_capture.sfm_scene.sfm_scene.SfmScene`, used to reconstruct
@@ -613,7 +614,7 @@ class GaussianSplatReconstruction:
         viz_scene: Scene | None = None,
         viz_update_interval_epochs: float = 1.0,
         log_interval_steps: int = 10,
-        device: str | torch.device = "cuda",
+        device: str | torch.device = "cuda:0",
     ):
         """
         Load a :class:`GaussianSplatReconstruction` instance from a state dictionary (extracted with the :meth:`state_dict` method).
@@ -972,6 +973,7 @@ class GaussianSplatReconstruction:
 
         * ``normalization_transform``: The transformation matrix used to normalize the scene.
         * ``camera_to_world_matrices``: The optimized camera-to-world matrices for the images used during reconstruction.
+        * ``image_ids``: Stable SfM image IDs corresponding to ``camera_to_world_matrices``.
         * ``projection_matrices``: The projection matrices for the images used during reconstruction.
         * ``image_sizes``: The sizes of the images used during reconstruction.
         * ``median_depths``: The median depth values (distance from camera to scene) for each image used during reconstruction.
@@ -988,6 +990,15 @@ class GaussianSplatReconstruction:
         training_camera_to_world_matrices = torch.from_numpy(self._training_dataset.camera_to_world_matrices).to(
             dtype=torch.float32, device=self.device
         )
+        training_image_ids_list = [
+            self._training_dataset.sfm_scene.images[int(index)].image_id for index in self._training_dataset.indices
+        ]
+        if any(image_id < 0 or image_id > np.iinfo(np.uint32).max for image_id in training_image_ids_list):
+            raise ValueError("SfM image IDs must fit in uint32 to be saved in Gaussian PLY metadata.")
+        # Gaussian PLY tensor metadata does not support int64; SfM image IDs are non-negative and
+        # naturally fit the supported uint32 representation. Keep on self.device so it matches the paired
+        # camera_to_world_matrices (both are ordered by self._training_dataset.indices).
+        training_image_ids = torch.tensor(training_image_ids_list, dtype=torch.uint32, device=self.device)
         training_median_depths = torch.from_numpy(self._training_dataset.sfm_scene.median_depth_per_image).to(
             dtype=torch.float32, device=self.device
         )[self._training_dataset.indices]
@@ -1009,6 +1020,7 @@ class GaussianSplatReconstruction:
         return {
             "normalization_transform": normalization_transform,
             "camera_to_world_matrices": training_camera_to_world_matrices,
+            "image_ids": training_image_ids,
             "projection_matrices": training_projection_matrices,
             "image_sizes": training_image_sizes,
             "camera_models": training_camera_models,

@@ -23,13 +23,13 @@ class DLNRModel:
         https://openaccess.thecvf.com/content/CVPR2023/papers/Zhao_High-Frequency_Stereo_Matching_Network_CVPR_2023_paper.pdf
     """
 
-    def __init__(self, backbone="middleburry", device: torch.device | str = "cuda"):
+    def __init__(self, backbone="middleburry", device: torch.device | str = "cuda:0"):
         """
         Initialize a DLNR model for evaluation.
 
         Args:
             backbone (str): Backbone to use for the DLNR model. Options are "middleburry" or "sceneflow".
-            device (torch.device | str): Device to load the model on (default is "cuda").
+            device (torch.device | str): Device to load the model on (default is "cuda:0").
         """
         middleburry_weights_url = (
             "https://fvdb-data.s3.us-east-2.amazonaws.com/fvdb-reality-capture/DLNR_Middlebury.pth"

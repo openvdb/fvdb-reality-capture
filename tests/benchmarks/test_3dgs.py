@@ -29,6 +29,8 @@ from fvdb_reality_capture.radiance_fields import (
     GaussianSplatReconstructionWriterConfig,
     SfmDataset,
 )
+from fvdb_reality_capture.checkpoints import load_training_checkpoint
+from fvdb_reality_capture.radiance_fields.checkpoint import GAUSSIAN_SPLAT_RECONSTRUCTION_METHOD
 from fvdb_reality_capture.sfm_scene import SfmScene
 from fvdb_reality_capture.transforms import Compose, DownsampleImages, NormalizeScene
 
@@ -58,7 +60,11 @@ class Benchmark3dgs:
         run_name = pathlib.Path(checkpoint_path).parent.parent.parent.name
 
         # Load the checkpoint
-        checkpoint_state = torch.load(pathlib.Path(checkpoint_path), map_location=device, weights_only=False)
+        checkpoint_state = load_training_checkpoint(
+            pathlib.Path(checkpoint_path),
+            map_location=device,
+            expected_method=GAUSSIAN_SPLAT_RECONSTRUCTION_METHOD,
+        ).state
 
         writer_config = GaussianSplatReconstructionWriterConfig(
             save_images=False,

@@ -42,7 +42,7 @@ class SAM2Model:
         box_nms_thresh: float = 0.7,
         min_mask_region_area: int = 0,
         output_mode: Literal["flat", "multi_scale"] = "flat",
-        device: torch.device | str = "cuda",
+        device: torch.device | str = "cuda:0",
     ):
         """
         Initialize the SAM2 model.
@@ -50,7 +50,9 @@ class SAM2Model:
         Args:
             checkpoint: Checkpoint size (large, small, tiny, base_plus).
             points_per_side: Grid density for point prompts.
-            points_per_batch: Points per batch; only used when output_mode="multi_scale".
+            points_per_batch: Number of point prompts run through the mask decoder per forward
+                pass. Higher values reduce the number of decoder invocations (faster) at the cost
+                of more GPU memory. Used by both "flat" and "multi_scale" modes.
             pred_iou_thresh: Minimum predicted IoU for keeping a mask.
             stability_score_thresh: Minimum stability score for keeping a mask.
             stability_score_offset: Offset for stability score; multi_scale only.
@@ -94,6 +96,7 @@ class SAM2Model:
             self._mask_generator = SAM2AutomaticMaskGenerator(
                 self._sam2_base,
                 points_per_side=points_per_side,
+                points_per_batch=points_per_batch,
                 pred_iou_thresh=pred_iou_thresh,
                 stability_score_thresh=stability_score_thresh,
             )
