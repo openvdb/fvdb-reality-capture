@@ -1,7 +1,7 @@
 fVDB-Reality-Capture Version History
 ====================================
 
-## Version 0.6.0 - Unreleased
+## Version 0.6.0 - September 18, 2026
 
 *19 commits, 131 files changed, 3 contributors.*
 

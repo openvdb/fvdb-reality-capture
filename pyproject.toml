@@ -54,6 +54,11 @@ benchmark = [
     "gitpython",
     "matplotlib",
 ]
+test = [
+    "OpenImageIO",
+    "parameterized",
+    "pytest",
+]
 
 [project.scripts]
 frgs = "fvdb_reality_capture.cli.frgs:frgs"
