@@ -16,6 +16,7 @@ from ._gaussian_autograd import (
     _EvaluateGaussianSHFn,
     _ProjectGaussiansJaggedFn,
     _ProjectGaussiansFn,
+    _ProjectGaussiansUnscentedFn,
     _RasterizeScreenSpaceGaussiansFn,
     _RasterizeScreenSpaceGaussiansSparseFn,
     _RasterizeWorldSpaceGaussiansFn,
@@ -1532,11 +1533,23 @@ class GaussianSplat3d:
         if self._use_ut(camera_model, projection_method):
             if distortion_coeffs is None:
                 distortion_coeffs = torch.empty(C, 0, device=means.device, dtype=means.dtype)
-            result = _C.project_gaussians_unscented_fwd(
+            # `_C.project_gaussians_unscented_fwd`/`_bwd` now has a matching CUDA backward
+            # kernel, wired through `_ProjectGaussiansUnscentedFn.apply` below -- previously this
+            # branch called the forward op directly (not through a torch.autograd.Function, as
+            # the analytic branch below does via `_ProjectGaussiansFn.apply`), which silently
+            # disconnected it from the autograd graph: the photometric/image loss produced zero
+            # gradient on means/quats/log_scales for every Gaussian rendered through any camera
+            # model that requires distortion handling (every COLMAP camera model except
+            # SIMPLE_PINHOLE/PINHOLE), leaving only the rendering-independent regularization
+            # terms to act on the model. See ProjectGaussiansUnscentedBackward.h (fvdb-core) for
+            # the derivation and its current scope: only DistortionModel.OPENCV_RADTAN_5
+            # (SIMPLE_RADIAL/RADIAL/OPENCV) and calc_compensations=False are supported by the
+            # CUDA backward yet; `_ProjectGaussiansUnscentedFn.forward` raises NotImplementedError
+            # for anything outside that scope rather than silently mishandling it.
+            radii, means2d, depths, conics, compensations = _ProjectGaussiansUnscentedFn.apply(
                 means,
                 quats,
                 log_scales,
-                w2c,
                 w2c,
                 K,
                 distortion_coeffs,
@@ -1549,9 +1562,6 @@ class GaussianSplat3d:
                 min_radius,
                 antialias,
             )
-            radii, means2d, depths, conics, compensations = result
-            if not antialias:
-                compensations = None
             return radii, means2d, depths, conics, compensations
 
         result = _ProjectGaussiansFn.apply(
