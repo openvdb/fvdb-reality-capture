@@ -194,6 +194,93 @@ class GaussianSplatReconstructionTests(unittest.TestCase):
         expected_gamma = config.pose_opt_lr_decay ** (1.0 / expected_total_pose_steps)
         self.assertAlmostEqual(pose_adjust_scheduler.gamma, expected_gamma)
 
+    def _make_runner_without_render_backend(
+        self,
+        config: frc.radiance_fields.GaussianSplatReconstructionConfig,
+        optimizer_config: frc.radiance_fields.GaussianSplatOptimizerConfig,
+        device: str,
+    ) -> frc.radiance_fields.GaussianSplatReconstruction:
+        with patch(
+            "fvdb_reality_capture.radiance_fields.gaussian_splat_reconstruction.make_render_backend"
+        ) as make_render_backend:
+            make_render_backend.return_value.validate_scene_cameras.return_value = None
+            return frc.radiance_fields.GaussianSplatReconstruction.from_sfm_scene(
+                self.sfm_scene,
+                config=config,
+                optimizer_config=optimizer_config,
+                use_every_n_as_val=2,
+                device=device,
+            )
+
+    def test_num_steps_per_epoch_keeps_partial_batch(self):
+        from fvdb_reality_capture.radiance_fields.gaussian_splat_reconstruction import _num_steps_per_epoch
+
+        self.assertEqual(_num_steps_per_epoch(5, 1), 5)
+        self.assertEqual(_num_steps_per_epoch(8, 4), 2)
+        self.assertEqual(_num_steps_per_epoch(9, 4), 3)
+        self.assertEqual(_num_steps_per_epoch(3, 8), 1)
+
+    def test_means_lr_decay_uses_training_step_horizon(self):
+        optimizer_configs: list[tuple[str, frc.radiance_fields.GaussianSplatOptimizerConfig, str]] = [
+            ("default", frc.radiance_fields.GaussianSplatOptimizerConfig(), "cpu"),
+        ]
+        if torch.cuda.is_available():
+            optimizer_configs.append(("mcmc", frc.radiance_fields.GaussianSplatOptimizerMCMCConfig(), "cuda"))
+
+        for name, optimizer_config, device in optimizer_configs:
+            for batch_size in (1, 4):
+                with self.subTest(optimizer=name, batch_size=batch_size):
+                    config = frc.radiance_fields.GaussianSplatReconstructionConfig(
+                        max_epochs=2,
+                        batch_size=batch_size,
+                        eval_at_percent=[],
+                        save_at_percent=[],
+                        optimize_camera_poses=False,
+                    )
+                    runner = self._make_runner_without_render_backend(config, optimizer_config, device)
+
+                    num_steps_per_epoch = int(np.ceil(len(runner.training_dataset) / batch_size))
+                    expected_steps = config.max_epochs * num_steps_per_epoch
+                    expected_exponent = 0.01 ** (1.0 / expected_steps)
+                    self.assertAlmostEqual(
+                        runner.optimizer.state_dict()["means_lr_decay_exponent"], expected_exponent, places=12
+                    )
+
+    def test_means_lr_decay_horizon_respects_max_steps(self):
+        batch_size = 4
+        max_epochs = 2
+        probe_config = frc.radiance_fields.GaussianSplatReconstructionConfig(
+            max_epochs=max_epochs,
+            batch_size=batch_size,
+            eval_at_percent=[],
+            save_at_percent=[],
+            optimize_camera_poses=False,
+        )
+        probe = self._make_runner_without_render_backend(
+            probe_config, frc.radiance_fields.GaussianSplatOptimizerConfig(), "cpu"
+        )
+        epoch_steps = max_epochs * int(np.ceil(len(probe.training_dataset) / batch_size))
+
+        # The loop stops at max_epochs, so a larger max_steps cannot extend the horizon.
+        for max_steps, expected_steps in ((3, 3), (epoch_steps + 100, epoch_steps)):
+            with self.subTest(max_steps=max_steps):
+                config = frc.radiance_fields.GaussianSplatReconstructionConfig(
+                    max_epochs=max_epochs,
+                    max_steps=max_steps,
+                    batch_size=batch_size,
+                    eval_at_percent=[],
+                    save_at_percent=[],
+                    optimize_camera_poses=False,
+                )
+                runner = self._make_runner_without_render_backend(
+                    config, frc.radiance_fields.GaussianSplatOptimizerConfig(), "cpu"
+                )
+                self.assertAlmostEqual(
+                    runner.optimizer.state_dict()["means_lr_decay_exponent"],
+                    0.01 ** (1.0 / expected_steps),
+                    places=12,
+                )
+
     def test_from_state_dict_restores_cpu_loaded_legacy_pose_checkpoint_on_cuda(self):
         if not torch.cuda.is_available():
             self.skipTest("Legacy pose checkpoint restore test requires CUDA")
