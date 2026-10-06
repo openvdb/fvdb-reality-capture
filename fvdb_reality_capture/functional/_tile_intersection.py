@@ -201,7 +201,12 @@ def intersect_gaussian_tiles_sparse(
         pixels, projected.image_width, projected.image_height
     )
     active_tiles, active_tile_mask, tile_pixel_mask, tile_pixel_cumsum, pixel_map = F.build_sparse_gaussian_tile_layout(
-        tile_size, num_tiles_h, num_tiles_w, unique_pixels
+        tile_size,
+        num_tiles_h,
+        num_tiles_w,
+        unique_pixels,
+        image_width=projected.image_width,
+        image_height=projected.image_height,
     )
     conics, opacities = _culling_inputs(projected, opacities)
     tile_offsets, tile_gaussian_ids = F.intersect_gaussian_tiles_sparse(
