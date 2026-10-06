@@ -378,8 +378,10 @@ class GaussianSplatOptimizer(BaseGaussianSplatOptimizer):
 
         self._means_lr_decay_exponent = 0.01 ** (1.0 / expected_steps)
 
-        # Scale the learning rate and momentum parameters (epsilon, betas) based on batch size
-        # using scheme proposed in https://arxiv.org/abs/2406.18533.
+        # Scale the learning rate and momentum parameters (epsilon, betas) based on batch size.
+        # The learning rate and betas are scaled following the scheme proposed in
+        # https://arxiv.org/abs/2406.18533. Epsilon is rescaled based on
+        # https://www.cs.princeton.edu/~smalladi/blog/2024/01/22/SDEs-ScalingRules/
         lr_batch_rescale = math.sqrt(float(batch_size))
 
         # Store learning rates in a dictionary so we can look them up
