@@ -33,10 +33,12 @@ def test_gaussian_splat_enums_are_shared_with_fvdb_with_preserved_values():
 
     # The camera enums are owned by fvdb-core and re-exported here as the same objects, so
     # values round-trip between the two packages without conversion.
-    for enum_name in ("RollingShutterType", "CameraModel", "ProjectionMethod"):
+    for enum_name in ("RollingShutterType", "CameraModel"):
         assert getattr(fvdb_reality_capture, enum_name) is getattr(fvdb, enum_name)
 
-    assert not hasattr(fvdb, "GaussianRenderMode")
+    # Pipeline enums are owned here; fvdb kernels never take them.
+    for enum_name in ("GaussianRenderMode", "ProjectionMethod"):
+        assert not hasattr(fvdb, enum_name)
     assert {member.name: member.value for member in fvdb_reality_capture.GaussianRenderMode} == {
         "FEATURES": 0,
         "DEPTH": 1,

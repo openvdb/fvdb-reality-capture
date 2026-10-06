@@ -3,17 +3,32 @@
 #
 """Enums used by the Gaussian splatting API.
 
-The camera enums are owned by :mod:`fvdb` and re-exported here unchanged, so
-:class:`fvdb_reality_capture.CameraModel` is the same object as :class:`fvdb.CameraModel`.
-:class:`GaussianRenderMode` belongs to the composable rendering pipeline in
-:mod:`fvdb_reality_capture.functional` and is defined here.
+The camera enums that fvdb kernels accept are owned by :mod:`fvdb` and re-exported here unchanged,
+so :class:`fvdb_reality_capture.CameraModel` is the same object as :class:`fvdb.CameraModel`.
+:class:`ProjectionMethod` and :class:`GaussianRenderMode` select stages of the composable rendering
+pipeline in :mod:`fvdb_reality_capture.functional` and are defined here.
 """
 
 from enum import IntEnum
 
-from fvdb import CameraModel, ProjectionMethod, RollingShutterType
+from fvdb import CameraModel, RollingShutterType
 
 __all__ = ["RollingShutterType", "CameraModel", "ProjectionMethod", "GaussianRenderMode"]
+
+
+class ProjectionMethod(IntEnum):
+    """
+    Which fvdb projection kernel :func:`fvdb_reality_capture.functional.project_gaussians` calls.
+    """
+
+    AUTO = 0
+    """Choose the default implementation for the selected camera model."""
+
+    ANALYTIC = 1
+    """Use the analytic (EWA) projection path."""
+
+    UNSCENTED = 2
+    """Use the unscented-transform projection path."""
 
 
 class GaussianRenderMode(IntEnum):
