@@ -1532,7 +1532,7 @@ class GaussianSplat3d:
         if self._use_ut(camera_model, projection_method):
             if distortion_coeffs is None:
                 distortion_coeffs = torch.empty(C, 0, device=means.device, dtype=means.dtype)
-            result = _C.project_gaussians_unscented_fwd(
+            result = _C.project_gaussians_ut_fwd(
                 means,
                 quats,
                 log_scales,
@@ -3911,7 +3911,7 @@ class GaussianSplat3d:
                 image_width,
                 image_height,
             )
-            result_ncg, result_alphas = _C.sparse_rasterize_num_contributing_gaussians(
+            result_ncg, result_alphas = _C.rasterize_num_contributing_gaussians_sparse(
                 means2d,
                 conics,
                 opacities,
@@ -4209,7 +4209,7 @@ class GaussianSplat3d:
             )
             ncg_jt = None
             if top_k_contributors <= 0:
-                ncg_jt, _ = _C.sparse_rasterize_num_contributing_gaussians(
+                ncg_jt, _ = _C.rasterize_num_contributing_gaussians_sparse(
                     means2d,
                     conics,
                     opacities,
@@ -4226,7 +4226,7 @@ class GaussianSplat3d:
                     0,
                     tile_size,
                 )
-            ids, weights = _C.sparse_rasterize_contributing_gaussian_ids(
+            ids, weights = _C.rasterize_contributing_gaussian_ids_sparse(
                 means2d,
                 conics,
                 opacities,
