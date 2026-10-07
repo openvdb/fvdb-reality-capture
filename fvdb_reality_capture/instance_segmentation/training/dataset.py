@@ -4,12 +4,13 @@
 
 from __future__ import annotations
 
-from typing import Any, Literal, NotRequired, Sequence, Sized, TypedDict, cast, overload
+from typing import Any, Literal, Sequence, Sized, cast, overload
 
 import fvdb
 import numpy as np
 import torch
 import torch.cuda.nvtx as nvtx
+from typing_extensions import NotRequired, TypedDict
 
 from fvdb_reality_capture.instance_segmentation.scene_attribute import (
     GARFVDB_MASK_ATTRIBUTE_NAME,
