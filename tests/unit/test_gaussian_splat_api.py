@@ -25,6 +25,7 @@ def test_gaussian_splat_enums_are_owned_by_reality_capture_with_preserved_values
     import fvdb
     import fvdb.viz
     import fvdb_reality_capture
+    from fvdb_reality_capture import enums
 
     public_enums = (
         "RollingShutterType",
@@ -33,8 +34,13 @@ def test_gaussian_splat_enums_are_owned_by_reality_capture_with_preserved_values
     )
 
     for enum_name in public_enums:
-        assert hasattr(fvdb_reality_capture, enum_name)
-        assert not hasattr(fvdb, enum_name)
+        assert getattr(fvdb_reality_capture, enum_name) is getattr(enums, enum_name)
+
+    # Core also exposes camera and shutter enums for its functional Gaussian API.
+    for enum_name in ("RollingShutterType", "CameraModel"):
+        assert {member.name: member.value for member in getattr(fvdb_reality_capture, enum_name)} == {
+            member.name: member.value for member in getattr(fvdb, enum_name)
+        }
 
     assert not hasattr(fvdb_reality_capture, "ShOrderingMode")
 
