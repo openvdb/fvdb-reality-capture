@@ -113,8 +113,8 @@ class ProjectedGaussianSplats:
         Compute the tile intersections of the projected Gaussians for a tile size.
 
         Nothing is cached, so holding a projection does not hold tile buffers. A caller rendering several
-        crops from one projection should keep the result and pass it to the rasterization stages in
-        :mod:`fvdb_reality_capture.functional` itself, as the training views do.
+        crops from one projection should keep the result and pass it to :meth:`GaussianSplat3d.render_from_projected_gaussians`
+        as ``tiles`` (see its docstring example) or to the rasterization stages in :mod:`fvdb_reality_capture.functional`.
 
         Args:
             tile_size (int): The tile side length in pixels. Default is 16.
@@ -1488,8 +1488,10 @@ class GaussianSplat3d:
         antialias: bool,
     ) -> ProjectedGaussians:
         """Stage 1 for this model's Gaussians, wiring in the enabled densification accumulators."""
-        # The accumulators exist (zeroed) whenever they are enabled, so refinement can read them on every
-        # path; world-space rendering leaves the gradient ones out so its views do not count as samples.
+        # Every projection wires in the enabled accumulators, as on main. World-space rendering reaches
+        # the analytic backward only through antialiasing compensations, with a zero 2D-mean gradient, and
+        # the kernel still counts that as a step; leaving the gradient accumulators out of world-space
+        # projections is part of the training-backend follow-up.
         grad_norms, step_counts, max_radii = self._projection_accumulators()
         return project_gaussians(
             self._means,
@@ -2653,7 +2655,7 @@ class GaussianSplat3d:
         Render dense depth images by rasterizing directly from world-space 3D Gaussians.
 
         This mirrors :meth:`render_images_from_world`, but renders depth-only outputs with the
-        same camera-model and projection-method dispatch.
+        same camera-model and projection-method dispatch. ``crop`` and ``crop_masks`` behave as there.
         """
         return self._render_dense(
             world_to_camera_matrices=world_to_camera_matrices,
@@ -2756,11 +2758,6 @@ class GaussianSplat3d:
                 ``tileW = ceil(image_width / tile_size)``. ``True`` means the tile is rendered,
                 ``False`` means the tile is skipped and its pixels receive the background value
                 with zero alpha.
-            crop (tuple[int, int, int, int] | None): Optional ``(origin_w, origin_h, width, height)`` window
-                to render instead of the full image, clipped to the image; tiles outside it are skipped and
-                the output has the clipped size; a crop entirely outside the image gives an empty render.
-            crop_masks (torch.Tensor | None): Optional per-pixel boolean mask in crop coordinates, of the crop's
-                requested or clipped size, as an alternative to the image-coordinate ``masks`` when a crop is given.
 
         Returns:
             features (torch.Tensor | JaggedTensor): A tensor of shape ``(C, P, D)`` or a
@@ -3040,7 +3037,8 @@ class GaussianSplat3d:
         Render dense RGBD images by rasterizing directly from world-space 3D Gaussians.
 
         This mirrors :meth:`render_images_from_world`, but returns image channels with depth in the
-        final channel while using the same camera-model and projection-method dispatch.
+        final channel while using the same camera-model and projection-method dispatch. ``crop`` and
+        ``crop_masks`` behave as there.
         """
         return self._render_dense(
             world_to_camera_matrices=world_to_camera_matrices,
@@ -3131,11 +3129,6 @@ class GaussianSplat3d:
             eps_2d (float): A value used to pad Gaussians when projecting them onto the image plane, to avoid very projected Gaussians which create artifacts and
                 numerical issues.
             antialias (bool): If ``True``, applies opacity correction to the projected Gaussians when using ``eps_2d > 0.0``.
-            crop (tuple[int, int, int, int] | None): Optional ``(origin_w, origin_h, width, height)`` window
-                to render instead of the full image, clipped to the image; tiles outside it are skipped and
-                the output has the clipped size; a crop entirely outside the image gives an empty render.
-            crop_masks (torch.Tensor | None): Optional per-pixel boolean mask in crop coordinates, of the crop's
-                requested or clipped size, as an alternative to the image-coordinate ``masks`` when a crop is given.
 
         Returns:
             images (torch.Tensor): A tensor of shape ``(C, H, W, 1)`` where ``C`` is the number of camera views,
