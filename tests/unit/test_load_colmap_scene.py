@@ -210,8 +210,6 @@ class LoadColmapSceneTests(unittest.TestCase):
             self.assertTrue(cache.has_file("visible_points_per_image"))
 
     def test_load_colmap_scene_preserves_float64_precision_for_ecef_coordinates(self):
-        # At ECEF magnitudes the float32 spacing is 0.25-0.5 m, so points 5 cm apart would collapse
-        # onto the same float32 value if the loader cast the points to float32.
         base = np.array([4751250.750213, 2171520.520182, 3647132.026718], dtype=np.float64)
         offsets = np.array([[0.0, 0.0, 0.0], [0.05, 0.0, 0.0], [0.0, 0.05, 0.0], [0.0, 0.0, 0.05]], dtype=np.float64)
         expected_points = base + offsets
