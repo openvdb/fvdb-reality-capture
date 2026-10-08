@@ -105,6 +105,7 @@ A common reality capture pipeline typically resembles the figure below:
 
    api/enums
    api/gaussian_splatting
+   api/functional
    api/radiance_fields
    api/sfm_scene
    api/tools

@@ -19,6 +19,7 @@ from fvdb.utils.tests import (
 from parameterized import parameterized, parameterized_class
 
 from fvdb import Grid, JaggedTensor
+import fvdb_reality_capture.functional as frc_functional
 from fvdb_reality_capture import (
     CameraModel,
     GaussianSplat3d,
@@ -5083,14 +5084,14 @@ class TestProjectionGradsMultiCamera(unittest.TestCase):
 
 
 class TestDeduplicatePixels(unittest.TestCase):
-    """Unit tests for GaussianSplat3d._deduplicate_pixels (pure-Python implementation)."""
+    """Unit tests for fvdb_reality_capture.functional.deduplicate_pixels."""
 
     IMAGE_WIDTH = 64
     IMAGE_HEIGHT = 64
 
     @staticmethod
     def _dedup(pixels_jt, w=64, h=64):
-        return GaussianSplat3d._deduplicate_pixels(pixels_jt, w, h)
+        return frc_functional.deduplicate_pixels(pixels_jt, w, h)
 
     @parameterized.expand([(torch.int32,), (torch.int64,)])
     def test_empty(self, dtype):
@@ -5115,7 +5116,7 @@ class TestDeduplicatePixels(unittest.TestCase):
         unique, inv, has_dups = self._dedup(pixels)
         self.assertFalse(has_dups)
         self.assertEqual(unique.jdata.shape[0], 5)
-        self.assertEqual(inv.shape[0], 5)
+        self.assertEqual(inv.shape[0], 0)  # nothing to reorder without duplicates
 
     @parameterized.expand([(torch.int32,), (torch.int64,)])
     def test_some_duplicates(self, dtype):

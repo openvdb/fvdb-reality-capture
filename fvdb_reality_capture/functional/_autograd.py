@@ -1,18 +1,20 @@
 # Copyright Contributors to the OpenVDB Project
 # SPDX-License-Identifier: Apache-2.0
 #
-"""Python torch.autograd.Function wrappers for Gaussian splatting dispatch functions.
+"""``torch.autograd.Function`` wrappers over the Gaussian splatting kernels in :mod:`fvdb.functional`.
+
+``fvdb.functional`` exposes each kernel's forward and backward pass as separate, non-differentiable
+functions. The classes here pair them up so that gradients flow through the composable stages in
+this package. They are private; use the stage functions instead.
 """
 
 from __future__ import annotations
 
-from typing import Any, cast
+from typing import Any
 
 import torch
-
-from fvdb import _fvdb_cpp as _C
-from fvdb._fvdb_cpp import JaggedTensor as JaggedTensorCpp
-from fvdb.jagged_tensor import JaggedTensor
+from fvdb import JaggedTensor
+from fvdb import functional as F
 
 # ---------------------------------------------------------------------------
 #  Projection (analytic)
@@ -20,7 +22,7 @@ from fvdb.jagged_tensor import JaggedTensor
 
 
 class _ProjectGaussiansFn(torch.autograd.Function):
-    """Python autograd wrapper for the analytic Gaussian projection forward/backward dispatch."""
+    """Analytic (EWA) projection of 3D Gaussians to 2D with gradients to the 3D parameters."""
 
     @staticmethod
     def forward(
@@ -42,7 +44,7 @@ class _ProjectGaussiansFn(torch.autograd.Function):
         accum_step_counts: torch.Tensor | None = None,
         accum_max_radii: torch.Tensor | None = None,
     ):
-        result = _C.project_gaussians_analytic_fwd(
+        radii, means2d, depths, conics, compensations = F.project_gaussians_analytic_fwd(
             means,
             quats,
             log_scales,
@@ -57,11 +59,8 @@ class _ProjectGaussiansFn(torch.autograd.Function):
             calc_compensations,
             ortho,
         )
-        radii: torch.Tensor = result[0]
-        means2d: torch.Tensor = result[1]
-        depths: torch.Tensor = result[2]
-        conics: torch.Tensor = result[3]
-        compensations: torch.Tensor | None = result[4] if calc_compensations else None
+        if not calc_compensations:
+            compensations = None
 
         to_save = [means, quats, log_scales, world_to_cam, projection_matrices, radii, conics]
         if compensations is not None:
@@ -101,19 +100,13 @@ class _ProjectGaussiansFn(torch.autograd.Function):
                 grad_compensations = gc.contiguous()
 
         saved = ctx.saved_tensors
-        means = saved[0]
-        quats = saved[1]
-        log_scales = saved[2]
-        world_to_cam = saved[3]
-        projection_matrices = saved[4]
-        radii = saved[5]
-        conics = saved[6]
+        means, quats, log_scales, world_to_cam, projection_matrices, radii, conics = saved[:7]
         compensations = saved[7] if ctx.calc_compensations else None
 
         assert grad_means2d is not None
         assert grad_depths is not None
         assert grad_conics is not None
-        d_means, _, d_quats, d_scales, d_w2c = _C.project_gaussians_analytic_bwd(
+        d_means, _, d_quats, d_scales, d_w2c = F.project_gaussians_analytic_bwd(
             means,
             quats,
             log_scales,
@@ -136,33 +129,16 @@ class _ProjectGaussiansFn(torch.autograd.Function):
             ctx.accum_step_counts,
         )
 
-        return (
-            d_means,
-            d_quats,
-            d_scales,
-            d_w2c,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-        )
+        return (d_means, d_quats, d_scales, d_w2c) + (None,) * 12
 
 
 # ---------------------------------------------------------------------------
-#  Projection (analytic, jagged)
+#  Projection (analytic, jagged batches of scenes)
 # ---------------------------------------------------------------------------
 
 
 class _ProjectGaussiansJaggedFn(torch.autograd.Function):
-    """Python autograd wrapper for the jagged Gaussian projection dispatch."""
+    """Analytic projection for a batch of scenes with varying Gaussian and camera counts."""
 
     @staticmethod
     def forward(
@@ -182,7 +158,7 @@ class _ProjectGaussiansJaggedFn(torch.autograd.Function):
         min_radius_2d: float,
         ortho: bool,
     ):
-        result = _C.project_gaussians_analytic_jagged_fwd(
+        radii, means2d, depths, conics, compensations = F.project_gaussians_analytic_jagged_fwd(
             g_sizes,
             means,
             quats,
@@ -198,25 +174,8 @@ class _ProjectGaussiansJaggedFn(torch.autograd.Function):
             min_radius_2d,
             ortho,
         )
-        radii, means2d, depths, conics, compensations = (
-            result[0],
-            result[1],
-            result[2],
-            result[3],
-            result[4],
-        )
 
-        ctx.save_for_backward(
-            g_sizes,
-            means,
-            quats,
-            scales,
-            c_sizes,
-            world_to_cam,
-            projection_matrices,
-            radii,
-            conics,
-        )
+        ctx.save_for_backward(g_sizes, means, quats, scales, c_sizes, world_to_cam, projection_matrices, radii, conics)
         ctx.image_width = image_width
         ctx.image_height = image_height
         ctx.eps2d = eps2d
@@ -229,8 +188,7 @@ class _ProjectGaussiansJaggedFn(torch.autograd.Function):
         grad_means2d = grad_outputs[1]
         grad_depths = grad_outputs[2]
         grad_conics = grad_outputs[3]
-        # grad_outputs[4] is grad_compensations -- the jagged backward dispatch
-        # does not consume it, so we ignore it here.
+        # grad_outputs[4] is grad_compensations, which the jagged backward does not consume.
         if grad_means2d is not None:
             grad_means2d = grad_means2d.contiguous()
         if grad_depths is not None:
@@ -244,7 +202,7 @@ class _ProjectGaussiansJaggedFn(torch.autograd.Function):
         assert grad_means2d is not None
         assert grad_depths is not None
         assert grad_conics is not None
-        d_means, _, d_quats, d_scales, d_w2c = _C.project_gaussians_analytic_jagged_bwd(
+        d_means, _, d_quats, d_scales, d_w2c = F.project_gaussians_analytic_jagged_bwd(
             g_sizes,
             means,
             quats,
@@ -264,22 +222,7 @@ class _ProjectGaussiansJaggedFn(torch.autograd.Function):
             ctx.ortho,
         )
 
-        return (
-            None,
-            d_means,
-            d_quats,
-            d_scales,
-            None,
-            d_w2c,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-        )
+        return (None, d_means, d_quats, d_scales, None, d_w2c) + (None,) * 8
 
 
 # ---------------------------------------------------------------------------
@@ -288,7 +231,7 @@ class _ProjectGaussiansJaggedFn(torch.autograd.Function):
 
 
 class _EvaluateGaussianSHFn(torch.autograd.Function):
-    """Python autograd wrapper for the SH evaluation forward/backward dispatch."""
+    """Spherical-harmonics feature evaluation with gradients to the coefficients, means and cameras."""
 
     @staticmethod
     def forward(
@@ -297,13 +240,13 @@ class _EvaluateGaussianSHFn(torch.autograd.Function):
         num_cameras: int,
         means: torch.Tensor,  # [N, 3]
         world_to_cam: torch.Tensor,  # [C, 4, 4]
-        camera_ids: torch.Tensor,  # empty (dense) or [nnz] int32 (jagged)
-        gaussian_ids: torch.Tensor,  # empty (dense) or [nnz] int32 (jagged)
-        sh0_coeffs: torch.Tensor,  # [N, 1, D] (dense) or [nnz, 1, D] (jagged)
-        shN_coeffs: torch.Tensor,  # [N, K-1, D] (dense) or [nnz, K-1, D] (jagged)
-        radii: torch.Tensor,  # [C, N, 2] (dense) or [1, nnz, 2] (jagged)
+        camera_ids: torch.Tensor,  # empty (dense) or [M] int32 (packed)
+        gaussian_ids: torch.Tensor,  # empty (dense) or [M] int32 (packed)
+        sh0_coeffs: torch.Tensor,  # [N, 1, D] (dense) or [M, 1, D] (packed)
+        shN_coeffs: torch.Tensor,  # [N, K-1, D] (dense) or [M, K-1, D] (packed)
+        radii: torch.Tensor,  # [C, N, 2] (dense) or [1, M, 2] (packed)
     ) -> torch.Tensor:
-        render_quantities = _C.evaluate_spherical_harmonics_fwd(
+        features = F.evaluate_spherical_harmonics_fwd(
             sh_degree_to_use,
             num_cameras,
             means,
@@ -315,30 +258,23 @@ class _EvaluateGaussianSHFn(torch.autograd.Function):
             radii,
         )
 
-        ctx.save_for_backward(
-            means,
-            world_to_cam,
-            camera_ids,
-            gaussian_ids,
-            shN_coeffs,
-            radii,
-        )
+        ctx.save_for_backward(means, world_to_cam, camera_ids, gaussian_ids, shN_coeffs, radii)
         ctx.sh_degree_to_use = sh_degree_to_use
         ctx.num_cameras = num_cameras
         ctx.num_gaussians = sh0_coeffs.size(0)
 
-        return render_quantities
+        return features
 
     @staticmethod
     def backward(ctx: Any, *grad_outputs: torch.Tensor | None) -> tuple[torch.Tensor | None, ...]:
         d_loss_d_colors = grad_outputs[0]
         if d_loss_d_colors is None:
-            return (None, None, None, None, None, None, None, None, None)
+            return (None,) * 9
         d_loss_d_colors = d_loss_d_colors.contiguous()
 
         means, world_to_cam, camera_ids, gaussian_ids, shN_coeffs, radii = ctx.saved_tensors
 
-        d_sh0, d_shN, d_means, d_w2c = _C.evaluate_spherical_harmonics_bwd(
+        d_sh0, d_shN, d_means, d_w2c = F.evaluate_spherical_harmonics_bwd(
             ctx.sh_degree_to_use,
             ctx.num_cameras,
             ctx.num_gaussians,
@@ -361,15 +297,32 @@ class _EvaluateGaussianSHFn(torch.autograd.Function):
 # ---------------------------------------------------------------------------
 
 
+def _save_optional(ctx, to_save: list[torch.Tensor], backgrounds: torch.Tensor | None, masks: torch.Tensor | None):
+    """Append the optional rasterization inputs to ``to_save`` and record which were present."""
+    ctx.has_backgrounds = backgrounds is not None
+    ctx.has_masks = masks is not None
+    if backgrounds is not None:
+        to_save.append(backgrounds)
+    if masks is not None:
+        to_save.append(masks)
+
+
+def _load_optional(ctx, saved: tuple[torch.Tensor, ...], first: int) -> tuple[torch.Tensor | None, torch.Tensor | None]:
+    """Read back the optional rasterization inputs saved by :func:`_save_optional`."""
+    backgrounds = saved[first] if ctx.has_backgrounds else None
+    masks = saved[first + int(ctx.has_backgrounds)] if ctx.has_masks else None
+    return backgrounds, masks
+
+
 class _RasterizeScreenSpaceGaussiansFn(torch.autograd.Function):
-    """Python autograd wrapper for the dense Gaussian rasterization forward/backward dispatch."""
+    """Dense alpha-blending of projected Gaussians with gradients to the 2D quantities."""
 
     @staticmethod
     def forward(
         ctx,
         means2d: torch.Tensor,
         conics: torch.Tensor,
-        colors: torch.Tensor,
+        features: torch.Tensor,
         opacities: torch.Tensor,
         image_width: int,
         image_height: int,
@@ -382,10 +335,10 @@ class _RasterizeScreenSpaceGaussiansFn(torch.autograd.Function):
         backgrounds: torch.Tensor | None,
         masks: torch.Tensor | None,
     ):
-        result = _C.rasterize_screen_space_gaussians_fwd(
+        rendered, rendered_alphas, last_ids = F.rasterize_screen_space_gaussians_fwd(
             means2d,
             conics,
-            colors,
+            features,
             opacities,
             image_width,
             image_height,
@@ -398,21 +351,9 @@ class _RasterizeScreenSpaceGaussiansFn(torch.autograd.Function):
             backgrounds,
             masks,
         )
-        rendered_colors = result[0]
-        rendered_alphas = result[1]
-        last_ids = result[2]
 
-        to_save = [means2d, conics, colors, opacities, tile_offsets, tile_gaussian_ids, rendered_alphas, last_ids]
-        if backgrounds is not None:
-            to_save.append(backgrounds)
-            ctx.has_backgrounds = True
-        else:
-            ctx.has_backgrounds = False
-        if masks is not None:
-            to_save.append(masks)
-            ctx.has_masks = True
-        else:
-            ctx.has_masks = False
+        to_save = [means2d, conics, features, opacities, tile_offsets, tile_gaussian_ids, rendered_alphas, last_ids]
+        _save_optional(ctx, to_save, backgrounds, masks)
         ctx.save_for_backward(*to_save)
 
         ctx.image_width = image_width
@@ -422,37 +363,26 @@ class _RasterizeScreenSpaceGaussiansFn(torch.autograd.Function):
         ctx.tile_size = tile_size
         ctx.absgrad = absgrad
 
-        return rendered_colors, rendered_alphas
+        return rendered, rendered_alphas
 
     @staticmethod
     def backward(ctx: Any, *grad_outputs: torch.Tensor | None) -> tuple[torch.Tensor | None, ...]:
-        d_loss_d_rendered_colors = grad_outputs[0]
-        d_loss_d_rendered_alphas = grad_outputs[1]
-        if d_loss_d_rendered_colors is not None:
-            d_loss_d_rendered_colors = d_loss_d_rendered_colors.contiguous()
-        if d_loss_d_rendered_alphas is not None:
-            d_loss_d_rendered_alphas = d_loss_d_rendered_alphas.contiguous()
+        d_rendered, d_alphas = grad_outputs[0], grad_outputs[1]
+        if d_rendered is not None:
+            d_rendered = d_rendered.contiguous()
+        if d_alphas is not None:
+            d_alphas = d_alphas.contiguous()
 
         saved = ctx.saved_tensors
-        means2d, conics, colors, opacities = saved[0], saved[1], saved[2], saved[3]
-        tile_offsets, tile_gaussian_ids = saved[4], saved[5]
-        rendered_alphas, last_ids = saved[6], saved[7]
+        means2d, conics, features, opacities, tile_offsets, tile_gaussian_ids, rendered_alphas, last_ids = saved[:8]
+        backgrounds, masks = _load_optional(ctx, saved, 8)
 
-        backgrounds: torch.Tensor | None = None
-        masks: torch.Tensor | None = None
-        opt_idx = 8
-        if ctx.has_backgrounds:
-            backgrounds = saved[opt_idx]
-            opt_idx += 1
-        if ctx.has_masks:
-            masks = saved[opt_idx]
-
-        assert d_loss_d_rendered_colors is not None
-        assert d_loss_d_rendered_alphas is not None
-        result = _C.rasterize_screen_space_gaussians_bwd(
+        assert d_rendered is not None
+        assert d_alphas is not None
+        _, d_means2d, d_conics, d_features, d_opacities = F.rasterize_screen_space_gaussians_bwd(
             means2d,
             conics,
-            colors,
+            features,
             opacities,
             ctx.image_width,
             ctx.image_height,
@@ -463,34 +393,15 @@ class _RasterizeScreenSpaceGaussiansFn(torch.autograd.Function):
             tile_gaussian_ids,
             rendered_alphas,
             last_ids,
-            d_loss_d_rendered_colors,
-            d_loss_d_rendered_alphas,
+            d_rendered,
+            d_alphas,
             ctx.absgrad,
             -1,
             backgrounds,
             masks,
         )
-        d_means2d = result[1]
-        d_conics = result[2]
-        d_colors = result[3]
-        d_opacities = result[4]
 
-        return (
-            d_means2d,
-            d_conics,
-            d_colors,
-            d_opacities,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-        )
+        return (d_means2d, d_conics, d_features, d_opacities) + (None,) * 10
 
 
 # ---------------------------------------------------------------------------
@@ -499,7 +410,11 @@ class _RasterizeScreenSpaceGaussiansFn(torch.autograd.Function):
 
 
 class _RasterizeScreenSpaceGaussiansSparseFn(torch.autograd.Function):
-    """Python autograd wrapper for the sparse Gaussian rasterization forward/backward dispatch."""
+    """Alpha-blending at an arbitrary set of pixels with gradients to the 2D quantities.
+
+    The forward pass takes and returns flat per-pixel tensors; the jagged structure of the pixel
+    selection is saved so the backward pass can rebuild the JaggedTensors the kernel expects.
+    """
 
     @staticmethod
     def forward(
@@ -524,8 +439,8 @@ class _RasterizeScreenSpaceGaussiansSparseFn(torch.autograd.Function):
         backgrounds: torch.Tensor | None,
         masks: torch.Tensor | None,
     ):
-        result = _C.rasterize_screen_space_gaussians_sparse_fwd(
-            pixels_to_render._impl,
+        rendered_jt, alphas_jt, last_ids_jt = F.rasterize_screen_space_gaussians_sparse_fwd(
+            pixels_to_render,
             means2d,
             conics,
             features,
@@ -545,13 +460,6 @@ class _RasterizeScreenSpaceGaussiansSparseFn(torch.autograd.Function):
             backgrounds,
             masks,
         )
-        rendered_colors_jt = JaggedTensor(impl=result[0])
-        rendered_alphas_jt = JaggedTensor(impl=result[1])
-        last_ids_jt = JaggedTensor(impl=result[2])
-
-        joffsets = pixels_to_render.joffsets
-        jidx = pixels_to_render.jidx
-        jlidx = pixels_to_render.jlidx
 
         to_save = [
             means2d,
@@ -561,27 +469,16 @@ class _RasterizeScreenSpaceGaussiansSparseFn(torch.autograd.Function):
             tile_offsets,
             tile_gaussian_ids,
             pixels_to_render.jdata,
-            rendered_colors_jt.jdata,
-            rendered_alphas_jt.jdata,
+            pixels_to_render.joffsets,
+            pixels_to_render.jlidx,
+            alphas_jt.jdata,
             last_ids_jt.jdata,
-            joffsets,
-            jidx,
-            jlidx,
             active_tiles,
             tile_pixel_mask,
             tile_pixel_cumsum,
             pixel_map,
         ]
-        if backgrounds is not None:
-            to_save.append(backgrounds)
-            ctx.has_backgrounds = True
-        else:
-            ctx.has_backgrounds = False
-        if masks is not None:
-            to_save.append(masks)
-            ctx.has_masks = True
-        else:
-            ctx.has_masks = False
+        _save_optional(ctx, to_save, backgrounds, masks)
         ctx.save_for_backward(*to_save)
 
         ctx.image_width = image_width
@@ -590,48 +487,28 @@ class _RasterizeScreenSpaceGaussiansSparseFn(torch.autograd.Function):
         ctx.image_origin_h = image_origin_h
         ctx.tile_size = tile_size
         ctx.absgrad = absgrad
-        ctx.num_outer_lists = len(pixels_to_render)
 
-        return rendered_colors_jt.jdata, rendered_alphas_jt.jdata
+        return rendered_jt.jdata, alphas_jt.jdata
 
     @staticmethod
     def backward(ctx: Any, *grad_outputs: torch.Tensor | None) -> tuple[torch.Tensor | None, ...]:
-        d_loss_d_rendered_features_jdata = grad_outputs[0]
-        d_loss_d_rendered_alphas_jdata = grad_outputs[1]
-        if d_loss_d_rendered_features_jdata is not None:
-            d_loss_d_rendered_features_jdata = d_loss_d_rendered_features_jdata.contiguous()
-        if d_loss_d_rendered_alphas_jdata is not None:
-            d_loss_d_rendered_alphas_jdata = d_loss_d_rendered_alphas_jdata.contiguous()
+        d_rendered, d_alphas = grad_outputs[0], grad_outputs[1]
+        if d_rendered is not None:
+            d_rendered = d_rendered.contiguous()
+        if d_alphas is not None:
+            d_alphas = d_alphas.contiguous()
 
         saved = ctx.saved_tensors
-        means2d, conics, features, opacities = saved[0], saved[1], saved[2], saved[3]
-        tile_offsets, tile_gaussian_ids = saved[4], saved[5]
-        pixels_jdata = saved[6]
-        rendered_alphas_jdata = saved[8]
-        last_ids_jdata = saved[9]
-        joffsets, jidx, jlidx = saved[10], saved[11], saved[12]
-        active_tiles = saved[13]
-        tile_pixel_mask, tile_pixel_cumsum, pixel_map = saved[14], saved[15], saved[16]
+        means2d, conics, features, opacities, tile_offsets, tile_gaussian_ids = saved[:6]
+        pixels_jdata, joffsets, jlidx, alphas_jdata, last_ids_jdata = saved[6:11]
+        active_tiles, tile_pixel_mask, tile_pixel_cumsum, pixel_map = saved[11:15]
+        backgrounds, masks = _load_optional(ctx, saved, 15)
 
-        backgrounds: torch.Tensor | None = None
-        masks: torch.Tensor | None = None
-        opt_idx = 17
-        if ctx.has_backgrounds:
-            backgrounds = saved[opt_idx]
-            opt_idx += 1
-        if ctx.has_masks:
-            masks = saved[opt_idx]
-
-        pixels_jt = JaggedTensor(impl=_C.JaggedTensor.from_data_offsets_and_list_ids(pixels_jdata, joffsets, jlidx))
-        rendered_alphas_jt = pixels_jt.jagged_like(rendered_alphas_jdata)
-        last_ids_jt = pixels_jt.jagged_like(last_ids_jdata)
-        assert d_loss_d_rendered_features_jdata is not None
-        assert d_loss_d_rendered_alphas_jdata is not None
-        d_loss_d_rendered_features_jt = pixels_jt.jagged_like(d_loss_d_rendered_features_jdata)
-        d_loss_d_rendered_alphas_jt = pixels_jt.jagged_like(d_loss_d_rendered_alphas_jdata)
-
-        result = _C.rasterize_screen_space_gaussians_sparse_bwd(
-            pixels_jt._impl,
+        pixels_jt = JaggedTensor.from_data_offsets_and_list_ids(pixels_jdata, joffsets, jlidx)
+        assert d_rendered is not None
+        assert d_alphas is not None
+        _, d_means2d, d_conics, d_features, d_opacities = F.rasterize_screen_space_gaussians_sparse_bwd(
+            pixels_jt,
             means2d,
             conics,
             features,
@@ -643,10 +520,10 @@ class _RasterizeScreenSpaceGaussiansSparseFn(torch.autograd.Function):
             ctx.tile_size,
             tile_offsets,
             tile_gaussian_ids,
-            rendered_alphas_jt._impl,
-            last_ids_jt._impl,
-            d_loss_d_rendered_features_jt._impl,
-            d_loss_d_rendered_alphas_jt._impl,
+            pixels_jt.jagged_like(alphas_jdata),
+            pixels_jt.jagged_like(last_ids_jdata),
+            pixels_jt.jagged_like(d_rendered),
+            pixels_jt.jagged_like(d_alphas),
             active_tiles,
             tile_pixel_mask,
             tile_pixel_cumsum,
@@ -656,32 +533,8 @@ class _RasterizeScreenSpaceGaussiansSparseFn(torch.autograd.Function):
             backgrounds,
             masks,
         )
-        d_means2d = result[1]
-        d_conics = result[2]
-        d_colors = result[3]
-        d_opacities = result[4]
 
-        return (
-            d_means2d,
-            d_conics,
-            d_colors,
-            d_opacities,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-        )
+        return (d_means2d, d_conics, d_features, d_opacities) + (None,) * 15
 
 
 # ---------------------------------------------------------------------------
@@ -690,7 +543,7 @@ class _RasterizeScreenSpaceGaussiansSparseFn(torch.autograd.Function):
 
 
 class _RasterizeWorldSpaceGaussiansFn(torch.autograd.Function):
-    """Python autograd wrapper for world-space Gaussian rasterization forward/backward dispatch."""
+    """Ray-based rasterization of 3D Gaussians with gradients to the 3D parameters."""
 
     @staticmethod
     def forward(
@@ -716,7 +569,7 @@ class _RasterizeWorldSpaceGaussiansFn(torch.autograd.Function):
         backgrounds: torch.Tensor | None,
         masks: torch.Tensor | None,
     ):
-        result = _C.rasterize_world_space_gaussians_fwd(
+        rendered, rendered_alphas, last_ids = F.rasterize_world_space_gaussians_fwd(
             means,
             quats,
             log_scales,
@@ -726,8 +579,8 @@ class _RasterizeWorldSpaceGaussiansFn(torch.autograd.Function):
             world_to_cam_end,
             projection_matrices,
             distortion_coeffs,
-            _C.RollingShutterType(rolling_shutter_type),
-            _C.CameraModel(camera_model),
+            rolling_shutter_type,
+            camera_model,
             image_width,
             image_height,
             image_origin_w,
@@ -738,9 +591,6 @@ class _RasterizeWorldSpaceGaussiansFn(torch.autograd.Function):
             backgrounds,
             masks,
         )
-        rendered_features = result[0]
-        rendered_alphas = result[1]
-        last_ids = result[2]
 
         to_save = [
             means,
@@ -757,16 +607,7 @@ class _RasterizeWorldSpaceGaussiansFn(torch.autograd.Function):
             rendered_alphas,
             last_ids,
         ]
-        if backgrounds is not None:
-            to_save.append(backgrounds)
-            ctx.has_backgrounds = True
-        else:
-            ctx.has_backgrounds = False
-        if masks is not None:
-            to_save.append(masks)
-            ctx.has_masks = True
-        else:
-            ctx.has_masks = False
+        _save_optional(ctx, to_save, backgrounds, masks)
         ctx.save_for_backward(*to_save)
 
         ctx.image_width = image_width
@@ -777,37 +618,25 @@ class _RasterizeWorldSpaceGaussiansFn(torch.autograd.Function):
         ctx.rolling_shutter_type = rolling_shutter_type
         ctx.camera_model = camera_model
 
-        return rendered_features, rendered_alphas
+        return rendered, rendered_alphas
 
     @staticmethod
     def backward(ctx: Any, *grad_outputs: torch.Tensor | None) -> tuple[torch.Tensor | None, ...]:
-        d_loss_d_rendered_features = grad_outputs[0]
-        d_loss_d_rendered_alphas = grad_outputs[1]
-        if d_loss_d_rendered_features is not None:
-            d_loss_d_rendered_features = d_loss_d_rendered_features.contiguous()
-        if d_loss_d_rendered_alphas is not None:
-            d_loss_d_rendered_alphas = d_loss_d_rendered_alphas.contiguous()
+        d_rendered, d_alphas = grad_outputs[0], grad_outputs[1]
+        if d_rendered is not None:
+            d_rendered = d_rendered.contiguous()
+        if d_alphas is not None:
+            d_alphas = d_alphas.contiguous()
 
         saved = ctx.saved_tensors
-        means, quats, log_scales = saved[0], saved[1], saved[2]
-        features, opacities = saved[3], saved[4]
-        world_to_cam_start, world_to_cam_end = saved[5], saved[6]
-        projection_matrices, distortion_coeffs = saved[7], saved[8]
-        tile_offsets, tile_gaussian_ids = saved[9], saved[10]
-        rendered_alphas, last_ids = saved[11], saved[12]
+        means, quats, log_scales, features, opacities = saved[:5]
+        world_to_cam_start, world_to_cam_end, projection_matrices, distortion_coeffs = saved[5:9]
+        tile_offsets, tile_gaussian_ids, rendered_alphas, last_ids = saved[9:13]
+        backgrounds, masks = _load_optional(ctx, saved, 13)
 
-        backgrounds: torch.Tensor | None = None
-        masks: torch.Tensor | None = None
-        opt_idx = 13
-        if ctx.has_backgrounds:
-            backgrounds = saved[opt_idx]
-            opt_idx += 1
-        if ctx.has_masks:
-            masks = saved[opt_idx]
-
-        assert d_loss_d_rendered_features is not None
-        assert d_loss_d_rendered_alphas is not None
-        result = _C.rasterize_world_space_gaussians_bwd(
+        assert d_rendered is not None
+        assert d_alphas is not None
+        d_means, d_quats, d_log_scales, d_features, d_opacities = F.rasterize_world_space_gaussians_bwd(
             means,
             quats,
             log_scales,
@@ -817,8 +646,8 @@ class _RasterizeWorldSpaceGaussiansFn(torch.autograd.Function):
             world_to_cam_end,
             projection_matrices,
             distortion_coeffs,
-            _C.RollingShutterType(ctx.rolling_shutter_type),
-            _C.CameraModel(ctx.camera_model),
+            ctx.rolling_shutter_type,
+            ctx.camera_model,
             ctx.image_width,
             ctx.image_height,
             ctx.image_origin_w,
@@ -828,36 +657,10 @@ class _RasterizeWorldSpaceGaussiansFn(torch.autograd.Function):
             tile_gaussian_ids,
             rendered_alphas,
             last_ids,
-            d_loss_d_rendered_features,
-            d_loss_d_rendered_alphas,
+            d_rendered,
+            d_alphas,
             backgrounds,
             masks,
         )
-        d_means = result[0]
-        d_quats = result[1]
-        d_log_scales = result[2]
-        d_features = result[3]
-        d_opacities = result[4]
 
-        return (
-            d_means,
-            d_quats,
-            d_log_scales,
-            d_features,
-            d_opacities,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-        )
+        return (d_means, d_quats, d_log_scales, d_features, d_opacities) + (None,) * 15

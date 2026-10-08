@@ -2,8 +2,9 @@ Gaussian Splatting
 ==================
 
 The high-level Gaussian splatting API is provided by
-``fvdb_reality_capture``. The underlying rendering kernels and supporting
-tensor types remain in ``fvdb``.
+``fvdb_reality_capture``. :class:`GaussianSplat3d` composes the stages of
+:mod:`fvdb_reality_capture.functional`; the underlying rendering kernels and
+supporting tensor types remain in ``fvdb``.
 
 .. autoclass:: fvdb_reality_capture.ProjectedGaussianSplats
    :members:
