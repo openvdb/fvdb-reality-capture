@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1791386676843,
+  "lastUpdate": 1791459996519,
   "repoUrl": "https://github.com/openvdb/fvdb-reality-capture",
   "entries": {
     "fvdb-reality-capture Benchmark with pytest-benchmark": [
@@ -17806,6 +17806,133 @@ window.BENCHMARK_DATA = {
             "unit": "iter/sec",
             "range": "stddev: 0.00016864136892678395",
             "extra": "mean: 12.529072988373564 msec\nrounds: 86"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "Matthew Cong",
+            "username": "matthewdcong",
+            "email": "1372750+matthewdcong@users.noreply.github.com"
+          },
+          "committer": {
+            "name": "GitHub",
+            "username": "web-flow",
+            "email": "noreply@github.com"
+          },
+          "id": "6c57b1a3ca7b99d8d80709df62449c67d7b16f3e",
+          "message": "Fix Python 3.10 compatibility for segmentation typing imports (#343)\n\n`NotRequired` and `TypedDict` were introduced in `typing` in Python 3.11\nand we need to use the `typing_extensions` module for backwards\ncompatibility.\n\nSigned-off-by: Matthew Cong <mcong@nvidia.com>",
+          "timestamp": "2026-10-07T22:48:36Z",
+          "url": "https://github.com/openvdb/fvdb-reality-capture/commit/6c57b1a3ca7b99d8d80709df62449c67d7b16f3e"
+        },
+        "date": 1791459995411,
+        "tool": "pytest",
+        "benches": [
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_project_gaussians[garden-00000664]",
+            "value": 7026.289518967596,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00001708407416822778",
+            "extra": "mean: 142.3226295045887 usec\nrounds: 6189"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_render_gaussians[garden-00000664]",
+            "value": 923.4410115962153,
+            "unit": "iter/sec",
+            "range": "stddev: 0.000030353267463553206",
+            "extra": "mean: 1.082906203474165 msec\nrounds: 1037"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_forward[garden-00000664]",
+            "value": 834.0546327505223,
+            "unit": "iter/sec",
+            "range": "stddev: 0.000020494336190016585",
+            "extra": "mean: 1.1989622270932394 msec\nrounds: 775"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_backward[garden-00000664]",
+            "value": 201.86722362100198,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00012551786756387017",
+            "extra": "mean: 4.953751193791924 msec\nrounds: 387"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_project_gaussians[garden-00006640]",
+            "value": 340.0185763523928,
+            "unit": "iter/sec",
+            "range": "stddev: 0.0005165713216237636",
+            "extra": "mean: 2.9410157842776425 msec\nrounds: 6309"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_render_gaussians[garden-00006640]",
+            "value": 148.11266128333656,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00008321789079908596",
+            "extra": "mean: 6.751617257669956 msec\nrounds: 163"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_forward[garden-00006640]",
+            "value": 102.7222605791448,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00007370928264004086",
+            "extra": "mean: 9.734988252419992 msec\nrounds: 103"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_backward[garden-00006640]",
+            "value": 28.493756996567875,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00024397356815462318",
+            "extra": "mean: 35.09540704374126 msec\nrounds: 503"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_project_gaussians[garden-00016600]",
+            "value": 279.12305681592665,
+            "unit": "iter/sec",
+            "range": "stddev: 0.0007057745218685974",
+            "extra": "mean: 3.582649213602839 msec\nrounds: 5103"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_render_gaussians[garden-00016600]",
+            "value": 112.44443642503998,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00010236640350334383",
+            "extra": "mean: 8.893281266669344 msec\nrounds: 120"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_forward[garden-00016600]",
+            "value": 79.88442712506316,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00007553580650059575",
+            "extra": "mean: 12.518084387517092 msec\nrounds: 80"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_backward[garden-00016600]",
+            "value": 22.441202277607143,
+            "unit": "iter/sec",
+            "range": "stddev: 0.0008154903871782076",
+            "extra": "mean: 44.560892399149466 msec\nrounds: 471"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_forward_mcmc[garden-00000664]",
+            "value": 813.0943521485265,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00003468749383618027",
+            "extra": "mean: 1.2298695684671683 msec\nrounds: 869"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_forward_mcmc[garden-00006640]",
+            "value": 102.71278128420295,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00012455900025935146",
+            "extra": "mean: 9.735886688074704 msec\nrounds: 109"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_forward_mcmc[garden-00016600]",
+            "value": 80.12098230171374,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00015036394257853065",
+            "extra": "mean: 12.481125059529015 msec\nrounds: 84"
           }
         ]
       }
