@@ -57,6 +57,9 @@ def evaluate_gaussian_sh(
 
     Returns:
         features (torch.Tensor): ``[C, N, D]``, ``[C, N, 1]`` or ``[C, N, D + 1]`` depending on ``render_mode``.
+
+    Raises:
+        ValueError: If ``sh_degree_to_use`` exceeds the degree ``shN`` provides.
     """
     render_mode = GaussianRenderMode(render_mode)
     if render_mode == GaussianRenderMode.FEATURES:

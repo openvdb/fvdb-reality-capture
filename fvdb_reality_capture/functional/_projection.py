@@ -20,7 +20,7 @@ def requires_distortion_coeffs(camera_model: CameraModel) -> bool:
 
     Every model other than pinhole and orthographic distorts, needs distortion coefficients, and can
     only be projected with the unscented transform. Keeping this the single test means a distortion
-    model added to fvdb is handled consistently by projection, rasterization and :class:`GaussianSplat3d`.
+    model added to fvdb is handled consistently by projection, rasterization and :class:`~fvdb_reality_capture.GaussianSplat3d`.
 
     Args:
         camera_model (CameraModel): The camera model.
@@ -135,7 +135,7 @@ def project_gaussians(
         accumulated_mean_2d_gradient_norms (torch.Tensor | None): Optional ``[N]`` float accumulator that
             the analytic backward pass adds image-normalized 2D mean gradient norms into.
         accumulated_gradient_step_counts (torch.Tensor | None): Optional ``[N]`` ``int32`` accumulator of
-            backward passes per Gaussian. Must be given together with the gradient-norm accumulator.
+            backward passes per Gaussian. Updated only when given together with the gradient-norm accumulator.
         accumulated_max_2d_radii (torch.Tensor | None): Optional ``[N]`` ``int32`` accumulator of the
             largest projected radius seen per Gaussian. Only updated alongside the other two.
 

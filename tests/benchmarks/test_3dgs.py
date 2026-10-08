@@ -162,7 +162,7 @@ class Benchmark3dgs:
 
     def run_render_gaussians(self):
         # Render the full image from the projected Gaussians through the stage functions, so tile
-        # intersection is timed as part of rendering on every iteration, as it always has been.
+        # intersection is timed as part of rendering on every iteration.
         pg = self.projected_gaussians
         tiles = frc_functional.intersect_gaussian_tiles(
             pg.projected_gaussians, pg.opacities, tile_size=self.runner.config.tile_size

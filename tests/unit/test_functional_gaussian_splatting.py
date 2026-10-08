@@ -111,8 +111,7 @@ class TestStageOutputs(FunctionalPipelineTestCase):
         self.assertEqual(both.shape[-1], 4)
         torch.testing.assert_close(both[..., :3], features)
         torch.testing.assert_close(both[..., 3:], depth)
-        # The projection zeroes the depth of Gaussians it culls; the features stage gives their true depth.
-        # Only visible Gaussians are rasterized, so the two agree where it matters.
+        # Both the projection and the features stage zero the depth of culled Gaussians and agree on the rest.
         visible = (projected.radii > 0).all(-1)
         torch.testing.assert_close(depth[..., 0][visible], projected.depths[visible])
         self.assertTrue(bool((projected.depths[~visible] == 0).all()))

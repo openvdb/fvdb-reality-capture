@@ -194,6 +194,9 @@ def pad_crop(
     Returns:
         images (torch.Tensor): ``[C, height, width, D]`` with the input in its top-left corner.
         alphas (torch.Tensor): ``[C, height, width, 1]``, zero outside the input.
+
+    Raises:
+        ValueError: If the input is larger than the target size in either dimension.
     """
     num_cameras, current_h, current_w, channels = images.shape
     if (current_h, current_w) == (height, width):
@@ -276,7 +279,7 @@ def rasterize_screen_space_gaussians(
             Masked-out pixels receive the background with zero alpha and no gradient.
         crop (tuple[int, int, int, int] | None): ``(origin_w, origin_h, width, height)`` window to keep,
             clipped to the image; a crop entirely outside it yields an empty ``[C, 0, 0, D]`` render, which
-            :meth:`GaussianSplat3d.render_from_projected_gaussians` pads back to the requested size.
+            :meth:`~fvdb_reality_capture.GaussianSplat3d.render_from_projected_gaussians` pads back to the requested size.
         crop_masks (torch.Tensor | None): Boolean per-pixel render mask in crop coordinates, of the crop's
             requested ``[C, height, width]`` or clipped size; an alternative to ``masks`` when a crop is given.
 
@@ -348,7 +351,7 @@ def rasterize_world_space_gaussians(
         masks (torch.Tensor | None): Boolean per-pixel render mask in image coordinates, ``[C, H, W]``.
         crop (tuple[int, int, int, int] | None): ``(origin_w, origin_h, width, height)`` window to keep,
             clipped to the image; a crop entirely outside it yields an empty ``[C, 0, 0, D]`` render, which
-            :meth:`GaussianSplat3d.render_from_projected_gaussians` pads back to the requested size.
+            :meth:`~fvdb_reality_capture.GaussianSplat3d.render_from_projected_gaussians` pads back to the requested size.
         crop_masks (torch.Tensor | None): Boolean per-pixel render mask in crop coordinates, of the crop's
             requested ``[C, height, width]`` or clipped size; an alternative to ``masks`` when a crop is given.
 

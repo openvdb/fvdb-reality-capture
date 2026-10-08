@@ -1490,10 +1490,9 @@ class GaussianSplat3d:
         antialias: bool,
     ) -> ProjectedGaussians:
         """Stage 1 for this model's Gaussians, wiring in the enabled densification accumulators."""
-        # Every projection wires in the enabled accumulators, as on main. World-space rendering reaches
-        # the analytic backward only through antialiasing compensations, with a zero 2D-mean gradient, and
-        # the kernel still counts that as a step; leaving the gradient accumulators out of world-space
-        # projections is part of the training-backend follow-up.
+        # Every projection wires in the enabled accumulators. World-space rendering reaches the analytic
+        # backward only through the antialiasing compensations, with a zero 2D-mean gradient, and the
+        # kernel still counts that as a step.
         grad_norms, step_counts, max_radii = self._projection_accumulators()
         return project_gaussians(
             self._means,

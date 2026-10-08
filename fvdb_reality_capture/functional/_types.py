@@ -125,7 +125,7 @@ class SparseGaussianTileIntersection:
     """Flattened Gaussian index of every tile intersection, ``[num_intersections]``."""
 
     pixels_to_render: JaggedTensor
-    """The requested ``(row, col)`` pixels, one list per camera, as passed by the caller."""
+    """The requested ``(row, col)`` pixels, one list per camera, normalized to a JaggedTensor by :func:`as_pixel_jagged`."""
 
     unique_pixels: JaggedTensor
     """The requested pixels with per-camera duplicates removed. Equal to :attr:`pixels_to_render` if none."""

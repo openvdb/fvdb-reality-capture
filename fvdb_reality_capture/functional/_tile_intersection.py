@@ -29,8 +29,8 @@ def check_tiles_match(
     of a different camera batch or image size, or of the same cameras before an optimizer step or a
     refinement moved, added or removed Gaussians, would read out of range or blend the wrong Gaussians
     rather than raise, so the stages check this up front. Every projection carries a token that its tile
-    intersections record; ``dataclasses.replace`` on the projection keeps the token, so tiles stay valid
-    for views that swap in detached copies of the same projection.
+    intersections record; ``dataclasses.replace`` on the projection keeps the token, so a projection
+    rebuilt with ``replace`` (for example with some fields detached) still matches its tiles.
 
     Args:
         tiles (GaussianTileIntersection | SparseGaussianTileIntersection): The tile intersection to check.
@@ -110,15 +110,16 @@ def deduplicate_pixels(
 ) -> tuple[JaggedTensor, torch.Tensor, bool]:
     """Remove pixels that appear more than once within a camera.
 
+    Each pixel's first occurrence is kept, the unique pixels are in the order they were first requested,
+    and pixels outside the image are never merged with anything.
+
     Args:
         pixels_to_render (JaggedTensor): ``(row, col)`` integer pixels, one list per camera.
         image_width (int): Image width, used to linearize pixel coordinates.
         image_height (int): Image height, used to linearize pixel coordinates.
 
     Returns:
-        unique_pixels (JaggedTensor): The pixels with duplicates removed. Each pixel's first occurrence
-            is kept, and the unique pixels are in the order they were first requested. Pixels outside
-            the image are never merged with anything.
+        unique_pixels (JaggedTensor): The pixels with duplicates removed.
         inverse_indices (torch.Tensor): For each flat requested pixel, its index into the flat unique pixels.
             Empty when there are no duplicates, since nothing needs reordering then.
         has_duplicates (bool): Whether anything was removed. When ``False`` the input is returned as is.
