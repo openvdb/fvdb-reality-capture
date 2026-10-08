@@ -3,12 +3,14 @@
 #
 
 import pathlib
+import tempfile
 import unittest
 
 import cv2
 import numpy as np
 
 from fvdb_reality_capture.sfm_scene import (
+    SfmCache,
     SfmCameraMetadata,
     SfmPosedImageMetadata,
     SfmScene,
@@ -17,6 +19,7 @@ from fvdb_reality_capture.tools import download_example_data
 from fvdb_reality_capture.transforms import (
     Compose,
     CropScene,
+    CropSceneToPoints,
     DownsampleImages,
     FilterImagesWithLowPoints,
     Identity,
@@ -366,6 +369,57 @@ class BasicSfmSceneTransformTest(unittest.TestCase):
         self.assert_scenes_match(scene_3, scene_4)
         self.assert_scenes_match(scene_1, scene_3, allow_different_point_indices=True)
         self.assert_scenes_match(scene_2, scene_4, allow_different_point_indices=True)
+
+
+class CropScenePrecisionTest(unittest.TestCase):
+    """
+    Cropping must keep float64 precision for ECEF-scale coordinates, where float32 spacing is 0.125-0.5 m.
+    """
+
+    # A point near Gettysburg in ECEF coordinates (meters). float32 spacing here is 0.125 m in x and 0.5 m in y and z.
+    ecef_base = np.array([1100000.0, -4780000.0, 4050000.0], dtype=np.float64)
+
+    def setUp(self):
+        self.tmp_dir = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp_dir.cleanup)
+
+    def make_scene_without_images(self, points: np.ndarray) -> SfmScene:
+        num_points = points.shape[0]
+        return SfmScene(
+            cameras={},
+            images=[],
+            points=points,
+            points_err=np.zeros(num_points, dtype=np.float64),
+            points_rgb=np.zeros((num_points, 3), dtype=np.uint8),
+            scene_bbox=None,
+            transformation_matrix=None,
+            cache=SfmCache.get_cache(pathlib.Path(self.tmp_dir.name), name="test_cache", description="unit test"),
+        )
+
+    def test_crop_scene_bbox_keeps_float64_precision(self):
+        # The y range [-4780000.2, -4779999.8] collapses to [-4780000.0, -4780000.0] in float32, which would drop
+        # the point at y = -4780000.0 that lies strictly inside the float64 box.
+        bbox = [1099999.0, -4780000.2, 4049999.0, 1100001.0, -4779999.8, 4050001.0]
+        inside_point = self.ecef_base
+        outside_point = self.ecef_base + np.array([0.0, -0.3, 0.0])
+
+        cropped = CropScene(bbox)(self.make_scene_without_images(np.stack([inside_point, outside_point])))
+
+        self.assertEqual(cropped.scene_bbox.dtype, np.float64)
+        np.testing.assert_array_equal(cropped.scene_bbox, np.array(bbox, dtype=np.float64))
+        np.testing.assert_array_equal(cropped.points, inside_point[np.newaxis, :])
+
+    def test_crop_scene_to_points_bbox_keeps_float64_precision(self):
+        # In float32 the min y of -4780000.2 rounds up to -4780000.0, which would drop the middle point.
+        points = self.ecef_base + np.array([[0.0, -0.2, 0.0], [0.1, -0.1, 0.1], [0.2, 0.0, 0.2]])
+
+        cropped = CropSceneToPoints(margin=0.0)(self.make_scene_without_images(points))
+
+        expected_bbox = np.concatenate([points.min(axis=0), points.max(axis=0)])
+        self.assertEqual(cropped.scene_bbox.dtype, np.float64)
+        np.testing.assert_array_equal(cropped.scene_bbox, expected_bbox)
+        # With margin 0 the extreme points sit on the (strict) bbox boundary, so only the middle point remains
+        np.testing.assert_array_equal(cropped.points, points[1:2])
 
 
 if __name__ == "__main__":

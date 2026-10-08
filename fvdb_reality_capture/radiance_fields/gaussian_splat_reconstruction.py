@@ -1144,7 +1144,7 @@ class GaussianSplatReconstruction:
 
         num_gaussians = training_dataset.points.shape[0]
 
-        dist2_avg = (_knn(training_dataset.points, 4)[:, 1:] ** 2).mean(dim=-1)  # [N,]
+        dist2_avg = (_knn(training_dataset.points, 4)[:, 1:] ** 2).mean(dim=-1).clamp_min(1e-7)  # [N,]
         dist_avg = torch.sqrt(dist2_avg)
 
         log_scales = (

@@ -88,7 +88,7 @@ def _load_e57_scan(
                 scan["cartesianZ"],
             ],
             axis=1,
-        ).astype(np.float32)
+        ).astype(np.float64)
 
         points_rgb = np.stack(
             [

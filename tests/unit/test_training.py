@@ -3,6 +3,7 @@
 #
 import pathlib
 import tempfile
+import types
 import unittest
 from typing import Any
 from unittest.mock import patch
@@ -388,3 +389,28 @@ class GaussianSplatReconstructionTests(unittest.TestCase):
         self.assertEqual(
             len(writer.image_log), 3 * len(runner.validation_dataset) * 2
         )  # Two more images (predicted and ground truth) per validation view per eval
+
+    def test_init_model_duplicate_points_get_finite_scales(self):
+        if not torch.cuda.is_available():
+            self.skipTest("GaussianSplat3d initialization test requires CUDA")
+
+        # Four identical points: each one's 3 nearest neighbors are at distance 0, which would give log(0) = -inf
+        duplicates = np.zeros((4, 3), dtype=np.float64)
+        spread = np.array([[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0], [1.0, 1.0, 1.0]], dtype=np.float64)
+        points = np.concatenate([duplicates, spread])
+        training_dataset = types.SimpleNamespace(
+            points=points, points_rgb=np.full((points.shape[0], 3), 128, dtype=np.uint8)
+        )
+        optimizer_config = frc.radiance_fields.GaussianSplatOptimizerConfig()
+
+        model = frc.radiance_fields.GaussianSplatReconstruction._init_model(
+            frc.radiance_fields.GaussianSplatReconstructionConfig(),
+            optimizer_config,
+            "cuda",
+            training_dataset,  # type: ignore
+        )
+
+        log_scales = model.log_scales.detach().cpu()
+        self.assertTrue(torch.isfinite(log_scales).all())
+        expected = float(np.log(np.sqrt(1e-7) * optimizer_config.initial_covariance_scale))
+        torch.testing.assert_close(log_scales[:4], torch.full((4, 3), expected))
