@@ -43,6 +43,7 @@ dependencies = [
     "torchvision",
     "tqdm",
     "tyro",
+    "typing_extensions>=4.0.0",
     "usd-core>=26.3 ; platform_machine != 'aarch64'",
     "usd-exchange ; platform_machine == 'aarch64'",
     "msgpack",

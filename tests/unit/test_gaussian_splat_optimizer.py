@@ -4,12 +4,57 @@
 
 import tempfile
 import unittest
+from unittest.mock import Mock
 
 import torch
+from parameterized import parameterized
 
 import fvdb_reality_capture as frc
 from fvdb_reality_capture import GaussianSplat3d
 from tests.unit.common import GettysburgGaussianSplatTestCase
+
+
+class GaussianSplatOptimizerBatchSizeTests(unittest.TestCase):
+    @parameterized.expand(
+        [
+            (name, optimizer_class, config_class, batch_size)
+            for name, optimizer_class, config_class in (
+                (
+                    "classic",
+                    frc.radiance_fields.GaussianSplatOptimizer,
+                    frc.radiance_fields.GaussianSplatOptimizerConfig,
+                ),
+                (
+                    "mcmc",
+                    frc.radiance_fields.GaussianSplatOptimizerMCMC,
+                    frc.radiance_fields.GaussianSplatOptimizerMCMCConfig,
+                ),
+            )
+            for batch_size in (1, 2, 4, 8, 16)
+        ]
+    )
+    def test_rescaled_betas_remain_in_range(self, name, optimizer_class, config_class, batch_size):
+        model = GaussianSplat3d.from_tensors(
+            means=torch.zeros((1, 3)),
+            quats=torch.tensor([[1.0, 0.0, 0.0, 0.0]]),
+            log_scales=torch.zeros((1, 3)),
+            logit_opacities=torch.zeros(1),
+            sh0=torch.zeros((1, 1, 3)),
+            shN=torch.zeros((1, 3, 3)),
+        )
+        model.requires_grad = True
+        scene = Mock(spec=frc.sfm_scene.SfmScene)
+        scene.spatial_scale.return_value = 1.0
+        optimizer = optimizer_class.from_model_and_scene(model, scene, config_class())
+
+        optimizer.reset_learning_rates_and_decay(batch_size=batch_size, expected_steps=100)
+
+        for param_group in optimizer.state_dict()["optimizer"]["param_groups"]:
+            beta1, beta2 = param_group["betas"]
+            for beta_index, beta in enumerate((beta1, beta2)):
+                with self.subTest(batch_size=batch_size, param_group=param_group["name"], beta_index=beta_index):
+                    self.assertGreaterEqual(beta, 0.0)
+                    self.assertLess(beta, 1.0)
 
 
 class GaussianSplatOptimizerTests(GettysburgGaussianSplatTestCase, unittest.TestCase):
