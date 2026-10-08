@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1791459996519,
+  "lastUpdate": 1791473007566,
   "repoUrl": "https://github.com/openvdb/fvdb-reality-capture",
   "entries": {
     "fvdb-reality-capture Benchmark with pytest-benchmark": [
@@ -25776,6 +25776,88 @@ window.BENCHMARK_DATA = {
           {
             "name": "garden/fvdb_mcmc - SSIM",
             "value": 0.8665,
+            "unit": ""
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "Matthew Cong",
+            "username": "matthewdcong",
+            "email": "1372750+matthewdcong@users.noreply.github.com"
+          },
+          "committer": {
+            "name": "GitHub",
+            "username": "web-flow",
+            "email": "noreply@github.com"
+          },
+          "id": "6c57b1a3ca7b99d8d80709df62449c67d7b16f3e",
+          "message": "Fix Python 3.10 compatibility for segmentation typing imports (#343)\n\n`NotRequired` and `TypedDict` were introduced in `typing` in Python 3.11\nand we need to use the `typing_extensions` module for backwards\ncompatibility.\n\nSigned-off-by: Matthew Cong <mcong@nvidia.com>",
+          "timestamp": "2026-10-07T22:48:36Z",
+          "url": "https://github.com/openvdb/fvdb-reality-capture/commit/6c57b1a3ca7b99d8d80709df62449c67d7b16f3e"
+        },
+        "date": 1791473006281,
+        "tool": "customBiggerIsBetter",
+        "benches": [
+          {
+            "name": "bicycle/fvdb_default - PSNR",
+            "value": 25.181,
+            "unit": "dB"
+          },
+          {
+            "name": "bicycle/fvdb_default - SSIM",
+            "value": 0.746,
+            "unit": ""
+          },
+          {
+            "name": "bicycle/fvdb_mcmc - PSNR",
+            "value": 25.039,
+            "unit": "dB"
+          },
+          {
+            "name": "bicycle/fvdb_mcmc - SSIM",
+            "value": 0.731,
+            "unit": ""
+          },
+          {
+            "name": "bonsai/fvdb_default - PSNR",
+            "value": 32.546,
+            "unit": "dB"
+          },
+          {
+            "name": "bonsai/fvdb_default - SSIM",
+            "value": 0.9566,
+            "unit": ""
+          },
+          {
+            "name": "bonsai/fvdb_mcmc - PSNR",
+            "value": 32.777,
+            "unit": "dB"
+          },
+          {
+            "name": "bonsai/fvdb_mcmc - SSIM",
+            "value": 0.9588,
+            "unit": ""
+          },
+          {
+            "name": "garden/fvdb_default - PSNR",
+            "value": 27.696,
+            "unit": "dB"
+          },
+          {
+            "name": "garden/fvdb_default - SSIM",
+            "value": 0.8659,
+            "unit": ""
+          },
+          {
+            "name": "garden/fvdb_mcmc - PSNR",
+            "value": 27.72,
+            "unit": "dB"
+          },
+          {
+            "name": "garden/fvdb_mcmc - SSIM",
+            "value": 0.8662,
             "unit": ""
           }
         ]
