@@ -259,12 +259,6 @@ class BasicSfmSceneTest(unittest.TestCase):
 
 
 class LargeCoordinatePrecisionTest(unittest.TestCase):
-    """
-    Scenes with large world coordinates (e.g. ECEF, ~6.4e6 m from the Earth's center) must keep float64
-    precision. At these magnitudes the float32 spacing is 0.25-0.5 m, so casting to float32 collapses
-    nearby points into duplicates and shifts the scene's georeferencing transform.
-    """
-
     def setUp(self):
         self.temp_dir = tempfile.TemporaryDirectory()
         self.root = pathlib.Path(self.temp_dir.name)

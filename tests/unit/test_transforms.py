@@ -372,11 +372,7 @@ class BasicSfmSceneTransformTest(unittest.TestCase):
 
 
 class CropScenePrecisionTest(unittest.TestCase):
-    """
-    Cropping must keep float64 precision for ECEF-scale coordinates, where float32 spacing is 0.125-0.5 m.
-    """
 
-    # A point near Gettysburg in ECEF coordinates (meters). float32 spacing here is 0.125 m in x and 0.5 m in y and z.
     ecef_base = np.array([1100000.0, -4780000.0, 4050000.0], dtype=np.float64)
 
     def setUp(self):

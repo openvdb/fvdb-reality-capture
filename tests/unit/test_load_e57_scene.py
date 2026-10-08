@@ -106,8 +106,6 @@ class _FakeE57File:
 
 class LoadE57SceneTest(unittest.TestCase):
     def test_points_keep_float64_precision(self):
-        # Centimeter offsets from an ECEF point near Gettysburg. float32 spacing at these magnitudes is 0.125-0.5 m,
-        # so a float32 round trip would visibly shift every point.
         ecef_base = np.array([1100000.0, -4780000.0, 4050000.0], dtype=np.float64)
         expected_points = ecef_base + np.array([[0.01, 0.02, 0.03], [0.04, -0.05, 0.06], [-0.07, 0.08, -0.09]])
 
