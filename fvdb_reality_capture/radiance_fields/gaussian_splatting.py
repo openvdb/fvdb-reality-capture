@@ -154,9 +154,9 @@ class ProjectedGaussianSplats:
         where each covariance matrix is represented as ``(Cxx, Cxy, Cyy)``.
 
         Returns:
-            inv_covar_2d (torch.Tensor): A tensor of shape ``(C, N, D)`` representing the packed inverse 2D covariance matrices,
-                where ``C`` is the number of image planes, ``N`` is the number of projected Gaussians, and ``D`` is number of feature channels for each
-                Gaussian (see :attr:`GaussianSplat3d.num_channels`).
+            inv_covar_2d (torch.Tensor): A tensor of shape ``(C, N, 3)`` representing the packed inverse 2D covariance matrices,
+                where ``C`` is the number of image planes, ``N`` is the number of projected Gaussians, and the last dimension holds
+                ``(a, b, c)`` of the inverse covariance ``a x^2 + 2 b x y + c y^2``.
         """
         return self._projected.conics
 
@@ -1327,6 +1327,8 @@ class GaussianSplat3d:
 
         If :this :class:`GaussianSplat3d` instance is set to track maximum 2D radii
         (*i.e* :attr:`accumulate_max_2d_radii` is ``True``), then this tensor contains the maximum 2D radius for each Gaussian.
+        The projection kernel records radii only alongside the 2D mean-gradient statistics, so this is updated
+        only when :attr:`accumulate_mean_2d_gradients` is also ``True`` and a backward pass reaches the projected means.
 
         If :attr:`accumulate_max_2d_radii` is ``False``, this property will be an empty tensor.
 
@@ -1743,7 +1745,7 @@ class GaussianSplat3d:
     ) -> ProjectedGaussianSplats:
         """
         Projects this :class:`GaussianSplat3d` onto one or more image planes for rendering depth images in those planes.
-        You can render depth images from the projected Gaussians by calling :meth:`render_projected_gaussians`.
+        You can render depth images from the projected Gaussians by calling :meth:`render_from_projected_gaussians`.
 
         .. note::
 
@@ -1785,7 +1787,7 @@ class GaussianSplat3d:
                 crop_origin_h=10)
 
             # To get the depth images, divide the last channel by the alpha values
-            true_depths_1 = cropped_images_1[..., -1:] / cropped_alphas
+            true_depths_1 = cropped_depth_images_1[..., -1:] / cropped_alphas
 
         Args:
             world_to_camera_matrices (torch.Tensor): Tensor of shape ``(C, 4, 4)`` representing the world-to-camera transformation matrices for ``C`` cameras.
@@ -1850,7 +1852,7 @@ class GaussianSplat3d:
     ) -> ProjectedGaussianSplats:
         """
         Projects this :class:`GaussianSplat3d` onto one or more image planes for rendering multi-channel (see :attr:`num_channels`) images in those planes.
-        You can render images from the projected Gaussians by calling :meth:`render_projected_gaussians`.
+        You can render images from the projected Gaussians by calling :meth:`render_from_projected_gaussians`.
 
         .. note::
 
@@ -1958,7 +1960,7 @@ class GaussianSplat3d:
         """
         Projects this :class:`GaussianSplat3d` onto one or more image planes for rendering multi-channel (see :attr:`num_channels`) images with depths
         in the last channel.
-        You can render images+depths from the projected Gaussians by calling :meth:`render_projected_gaussians`.
+        You can render images+depths from the projected Gaussians by calling :meth:`render_from_projected_gaussians`.
 
         .. note::
 
@@ -3103,7 +3105,7 @@ class GaussianSplat3d:
                 near, # near clipping plane
                 far) # far clipping plane
 
-            num_gaussians_cij = num_gaussians[c, i, j, 0]  # Number of contributing Gaussians at pixel (i, j) in camera c
+            num_gaussians_cij = num_gaussians[c, i, j]  # Number of contributing Gaussians at pixel (i, j) in camera c
 
         Args:
             world_to_camera_matrices (torch.Tensor): Tensor of shape ``(C, 4, 4)`` representing the
@@ -3131,10 +3133,10 @@ class GaussianSplat3d:
             antialias (bool): If ``True``, applies opacity correction to the projected Gaussians when using ``eps_2d > 0.0``.
 
         Returns:
-            images (torch.Tensor): A tensor of shape ``(C, H, W, 1)`` where ``C`` is the number of camera views,
-                ``H`` is the height of the images, ``W`` is the width of the images.
-                Each element represents the number of contributing Gaussians at that pixel.
-            alpha_images (torch.Tensor): A tensor of shape ``(C, H, W, 1)`` where ``C`` is the number of camera views,
+            num_contributing (torch.Tensor): An ``int32`` tensor of shape ``(C, H, W)`` where ``C`` is the number of
+                camera views, ``H`` is the height of the images, ``W`` is the width of the images.
+                Each element is the number of contributing Gaussians at that pixel.
+            alpha_images (torch.Tensor): A tensor of shape ``(C, H, W)`` where ``C`` is the number of camera views,
                 ``H`` is the height of the images, and ``W`` is the width of the images.
                 Each element represents the alpha value (opacity) at a pixel such that ``0 <= alpha < 1``,
                 and 0 means the pixel is fully transparent, and 1 means the pixel is fully opaque.
@@ -3223,7 +3225,7 @@ class GaussianSplat3d:
         Args:
             pixels_to_render (torch.Tensor | JaggedTensor): A :class:`fvdb.JaggedTensor` of shape ``(C, R_c, 2)`` representing the
                 pixels to render for each camera, where ``C`` is the number of camera views and ``R_c`` is the
-                number of pixels to render per camera. Each value is an (x, y) pixel coordinate.
+                number of pixels to render per camera. Each value is a ``(row, col)`` pixel coordinate.
             world_to_camera_matrices (torch.Tensor): Tensor of shape ``(C, 4, 4)`` representing the
                 world-to-camera transformation matrices for C cameras. Each matrix transforms points
                 from world coordinates to camera coordinates.
@@ -3421,7 +3423,7 @@ class GaussianSplat3d:
             pixels_to_render (torch.Tensor | JaggedTensor): A :class:`torch.Tensor` of shape ``(C, R, 2)``
                 or a :class:`fvdb.JaggedTensor` of shape ``(C, R_c, 2)`` representing the
                 pixels to render for each camera, where ``C`` is the number of camera views and ``R``/``R_c`` is the
-                number of pixels to render per camera. Each value is an (x, y) pixel coordinate.
+                number of pixels to render per camera. Each value is a ``(row, col)`` pixel coordinate.
             world_to_camera_matrices (torch.Tensor): Tensor of shape ``(C, 4, 4)`` representing the
                 world-to-camera transformation matrices for ``C`` cameras. Each matrix transforms points
                 from world coordinates to camera coordinates.

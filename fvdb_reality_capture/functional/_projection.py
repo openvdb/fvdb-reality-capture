@@ -20,7 +20,7 @@ def requires_distortion_coeffs(camera_model: CameraModel) -> bool:
 
     Every model other than pinhole and orthographic distorts, needs distortion coefficients, and can
     only be projected with the unscented transform. Keeping this the single test means a distortion
-    model added to fvdb is handled consistently by projection, rasterization and the training backends.
+    model added to fvdb is handled consistently by projection, rasterization and :class:`GaussianSplat3d`.
 
     Args:
         camera_model (CameraModel): The camera model.
