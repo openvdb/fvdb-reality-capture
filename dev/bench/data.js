@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1791546359420,
+  "lastUpdate": 1791559534164,
   "repoUrl": "https://github.com/openvdb/fvdb-reality-capture",
   "entries": {
     "fvdb-reality-capture Benchmark with pytest-benchmark": [
@@ -25985,6 +25985,88 @@ window.BENCHMARK_DATA = {
           {
             "name": "garden/fvdb_mcmc - SSIM",
             "value": 0.8662,
+            "unit": ""
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "Jonathan Swartz",
+            "username": "swahtz",
+            "email": "jonathan@jswartz.info"
+          },
+          "committer": {
+            "name": "GitHub",
+            "username": "web-flow",
+            "email": "noreply@github.com"
+          },
+          "id": "d697a3e485466212ef75984fec1543200db5dad9",
+          "message": "Decay the means learning rate over the actual number of optimizer steps (#342)\n\n`from_sfm_scene` computed the means learning-rate decay horizon as\n`max_epochs * num_training_images`, which is the step count only at\nbatch_size == 1. The training loop runs `max_epochs * ceil(N /\nbatch_size)` steps, so at batch size B the means learning rate ended at\n`0.01 ** (1 / B)` of its initial value instead of 0.01. The horizon also\nignored `max_steps`.\n\nThe horizon is now `max_epochs * ceil(N / batch_size)`, capped at\n`max_steps` when that is set, since the epoch loop stops at `max_epochs`\neither way.\n\nA single `_num_steps_per_epoch` helper replaces the three copies of the\nsteps-per-epoch computation in `from_sfm_scene`, `from_state_dict` and\n`optimize`, so they cannot drift apart again.\n\nTests cover the helper, the decay exponent at batch sizes 1 and 4 for\nboth the default and MCMC optimizers, and the `max_steps` cap.\n\nSigned-off-by: Jonathan Swartz <jonathan@jswartz.info>\nCo-authored-by: Claude Opus 5.5 <noreply@anthropic.com>",
+          "timestamp": "2026-10-08T21:17:47Z",
+          "url": "https://github.com/openvdb/fvdb-reality-capture/commit/d697a3e485466212ef75984fec1543200db5dad9"
+        },
+        "date": 1791559533453,
+        "tool": "customBiggerIsBetter",
+        "benches": [
+          {
+            "name": "bicycle/fvdb_default - PSNR",
+            "value": 25.171,
+            "unit": "dB"
+          },
+          {
+            "name": "bicycle/fvdb_default - SSIM",
+            "value": 0.7455,
+            "unit": ""
+          },
+          {
+            "name": "bicycle/fvdb_mcmc - PSNR",
+            "value": 24.996,
+            "unit": "dB"
+          },
+          {
+            "name": "bicycle/fvdb_mcmc - SSIM",
+            "value": 0.7302,
+            "unit": ""
+          },
+          {
+            "name": "bonsai/fvdb_default - PSNR",
+            "value": 32.503,
+            "unit": "dB"
+          },
+          {
+            "name": "bonsai/fvdb_default - SSIM",
+            "value": 0.9567,
+            "unit": ""
+          },
+          {
+            "name": "bonsai/fvdb_mcmc - PSNR",
+            "value": 32.811,
+            "unit": "dB"
+          },
+          {
+            "name": "bonsai/fvdb_mcmc - SSIM",
+            "value": 0.9593,
+            "unit": ""
+          },
+          {
+            "name": "garden/fvdb_default - PSNR",
+            "value": 27.527,
+            "unit": "dB"
+          },
+          {
+            "name": "garden/fvdb_default - SSIM",
+            "value": 0.8652,
+            "unit": ""
+          },
+          {
+            "name": "garden/fvdb_mcmc - PSNR",
+            "value": 27.761,
+            "unit": "dB"
+          },
+          {
+            "name": "garden/fvdb_mcmc - SSIM",
+            "value": 0.867,
             "unit": ""
           }
         ]
