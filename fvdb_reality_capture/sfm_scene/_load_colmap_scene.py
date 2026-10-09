@@ -150,10 +150,9 @@ def load_colmap_scene(colmap_path: pathlib.Path):
         for i in range(len(image_file_names))
     ]
 
-    # Transform the points to the normalized coordinate system and cast to the right types
-    # Note: we do not normalize the point errors or colors, they are already in the correct format.
-    # Note: we don't transform the point errors
-    points = points3D.astype(np.float32)  # type: ignore (num_points, 3)
+    # Cast points, errors, and colors to the proper types. Points are cast to float64 to
+    # handle large coordinates (ECEF)
+    points = points3D.astype(np.float64)  # type: ignore (num_points, 3)
     points_err = point3D_errors.astype(np.float32)  # type: ignore
     points_rgb = point3D_colors.astype(np.uint8)  # type: ignore
 

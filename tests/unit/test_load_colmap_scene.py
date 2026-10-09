@@ -208,3 +208,39 @@ class LoadColmapSceneTests(unittest.TestCase):
             np.testing.assert_array_equal(points_rgb, np.array([[255, 0, 0], [0, 255, 0]], dtype=np.uint8))
             self.assertTrue((colmap_path / "_cache").exists())
             self.assertTrue(cache.has_file("visible_points_per_image"))
+
+    def test_load_colmap_scene_preserves_float64_precision_for_ecef_coordinates(self):
+        base = np.array([4751250.750213, 2171520.520182, 3647132.026718], dtype=np.float64)
+        offsets = np.array([[0.0, 0.0, 0.0], [0.05, 0.0, 0.0], [0.0, 0.05, 0.0], [0.0, 0.0, 0.05]], dtype=np.float64)
+        expected_points = base + offsets
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            colmap_path = pathlib.Path(tmpdir)
+            (colmap_path / "images").mkdir()
+
+            reconstruction = FakeReconstruction(
+                cameras={
+                    1: FakeCamera("PINHOLE", width=640, height=480, params=np.array([500.0, 500.0, 320.0, 240.0]))
+                },
+                images=OrderedDict([(1, FakeImage("a.jpg", 1, np.array([0.0, 0.0, 1.0])))]),
+                points3D={
+                    i
+                    + 1: FakePoint3D(
+                        xyz=xyz,
+                        color=np.array([255, 255, 255], dtype=np.uint8),
+                        error=0.1,
+                        track=[(1, i)],
+                    )
+                    for i, xyz in enumerate(expected_points)
+                },
+            )
+
+            with patch(
+                "fvdb_reality_capture.sfm_scene.adapter.COLMAPAdapter._load_reconstruction",
+                return_value=reconstruction,
+            ):
+                _, _, points, _, _, _ = load_colmap_scene(colmap_path)
+
+            self.assertEqual(points.dtype, np.float64)
+            np.testing.assert_array_equal(points, expected_points)
+            self.assertEqual(len(np.unique(points, axis=0)), len(expected_points))

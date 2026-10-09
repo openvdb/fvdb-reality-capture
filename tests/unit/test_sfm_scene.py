@@ -3,13 +3,16 @@
 #
 
 import pathlib
+import tempfile
 import unittest
 
 import cv2
 import numpy as np
 from scipy.spatial.transform import Rotation as R
 
+from fvdb_reality_capture import CameraModel
 from fvdb_reality_capture.sfm_scene import (
+    SfmCache,
     SfmCameraMetadata,
     SfmPosedImageMetadata,
     SfmScene,
@@ -253,6 +256,82 @@ class BasicSfmSceneTest(unittest.TestCase):
         state_dict = scene_no_points.state_dict()
         loaded_scene = SfmScene.from_state_dict(state_dict)
         self.assertTrue(sfm_scenes_match(scene_no_points, loaded_scene))
+
+
+class LargeCoordinatePrecisionTest(unittest.TestCase):
+    def setUp(self):
+        self.temp_dir = tempfile.TemporaryDirectory()
+        self.root = pathlib.Path(self.temp_dir.name)
+
+        # Four points 5 cm apart at ECEF magnitudes. All four round to the same float32 point.
+        self.base = np.array([4751250.750213, 2171520.520182, 3647132.026718], dtype=np.float64)
+        offsets = np.array([[0.0, 0.0, 0.0], [0.05, 0.0, 0.0], [0.0, 0.05, 0.0], [0.0, 0.0, 0.05]], dtype=np.float64)
+        self.points = self.base + offsets
+        assert len(np.unique(self.points.astype(np.float32), axis=0)) == 1
+
+    def tearDown(self):
+        self.temp_dir.cleanup()
+
+    def _make_scene(self) -> SfmScene:
+        camera_metadata = SfmCameraMetadata(
+            img_width=640,
+            img_height=480,
+            fx=500.0,
+            fy=500.0,
+            cx=320.0,
+            cy=240.0,
+            camera_model=CameraModel.PINHOLE,
+            distortion_coeffs=np.empty((0,), dtype=np.float32),
+        )
+        camera_to_world = np.eye(4, dtype=np.float64)
+        camera_to_world[:3, 3] = self.base + np.array([0.0, 0.0, 50.0])
+        image_metadata = SfmPosedImageMetadata(
+            world_to_camera_matrix=np.linalg.inv(camera_to_world),
+            camera_to_world_matrix=camera_to_world,
+            camera_metadata=camera_metadata,
+            camera_id=1,
+            image_path=str(self.root / "image.jpg"),
+            mask_path="",
+            point_indices=np.arange(len(self.points), dtype=np.int32),
+            image_id=0,
+        )
+        cache = SfmCache.get_cache(self.root / "cache_root", "precision_test_cache", "Precision test cache")
+        return SfmScene(
+            cameras={1: camera_metadata},
+            images=[image_metadata],
+            points=self.points.copy(),
+            points_err=np.zeros((len(self.points),), dtype=np.float32),
+            points_rgb=np.zeros((len(self.points), 3), dtype=np.uint8),
+            scene_bbox=None,
+            transformation_matrix=np.eye(4, dtype=np.float64),
+            cache=cache,
+        )
+
+    def test_save_load_preserves_ecef_points(self):
+        scene = self._make_scene()
+
+        loaded_scene = SfmScene.from_state_dict(scene.state_dict())
+
+        self.assertEqual(loaded_scene.points.dtype, np.float64)
+        np.testing.assert_array_equal(loaded_scene.points, self.points)
+
+    def test_save_load_preserves_ecef2enu_transformation_matrix(self):
+        scene = NormalizeScene(normalization_type="ecef2enu")(self._make_scene())
+
+        loaded_scene = SfmScene.from_state_dict(scene.state_dict())
+
+        # The ECEF -> ENU translation is ~6.4e6 m, so a float32 round trip would move it by up to ~0.5 m.
+        self.assertEqual(loaded_scene.transformation_matrix.dtype, np.float64)
+        np.testing.assert_array_equal(loaded_scene.transformation_matrix, scene.transformation_matrix)
+        np.testing.assert_array_equal(loaded_scene.points, scene.points)
+
+    def test_ecef2enu_preserves_point_spacing(self):
+        scene = NormalizeScene(normalization_type="ecef2enu")(self._make_scene())
+
+        # The ECEF -> ENU transform is a rigid motion, so distances between points must be unchanged.
+        self.assertEqual(len(np.unique(scene.points, axis=0)), len(self.points))
+        enu_distances = np.linalg.norm(scene.points[1:] - scene.points[0], axis=1)
+        np.testing.assert_allclose(enu_distances, [0.05, 0.05, 0.05], atol=1e-6)
 
 
 if __name__ == "__main__":
