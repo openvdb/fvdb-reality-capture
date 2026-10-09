@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1791559534164,
+  "lastUpdate": 1791559536944,
   "repoUrl": "https://github.com/openvdb/fvdb-reality-capture",
   "entries": {
     "fvdb-reality-capture Benchmark with pytest-benchmark": [
@@ -34008,6 +34008,88 @@ window.BENCHMARK_DATA = {
           {
             "name": "garden/fvdb_mcmc - peak_gpu_memory_gb",
             "value": 3.6356,
+            "unit": "GB"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "Jonathan Swartz",
+            "username": "swahtz",
+            "email": "jonathan@jswartz.info"
+          },
+          "committer": {
+            "name": "GitHub",
+            "username": "web-flow",
+            "email": "noreply@github.com"
+          },
+          "id": "d697a3e485466212ef75984fec1543200db5dad9",
+          "message": "Decay the means learning rate over the actual number of optimizer steps (#342)\n\n`from_sfm_scene` computed the means learning-rate decay horizon as\n`max_epochs * num_training_images`, which is the step count only at\nbatch_size == 1. The training loop runs `max_epochs * ceil(N /\nbatch_size)` steps, so at batch size B the means learning rate ended at\n`0.01 ** (1 / B)` of its initial value instead of 0.01. The horizon also\nignored `max_steps`.\n\nThe horizon is now `max_epochs * ceil(N / batch_size)`, capped at\n`max_steps` when that is set, since the epoch loop stops at `max_epochs`\neither way.\n\nA single `_num_steps_per_epoch` helper replaces the three copies of the\nsteps-per-epoch computation in `from_sfm_scene`, `from_state_dict` and\n`optimize`, so they cannot drift apart again.\n\nTests cover the helper, the decay exponent at batch sizes 1 and 4 for\nboth the default and MCMC optimizers, and the `max_steps` cap.\n\nSigned-off-by: Jonathan Swartz <jonathan@jswartz.info>\nCo-authored-by: Claude Opus 5.5 <noreply@anthropic.com>",
+          "timestamp": "2026-10-08T21:17:47Z",
+          "url": "https://github.com/openvdb/fvdb-reality-capture/commit/d697a3e485466212ef75984fec1543200db5dad9"
+        },
+        "date": 1791559536359,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "bicycle/fvdb_default - training_time",
+            "value": 663.87,
+            "unit": "seconds"
+          },
+          {
+            "name": "bicycle/fvdb_default - peak_gpu_memory_gb",
+            "value": 4.5346,
+            "unit": "GB"
+          },
+          {
+            "name": "bicycle/fvdb_mcmc - training_time",
+            "value": 333.73,
+            "unit": "seconds"
+          },
+          {
+            "name": "bicycle/fvdb_mcmc - peak_gpu_memory_gb",
+            "value": 1.4429,
+            "unit": "GB"
+          },
+          {
+            "name": "bonsai/fvdb_default - training_time",
+            "value": 452.41,
+            "unit": "seconds"
+          },
+          {
+            "name": "bonsai/fvdb_default - peak_gpu_memory_gb",
+            "value": 1.6089,
+            "unit": "GB"
+          },
+          {
+            "name": "bonsai/fvdb_mcmc - training_time",
+            "value": 590.57,
+            "unit": "seconds"
+          },
+          {
+            "name": "bonsai/fvdb_mcmc - peak_gpu_memory_gb",
+            "value": 1.5548,
+            "unit": "GB"
+          },
+          {
+            "name": "garden/fvdb_default - training_time",
+            "value": 849.96,
+            "unit": "seconds"
+          },
+          {
+            "name": "garden/fvdb_default - peak_gpu_memory_gb",
+            "value": 5.5701,
+            "unit": "GB"
+          },
+          {
+            "name": "garden/fvdb_mcmc - training_time",
+            "value": 685.04,
+            "unit": "seconds"
+          },
+          {
+            "name": "garden/fvdb_mcmc - peak_gpu_memory_gb",
+            "value": 3.6348,
             "unit": "GB"
           }
         ]
