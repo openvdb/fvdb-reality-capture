@@ -2,15 +2,18 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 
+from __future__ import annotations
+
 import logging
 import os
 import pathlib
 import sys
 import threading
+from typing import TYPE_CHECKING
 from urllib.parse import urlparse
 
-import boto3
-from botocore.client import BaseClient
+if TYPE_CHECKING:
+    from botocore.client import BaseClient
 
 logger = logging.getLogger(__name__)
 
@@ -42,6 +45,8 @@ def _check_cache_hit(
     if not local_path.exists():
         return False
 
+    import boto3
+
     # Compare modified date to upstream S3 object
     s3 = client if client is not None else boto3.client("s3")
     try:
@@ -67,6 +72,8 @@ class ProgressPercentage(object):
     def __init__(self, filename):
         self._filename = filename
         if isinstance(filename, str) and filename.startswith("s3://"):
+            import boto3
+
             # Download: get size from S3
             parsed = urlparse(filename)
             bucket = parsed.netloc
@@ -119,6 +126,8 @@ def download_uncached(s3_uri: str, dest_file_path: pathlib.Path, client: BaseCli
     """
     Download a file from S3 to a local file.
     """
+    import boto3
+
     bucket, key = parse_s3_uri(s3_uri)
     s3 = client or boto3.client("s3")
     s3.download_file(bucket, key, str(dest_file_path), Callback=ProgressPercentage(s3_uri))
@@ -137,6 +146,8 @@ def download(s3_uri: str, cache_dir: pathlib.Path | None = None, client: BaseCli
     Returns:
         pathlib.Path: The path to the downloaded file.
     """
+    import boto3
+
     bucket, key = parse_s3_uri(s3_uri)
     s3 = client or boto3.client("s3")
     base_cache = (cache_dir or default_cache_dir()) / bucket
@@ -168,6 +179,8 @@ def upload(source_path: pathlib.Path, bucket: str, key: str, client: BaseClient 
 
     logger.info(f"Uploading file {source_path} to S3 {bucket} as {key}...")
 
+    import boto3
+
     s3 = client or boto3.client("s3")
     try:
         s3.upload_file(source_path, bucket, key, Callback=ProgressPercentage(source_path))
@@ -188,6 +201,8 @@ def delete(s3_uri: str, client: BaseClient | None = None) -> None:
         s3_uri (str): The S3 URI of the file to delete.
         client (boto3.client.S3 | None): The S3 client to use. Defaults to a new client.
     """
+    import boto3
+
     bucket, key = parse_s3_uri(s3_uri)
     s3 = client or boto3.client("s3")
     try:
@@ -209,6 +224,8 @@ def exists(s3_uri: str, client: BaseClient | None = None) -> bool:
     Returns:
         bool: True if the file exists, False otherwise.
     """
+    import boto3
+
     bucket, key = parse_s3_uri(s3_uri)
     s3 = client or boto3.client("s3")
     try:
