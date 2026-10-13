@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1791891865351,
+  "lastUpdate": 1791905043750,
   "repoUrl": "https://github.com/openvdb/fvdb-reality-capture",
   "entries": {
     "fvdb-reality-capture Benchmark with pytest-benchmark": [
@@ -26194,6 +26194,88 @@ window.BENCHMARK_DATA = {
           {
             "name": "garden/fvdb_mcmc - SSIM",
             "value": 0.867,
+            "unit": ""
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "Jonathan Swartz",
+            "username": "swahtz",
+            "email": "jonathan@jswartz.info"
+          },
+          "committer": {
+            "name": "GitHub",
+            "username": "web-flow",
+            "email": "noreply@github.com"
+          },
+          "id": "12792985c74509f2688ecdf646c650102c0fdb22",
+          "message": "Move dev-only dependencies out of runtime requirements (#345)\n\nMoves packages that only dev tooling, tests or benchmarks need out of\nthe runtime `dependencies`, and declares two imports that were missing\nfrom the extras.\n\n## Changes\n\n- **New `dev` extra** with `boto3`, `matplotlib` and `types-usd`.\n- `boto3` is only imported by `fvdb_reality_capture/dev/s3.py`, which\nbacks the `frdev` S3 commands.\n- `types-usd` holds `.pyi` stubs for `pxr`, used by type checkers and\neditors, never at runtime.\n- `matplotlib` is imported lazily by `debug_plot()` in\n`tools/_tsdf_from_splats_dlnr.py`, which runs only when\n`save_debug_images_to` is set.\n- **`test` extra** adds `boto3`, because `tests/unit/test_s3.py` imports\nit at module level.\n- **`benchmark` extra** adds `pyyaml`, which 11 files under\n`tests/benchmarks/` import.\n- **`nanovdb-editor<0.2.0` becomes `fvdb-core[viewer]>=0.7.0dev0`.**\nReality-capture never imports `nanovdb_editor` directly. It needs it\nthrough `fvdb.viz`, and fvdb-core's `viewer` extra declares it as\n`nanovdb-editor>=0.1.6,<0.2.0`, so the bound now stays in sync with\nfvdb-core.\n\n## Impact\n\n- `pip install fvdb_reality_capture` no longer installs `boto3` or\n`types-usd`. `frdev` needs `pip install \"fvdb_reality_capture[dev]\"`.\n- CI is unaffected. The test and benchmark jobs use\n`tests/benchmarks/comparative/docker/benchmark_environment.yml`, which\nalready lists `boto3` and `pyyaml`, and the docs build installs\n`docs/requirements.txt`, which lists `boto3`.\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n\nSigned-off-by: Jonathan Swartz <jonathan@jswartz.info>",
+          "timestamp": "2026-10-12T19:54:02Z",
+          "url": "https://github.com/openvdb/fvdb-reality-capture/commit/12792985c74509f2688ecdf646c650102c0fdb22"
+        },
+        "date": 1791905043073,
+        "tool": "customBiggerIsBetter",
+        "benches": [
+          {
+            "name": "bicycle/fvdb_default - PSNR",
+            "value": 25.152,
+            "unit": "dB"
+          },
+          {
+            "name": "bicycle/fvdb_default - SSIM",
+            "value": 0.7453,
+            "unit": ""
+          },
+          {
+            "name": "bicycle/fvdb_mcmc - PSNR",
+            "value": 25.007,
+            "unit": "dB"
+          },
+          {
+            "name": "bicycle/fvdb_mcmc - SSIM",
+            "value": 0.7305,
+            "unit": ""
+          },
+          {
+            "name": "bonsai/fvdb_default - PSNR",
+            "value": 32.6,
+            "unit": "dB"
+          },
+          {
+            "name": "bonsai/fvdb_default - SSIM",
+            "value": 0.9564,
+            "unit": ""
+          },
+          {
+            "name": "bonsai/fvdb_mcmc - PSNR",
+            "value": 32.864,
+            "unit": "dB"
+          },
+          {
+            "name": "bonsai/fvdb_mcmc - SSIM",
+            "value": 0.9594,
+            "unit": ""
+          },
+          {
+            "name": "garden/fvdb_default - PSNR",
+            "value": 27.632,
+            "unit": "dB"
+          },
+          {
+            "name": "garden/fvdb_default - SSIM",
+            "value": 0.8655,
+            "unit": ""
+          },
+          {
+            "name": "garden/fvdb_mcmc - PSNR",
+            "value": 27.73,
+            "unit": "dB"
+          },
+          {
+            "name": "garden/fvdb_mcmc - SSIM",
+            "value": 0.8667,
             "unit": ""
           }
         ]
