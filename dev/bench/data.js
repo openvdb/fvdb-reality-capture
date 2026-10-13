@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1791559536944,
+  "lastUpdate": 1791891865351,
   "repoUrl": "https://github.com/openvdb/fvdb-reality-capture",
   "entries": {
     "fvdb-reality-capture Benchmark with pytest-benchmark": [
@@ -18060,6 +18060,133 @@ window.BENCHMARK_DATA = {
             "unit": "iter/sec",
             "range": "stddev: 0.00018108634840214335",
             "extra": "mean: 12.55904317441639 msec\nrounds: 86"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "Jonathan Swartz",
+            "username": "swahtz",
+            "email": "jonathan@jswartz.info"
+          },
+          "committer": {
+            "name": "GitHub",
+            "username": "web-flow",
+            "email": "noreply@github.com"
+          },
+          "id": "12792985c74509f2688ecdf646c650102c0fdb22",
+          "message": "Move dev-only dependencies out of runtime requirements (#345)\n\nMoves packages that only dev tooling, tests or benchmarks need out of\nthe runtime `dependencies`, and declares two imports that were missing\nfrom the extras.\n\n## Changes\n\n- **New `dev` extra** with `boto3`, `matplotlib` and `types-usd`.\n- `boto3` is only imported by `fvdb_reality_capture/dev/s3.py`, which\nbacks the `frdev` S3 commands.\n- `types-usd` holds `.pyi` stubs for `pxr`, used by type checkers and\neditors, never at runtime.\n- `matplotlib` is imported lazily by `debug_plot()` in\n`tools/_tsdf_from_splats_dlnr.py`, which runs only when\n`save_debug_images_to` is set.\n- **`test` extra** adds `boto3`, because `tests/unit/test_s3.py` imports\nit at module level.\n- **`benchmark` extra** adds `pyyaml`, which 11 files under\n`tests/benchmarks/` import.\n- **`nanovdb-editor<0.2.0` becomes `fvdb-core[viewer]>=0.7.0dev0`.**\nReality-capture never imports `nanovdb_editor` directly. It needs it\nthrough `fvdb.viz`, and fvdb-core's `viewer` extra declares it as\n`nanovdb-editor>=0.1.6,<0.2.0`, so the bound now stays in sync with\nfvdb-core.\n\n## Impact\n\n- `pip install fvdb_reality_capture` no longer installs `boto3` or\n`types-usd`. `frdev` needs `pip install \"fvdb_reality_capture[dev]\"`.\n- CI is unaffected. The test and benchmark jobs use\n`tests/benchmarks/comparative/docker/benchmark_environment.yml`, which\nalready lists `boto3` and `pyyaml`, and the docs build installs\n`docs/requirements.txt`, which lists `boto3`.\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n\nSigned-off-by: Jonathan Swartz <jonathan@jswartz.info>",
+          "timestamp": "2026-10-12T19:54:02Z",
+          "url": "https://github.com/openvdb/fvdb-reality-capture/commit/12792985c74509f2688ecdf646c650102c0fdb22"
+        },
+        "date": 1791891864176,
+        "tool": "pytest",
+        "benches": [
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_project_gaussians[garden-00000664]",
+            "value": 6487.889041533641,
+            "unit": "iter/sec",
+            "range": "stddev: 0.000011716385715852906",
+            "extra": "mean: 154.13333884076644 usec\nrounds: 5448"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_render_gaussians[garden-00000664]",
+            "value": 937.3984635020427,
+            "unit": "iter/sec",
+            "range": "stddev: 0.000030533516447575915",
+            "extra": "mean: 1.0667822051511404 msec\nrounds: 1048"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_forward[garden-00000664]",
+            "value": 828.9430240929833,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00002640650212407928",
+            "extra": "mean: 1.206355528589175 msec\nrounds: 787"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_backward[garden-00000664]",
+            "value": 205.8854778065837,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00004882551711484364",
+            "extra": "mean: 4.8570691369472705 msec\nrounds: 387"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_project_gaussians[garden-00006640]",
+            "value": 341.04446362688554,
+            "unit": "iter/sec",
+            "range": "stddev: 0.0005442579678784727",
+            "extra": "mean: 2.932168988657252 msec\nrounds: 5642"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_render_gaussians[garden-00006640]",
+            "value": 149.71120685373685,
+            "unit": "iter/sec",
+            "range": "stddev: 0.0000731084918488941",
+            "extra": "mean: 6.679526676830337 msec\nrounds: 164"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_forward[garden-00006640]",
+            "value": 103.63143759036438,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00007411828655077887",
+            "extra": "mean: 9.649581471144039 msec\nrounds: 104"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_backward[garden-00006640]",
+            "value": 28.55339581181816,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00022982435976106263",
+            "extra": "mean: 35.0221040814383 msec\nrounds: 614"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_project_gaussians[garden-00016600]",
+            "value": 278.43694700265394,
+            "unit": "iter/sec",
+            "range": "stddev: 0.0006895340321296749",
+            "extra": "mean: 3.591477391075073 msec\nrounds: 5334"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_render_gaussians[garden-00016600]",
+            "value": 113.01359306460336,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00005842233311891952",
+            "extra": "mean: 8.848493113818243 msec\nrounds: 123"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_forward[garden-00016600]",
+            "value": 80.00488642178672,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00007853243437643571",
+            "extra": "mean: 12.499236543227973 msec\nrounds: 81"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_backward[garden-00016600]",
+            "value": 22.316720405137847,
+            "unit": "iter/sec",
+            "range": "stddev: 0.0007278481577565152",
+            "extra": "mean: 44.80945147163182 msec\nrounds: 564"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_forward_mcmc[garden-00000664]",
+            "value": 802.5346906580367,
+            "unit": "iter/sec",
+            "range": "stddev: 0.000028269495159415782",
+            "extra": "mean: 1.246052054372942 msec\nrounds: 846"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_forward_mcmc[garden-00006640]",
+            "value": 102.91101439409765,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00015726708005251935",
+            "extra": "mean: 9.71713286364568 msec\nrounds: 110"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_forward_mcmc[garden-00016600]",
+            "value": 80.49618386861798,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00015774402180542704",
+            "extra": "mean: 12.42294916280941 msec\nrounds: 86"
           }
         ]
       }
