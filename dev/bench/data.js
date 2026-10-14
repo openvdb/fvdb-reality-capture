@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1791905046462,
+  "lastUpdate": 1791977594729,
   "repoUrl": "https://github.com/openvdb/fvdb-reality-capture",
   "entries": {
     "fvdb-reality-capture Benchmark with pytest-benchmark": [
@@ -18187,6 +18187,133 @@ window.BENCHMARK_DATA = {
             "unit": "iter/sec",
             "range": "stddev: 0.00015774402180542704",
             "extra": "mean: 12.42294916280941 msec\nrounds: 86"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "Jonathan Swartz",
+            "username": "swahtz",
+            "email": "jonathan@jswartz.info"
+          },
+          "committer": {
+            "name": "GitHub",
+            "username": "web-flow",
+            "email": "noreply@github.com"
+          },
+          "id": "c5740c77d695da4c3c056a3f8d6de52b72ddb260",
+          "message": "Keep the pixel JaggedTensor on ctx in the sparse rasterizer backward (#344)\n\n## Summary\n\n`_RasterizeScreenSpaceGaussiansSparseFn` saved the pixel selection's\n`jdata`, `joffsets` and `jlidx`, then rebuilt the `JaggedTensor` in\nbackward with `JaggedTensor.from_data_offsets_and_list_ids`. This PR\nkeeps the original `JaggedTensor` on `ctx` and reuses it in backward.\n\n## Why\n\nopenvdb/fvdb-core#812 (fixing openvdb/fvdb-core#722) makes fvdb-core's\nchecked `JaggedTensor` constructors validate their structure. Validation\nreads the structure tensors on the host, so after that PR the rebuild\nwould add one device-to-host sync to every sparse backward step.\n\nMeasured on an RTX PRO 6000, the checked ldim-1 constructor costs about\n16–19 µs per call with an idle GPU, against 4–8 µs on current main. Its\nsync also stops the host from running ahead of queued GPU work.\n\nThe pixel `JaggedTensor` from forward is already valid, so backward\ndoesn't need to rebuild it.\n\nThis change is preventive. With current fvdb-core the ldim-1 rebuild\ndoes not sync, so today it saves only a small jidx kernel and binding\noverhead. It only affects sparse rendering; dense training never goes\nthrough this path.\n\n## Notes\n\n- **No new fvdb-core API.** The change uses nothing new from core, so it\nworks with current and future fvdb-core versions.\n- **Holding it on `ctx` is safe.** A tensor held as a `ctx` attribute\nskips saved-tensor hooks and the in-place modification check. Pixel\ncoordinates are integer, need no gradient, and are not modified in\nplace, so neither check matters here.\n\n## Test plan\n\n- [x] Unit tests pass:\n  ```\n  pytest tests/unit/test_functional_gaussian_splatting.py\n  pytest tests/unit/test_gaussian_splat_3d.py -k \"sparse or pixels\"\n  ```\n  Results: 23 passed, and 43 passed with 9 subtests.\n- [x] Gradient parity against `upstream/main` with the same seed, on the\nsparse scene from `test_sparse_matches_oo_and_backward_runs`:\n- The max absolute difference was at most 3e-8 for `means`, `quats` and\n`log_scales`, which is atomicAdd ordering noise.\n  - The difference was exactly 0 for `logit_opacities`, `sh0` and `shN`.\n- [x] `black --check --target-version=py311 --line-length=120` passes.\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n\nSigned-off-by: Jonathan Swartz <jonathan@jswartz.info>\nCo-authored-by: Claude Opus 5.5 <noreply@anthropic.com>",
+          "timestamp": "2026-10-14T01:31:54Z",
+          "url": "https://github.com/openvdb/fvdb-reality-capture/commit/c5740c77d695da4c3c056a3f8d6de52b72ddb260"
+        },
+        "date": 1791977593597,
+        "tool": "pytest",
+        "benches": [
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_project_gaussians[garden-00000664]",
+            "value": 6407.958947556558,
+            "unit": "iter/sec",
+            "range": "stddev: 0.000013585656554186641",
+            "extra": "mean: 156.05593109820308 usec\nrounds: 5370"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_render_gaussians[garden-00000664]",
+            "value": 918.4556324856395,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00003501342112244869",
+            "extra": "mean: 1.0887842206309681 msec\nrounds: 1047"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_forward[garden-00000664]",
+            "value": 813.9928671703282,
+            "unit": "iter/sec",
+            "range": "stddev: 0.000025779427844711023",
+            "extra": "mean: 1.2285119935710074 msec\nrounds: 777"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_backward[garden-00000664]",
+            "value": 202.82427852417922,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00004203918171766151",
+            "extra": "mean: 4.930376221605972 msec\nrounds: 361"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_project_gaussians[garden-00006640]",
+            "value": 341.0423452028056,
+            "unit": "iter/sec",
+            "range": "stddev: 0.0005449327777389377",
+            "extra": "mean: 2.9321872021649864 msec\nrounds: 5634"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_render_gaussians[garden-00006640]",
+            "value": 148.4659603431123,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00007376998228562",
+            "extra": "mean: 6.735550679017263 msec\nrounds: 162"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_forward[garden-00006640]",
+            "value": 103.35749641784342,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00008030544429357664",
+            "extra": "mean: 9.675156951918606 msec\nrounds: 104"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_backward[garden-00006640]",
+            "value": 28.3806458045692,
+            "unit": "iter/sec",
+            "range": "stddev: 0.0002448985934476021",
+            "extra": "mean: 35.235279946977215 msec\nrounds: 547"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_project_gaussians[garden-00016600]",
+            "value": 278.1427065381553,
+            "unit": "iter/sec",
+            "range": "stddev: 0.0006802845846088294",
+            "extra": "mean: 3.5952767284330034 msec\nrounds: 5483"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_render_gaussians[garden-00016600]",
+            "value": 112.51276324745723,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00008664047368454055",
+            "extra": "mean: 8.88788054916605 msec\nrounds: 122"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_forward[garden-00016600]",
+            "value": 80.10710284043635,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00006495954913392235",
+            "extra": "mean: 12.483287555560198 msec\nrounds: 81"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_backward[garden-00016600]",
+            "value": 22.25185643843771,
+            "unit": "iter/sec",
+            "range": "stddev: 0.0007109253284715117",
+            "extra": "mean: 44.940070630359024 msec\nrounds: 560"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_forward_mcmc[garden-00000664]",
+            "value": 793.7847319004686,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00002616342628430045",
+            "extra": "mean: 1.2597873955144157 msec\nrounds: 847"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_forward_mcmc[garden-00006640]",
+            "value": 102.87295999418185,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00014679255798339693",
+            "extra": "mean: 9.72072739091552 msec\nrounds: 110"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_forward_mcmc[garden-00016600]",
+            "value": 79.91604147055904,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00013738265353255497",
+            "extra": "mean: 12.513132302335052 msec\nrounds: 86"
           }
         ]
       }
