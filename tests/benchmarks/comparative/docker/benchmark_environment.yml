@@ -12,7 +12,7 @@ dependencies:
   - cuda-cudart-dev
   - cuda-nvrtc-dev
   - cuda-nvtx-dev
-  - cuda-version=13.0
+  - cuda-version=13.4
   - cxx-compiler
   - gcc_linux-64=13
   - git
@@ -57,7 +57,7 @@ dependencies:
   # version warning. Do not hand-edit these three; run:
   #     scripts/generate_benchmark_env.py                 # match fvdb-core main
   #     scripts/generate_benchmark_env.py --from-local ../fvdb-core
-  - pytorch-gpu=2.13.0
+  - pytorch-gpu=2.14.1=cuda134*
   - rich
   - scikit-build-core
   - scikit-learn
