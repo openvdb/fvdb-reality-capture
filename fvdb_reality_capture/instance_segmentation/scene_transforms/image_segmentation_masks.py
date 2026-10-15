@@ -240,7 +240,7 @@ class GenerateGARfVDBMasks(BaseTransform):
             image_meta = input_scene.images[image_id]
             if not output_cache.has_file(cache_image_filename):
                 self._logger.info(
-                    f"Masks {cache_image_filename} not found in the cache. " f"Clearing cache and regenerating."
+                    f"Masks {cache_image_filename} not found in the cache. Clearing cache and regenerating."
                 )
                 output_cache.clear_current_folder()
                 regenerate_cache = True

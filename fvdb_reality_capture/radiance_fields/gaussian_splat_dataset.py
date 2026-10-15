@@ -324,9 +324,9 @@ class SfmDataset(torch.utils.data.Dataset, Iterable):
         visible_points = set()
         for idx in self._indices:
             image_meta: SfmPosedImageMetadata = self._sfm_scene.images[idx]
-            assert (
-                image_meta.point_indices is not None
-            ), "SfmScene.has_visible_point_indices is True but image has no point indices"
+            assert image_meta.point_indices is not None, (
+                "SfmScene.has_visible_point_indices is True but image has no point indices"
+            )
             visible_points.update(image_meta.point_indices.tolist())
         return np.array(list(visible_points))
 

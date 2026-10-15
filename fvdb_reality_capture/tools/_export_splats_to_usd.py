@@ -9,6 +9,7 @@ Isaac Sim version prior to 6.0 use a format created before the current Splat USD
 https://openusd.org/dev/user_guides/schemas/usdVol/ParticleField3DGaussianSplat.html
 If using a version of Isaac sim prior to 6.0, use the legacy format with --legacy flag. Newer versions should use the default particle field format.
 """
+
 import gzip
 import io
 import logging

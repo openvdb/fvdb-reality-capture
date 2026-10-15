@@ -14,7 +14,6 @@ from fvdb_reality_capture.sfm_scene import SfmScene
 from fvdb_reality_capture.transforms import DownsampleImages
 
 if __name__ == "__main__":
-
     parser = argparse.ArgumentParser()
     parser.add_argument("--dataset_path", type=str, default="data/360_v2/garden")
     parser.add_argument("--image_downsample_factor", type=int, default=4)

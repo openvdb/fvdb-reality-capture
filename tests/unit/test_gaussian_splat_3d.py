@@ -611,7 +611,6 @@ class TestGaussianSplatIndexSet(BaseGaussianTestCase):
                     )
                 )
         elif src_acc_m2d_grads and not dst_track_m2d_grads:
-
             self.assertEqual(dst.accumulated_mean_2d_gradient_norms, None)
             self.assertEqual(dst.accumulated_gradient_step_counts, None)
             # Check that the destination Gaussian Splat has the same gradient shapes as before
@@ -1380,7 +1379,6 @@ class TestLoadAndSavePly(BaseGaussianTestCase):
 
 
 class TestGaussianRender(BaseGaussianTestCase):
-
     def setUp(self):
         super().setUp()
 
@@ -1586,7 +1584,6 @@ class TestGaussianRender(BaseGaussianTestCase):
 
 
 class TestGaussianContributingGaussianIdsRender(BaseGaussianTestCase):
-
     def setUp(self):
         super().setUp()
         # Reducing width/height to reduce file size of reference test data
@@ -2396,9 +2393,9 @@ class TestGaussianRenderSparse(BaseGaussianTestCase):
         assert self.gs3d.means.grad is not None, "Gradients not computed for means in sparse depth render"
         assert self.gs3d.quats.grad is not None, "Gradients not computed for quats in sparse depth render"
         assert self.gs3d.log_scales.grad is not None, "Gradients not computed for log_scales in sparse depth render"
-        assert (
-            self.gs3d.logit_opacities.grad is not None
-        ), "Gradients not computed for logit_opacities in sparse depth render"
+        assert self.gs3d.logit_opacities.grad is not None, (
+            "Gradients not computed for logit_opacities in sparse depth render"
+        )
         sparse_means_grad = self.gs3d.means.grad.clone()
         sparse_quats_grad = self.gs3d.quats.grad.clone()
         sparse_log_scales_grad = self.gs3d.log_scales.grad.clone()
@@ -2508,9 +2505,9 @@ class TestGaussianRenderSparse(BaseGaussianTestCase):
         assert self.gs3d.means.grad is not None, "Gradients not computed for means in sparse features render"
         assert self.gs3d.quats.grad is not None, "Gradients not computed for quats in sparse features render"
         assert self.gs3d.log_scales.grad is not None, "Gradients not computed for log_scales in sparse features render"
-        assert (
-            self.gs3d.logit_opacities.grad is not None
-        ), "Gradients not computed for logit_opacities in sparse features render"
+        assert self.gs3d.logit_opacities.grad is not None, (
+            "Gradients not computed for logit_opacities in sparse features render"
+        )
         assert self.gs3d.sh0.grad is not None, "Gradients not computed for sh0 in sparse features render"
         assert self.gs3d.shN.grad is not None, "Gradients not computed for shN in sparse features render"
         sparse_means_grad = self.gs3d.means.grad.clone()
@@ -2636,9 +2633,9 @@ class TestGaussianRenderSparse(BaseGaussianTestCase):
         assert self.gs3d.means.grad is not None, "Gradients not computed for means in sparse features render"
         assert self.gs3d.quats.grad is not None, "Gradients not computed for quats in sparse features render"
         assert self.gs3d.log_scales.grad is not None, "Gradients not computed for log_scales in sparse features render"
-        assert (
-            self.gs3d.logit_opacities.grad is not None
-        ), "Gradients not computed for logit_opacities in sparse features render"
+        assert self.gs3d.logit_opacities.grad is not None, (
+            "Gradients not computed for logit_opacities in sparse features render"
+        )
         assert self.gs3d.sh0.grad is not None, "Gradients not computed for sh0 in sparse features render"
         assert self.gs3d.shN.grad is not None, "Gradients not computed for shN in sparse features render"
         sparse_means_grad = self.gs3d.means.grad.clone()
@@ -3999,7 +3996,7 @@ class TestGaussianRenderSparseDuplicatePixels(BaseGaussianTestCase):
             segment = ids.jdata.flatten()[offsets[i] : offsets[i + 1]]
             self.assertTrue(
                 torch.equal(segment, alone[key]),
-                f"pixel {key} got contributors {segment.tolist()} " f"but renders {alone[key].tolist()} on its own",
+                f"pixel {key} got contributors {segment.tolist()} but renders {alone[key].tolist()} on its own",
             )
 
     def test_sparse_render_contributing_gaussian_ids_duplicates_match_unique(self):
