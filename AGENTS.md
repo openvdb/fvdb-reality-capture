@@ -12,16 +12,16 @@ Codex, etc.) working on this codebase. Human contributors should also refer to
 
 ## Python Code Style
 
-- Format Python code with **black** using the exact flags from CI:
+- Format Python code with **ruff**. Settings (`target-version = "py311"`, `line-length = 120`)
+  live in `pyproject.toml`, so a plain invocation picks them up:
 
   ```
-  black --target-version=py311 --line-length=120 .
+  ruff format .
   ```
 
-- **Do not** run `black` with default settings — the default line-length (88) does
-  not match this project's setting (120).
-- There is currently no `[tool.black]` section in `pyproject.toml`; a future PR may
-  add one so that plain `black .` picks up the correct settings automatically.
+- CI runs `ruff format --check --diff` with ruff pinned to `0.15.7`, the same version fvdb-core uses.
+  Use that version locally (`pip install ruff==0.15.7`) so results match CI, and bump it here and in
+  `.github/workflows/codestyle.yml` together with fvdb-core.
 
 ## License Headers
 

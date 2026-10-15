@@ -101,7 +101,6 @@ def save_frames(input_path, exiftool_path, lats, longs, alts, output_dir="output
             altVal = alts[frame_count]
 
             if latVal != 0 and lonVal != 0:
-
                 cmd = f"{exiftool_path} {frame_path} -overwrite_original -{lat_tag}={latVal} -{lon_tag}={lonVal} -{alt_tag}={altVal} -GPSLongitudeRef=W -GPSAltitudeRef=0"
                 print(cmd)
 

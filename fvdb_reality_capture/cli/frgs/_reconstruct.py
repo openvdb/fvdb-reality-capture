@@ -209,7 +209,7 @@ class Reconstruct(BaseCommand):
             # TODO: Stripe accross GPUs
             chunk_ply_paths: list[pathlib.Path] = []
             for i, bbox in enumerate(crop_bboxes):
-                self.logger.info(f"Reconstructing chunk {i+1}/{num_chunks}: bbox {bbox}")
+                self.logger.info(f"Reconstructing chunk {i + 1}/{num_chunks}: bbox {bbox}")
                 chunk_transform = CropScene(bbox=bbox)
 
                 scene_chunk = chunk_transform(sfm_scene)

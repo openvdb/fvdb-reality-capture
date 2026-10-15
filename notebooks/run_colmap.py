@@ -158,7 +158,7 @@ if args.global_ba and not args.skip_ba:
 if args.refine_ba:
     log.info(f"Running {args.refine_iters} refinement iteration(s)...")
     for i in range(args.refine_iters):
-        log.info(f"Refinement iteration {i+1}/{args.refine_iters}...")
+        log.info(f"Refinement iteration {i + 1}/{args.refine_iters}...")
 
         tri_cmd = (
             f"{colmap_command} point_triangulator "

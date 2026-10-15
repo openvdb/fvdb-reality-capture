@@ -20,17 +20,13 @@ class MockWriter(frc.radiance_fields.GaussianSplatReconstructionBaseWriter):
     def log_metric(self, global_step: int, metric_name: str, metric_value: float) -> None:  # noqa: ARG002
         return
 
-    def save_checkpoint(
-        self, global_step: int, checkpoint_name: str, checkpoint: dict[str, Any]
-    ) -> None:  # noqa: ARG002
+    def save_checkpoint(self, global_step: int, checkpoint_name: str, checkpoint: dict[str, Any]) -> None:  # noqa: ARG002
         return
 
     def save_ply(self, global_step: int, ply_name: str, model, metadata: dict[str, Any]) -> None:  # noqa: ARG002
         return
 
-    def save_image(
-        self, global_step: int, image_name: str, image: torch.Tensor, jpeg_quality: int = 98
-    ) -> None:  # noqa: ARG002
+    def save_image(self, global_step: int, image_name: str, image: torch.Tensor, jpeg_quality: int = 98) -> None:  # noqa: ARG002
         return
 
 

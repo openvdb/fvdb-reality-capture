@@ -13,7 +13,6 @@ from tests.unit.common import GettysburgGaussianSplatTestCase
 
 
 class GaussianSplatOptimizerMCMCTests(GettysburgGaussianSplatTestCase, unittest.TestCase):
-
     def test_defaults_match_mcmc_paper_initialization(self):
         config = frc.radiance_fields.GaussianSplatOptimizerMCMCConfig()
         self.assertEqual(config.initial_opacity, 0.5)

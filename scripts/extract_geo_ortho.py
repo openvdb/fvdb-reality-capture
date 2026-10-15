@@ -161,7 +161,6 @@ def write_geotiff(ortho, geot, srs_wkt, output_fname):
     ortho_ds.SetProjection(srs_wkt)
 
     for bc in range(nb):
-
         ortho_band = ortho_ds.GetRasterBand(bc + 1)
         ortho_band.SetNoDataValue(0)
         ortho_band.WriteArray(np.squeeze(ortho[:, :, bc]))
