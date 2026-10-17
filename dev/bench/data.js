@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1792250704492,
+  "lastUpdate": 1792250707060,
   "repoUrl": "https://github.com/openvdb/fvdb-reality-capture",
   "entries": {
     "fvdb-reality-capture Benchmark with pytest-benchmark": [
@@ -34754,6 +34754,88 @@ window.BENCHMARK_DATA = {
           {
             "name": "garden/fvdb_mcmc - peak_gpu_memory_gb",
             "value": 3.6378,
+            "unit": "GB"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "Jonathan Swartz",
+            "username": "swahtz",
+            "email": "jonathan@jswartz.info"
+          },
+          "committer": {
+            "name": "GitHub",
+            "username": "web-flow",
+            "email": "noreply@github.com"
+          },
+          "id": "c5740c77d695da4c3c056a3f8d6de52b72ddb260",
+          "message": "Keep the pixel JaggedTensor on ctx in the sparse rasterizer backward (#344)\n\n## Summary\n\n`_RasterizeScreenSpaceGaussiansSparseFn` saved the pixel selection's\n`jdata`, `joffsets` and `jlidx`, then rebuilt the `JaggedTensor` in\nbackward with `JaggedTensor.from_data_offsets_and_list_ids`. This PR\nkeeps the original `JaggedTensor` on `ctx` and reuses it in backward.\n\n## Why\n\nopenvdb/fvdb-core#812 (fixing openvdb/fvdb-core#722) makes fvdb-core's\nchecked `JaggedTensor` constructors validate their structure. Validation\nreads the structure tensors on the host, so after that PR the rebuild\nwould add one device-to-host sync to every sparse backward step.\n\nMeasured on an RTX PRO 6000, the checked ldim-1 constructor costs about\n16–19 µs per call with an idle GPU, against 4–8 µs on current main. Its\nsync also stops the host from running ahead of queued GPU work.\n\nThe pixel `JaggedTensor` from forward is already valid, so backward\ndoesn't need to rebuild it.\n\nThis change is preventive. With current fvdb-core the ldim-1 rebuild\ndoes not sync, so today it saves only a small jidx kernel and binding\noverhead. It only affects sparse rendering; dense training never goes\nthrough this path.\n\n## Notes\n\n- **No new fvdb-core API.** The change uses nothing new from core, so it\nworks with current and future fvdb-core versions.\n- **Holding it on `ctx` is safe.** A tensor held as a `ctx` attribute\nskips saved-tensor hooks and the in-place modification check. Pixel\ncoordinates are integer, need no gradient, and are not modified in\nplace, so neither check matters here.\n\n## Test plan\n\n- [x] Unit tests pass:\n  ```\n  pytest tests/unit/test_functional_gaussian_splatting.py\n  pytest tests/unit/test_gaussian_splat_3d.py -k \"sparse or pixels\"\n  ```\n  Results: 23 passed, and 43 passed with 9 subtests.\n- [x] Gradient parity against `upstream/main` with the same seed, on the\nsparse scene from `test_sparse_matches_oo_and_backward_runs`:\n- The max absolute difference was at most 3e-8 for `means`, `quats` and\n`log_scales`, which is atomicAdd ordering noise.\n  - The difference was exactly 0 for `logit_opacities`, `sh0` and `shN`.\n- [x] `black --check --target-version=py311 --line-length=120` passes.\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n\nSigned-off-by: Jonathan Swartz <jonathan@jswartz.info>\nCo-authored-by: Claude Opus 5.5 <noreply@anthropic.com>",
+          "timestamp": "2026-10-14T01:31:54Z",
+          "url": "https://github.com/openvdb/fvdb-reality-capture/commit/c5740c77d695da4c3c056a3f8d6de52b72ddb260"
+        },
+        "date": 1792250706595,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "bicycle/fvdb_default - training_time",
+            "value": 661.3,
+            "unit": "seconds"
+          },
+          {
+            "name": "bicycle/fvdb_default - peak_gpu_memory_gb",
+            "value": 4.5252,
+            "unit": "GB"
+          },
+          {
+            "name": "bicycle/fvdb_mcmc - training_time",
+            "value": 331.76,
+            "unit": "seconds"
+          },
+          {
+            "name": "bicycle/fvdb_mcmc - peak_gpu_memory_gb",
+            "value": 1.4437,
+            "unit": "GB"
+          },
+          {
+            "name": "bonsai/fvdb_default - training_time",
+            "value": 440.41,
+            "unit": "seconds"
+          },
+          {
+            "name": "bonsai/fvdb_default - peak_gpu_memory_gb",
+            "value": 1.6117,
+            "unit": "GB"
+          },
+          {
+            "name": "bonsai/fvdb_mcmc - training_time",
+            "value": 584.31,
+            "unit": "seconds"
+          },
+          {
+            "name": "bonsai/fvdb_mcmc - peak_gpu_memory_gb",
+            "value": 1.556,
+            "unit": "GB"
+          },
+          {
+            "name": "garden/fvdb_default - training_time",
+            "value": 864.12,
+            "unit": "seconds"
+          },
+          {
+            "name": "garden/fvdb_default - peak_gpu_memory_gb",
+            "value": 5.5414,
+            "unit": "GB"
+          },
+          {
+            "name": "garden/fvdb_mcmc - training_time",
+            "value": 679.37,
+            "unit": "seconds"
+          },
+          {
+            "name": "garden/fvdb_mcmc - peak_gpu_memory_gb",
+            "value": 3.6374,
             "unit": "GB"
           }
         ]
