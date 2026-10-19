@@ -21,6 +21,7 @@ jobs:
           version: "0.15.7"
           args: "format --check --diff"
           src: "./"
+      - run: ruff check --select I --output-format=github .
 
   # NOTE: Enable this when/if we have C++ code
   # test-cpp-clang-format-lint:

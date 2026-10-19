@@ -2,8 +2,8 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 
-from .depth_map_attribute import DepthMapAttribute, DepthMissingPolicy, DepthScale
 from .adapter import Adapter, COLMAPAdapter
+from .depth_map_attribute import DepthMapAttribute, DepthMissingPolicy, DepthScale
 from .scene_attribute import (
     InterpolationMode,
     PerCameraAttribute,

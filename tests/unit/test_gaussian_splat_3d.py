@@ -10,6 +10,7 @@ import OpenImageIO as oiio
 import point_cloud_utils as pcu
 import torch
 import torch.nn.functional as nnf
+from fvdb import Grid, JaggedTensor
 from fvdb.utils.tests import (
     create_uniform_grid_points_at_depth,
     generate_center_frame_point_at_depth,
@@ -18,7 +19,6 @@ from fvdb.utils.tests import (
 )
 from parameterized import parameterized, parameterized_class
 
-from fvdb import Grid, JaggedTensor
 import fvdb_reality_capture.functional as frc_functional
 from fvdb_reality_capture import (
     CameraModel,

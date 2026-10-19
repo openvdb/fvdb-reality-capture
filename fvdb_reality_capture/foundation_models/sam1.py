@@ -82,8 +82,8 @@ class SAM1Model:
             device: Device to run on.
         """
         try:
-            from segment_anything import SamPredictor, sam_model_registry
             import segment_anything.utils.amg as sam1_amg
+            from segment_anything import SamPredictor, sam_model_registry
         except ImportError:
             raise ImportError(_SAM1_INSTALL_MSG) from None
 

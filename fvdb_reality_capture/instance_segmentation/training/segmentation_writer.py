@@ -12,12 +12,13 @@ from typing import Any, TextIO
 import cv2
 import numpy as np
 import torch
+from fvdb.types import NumericScalar, to_FloatingScalar
+
 from fvdb_reality_capture.checkpoints import create_training_checkpoint
 from fvdb_reality_capture.instance_segmentation.checkpoint import (
     GARFVDB_TRAINING_METHOD,
     GARFVDB_TRAINING_METHOD_VERSION,
 )
-from fvdb.types import NumericScalar, to_FloatingScalar
 
 
 class GARfVDBBaseWriter(ABC):

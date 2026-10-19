@@ -10,10 +10,10 @@ import cv2
 import numpy as np
 import torch
 import tqdm
-from fvdb_reality_capture.enums import CameraModel
-from fvdb_reality_capture.radiance_fields.gaussian_splatting import GaussianSplat3d
 
+from fvdb_reality_capture.enums import CameraModel
 from fvdb_reality_capture.foundation_models import SAM2Model
+from fvdb_reality_capture.radiance_fields.gaussian_splatting import GaussianSplat3d
 from fvdb_reality_capture.sfm_scene import SfmCache, SfmScene
 from fvdb_reality_capture.transforms import BaseTransform, transform
 

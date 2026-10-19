@@ -1,12 +1,12 @@
 # Copyright Contributors to the OpenVDB Project
 # SPDX-License-Identifier: Apache-2.0
 
-import os
-import sys
 import glob
-import shutil
 import logging
+import os
+import shutil
 import subprocess
+import sys
 from argparse import ArgumentParser
 
 log = logging.getLogger("colmap_pipeline")

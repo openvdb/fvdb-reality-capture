@@ -31,6 +31,8 @@ from fvdb_reality_capture.sfm_scene import SfmScene
 from fvdb_reality_capture.transforms import (
     BaseTransform,
     NormalizeScene,
+)
+from fvdb_reality_capture.transforms import (
     SceneTransformConfig as BaseSceneTransformConfig,
 )
 

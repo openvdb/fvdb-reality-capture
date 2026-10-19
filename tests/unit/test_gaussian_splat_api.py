@@ -6,6 +6,7 @@ import torch
 
 def test_gaussian_splat_api_is_owned_by_reality_capture():
     import fvdb
+
     import fvdb_reality_capture
 
     public_symbols = (
@@ -29,6 +30,7 @@ def test_gaussian_splat_api_is_owned_by_reality_capture():
 def test_gaussian_splat_enums_are_shared_with_fvdb_with_preserved_values():
     import fvdb
     import fvdb.viz
+
     import fvdb_reality_capture
 
     # The camera enums are owned by fvdb-core and re-exported here as the same objects, so
@@ -69,6 +71,7 @@ def test_gaussian_splat_enums_are_shared_with_fvdb_with_preserved_values():
 
 def test_gaussian_splat_view_adapter_is_zero_copy_and_uses_the_core_contract():
     import fvdb.viz
+
     import fvdb_reality_capture as frc
 
     tensors = {

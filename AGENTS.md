@@ -12,14 +12,18 @@ Codex, etc.) working on this codebase. Human contributors should also refer to
 
 ## Python Code Style
 
-- Format Python code with **ruff**. Settings (`target-version = "py311"`, `line-length = 120`)
-  live in `pyproject.toml`, so a plain invocation picks them up:
+- Sort imports and format Python code with **ruff** 0.15.7, the version pinned in CI, from the
+  repository root:
 
   ```
+  ruff check --select I --fix .
   ruff format .
   ```
 
-- CI runs `ruff format --check --diff` with ruff pinned to `0.15.7`, the same version fvdb-core uses.
+- Ruff reads its settings (line length 120, target `py311`, and exclusions) from
+  `[tool.ruff]` in `pyproject.toml`, so no extra flags are needed.
+- CI runs `ruff format --check --diff` and `ruff check --select I` with ruff pinned to `0.15.7`,
+  the same version fvdb-core uses.
   Use that version locally (`pip install ruff==0.15.7`) so results match CI, and bump it here and in
   `.github/workflows/codestyle.yml` together with fvdb-core.
 

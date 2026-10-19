@@ -22,6 +22,7 @@ from fvdb_reality_capture import CameraModel
 if multiprocessing.get_start_method(allow_none=True) != "spawn":
     multiprocessing.set_start_method("spawn", force=True)
 
+from fvdb_reality_capture.checkpoints import load_training_checkpoint
 from fvdb_reality_capture.radiance_fields import (
     GaussianSplatOptimizerMCMCConfig,
     GaussianSplatReconstruction,
@@ -30,7 +31,6 @@ from fvdb_reality_capture.radiance_fields import (
     GaussianSplatReconstructionWriterConfig,
     SfmDataset,
 )
-from fvdb_reality_capture.checkpoints import load_training_checkpoint
 from fvdb_reality_capture.radiance_fields.checkpoint import GAUSSIAN_SPLAT_RECONSTRUCTION_METHOD
 from fvdb_reality_capture.sfm_scene import SfmScene
 from fvdb_reality_capture.transforms import Compose, DownsampleImages, NormalizeScene

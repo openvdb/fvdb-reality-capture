@@ -78,7 +78,11 @@ Issues = "https://github.com/openvdb/fvdb-reality-capture/issues"
 include = ["fvdb_reality_capture*"]    # Glob patterns for package names
 
 [tool.ruff]
+required-version = "==0.15.7"
 target-version = "py311"
 line-length = 120
-# black never formatted notebooks (it needs the jupyter extra), so keep them out of ruff format too.
-extend-exclude = ["*.ipynb"]
+# Keep notebooks and Markdown files out of Ruff formatting.
+extend-exclude = ["*.ipynb", "*.md"]
+
+[tool.ruff.lint]
+select = ["I"]

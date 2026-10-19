@@ -13,13 +13,13 @@ import cv2
 import numpy as np
 import torch
 from fvdb.types import NumericScalar, to_FloatingScalar
+
 from fvdb_reality_capture.checkpoints import create_training_checkpoint
 
 from .checkpoint import (
     GAUSSIAN_SPLAT_RECONSTRUCTION_METHOD,
     GAUSSIAN_SPLAT_RECONSTRUCTION_METHOD_VERSION,
 )
-
 from .gaussian_splatting import GaussianSplat3d
 
 

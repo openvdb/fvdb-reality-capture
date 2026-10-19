@@ -8,13 +8,13 @@ from . import (
     checkpoints,
     dev,
     foundation_models,
+    functional,
     instance_segmentation,
     radiance_fields,
     sfm_scene,
     tools,
     transforms,
 )
-from . import functional
 from .enums import CameraModel, GaussianRenderMode, ProjectionMethod, RollingShutterType
 from .radiance_fields import (
     GaussianSplat3d,

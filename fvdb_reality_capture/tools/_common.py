@@ -2,7 +2,6 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 import torch
-from ..enums import CameraModel
 from fvdb.types import (
     NumericMaxRank2,
     NumericMaxRank3,
@@ -10,6 +9,8 @@ from fvdb.types import (
     to_Mat44fBatch,
     to_Vec2iBatch,
 )
+
+from ..enums import CameraModel
 
 
 def validate_pinhole_camera_models(
