@@ -6,8 +6,8 @@ from abc import ABC, abstractmethod
 
 import numpy as np
 import pycolmap
-from ..enums import CameraModel
 
+from ..enums import CameraModel
 from .sfm_metadata import SfmCameraMetadata
 
 

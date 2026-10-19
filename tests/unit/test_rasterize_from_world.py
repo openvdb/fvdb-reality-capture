@@ -4,6 +4,7 @@
 
 import pytest
 import torch
+
 from fvdb_reality_capture import CameraModel, GaussianSplat3d, ProjectionMethod
 
 
@@ -354,9 +355,9 @@ def test_gaussiansplat3d_render_images_from_world_grads_match_finite_differences
     for name, grad_autograd, grad_fd in checks:
         assert torch.isfinite(torch.tensor(grad_autograd))
         assert torch.isfinite(torch.tensor(grad_fd))
-        assert grad_autograd == pytest.approx(
-            grad_fd, rel=rtol, abs=atol
-        ), f"{name}: autograd={grad_autograd} fd={grad_fd}"
+        assert grad_autograd == pytest.approx(grad_fd, rel=rtol, abs=atol), (
+            f"{name}: autograd={grad_autograd} fd={grad_fd}"
+        )
 
     # Quaternion tangent-space finite-difference check.
     # We compare the FD directional derivative along a small axis-angle perturbation to the
@@ -409,9 +410,9 @@ def test_gaussiansplat3d_render_images_from_world_grads_match_finite_differences
 
             assert torch.isfinite(torch.tensor(fd_dir))
             assert torch.isfinite(torch.tensor(dir_autograd))
-            assert dir_autograd == pytest.approx(
-                fd_dir, rel=rtol, abs=atol
-            ), f"quats tangent dir {j}: autograd={dir_autograd} fd={fd_dir}"
+            assert dir_autograd == pytest.approx(fd_dir, rel=rtol, abs=atol), (
+                f"quats tangent dir {j}: autograd={dir_autograd} fd={fd_dir}"
+            )
 
 
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA not available")
@@ -554,9 +555,9 @@ def test_gaussiansplat3d_render_images_from_world_shN_grads_match_finite_differe
     for name, grad_autograd, grad_fd in checks:
         assert torch.isfinite(torch.tensor(grad_autograd))
         assert torch.isfinite(torch.tensor(grad_fd))
-        assert grad_autograd == pytest.approx(
-            grad_fd, rel=rtol, abs=atol
-        ), f"{name}: autograd={grad_autograd} fd={grad_fd}"
+        assert grad_autograd == pytest.approx(grad_fd, rel=rtol, abs=atol), (
+            f"{name}: autograd={grad_autograd} fd={grad_fd}"
+        )
 
 
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA not available")

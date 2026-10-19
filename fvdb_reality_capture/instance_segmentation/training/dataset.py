@@ -323,7 +323,9 @@ class GARfVDBInput(dict[str, Any]):
         self, key: str, default: torch.Tensor | fvdb.JaggedTensor | list[int] | None = None
     ) -> torch.Tensor | fvdb.JaggedTensor | list[int] | None: ...
 
-    def get(self, key: str, default: torch.Tensor | fvdb.JaggedTensor | list[int] | None = None) -> torch.Tensor | fvdb.JaggedTensor | list[int] | None:  # type: ignore[override]
+    def get(
+        self, key: str, default: torch.Tensor | fvdb.JaggedTensor | list[int] | None = None
+    ) -> torch.Tensor | fvdb.JaggedTensor | list[int] | None:  # type: ignore[override]
         return super().get(key, default)
 
     def __repr__(self):

@@ -600,7 +600,6 @@ class GARfVDBModel(torch.nn.Module):
                 # get 1 id per ray based on the depth_sample_indices
                 single_ids = []
                 for per_cam_ids, per_cam_depth_sample_indices in zip(ids, depth_sample_indices):
-
                     cam_ids = []
                     for per_ray_ids, per_ray_depth_sample_indices in zip(per_cam_ids, per_cam_depth_sample_indices):
                         if len(per_ray_ids) == 0:

@@ -10,9 +10,8 @@ import tqdm
 from fvdb import Grid
 from fvdb.types import NumericMaxRank2, NumericMaxRank3
 
-from fvdb_reality_capture.radiance_fields.gaussian_splatting import GaussianSplat3d
-
 from fvdb_reality_capture.foundation_models.dlnr import DLNRModel
+from fvdb_reality_capture.radiance_fields.gaussian_splatting import GaussianSplat3d
 from fvdb_reality_capture.sfm_scene import SfmCache
 
 from ..enums import CameraModel

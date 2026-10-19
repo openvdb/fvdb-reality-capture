@@ -76,3 +76,13 @@ Issues = "https://github.com/openvdb/fvdb-reality-capture/issues"
 # pyproject.toml
 [tool.setuptools.packages.find]
 include = ["fvdb_reality_capture*"]    # Glob patterns for package names
+
+[tool.ruff]
+required-version = "==0.15.7"
+target-version = "py311"
+line-length = 120
+# Keep notebooks and Markdown files out of Ruff formatting.
+extend-exclude = ["*.ipynb", "*.md"]
+
+[tool.ruff.lint]
+select = ["I"]

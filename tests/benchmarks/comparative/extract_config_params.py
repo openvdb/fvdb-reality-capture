@@ -27,8 +27,7 @@ def count_dataset_images(data_dir: str) -> int:
         Path(env)
         for env in [
             # Allow override via environment
-            _os.environ.get("FVDB_REPO_ROOT")
-            or ""
+            _os.environ.get("FVDB_REPO_ROOT") or ""
         ]
         if env
     ] + [

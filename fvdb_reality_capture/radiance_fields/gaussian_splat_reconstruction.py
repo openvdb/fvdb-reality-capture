@@ -14,12 +14,12 @@ import numpy as np
 import torch
 import torch.nn.functional as nnf
 import torch.utils.data
-from torch.utils import _pytree
-from torch.utils.data import default_collate
 import tqdm
 from fvdb.utils.metrics import psnr, ssim
 from fvdb.viz import Scene
 from scipy.spatial import cKDTree  # type: ignore
+from torch.utils import _pytree
+from torch.utils.data import default_collate
 
 from fvdb_reality_capture.sfm_scene import SfmScene
 from fvdb_reality_capture.tools import export_splats_to_usd
@@ -31,7 +31,6 @@ from ._private.utils import crop_image_batch
 from .camera_pose_adjust import CameraPoseAdjustment
 from .checkpoint import GAUSSIAN_SPLAT_RECONSTRUCTION_METHOD_VERSION
 from .gaussian_splat_dataset import SfmDataset
-from .gaussian_splatting import GaussianSplat3d
 from .gaussian_splat_optimizer import (
     BaseGaussianSplatOptimizer,
     GaussianSplatOptimizerConfig,
@@ -40,6 +39,7 @@ from .gaussian_splat_reconstruction_writer import (
     GaussianSplatReconstructionBaseWriter,
     GaussianSplatReconstructionWriter,
 )
+from .gaussian_splatting import GaussianSplat3d
 
 
 def _collate_cached_sfm_batch(batch: list[dict[str, Any]]) -> dict[str, Any]:
@@ -1376,7 +1376,6 @@ class GaussianSplatReconstruction:
 
         for epoch in range(start_epoch, self.config.max_epochs):
             for minibatch in trainloader:
-
                 # Camera pose optimization
                 image_ids: torch.Tensor | None = None
                 if self.pose_adjust_model is not None:
@@ -1555,12 +1554,12 @@ class GaussianSplatReconstruction:
                 # If you enabled pose optimization, step the pose optimizer if we performed a
                 # pose update this iteration
                 if self.config.optimize_camera_poses and pose_opt_start_step <= self._global_step < pose_opt_stop_step:
-                    assert (
-                        self.pose_adjust_optimizer is not None
-                    ), "Pose optimizer should be initialized if pose optimization is enabled."
-                    assert (
-                        self.pose_adjust_scheduler is not None
-                    ), "Pose scheduler should be initialized if pose optimization is enabled."
+                    assert self.pose_adjust_optimizer is not None, (
+                        "Pose optimizer should be initialized if pose optimization is enabled."
+                    )
+                    assert self.pose_adjust_scheduler is not None, (
+                        "Pose scheduler should be initialized if pose optimization is enabled."
+                    )
                     self.pose_adjust_optimizer.step()
                     self.pose_adjust_scheduler.step()
                     self.pose_adjust_optimizer.zero_grad(set_to_none=True)

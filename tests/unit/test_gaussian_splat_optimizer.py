@@ -58,7 +58,6 @@ class GaussianSplatOptimizerBatchSizeTests(unittest.TestCase):
 
 
 class GaussianSplatOptimizerTests(GettysburgGaussianSplatTestCase, unittest.TestCase):
-
     def test_serialize_optimizer(self):
         model_1 = self.model
         max_steps = 200 * len(self.training_dataset)
