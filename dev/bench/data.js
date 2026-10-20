@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1792509745577,
+  "lastUpdate": 1792509749483,
   "repoUrl": "https://github.com/openvdb/fvdb-reality-capture",
   "entries": {
     "fvdb-reality-capture Benchmark with pytest-benchmark": [
@@ -35500,6 +35500,88 @@ window.BENCHMARK_DATA = {
           {
             "name": "garden/fvdb_mcmc - peak_gpu_memory_gb",
             "value": 3.6344,
+            "unit": "GB"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "Matthew Cong",
+            "username": "matthewdcong",
+            "email": "1372750+matthewdcong@users.noreply.github.com"
+          },
+          "committer": {
+            "name": "GitHub",
+            "username": "web-flow",
+            "email": "noreply@github.com"
+          },
+          "id": "76e65e7c6e57a6b8f169b7b5d7c738a5f965e2eb",
+          "message": "Switch Python formatting from black to ruff (#347)\n\nReplace the black codestyle check with `ruff format --check --diff`,\nusing the same astral-sh/ruff-action SHA and ruff version (0.15.7) as\nfvdb-core. Formatter settings (py311, line length 120) now live in a\n[tool.ruff] section of pyproject.toml, so a plain `ruff format .`\nmatches CI.\n\nReformat the tree with ruff 0.15.7. The changes are mechanical and come\nfrom ruff's style differing from black 24: implicit string\nconcatenations that fit on one line are joined, long asserts\nparenthesize the message instead of the condition, f-string expressions\nget operator spacing, blank first lines in blocks are dropped, and\npragma comments no longer count toward line length.\n\nUpdate AGENTS.md and the recommended VS Code extensions to match.\n\n---------\n\nSigned-off-by: Matthew Cong <mcong@nvidia.com>",
+          "timestamp": "2026-10-19T19:33:31Z",
+          "url": "https://github.com/openvdb/fvdb-reality-capture/commit/76e65e7c6e57a6b8f169b7b5d7c738a5f965e2eb"
+        },
+        "date": 1792509749000,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "bicycle/fvdb_default - training_time",
+            "value": 648.6,
+            "unit": "seconds"
+          },
+          {
+            "name": "bicycle/fvdb_default - peak_gpu_memory_gb",
+            "value": 4.5191,
+            "unit": "GB"
+          },
+          {
+            "name": "bicycle/fvdb_mcmc - training_time",
+            "value": 336.49,
+            "unit": "seconds"
+          },
+          {
+            "name": "bicycle/fvdb_mcmc - peak_gpu_memory_gb",
+            "value": 1.4424,
+            "unit": "GB"
+          },
+          {
+            "name": "bonsai/fvdb_default - training_time",
+            "value": 448.75,
+            "unit": "seconds"
+          },
+          {
+            "name": "bonsai/fvdb_default - peak_gpu_memory_gb",
+            "value": 1.6106,
+            "unit": "GB"
+          },
+          {
+            "name": "bonsai/fvdb_mcmc - training_time",
+            "value": 595.32,
+            "unit": "seconds"
+          },
+          {
+            "name": "bonsai/fvdb_mcmc - peak_gpu_memory_gb",
+            "value": 1.5545,
+            "unit": "GB"
+          },
+          {
+            "name": "garden/fvdb_default - training_time",
+            "value": 861.48,
+            "unit": "seconds"
+          },
+          {
+            "name": "garden/fvdb_default - peak_gpu_memory_gb",
+            "value": 5.5605,
+            "unit": "GB"
+          },
+          {
+            "name": "garden/fvdb_mcmc - training_time",
+            "value": 689.53,
+            "unit": "seconds"
+          },
+          {
+            "name": "garden/fvdb_mcmc - peak_gpu_memory_gb",
+            "value": 3.6349,
             "unit": "GB"
           }
         ]
