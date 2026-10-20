@@ -44,6 +44,8 @@ class _ProjectGaussiansFn(torch.autograd.Function):
         accum_step_counts: torch.Tensor | None = None,
         accum_max_radii: torch.Tensor | None = None,
     ):
+        # Unused depth outputs should reach the kernel as None rather than a filled [C, N] tensor.
+        ctx.set_materialize_grads(False)
         radii, means2d, depths, conics, compensations = F.project_gaussians_analytic_fwd(
             means,
             quats,
@@ -103,9 +105,11 @@ class _ProjectGaussiansFn(torch.autograd.Function):
         means, quats, log_scales, world_to_cam, projection_matrices, radii, conics = saved[:7]
         compensations = saved[7] if ctx.calc_compensations else None
 
-        assert grad_means2d is not None
-        assert grad_depths is not None
-        assert grad_conics is not None
+        # These gradients remain required by the kernel, including for depth-only losses.
+        if grad_means2d is None:
+            grad_means2d = torch.zeros_like(radii, dtype=means.dtype)
+        if grad_conics is None:
+            grad_conics = torch.zeros_like(conics)
         d_means, _, d_quats, d_scales, d_w2c = F.project_gaussians_analytic_bwd(
             means,
             quats,
