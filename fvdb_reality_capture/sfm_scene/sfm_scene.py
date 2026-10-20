@@ -355,14 +355,14 @@ class SfmScene:
 
         cameras = {int(k): SfmCameraMetadata.from_state_dict(v) for k, v in state_dict["cameras"].items()}
         images = [SfmPosedImageMetadata.from_state_dict(img_dict, cameras) for img_dict in state_dict["images"]]
-        points = np.array(state_dict["points"], dtype=np.float32)
+        points = np.array(state_dict["points"], dtype=np.float64)
         points_err = np.array(state_dict["points_err"], dtype=np.float32)
         points_rgb = np.array(state_dict["points_rgb"], dtype=np.uint8)
         scene_bbox = (
-            np.array(state_dict["scene_bbox"], dtype=np.float32) if state_dict["scene_bbox"] is not None else None
+            np.array(state_dict["scene_bbox"], dtype=np.float64) if state_dict["scene_bbox"] is not None else None
         )
         transformation_matrix = (
-            np.array(state_dict["transformation_matrix"], dtype=np.float32)
+            np.array(state_dict["transformation_matrix"], dtype=np.float64)
             if state_dict["transformation_matrix"] is not None
             else None
         )
