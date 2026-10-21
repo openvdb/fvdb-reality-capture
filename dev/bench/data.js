@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1792583065680,
+  "lastUpdate": 1792596887309,
   "repoUrl": "https://github.com/openvdb/fvdb-reality-capture",
   "entries": {
     "fvdb-reality-capture Benchmark with pytest-benchmark": [
@@ -27194,6 +27194,88 @@ window.BENCHMARK_DATA = {
           {
             "name": "garden/fvdb_mcmc - SSIM",
             "value": 0.8664,
+            "unit": ""
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "Matthew Cong",
+            "username": "matthewdcong",
+            "email": "1372750+matthewdcong@users.noreply.github.com"
+          },
+          "committer": {
+            "name": "GitHub",
+            "username": "web-flow",
+            "email": "noreply@github.com"
+          },
+          "id": "76e65e7c6e57a6b8f169b7b5d7c738a5f965e2eb",
+          "message": "Switch Python formatting from black to ruff (#347)\n\nReplace the black codestyle check with `ruff format --check --diff`,\nusing the same astral-sh/ruff-action SHA and ruff version (0.15.7) as\nfvdb-core. Formatter settings (py311, line length 120) now live in a\n[tool.ruff] section of pyproject.toml, so a plain `ruff format .`\nmatches CI.\n\nReformat the tree with ruff 0.15.7. The changes are mechanical and come\nfrom ruff's style differing from black 24: implicit string\nconcatenations that fit on one line are joined, long asserts\nparenthesize the message instead of the condition, f-string expressions\nget operator spacing, blank first lines in blocks are dropped, and\npragma comments no longer count toward line length.\n\nUpdate AGENTS.md and the recommended VS Code extensions to match.\n\n---------\n\nSigned-off-by: Matthew Cong <mcong@nvidia.com>",
+          "timestamp": "2026-10-19T19:33:31Z",
+          "url": "https://github.com/openvdb/fvdb-reality-capture/commit/76e65e7c6e57a6b8f169b7b5d7c738a5f965e2eb"
+        },
+        "date": 1792596886649,
+        "tool": "customBiggerIsBetter",
+        "benches": [
+          {
+            "name": "bicycle/fvdb_default - PSNR",
+            "value": 25.127,
+            "unit": "dB"
+          },
+          {
+            "name": "bicycle/fvdb_default - SSIM",
+            "value": 0.7452,
+            "unit": ""
+          },
+          {
+            "name": "bicycle/fvdb_mcmc - PSNR",
+            "value": 25.005,
+            "unit": "dB"
+          },
+          {
+            "name": "bicycle/fvdb_mcmc - SSIM",
+            "value": 0.7306,
+            "unit": ""
+          },
+          {
+            "name": "bonsai/fvdb_default - PSNR",
+            "value": 32.444,
+            "unit": "dB"
+          },
+          {
+            "name": "bonsai/fvdb_default - SSIM",
+            "value": 0.9562,
+            "unit": ""
+          },
+          {
+            "name": "bonsai/fvdb_mcmc - PSNR",
+            "value": 32.679,
+            "unit": "dB"
+          },
+          {
+            "name": "bonsai/fvdb_mcmc - SSIM",
+            "value": 0.9586,
+            "unit": ""
+          },
+          {
+            "name": "garden/fvdb_default - PSNR",
+            "value": 27.672,
+            "unit": "dB"
+          },
+          {
+            "name": "garden/fvdb_default - SSIM",
+            "value": 0.8659,
+            "unit": ""
+          },
+          {
+            "name": "garden/fvdb_mcmc - PSNR",
+            "value": 27.644,
+            "unit": "dB"
+          },
+          {
+            "name": "garden/fvdb_mcmc - SSIM",
+            "value": 0.8665,
             "unit": ""
           }
         ]
