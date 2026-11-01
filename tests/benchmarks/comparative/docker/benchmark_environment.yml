@@ -49,6 +49,10 @@ dependencies:
   # fails with an undefined symbol. The PyPI wheels are self-contained and unaffected, so
   # this bound is deliberately scoped to the conda benchmark env and not to pyproject.toml.
   - pycolmap>=3.11,<4
+  # Upper bound pending a pytest-benchmark release after 5.3.0: pytest 9.2.0 removed the private
+  # Node._nodeid that pytest-benchmark 5.3.0 reads in BenchmarkFixture.__init__, so every benchmark
+  # errors at setup. Fixed upstream in ionelmc/pytest-benchmark#323 (merged, not yet released).
+  - pytest<9.2
   - pytest-benchmark
   - python=3.12
   # python, cuda-version and pytorch-gpu are DERIVED from fvdb-core's
