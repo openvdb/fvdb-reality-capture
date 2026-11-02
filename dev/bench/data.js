@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1793619127186,
+  "lastUpdate": 1793632378542,
   "repoUrl": "https://github.com/openvdb/fvdb-reality-capture",
   "entries": {
     "fvdb-reality-capture Benchmark with pytest-benchmark": [
@@ -27940,6 +27940,88 @@ window.BENCHMARK_DATA = {
           {
             "name": "garden/fvdb_mcmc - SSIM",
             "value": 0.8665,
+            "unit": ""
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "Mark Harris",
+            "username": "harrism",
+            "email": "mharris@nvidia.com"
+          },
+          "committer": {
+            "name": "GitHub",
+            "username": "web-flow",
+            "email": "noreply@github.com"
+          },
+          "id": "1201e50a97ac9f52c43ab88863f31b34f2236de1",
+          "message": "Pin pytest<9.2 in the benchmark env (#348)\n\n## Summary\n\nThe nightly **Unit Benchmarks** job has failed since 2026-10-29 (runs\n[40862919005](https://github.com/openvdb/fvdb-reality-capture/actions/runs/40862919005),\n[41045668341](https://github.com/openvdb/fvdb-reality-capture/actions/runs/41045668341),\n[41195371316](https://github.com/openvdb/fvdb-reality-capture/actions/runs/41195371316)).\nAll 76 `benchmarks/test_3dgs.py` cases error at fixture setup:\n\n```\npytest_benchmark/fixture.py:88: self.fullname = node._nodeid\nAttributeError: 'Function' object has no attribute '_nodeid'. Did you mean: 'nodeid'?\n```\n\npytest 9.2.0 (released 2026-10-27) removed the private `Node._nodeid`,\nand pytest-benchmark 5.3.0, the latest release, still reads it. The\nbenchmark env leaves pytest unpinned, so the conda solve moved from\npytest 9.1.1 (last green run, 2026-10-28) to 9.2.0. The fix has been\nmerged upstream in ionelmc/pytest-benchmark#323 but not released yet.\n\nThis PR adds `pytest<9.2` to\n`tests/benchmarks/comparative/docker/benchmark_environment.yml`, with a\ncomment saying when to drop it. `scripts/generate_benchmark_env.py` only\nrewrites the `pytorch-gpu`/`cuda-version`/`python` lines, so the\nnightly's regeneration step leaves the new pin in place.\n\n## Test plan\n\n- [x] `python3 scripts/generate_benchmark_env.py --check`: the file is\nstill up to date with fvdb-core main.\n- [ ] Dispatch `fvdb-reality-capture Nightly Benchmarks` on this branch\nand confirm Unit Benchmarks resolves pytest 9.1.x and passes.\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n\nSigned-off-by: Mark Harris <mharris@nvidia.com>\nCo-authored-by: Claude Opus 5.5 <noreply@anthropic.com>",
+          "timestamp": "2026-11-02T08:47:52Z",
+          "url": "https://github.com/openvdb/fvdb-reality-capture/commit/1201e50a97ac9f52c43ab88863f31b34f2236de1"
+        },
+        "date": 1793632377828,
+        "tool": "customBiggerIsBetter",
+        "benches": [
+          {
+            "name": "bicycle/fvdb_default - PSNR",
+            "value": 25.17,
+            "unit": "dB"
+          },
+          {
+            "name": "bicycle/fvdb_default - SSIM",
+            "value": 0.7456,
+            "unit": ""
+          },
+          {
+            "name": "bicycle/fvdb_mcmc - PSNR",
+            "value": 24.997,
+            "unit": "dB"
+          },
+          {
+            "name": "bicycle/fvdb_mcmc - SSIM",
+            "value": 0.73,
+            "unit": ""
+          },
+          {
+            "name": "bonsai/fvdb_default - PSNR",
+            "value": 32.52,
+            "unit": "dB"
+          },
+          {
+            "name": "bonsai/fvdb_default - SSIM",
+            "value": 0.9566,
+            "unit": ""
+          },
+          {
+            "name": "bonsai/fvdb_mcmc - PSNR",
+            "value": 32.799,
+            "unit": "dB"
+          },
+          {
+            "name": "bonsai/fvdb_mcmc - SSIM",
+            "value": 0.959,
+            "unit": ""
+          },
+          {
+            "name": "garden/fvdb_default - PSNR",
+            "value": 27.607,
+            "unit": "dB"
+          },
+          {
+            "name": "garden/fvdb_default - SSIM",
+            "value": 0.8655,
+            "unit": ""
+          },
+          {
+            "name": "garden/fvdb_mcmc - PSNR",
+            "value": 27.752,
+            "unit": "dB"
+          },
+          {
+            "name": "garden/fvdb_mcmc - SSIM",
+            "value": 0.8669,
             "unit": ""
           }
         ]
