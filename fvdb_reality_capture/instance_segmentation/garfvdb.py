@@ -11,6 +11,7 @@ from typing import Any
 
 import fvdb
 import torch
+
 from fvdb_reality_capture.radiance_fields.gaussian_splatting import GaussianSplat3d
 
 from .model import GARfVDBModel

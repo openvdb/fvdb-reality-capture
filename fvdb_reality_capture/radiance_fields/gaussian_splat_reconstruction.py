@@ -14,12 +14,12 @@ import numpy as np
 import torch
 import torch.nn.functional as nnf
 import torch.utils.data
-from torch.utils import _pytree
-from torch.utils.data import default_collate
 import tqdm
 from fvdb.utils.metrics import psnr, ssim
 from fvdb.viz import Scene
 from scipy.spatial import cKDTree  # type: ignore
+from torch.utils import _pytree
+from torch.utils.data import default_collate
 
 from fvdb_reality_capture.sfm_scene import SfmScene
 from fvdb_reality_capture.tools import export_splats_to_usd
@@ -31,7 +31,6 @@ from ._private.utils import crop_image_batch
 from .camera_pose_adjust import CameraPoseAdjustment
 from .checkpoint import GAUSSIAN_SPLAT_RECONSTRUCTION_METHOD_VERSION
 from .gaussian_splat_dataset import SfmDataset
-from .gaussian_splatting import GaussianSplat3d
 from .gaussian_splat_optimizer import (
     BaseGaussianSplatOptimizer,
     GaussianSplatOptimizerConfig,
@@ -40,6 +39,7 @@ from .gaussian_splat_reconstruction_writer import (
     GaussianSplatReconstructionBaseWriter,
     GaussianSplatReconstructionWriter,
 )
+from .gaussian_splatting import GaussianSplat3d
 
 
 def _collate_cached_sfm_batch(batch: list[dict[str, Any]]) -> dict[str, Any]:
@@ -106,6 +106,21 @@ def _scale_shift_invariant_l1(
         t_hat = (t - t_med) / t_mad
         per_image_losses.append((p_hat - t_hat).abs().mean())
     return torch.stack(per_image_losses).mean()
+
+
+def _num_steps_per_epoch(num_training_images: int, batch_size: int) -> int:
+    """Number of optimizer steps in one epoch.
+
+    Each step consumes one minibatch, and the training loader keeps the final partial batch.
+
+    Args:
+        num_training_images (int): Number of images in the training set.
+        batch_size (int): Number of images per optimizer step.
+
+    Returns:
+        num_steps_per_epoch (int): ``ceil(num_training_images / batch_size)``.
+    """
+    return (num_training_images + batch_size - 1) // batch_size
 
 
 @dataclass
@@ -566,15 +581,16 @@ class GaussianSplatReconstruction:
         render_backend = make_render_backend(config.render_backend)
         render_backend.validate_scene_cameras(model, train_dataset, config, torch.device(device))
 
-        # Initialize optimizer
-        max_steps = config.max_epochs * len(train_dataset)
-        optimizer = optimizer_config.make_optimizer(model=model, sfm_scene=train_dataset.sfm_scene)
-        optimizer.reset_learning_rates_and_decay(batch_size=config.batch_size, expected_steps=max_steps)
+        # Decay the learning rate over the optimizer steps the training loop will run.
+        # The loop stops at max_epochs even when max_steps is larger.
+        num_steps_per_epoch = _num_steps_per_epoch(len(train_dataset), config.batch_size)
+        expected_steps = config.max_epochs * num_steps_per_epoch
+        if config.max_steps is not None:
+            expected_steps = min(expected_steps, config.max_steps)
 
-        if config.batch_size > 1:
-            num_steps_per_epoch = int(np.ceil(len(train_dataset) / config.batch_size))
-        else:
-            num_steps_per_epoch = len(train_dataset)
+        # Initialize optimizer
+        optimizer = optimizer_config.make_optimizer(model=model, sfm_scene=train_dataset.sfm_scene)
+        optimizer.reset_learning_rates_and_decay(batch_size=config.batch_size, expected_steps=expected_steps)
 
         # Initialize pose optimizer
         pose_adjust_model, pose_adjust_optimizer, pose_adjust_scheduler = None, None, None
@@ -720,10 +736,7 @@ class GaussianSplatReconstruction:
             pose_adjust_model_state = cls._move_state_tensors_to_device(state_dict["pose_adjust_model"], device)
             pose_adjust_optimizer_state = cls._move_state_tensors_to_device(state_dict["pose_adjust_optimizer"], device)
             pose_adjust_scheduler_state = cls._move_state_tensors_to_device(state_dict["pose_adjust_scheduler"], device)
-            if config.batch_size > 1:
-                num_steps_per_epoch = int(np.ceil(len(train_indices) / config.batch_size))
-            else:
-                num_steps_per_epoch = len(train_indices)
+            num_steps_per_epoch = _num_steps_per_epoch(len(train_indices), config.batch_size)
             pose_adjust_model, pose_adjust_optimizer, pose_adjust_scheduler = cls._make_pose_optimizer(
                 config, device, sfm_scene.num_images, num_steps_per_epoch
             )
@@ -1304,10 +1317,7 @@ class GaussianSplatReconstruction:
             ),
         )
 
-        if self.config.batch_size > 1:
-            num_steps_per_epoch = np.ceil(len(self.training_dataset) / self.config.batch_size).astype(int)
-        else:
-            num_steps_per_epoch = len(self.training_dataset)
+        num_steps_per_epoch = _num_steps_per_epoch(len(self.training_dataset), self.config.batch_size)
 
         # Calculate total steps, allowing max_steps to override the computed value
         computed_total_steps: int = int(self.config.max_epochs * num_steps_per_epoch)
@@ -1366,7 +1376,6 @@ class GaussianSplatReconstruction:
 
         for epoch in range(start_epoch, self.config.max_epochs):
             for minibatch in trainloader:
-
                 # Camera pose optimization
                 image_ids: torch.Tensor | None = None
                 if self.pose_adjust_model is not None:
@@ -1545,12 +1554,12 @@ class GaussianSplatReconstruction:
                 # If you enabled pose optimization, step the pose optimizer if we performed a
                 # pose update this iteration
                 if self.config.optimize_camera_poses and pose_opt_start_step <= self._global_step < pose_opt_stop_step:
-                    assert (
-                        self.pose_adjust_optimizer is not None
-                    ), "Pose optimizer should be initialized if pose optimization is enabled."
-                    assert (
-                        self.pose_adjust_scheduler is not None
-                    ), "Pose scheduler should be initialized if pose optimization is enabled."
+                    assert self.pose_adjust_optimizer is not None, (
+                        "Pose optimizer should be initialized if pose optimization is enabled."
+                    )
+                    assert self.pose_adjust_scheduler is not None, (
+                        "Pose scheduler should be initialized if pose optimization is enabled."
+                    )
                     self.pose_adjust_optimizer.step()
                     self.pose_adjust_scheduler.step()
                     self.pose_adjust_optimizer.zero_grad(set_to_none=True)

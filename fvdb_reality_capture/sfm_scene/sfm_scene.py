@@ -531,9 +531,9 @@ class SfmScene:
             # Compute the median distance from the SfmPoints seen by each camera to the position of the camera
             median_depth_per_camera = []
             for image_meta in self.images:
-                assert (
-                    image_meta.point_indices is not None
-                ), "SfmScene.has_visible_point_indices is True but image has no point indices"
+                assert image_meta.point_indices is not None, (
+                    "SfmScene.has_visible_point_indices is True but image has no point indices"
+                )
 
                 # Don't use cameras that don't see any points in the estimate
                 if len(image_meta.point_indices) == 0:

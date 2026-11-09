@@ -17,10 +17,8 @@ import torch.cuda.nvtx as nvtx
 import torchvision
 import torchvision.transforms.functional as tvF
 import tqdm
-from fvdb_reality_capture.radiance_fields.gaussian_splatting import GaussianSplat3d
+
 from fvdb_reality_capture.checkpoints import load_training_checkpoint
-from fvdb_reality_capture.sfm_scene import SfmScene
-from fvdb_reality_capture.tools import filter_splats_above_scale
 from fvdb_reality_capture.instance_segmentation.checkpoint import (
     GARFVDB_TRAINING_METHOD,
     GARFVDB_TRAINING_METHOD_VERSION,
@@ -41,6 +39,9 @@ from fvdb_reality_capture.instance_segmentation.training.dataset_transforms impo
 )
 from fvdb_reality_capture.instance_segmentation.training.segmentation_writer import GARfVDBWriter
 from fvdb_reality_capture.instance_segmentation.util import pca_projection_fast
+from fvdb_reality_capture.radiance_fields.gaussian_splatting import GaussianSplat3d
+from fvdb_reality_capture.sfm_scene import SfmScene
+from fvdb_reality_capture.tools import filter_splats_above_scale
 
 if TYPE_CHECKING:
     from fvdb_reality_capture.instance_segmentation.garfvdb import GARfVDB

@@ -152,7 +152,7 @@ class DownsampleImages(BaseTransform):
             image_meta = input_scene.images[image_id]
             if not output_cache.has_file(cache_image_filename):
                 self._logger.info(
-                    f"Image {cache_image_filename} not found in the cache. " f"Clearing cache and regenerating."
+                    f"Image {cache_image_filename} not found in the cache. Clearing cache and regenerating."
                 )
                 output_cache.clear_current_folder()
                 regenerate_cache = True
@@ -209,21 +209,21 @@ class DownsampleImages(BaseTransform):
                 img_h, img_w = full_res_img.shape[:2]
                 rescaled_img_h = int(img_h / self._image_downsample_factor)
                 rescaled_img_w = int(img_w / self._image_downsample_factor)
-                assert (
-                    rescaled_img_w == new_camera_metadata[image_meta.camera_id].width
-                ), f"Got mismatched widths {rescaled_img_w} !={new_camera_metadata[image_meta.camera_id].width}"
-                assert (
-                    rescaled_img_h == new_camera_metadata[image_meta.camera_id].height
-                ), f"Got mismatched heights {rescaled_img_h} !={new_camera_metadata[image_meta.camera_id].height}"
+                assert rescaled_img_w == new_camera_metadata[image_meta.camera_id].width, (
+                    f"Got mismatched widths {rescaled_img_w} !={new_camera_metadata[image_meta.camera_id].width}"
+                )
+                assert rescaled_img_h == new_camera_metadata[image_meta.camera_id].height, (
+                    f"Got mismatched heights {rescaled_img_h} !={new_camera_metadata[image_meta.camera_id].height}"
+                )
                 pbar.set_description(
                     f"Rescaling {image_filename} from {img_w} x {img_h} to {rescaled_img_w} x {rescaled_img_h}"
                 )
                 rescaled_image = cv2.resize(
                     full_res_img, (rescaled_img_w, rescaled_img_h), interpolation=self._rescale_sampling_mode
                 )
-                assert (
-                    rescaled_image.shape[0] == rescaled_img_h and rescaled_image.shape[1] == rescaled_img_w
-                ), f"Rescaled image {image_filename} has shape {rescaled_image.shape} but expected {rescaled_img_h, rescaled_img_w}"
+                assert rescaled_image.shape[0] == rescaled_img_h and rescaled_image.shape[1] == rescaled_img_w, (
+                    f"Rescaled image {image_filename} has shape {rescaled_image.shape} but expected {rescaled_img_h, rescaled_img_w}"
+                )
                 # Save the rescaled image to the cache
                 cache_image_filename = f"image_{image_meta.image_id:0{num_zeropad}}"
                 cache_file_meta = output_cache.write_file(
@@ -245,21 +245,21 @@ class DownsampleImages(BaseTransform):
                     mask_h, mask_w = full_res_mask.shape[:2]
                     rescaled_mask_h = int(mask_h / self._image_downsample_factor)
                     rescaled_mask_w = int(mask_w / self._image_downsample_factor)
-                    assert (
-                        rescaled_mask_w == new_camera_metadata[image_meta.camera_id].width
-                    ), f"Got mismatched mask widths {rescaled_mask_w} != {new_camera_metadata[image_meta.camera_id].width}"
-                    assert (
-                        rescaled_mask_h == new_camera_metadata[image_meta.camera_id].height
-                    ), f"Got mismatched mask heights {rescaled_mask_h} != {new_camera_metadata[image_meta.camera_id].height}"
+                    assert rescaled_mask_w == new_camera_metadata[image_meta.camera_id].width, (
+                        f"Got mismatched mask widths {rescaled_mask_w} != {new_camera_metadata[image_meta.camera_id].width}"
+                    )
+                    assert rescaled_mask_h == new_camera_metadata[image_meta.camera_id].height, (
+                        f"Got mismatched mask heights {rescaled_mask_h} != {new_camera_metadata[image_meta.camera_id].height}"
+                    )
                     pbar.set_description(
                         f"Rescaling {image_filename} from {mask_w} x {mask_h} to {rescaled_mask_w} x {rescaled_mask_h}"
                     )
                     rescaled_mask = cv2.resize(
                         full_res_mask, (rescaled_mask_w, rescaled_mask_h), interpolation=cv2.INTER_NEAREST_EXACT
                     )
-                    assert (
-                        rescaled_mask.shape[0] == rescaled_img_h and rescaled_mask.shape[1] == rescaled_img_w
-                    ), f"Rescaled mask {image_filename} has shape {rescaled_mask.shape} but expected {rescaled_img_h, rescaled_img_w}"
+                    assert rescaled_mask.shape[0] == rescaled_img_h and rescaled_mask.shape[1] == rescaled_img_w, (
+                        f"Rescaled mask {image_filename} has shape {rescaled_mask.shape} but expected {rescaled_img_h, rescaled_img_w}"
+                    )
                     # Save the rescaled image to the cache
                     cache_mask_filename = f"mask_{image_meta.image_id:0{num_zeropad}}"
                     cache_mask_meta = output_cache.write_file(

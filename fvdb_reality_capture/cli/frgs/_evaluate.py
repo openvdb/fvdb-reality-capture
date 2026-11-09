@@ -12,14 +12,13 @@ import tyro
 from tyro.conf import arg
 
 from fvdb_reality_capture.checkpoints import load_training_checkpoint
-from fvdb_reality_capture.radiance_fields.checkpoint import GAUSSIAN_SPLAT_RECONSTRUCTION_METHOD
-
 from fvdb_reality_capture.cli import BaseCommand
 from fvdb_reality_capture.radiance_fields import (
     GaussianSplatReconstruction,
     GaussianSplatReconstructionWriter,
     GaussianSplatReconstructionWriterConfig,
 )
+from fvdb_reality_capture.radiance_fields.checkpoint import GAUSSIAN_SPLAT_RECONSTRUCTION_METHOD
 
 
 @dataclass

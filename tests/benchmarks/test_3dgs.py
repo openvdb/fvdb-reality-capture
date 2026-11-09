@@ -14,6 +14,7 @@ import torch.nn.functional as F
 import torch.utils.data
 import yaml
 
+import fvdb_reality_capture.functional as frc_functional
 from fvdb_reality_capture import CameraModel
 
 # Set multiprocessing start method to 'spawn' to avoid fork() warnings with PyTorch
@@ -21,6 +22,7 @@ from fvdb_reality_capture import CameraModel
 if multiprocessing.get_start_method(allow_none=True) != "spawn":
     multiprocessing.set_start_method("spawn", force=True)
 
+from fvdb_reality_capture.checkpoints import load_training_checkpoint
 from fvdb_reality_capture.radiance_fields import (
     GaussianSplatOptimizerMCMCConfig,
     GaussianSplatReconstruction,
@@ -29,7 +31,6 @@ from fvdb_reality_capture.radiance_fields import (
     GaussianSplatReconstructionWriterConfig,
     SfmDataset,
 )
-from fvdb_reality_capture.checkpoints import load_training_checkpoint
 from fvdb_reality_capture.radiance_fields.checkpoint import GAUSSIAN_SPLAT_RECONSTRUCTION_METHOD
 from fvdb_reality_capture.sfm_scene import SfmScene
 from fvdb_reality_capture.transforms import Compose, DownsampleImages, NormalizeScene
@@ -160,15 +161,14 @@ class Benchmark3dgs:
         )
 
     def run_render_gaussians(self):
-        # Render an image from the gaussian splats
-        # possibly using a crop of the full image
-        self.colors, self.alphas = self.runner.model.render_from_projected_gaussians(
-            self.projected_gaussians,
-            crop_width=self.image_width,
-            crop_height=self.image_height,
-            crop_origin_w=0,
-            crop_origin_h=0,
-            tile_size=self.runner.config.tile_size,
+        # Render the full image from the projected Gaussians through the stage functions, so tile
+        # intersection is timed as part of rendering on every iteration.
+        pg = self.projected_gaussians
+        tiles = frc_functional.intersect_gaussian_tiles(
+            pg.projected_gaussians, pg.opacities, tile_size=self.runner.config.tile_size
+        )
+        self.colors, self.alphas = frc_functional.rasterize_screen_space_gaussians(
+            pg.projected_gaussians, pg.render_quantities, pg.opacities, tiles
         )
 
     def run_forward(self):

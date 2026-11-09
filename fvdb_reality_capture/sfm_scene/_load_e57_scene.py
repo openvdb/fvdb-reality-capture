@@ -8,9 +8,9 @@ import cv2
 import numpy as np
 import pye57
 import tqdm
-from ..enums import CameraModel
 from scipy.spatial.transform import Rotation
 
+from ..enums import CameraModel
 from . import SfmCache, SfmCameraMetadata, SfmPosedImageMetadata
 
 

@@ -3,8 +3,9 @@
 #
 from typing import Any
 
-from ..enums import CameraModel
 import numpy as np
+
+from ..enums import CameraModel
 
 _DISTORTION_COEFFS_SHAPE = (12,)
 """

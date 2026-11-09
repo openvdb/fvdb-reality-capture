@@ -612,11 +612,10 @@ class GaussianSplatOptimizerMCMC(BaseGaussianSplatOptimizer):
 
         self._means_lr_decay_exponent = 0.01 ** (1.0 / expected_steps)
 
-        # Scale the learning rate and momentum parameters (epsilon, betas) based on batch size,
-        # reference: https://www.cs.princeton.edu/~smalladi/blog/2024/01/22/SDEs-ScalingRules/
-        # Note that this will not make the training exactly equivalent to the original INRIA
-        # Gaussian splat implementation.
-        # See https://arxiv.org/pdf/2402.18824v1 for more details.
+        # Scale the learning rate and momentum parameters (epsilon, betas) based on batch size.
+        # The learning rate and betas are scaled following the scheme proposed in
+        # https://arxiv.org/abs/2406.18533. Epsilon is rescaled based on
+        # https://www.cs.princeton.edu/~smalladi/blog/2024/01/22/SDEs-ScalingRules/
         lr_batch_rescale = math.sqrt(float(batch_size))
 
         # Store learning rates in a dictionary so we can look them up
@@ -630,7 +629,7 @@ class GaussianSplatOptimizerMCMC(BaseGaussianSplatOptimizer):
             "shN": self._config.shN_lr * lr_batch_rescale,
         }
 
-        rescaled_betas = (1.0 - batch_size * (1.0 - 0.9), 1.0 - batch_size * (1.0 - 0.999))
+        rescaled_betas = (math.pow(0.9, float(batch_size)), math.pow(0.999, float(batch_size)))
         for param_group in self._optimizer.param_groups:
             param_group["betas"] = rescaled_betas
             param_group["lr"] = reset_lr_values[param_group["name"]]

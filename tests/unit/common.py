@@ -8,7 +8,6 @@ import torch
 
 import fvdb_reality_capture as frc
 from fvdb_reality_capture import CameraModel, GaussianSplat3d
-
 from fvdb_reality_capture.sfm_scene import (
     SfmCameraMetadata,
     SfmPosedImageMetadata,

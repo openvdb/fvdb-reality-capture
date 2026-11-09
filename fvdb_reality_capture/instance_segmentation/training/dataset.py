@@ -4,12 +4,13 @@
 
 from __future__ import annotations
 
-from typing import Any, Literal, NotRequired, Sequence, Sized, TypedDict, cast, overload
+from typing import Any, Literal, Sequence, Sized, cast, overload
 
 import fvdb
 import numpy as np
 import torch
 import torch.cuda.nvtx as nvtx
+from typing_extensions import NotRequired, TypedDict
 
 from fvdb_reality_capture.instance_segmentation.scene_attribute import (
     GARFVDB_MASK_ATTRIBUTE_NAME,
@@ -322,7 +323,9 @@ class GARfVDBInput(dict[str, Any]):
         self, key: str, default: torch.Tensor | fvdb.JaggedTensor | list[int] | None = None
     ) -> torch.Tensor | fvdb.JaggedTensor | list[int] | None: ...
 
-    def get(self, key: str, default: torch.Tensor | fvdb.JaggedTensor | list[int] | None = None) -> torch.Tensor | fvdb.JaggedTensor | list[int] | None:  # type: ignore[override]
+    def get(
+        self, key: str, default: torch.Tensor | fvdb.JaggedTensor | list[int] | None = None
+    ) -> torch.Tensor | fvdb.JaggedTensor | list[int] | None:  # type: ignore[override]
         return super().get(key, default)
 
     def __repr__(self):

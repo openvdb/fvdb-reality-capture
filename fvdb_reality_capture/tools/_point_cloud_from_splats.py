@@ -4,7 +4,6 @@
 import numpy as np
 import torch
 import tqdm
-from ..enums import CameraModel
 from fvdb.types import (
     NumericMaxRank1,
     NumericMaxRank2,
@@ -17,6 +16,7 @@ from skimage import feature, morphology
 
 from fvdb_reality_capture.radiance_fields.gaussian_splatting import GaussianSplat3d
 
+from ..enums import CameraModel
 from ._common import validate_camera_matrices_and_image_sizes, validate_pinhole_camera_models
 
 

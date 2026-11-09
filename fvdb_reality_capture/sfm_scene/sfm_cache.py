@@ -436,7 +436,6 @@ class SfmCache:
             conn = sqlite3.connect(self._db_path)
             cursor = conn.cursor()
             try:
-
                 row = cursor.execute(
                     f"""
                     SELECT COUNT(*) FROM {self._folders_table_name} WHERE parent_id = ?

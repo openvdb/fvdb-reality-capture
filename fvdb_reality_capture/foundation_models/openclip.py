@@ -79,7 +79,7 @@ class OpenCLIPModel:
 
         # Convert torch dtype to OpenCLIP precision string
         if dtype not in _DTYPE_TO_PRECISION:
-            raise ValueError(f"Unsupported dtype: {dtype}. " f"Supported dtypes: {list(_DTYPE_TO_PRECISION.keys())}")
+            raise ValueError(f"Unsupported dtype: {dtype}. Supported dtypes: {list(_DTYPE_TO_PRECISION.keys())}")
         precision_str = _DTYPE_TO_PRECISION[dtype]
 
         self._logger.info(f"Loading OpenCLIP model: {model_type} pretrained on {pretrained} (dtype: {dtype})")
@@ -127,8 +127,7 @@ class OpenCLIPModel:
         self._preprocess_tensor = T.Compose(tensor_transforms)
 
         self._logger.info(
-            f"OpenCLIP model loaded successfully. "
-            f"Embedding dim: {self._embedding_dim}, Image size: {self._image_size}"
+            f"OpenCLIP model loaded successfully. Embedding dim: {self._embedding_dim}, Image size: {self._image_size}"
         )
 
     @staticmethod

@@ -282,8 +282,7 @@ class PerImageValueAttribute(SceneAttribute):
     def validate(self, attr_name: str, num_points: int, num_images: int, camera_ids: set[int]) -> None:
         if len(self._values) != num_images:
             raise ValueError(
-                f"Attribute '{attr_name}': expected len(values) == {num_images} (num_images), "
-                f"got {len(self._values)}"
+                f"Attribute '{attr_name}': expected len(values) == {num_images} (num_images), got {len(self._values)}"
             )
 
     def on_filter_images(self, mask: np.ndarray) -> "PerImageValueAttribute":
@@ -346,7 +345,7 @@ class PerImageRasterAttribute(SceneAttribute):
     def validate(self, attr_name: str, num_points: int, num_images: int, camera_ids: set[int]) -> None:
         if len(self._paths) != num_images:
             raise ValueError(
-                f"Attribute '{attr_name}': expected len(paths) == {num_images} (num_images), " f"got {len(self._paths)}"
+                f"Attribute '{attr_name}': expected len(paths) == {num_images} (num_images), got {len(self._paths)}"
             )
 
     def on_filter_images(self, mask: np.ndarray) -> "PerImageRasterAttribute":
@@ -559,7 +558,7 @@ class PerCameraAttribute(SceneAttribute):
         invalid_keys = set(self._values.keys()) - camera_ids
         if invalid_keys:
             raise ValueError(
-                f"Attribute '{attr_name}': keys {invalid_keys} are not valid camera IDs. " f"Valid IDs: {camera_ids}"
+                f"Attribute '{attr_name}': keys {invalid_keys} are not valid camera IDs. Valid IDs: {camera_ids}"
             )
 
     def state_dict(self) -> dict:

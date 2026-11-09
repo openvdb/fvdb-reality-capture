@@ -8,8 +8,8 @@ import pathlib
 import numpy as np
 import point_cloud_utils as pcu
 import tqdm
-from ..enums import CameraModel
 
+from ..enums import CameraModel
 from .sfm_cache import SfmCache
 from .sfm_metadata import SfmCameraMetadata, SfmPosedImageMetadata
 

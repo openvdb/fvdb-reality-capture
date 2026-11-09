@@ -37,7 +37,16 @@ rst_prolog = f"""\
 # Add any Sphinx extension module names here, as strings. They can be
 # extensions coming with Sphinx (named 'sphinx.ext.*') or your custom
 # ones.
-extensions = ["sphinx.ext.autodoc", "sphinx.ext.viewcode", "sphinx.ext.napoleon", "myst_parser"]
+extensions = [
+    "sphinx.ext.autodoc",
+    "sphinx.ext.intersphinx",
+    "sphinx.ext.viewcode",
+    "sphinx.ext.napoleon",
+    "myst_parser",
+]
+
+# fvdb is mocked during the docs build; resolve references to it against its published docs.
+intersphinx_mapping = {"fvdb": ("https://fvdb-core.readthedocs.io/latest/", None)}
 
 myst_enable_extensions = [
     "amsmath",

@@ -7,13 +7,13 @@ from __future__ import annotations
 
 import pathlib
 
-from .gaussian_splatting import GaussianSplat3d
 from fvdb.types import DeviceIdentifier
 
 from fvdb_reality_capture.checkpoints import load_training_checkpoint
 
 from .checkpoint import GAUSSIAN_SPLAT_RECONSTRUCTION_METHOD
 from .gaussian_splat_reconstruction import GaussianSplatReconstruction
+from .gaussian_splatting import GaussianSplat3d
 
 
 def load_splats_from_file(path: pathlib.Path, device: DeviceIdentifier) -> tuple[GaussianSplat3d, dict]:

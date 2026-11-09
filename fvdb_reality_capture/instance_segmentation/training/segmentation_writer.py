@@ -12,12 +12,13 @@ from typing import Any, TextIO
 import cv2
 import numpy as np
 import torch
+from fvdb.types import NumericScalar, to_FloatingScalar
+
 from fvdb_reality_capture.checkpoints import create_training_checkpoint
 from fvdb_reality_capture.instance_segmentation.checkpoint import (
     GARFVDB_TRAINING_METHOD,
     GARFVDB_TRAINING_METHOD_VERSION,
 )
-from fvdb.types import NumericScalar, to_FloatingScalar
 
 
 class GARfVDBBaseWriter(ABC):
@@ -325,7 +326,7 @@ class GARfVDBWriter(GARfVDBBaseWriter):
                 attempts += 1
                 self._logger.debug(f"Results directory {log_path} already exists. Attempting to create a new one.")
                 # Generate a new run name with an incremented attempt number
-                run_name = f"{prefix}_{time.strftime('%Y-%m-%d-%H-%M-%S')}_{attempts+1:02d}"
+                run_name = f"{prefix}_{time.strftime('%Y-%m-%d-%H-%M-%S')}_{attempts + 1:02d}"
                 continue
         if attempts >= max_attempts:
             raise FileExistsError(f"Failed to generate a unique log directory name after {max_attempts} attempts.")

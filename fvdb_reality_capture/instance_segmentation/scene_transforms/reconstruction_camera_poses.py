@@ -30,7 +30,7 @@ class ApplyReconstructionCameraPoses(BaseTransform):
         matrices = np.asarray(camera_to_world_matrices)
         if matrices.ndim != 3 or matrices.shape[1:] != (4, 4):
             raise ValueError(
-                "Reconstruction camera_to_world_matrices must have shape " f"(num_images, 4, 4), got {matrices.shape}."
+                f"Reconstruction camera_to_world_matrices must have shape (num_images, 4, 4), got {matrices.shape}."
             )
         if not np.isfinite(matrices).all():
             raise ValueError("Reconstruction camera_to_world_matrices must contain only finite values.")
@@ -48,7 +48,7 @@ class ApplyReconstructionCameraPoses(BaseTransform):
             image_ids_array = np.asarray(image_ids)
             if image_ids_array.ndim != 1 or len(image_ids_array) != len(matrices):
                 raise ValueError(
-                    "Reconstruction image_ids must have shape " f"({len(matrices)},), got {image_ids_array.shape}."
+                    f"Reconstruction image_ids must have shape ({len(matrices)},), got {image_ids_array.shape}."
                 )
             image_ids_array = image_ids_array.astype(np.int64, copy=False)
             if len(np.unique(image_ids_array)) != len(image_ids_array):

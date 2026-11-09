@@ -22,10 +22,8 @@ authors = [
 license="Apache-2.0"
 license-files = ["LICEN[CS]E*"]
 dependencies = [
-    "fvdb-core>=0.6.0dev0",
-    "boto3",
+    "fvdb-core[viewer]>=0.7.0dev0",
     "dlnr_lite",
-    "nanovdb-editor<0.2.0",
     "numpy>=2.0.0",
     "opencv-python-headless",
     "open-clip-torch==3.2.0",
@@ -43,18 +41,25 @@ dependencies = [
     "torchvision",
     "tqdm",
     "tyro",
+    "typing_extensions>=4.0.0",
     "usd-core>=26.3 ; platform_machine != 'aarch64'",
     "usd-exchange ; platform_machine == 'aarch64'",
     "msgpack",
-    "types-usd",
 ]
 
 [project.optional-dependencies]
 benchmark = [
     "gitpython",
     "matplotlib",
+    "pyyaml",
+]
+dev = [
+    "boto3",
+    "matplotlib",
+    "types-usd",
 ]
 test = [
+    "boto3",
     "OpenImageIO",
     "parameterized",
     "pytest",
@@ -71,3 +76,13 @@ Issues = "https://github.com/openvdb/fvdb-reality-capture/issues"
 # pyproject.toml
 [tool.setuptools.packages.find]
 include = ["fvdb_reality_capture*"]    # Glob patterns for package names
+
+[tool.ruff]
+required-version = "==0.15.7"
+target-version = "py311"
+line-length = 120
+# Keep notebooks and Markdown files out of Ruff formatting.
+extend-exclude = ["*.ipynb", "*.md"]
+
+[tool.ruff.lint]
+select = ["I"]

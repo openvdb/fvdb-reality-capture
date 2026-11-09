@@ -10,10 +10,10 @@ import cv2
 import numpy as np
 import torch
 import tqdm
-from fvdb_reality_capture.enums import CameraModel
-from fvdb_reality_capture.radiance_fields.gaussian_splatting import GaussianSplat3d
 
+from fvdb_reality_capture.enums import CameraModel
 from fvdb_reality_capture.foundation_models import SAM2Model
+from fvdb_reality_capture.radiance_fields.gaussian_splatting import GaussianSplat3d
 from fvdb_reality_capture.sfm_scene import SfmCache, SfmScene
 from fvdb_reality_capture.transforms import BaseTransform, transform
 
@@ -240,7 +240,7 @@ class GenerateGARfVDBMasks(BaseTransform):
             image_meta = input_scene.images[image_id]
             if not output_cache.has_file(cache_image_filename):
                 self._logger.info(
-                    f"Masks {cache_image_filename} not found in the cache. " f"Clearing cache and regenerating."
+                    f"Masks {cache_image_filename} not found in the cache. Clearing cache and regenerating."
                 )
                 output_cache.clear_current_folder()
                 regenerate_cache = True

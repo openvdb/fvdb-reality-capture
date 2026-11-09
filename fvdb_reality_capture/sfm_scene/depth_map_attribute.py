@@ -277,8 +277,7 @@ class DepthMapAttribute(PerImageRasterAttribute):
                 arr = loaded
             else:
                 raise TypeError(
-                    f"DepthMapAttribute: expected torch.Tensor or numpy.ndarray in "
-                    f"{path}, got {type(loaded).__name__}."
+                    f"DepthMapAttribute: expected torch.Tensor or numpy.ndarray in {path}, got {type(loaded).__name__}."
                 )
         else:
             raise ValueError(f"DepthMapAttribute: unsupported file extension '{ext}' for {path}.")

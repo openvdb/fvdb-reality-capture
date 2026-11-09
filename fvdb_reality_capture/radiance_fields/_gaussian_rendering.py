@@ -7,7 +7,6 @@ from typing import TYPE_CHECKING, Literal, Protocol
 import torch
 
 from ..enums import CameraModel, ProjectionMethod
-
 from .gaussian_splat_dataset import SfmDataset
 from .gaussian_splatting import GaussianSplat3d
 

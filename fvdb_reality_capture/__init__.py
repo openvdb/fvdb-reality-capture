@@ -8,13 +8,14 @@ from . import (
     checkpoints,
     dev,
     foundation_models,
+    functional,
     instance_segmentation,
     radiance_fields,
     sfm_scene,
     tools,
     transforms,
 )
-from .enums import CameraModel, ProjectionMethod, RollingShutterType
+from .enums import CameraModel, GaussianRenderMode, ProjectionMethod, RollingShutterType
 from .radiance_fields import (
     GaussianSplat3d,
     ProjectedGaussianSplats,
@@ -39,6 +40,8 @@ __all__ = [
     "RollingShutterType",
     "CameraModel",
     "ProjectionMethod",
+    "GaussianRenderMode",
+    "functional",
     "checkpoints",
     "dev",
     "foundation_models",
