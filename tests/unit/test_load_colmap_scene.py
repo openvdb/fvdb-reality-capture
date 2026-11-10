@@ -226,8 +226,7 @@ class LoadColmapSceneTests(unittest.TestCase):
                 },
                 images=OrderedDict([(1, FakeImage("a.jpg", 1, np.array([0.0, 0.0, 1.0])))]),
                 points3D={
-                    i
-                    + 1: FakePoint3D(
+                    i + 1: FakePoint3D(
                         xyz=xyz,
                         color=np.array([255, 255, 255], dtype=np.uint8),
                         error=0.1,
