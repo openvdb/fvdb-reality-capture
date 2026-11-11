@@ -50,6 +50,27 @@ jobs:
     name: Approval
     uses: ./.github/workflows/approval-gate.yml
 
+  # If the gate is rejected (or fails), every job below is skipped, and a
+  # skipped job satisfies a required status check. This job turns that into
+  # an explicit failure so a PR cannot look green when no tests ran. Add
+  # "Approval result" to the required checks on main.
+  approval-result:
+    name: Approval result
+    needs: approve
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    permissions: {}
+    steps:
+      - name: Fail unless the approval gate passed
+        env:
+          APPROVE_RESULT: ${{ needs.approve.result }}
+        run: |
+          if [ "$APPROVE_RESULT" != "success" ]; then
+            echo "::error::Approval gate result was '${APPROVE_RESULT}'; no tests ran for this commit."
+            exit 1
+          fi
+          echo "Approval gate passed."
+
   versions:
     name: Load versions
     needs: approve
