@@ -48,6 +48,8 @@ jobs:
   # directly or through its needs chain, so nothing privileged starts first.
   approve:
     name: Approval
+    permissions:
+      actions: read # approval-gate.yml reads the environment's protection rules
     uses: ./.github/workflows/approval-gate.yml
 
   # If the gate is rejected (or fails), every job below is skipped, and a
