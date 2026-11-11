@@ -41,14 +41,25 @@ permissions:
   id-token: write
 
 jobs:
+  # Approval gate. This workflow runs on pull_request_target, i.e. with this
+  # repository's secrets, OIDC identity and self-hosted runners. PRs from
+  # accounts without write access wait here until a maintainer approves the
+  # run; see approval-gate.yml. Every other job must depend on this one,
+  # directly or through its needs chain, so nothing privileged starts first.
+  approve:
+    name: Approval
+    uses: ./.github/workflows/approval-gate.yml
+
   versions:
     name: Load versions
+    needs: approve
     uses: ./.github/workflows/load-versions.yml
 
   # Detect whether the PR touches source files or only docs/non-code paths.
   # The expensive build/test jobs are gated on this so docs-only PRs skip the
   # work while still reporting the required status checks (skipped == passed).
   check-changes:
+    needs: approve
     uses: ./.github/workflows/check-changes.yml
 
   ##############################################################################
@@ -88,13 +99,23 @@ jobs:
 
       - name: Fetch PR branch
         if: github.event_name == 'pull_request_target'
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
           cd $GITHUB_WORKSPACE
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           git config --global --add safe.directory "$GITHUB_WORKSPACE"
           git config --global --add safe.directory "$(pwd)"
-          git fetch origin pull/${{ github.event.pull_request.number }}/head:pr_branch
+          git fetch origin "pull/${PR_NUMBER}/head:pr_branch"
+          # The approval gate approved the commit in the event payload. Refuse
+          # to build anything else: the PR head may have moved since.
+          FETCHED_SHA="$(git rev-parse pr_branch)"
+          if [ "$FETCHED_SHA" != "$PR_HEAD_SHA" ]; then
+            echo "::error::PR head moved since this run was triggered ($PR_HEAD_SHA -> $FETCHED_SHA). Re-run on the new commit."
+            exit 1
+          fi
 
       - name: Merge PR branch into base
         if: github.event_name == 'pull_request_target'
@@ -220,13 +241,23 @@ jobs:
 
       - name: Fetch PR branch
         if: github.event_name == 'pull_request_target'
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
           cd $GITHUB_WORKSPACE
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           git config --global --add safe.directory "$GITHUB_WORKSPACE"
           git config --global --add safe.directory "$(pwd)"
-          git fetch origin pull/${{ github.event.pull_request.number }}/head:pr_branch
+          git fetch origin "pull/${PR_NUMBER}/head:pr_branch"
+          # The approval gate approved the commit in the event payload. Refuse
+          # to build anything else: the PR head may have moved since.
+          FETCHED_SHA="$(git rev-parse pr_branch)"
+          if [ "$FETCHED_SHA" != "$PR_HEAD_SHA" ]; then
+            echo "::error::PR head moved since this run was triggered ($PR_HEAD_SHA -> $FETCHED_SHA). Re-run on the new commit."
+            exit 1
+          fi
 
       - name: Merge PR branch into base
         if: github.event_name == 'pull_request_target'
