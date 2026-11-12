@@ -135,7 +135,7 @@ jobs:
       run:
         shell: bash -el {0}
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0 # Fetch all history for all branches
           ref: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.base.ref || github.ref }}
@@ -210,7 +210,7 @@ jobs:
 
       - name: Set up fvdb-core conda env
         if: steps.check_fvdb_core_wheel_artifact.outputs.exists == 'false'
-        uses: mamba-org/setup-micromamba@add3a49764cedee8ee24e82dfde87f5bc2914462 # v2.0.7
+        uses: mamba-org/setup-micromamba@f457c30a868e4760d3a6fcea5f25dc655b8edf39 # v3.2.1
         with:
           post-cleanup: 'all'
           environment-name: fvdb_build
@@ -226,7 +226,7 @@ jobs:
 
       - name: Upload fvdb wheel
         if: steps.check_fvdb_core_wheel_artifact.outputs.exists == 'false'
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: fvdb-wheel-${{ steps.clone_fvdb_core.outputs.fvdb_core_commit_hash }}
           path: fvdb-core/dist/*.whl
@@ -285,7 +285,7 @@ jobs:
       run:
         shell: bash -el {0}
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0 # Fetch all history for all branches
           ref: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.base.ref || github.ref }}
@@ -330,7 +330,7 @@ jobs:
           popd
 
       - name: Set up fvdb Conda env
-        uses: mamba-org/setup-micromamba@add3a49764cedee8ee24e82dfde87f5bc2914462 # v2.0.7
+        uses: mamba-org/setup-micromamba@f457c30a868e4760d3a6fcea5f25dc655b8edf39 # v3.2.1
         with:
           cache-environment: false
           post-cleanup: 'all'
@@ -338,7 +338,7 @@ jobs:
           environment-file: fvdb-core/env/dev_environment.yml
 
       - name: Download fvdb-core wheel
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: fvdb-wheel-${{ steps.clone_fvdb_core.outputs.fvdb_core_commit_hash }}
           path: ./dist
