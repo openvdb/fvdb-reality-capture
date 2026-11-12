@@ -12,6 +12,14 @@ import pytest
 
 from fvdb_reality_capture.dev import s3
 
+# These tests upload to, download from and delete in the real fvdb-data bucket,
+# so they need AWS credentials. CI jobs that run PR code deliberately have no
+# AWS credentials, so skip there instead of failing with NoCredentialsError.
+pytestmark = pytest.mark.skipif(
+    boto3.Session().get_credentials() is None,
+    reason="No AWS credentials available; S3 tests need access to the fvdb-data bucket.",
+)
+
 
 @pytest.fixture(scope="module")
 def s3_client():

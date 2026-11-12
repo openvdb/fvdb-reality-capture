@@ -8,8 +8,15 @@ on:
   # satisfies the required checks). The push trigger keeps paths-ignore since
   # push builds are not required PR checks.
   pull_request_target:
+    # ready_for_review is not a default type; without it, marking a draft
+    # ready runs nothing until the next push.
+    types: [opened, synchronize, reopened, ready_for_review]
+    # Keep this list in step with the deployment-branch policies of the
+    # ci-trusted and ci-external-approval environments and with the
+    # repository's Actions policy for pull_request_target.
     branches:
-      - '**'
+      - main
+      - 'release/**'
   push:
     branches:
       - main
@@ -32,23 +39,69 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
+# Default for every job. id-token: write (AWS OIDC) is granted per job, only
+# to the runner start and stop jobs, so the build and unit-test jobs, which
+# run PR code, cannot request an OIDC token.
 permissions:
-  contents: read
-  deployments: read
-  pull-requests: read
-  issues: read
-  # Need ID token write permission to use OIDC
-  id-token: write
+  contents: read # checkout
+  pull-requests: read # dorny/paths-filter in check-changes.yml
 
 jobs:
+  # Approval gate. This workflow runs on pull_request_target, i.e. with this
+  # repository's secrets, OIDC identity and self-hosted runners. PRs from
+  # accounts without write access wait here until a maintainer approves the
+  # run; see approval-gate.yml. Every other job must depend on this one,
+  # directly or through its needs chain, so nothing privileged starts first.
+  #
+  # Draft PRs skip the gate, and through `needs` everything else, so nobody
+  # is asked to approve a run that would do nothing. Marking the PR ready
+  # triggers a new run.
+  approve:
+    name: Approval
+    if: github.event_name != 'pull_request_target' || github.event.pull_request.draft == false
+    permissions:
+      actions: read # approval-gate.yml reads the environment's protection rules
+    uses: ./.github/workflows/approval-gate.yml
+
+  # If the gate is rejected (or fails), every job below is skipped, and a
+  # skipped job satisfies a required status check. This job turns that into
+  # an explicit failure so a PR cannot look green when no tests ran. Add
+  # "Approval result" to the required checks on main.
+  #
+  # A draft PR skips the gate on purpose; that is reported as a pass here
+  # (a draft cannot be merged, and marking it ready starts a new run).
+  approval-result:
+    name: Approval result
+    needs: approve
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    permissions: {}
+    steps:
+      - name: Fail unless the approval gate passed
+        env:
+          APPROVE_RESULT: ${{ needs.approve.result }}
+          IS_DRAFT: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.draft == true }}
+        run: |
+          if [ "$APPROVE_RESULT" = "skipped" ] && [ "$IS_DRAFT" = "true" ]; then
+            echo "Draft PR: the approval gate and all tests were skipped."
+            exit 0
+          fi
+          if [ "$APPROVE_RESULT" != "success" ]; then
+            echo "::error::Approval gate result was '${APPROVE_RESULT}'; no tests ran for this commit."
+            exit 1
+          fi
+          echo "Approval gate passed."
+
   versions:
     name: Load versions
+    needs: approve
     uses: ./.github/workflows/load-versions.yml
 
   # Detect whether the PR touches source files or only docs/non-code paths.
   # The expensive build/test jobs are gated on this so docs-only PRs skip the
   # work while still reporting the required status checks (skipped == passed).
   check-changes:
+    needs: approve
     uses: ./.github/workflows/check-changes.yml
 
   ##############################################################################
@@ -58,6 +111,9 @@ jobs:
     name: Start CPU-only EC2 runner for build
     needs: [check-changes, versions]
     if: needs.check-changes.outputs.should_test == 'true'
+    permissions:
+      contents: read
+      id-token: write # AWS OIDC
     uses: ./.github/workflows/start-ec2-runner.yml
     with:
       instance-type: m6a.8xlarge
@@ -88,13 +144,23 @@ jobs:
 
       - name: Fetch PR branch
         if: github.event_name == 'pull_request_target'
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
           cd $GITHUB_WORKSPACE
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           git config --global --add safe.directory "$GITHUB_WORKSPACE"
           git config --global --add safe.directory "$(pwd)"
-          git fetch origin pull/${{ github.event.pull_request.number }}/head:pr_branch
+          git fetch origin "pull/${PR_NUMBER}/head:pr_branch"
+          # The approval gate approved the commit in the event payload. Refuse
+          # to build anything else: the PR head may have moved since.
+          FETCHED_SHA="$(git rev-parse pr_branch)"
+          if [ "$FETCHED_SHA" != "$PR_HEAD_SHA" ]; then
+            echo "::error::PR head moved since this run was triggered ($PR_HEAD_SHA -> $FETCHED_SHA). Re-run on the new commit."
+            exit 1
+          fi
 
       - name: Merge PR branch into base
         if: github.event_name == 'pull_request_target'
@@ -173,6 +239,9 @@ jobs:
       - fvdb-reality-capture-build # required to wait when the main job is done
     # Don't try to stop a runner that was never started (docs-only PRs skip start-build-runner).
     if: ${{ always() && needs.start-build-runner.result != 'skipped' }}
+    permissions:
+      contents: read
+      id-token: write # AWS OIDC
     uses: ./.github/workflows/stop-ec2-runner.yml
     with:
       label: ${{ needs.start-build-runner.outputs.label }}
@@ -187,6 +256,9 @@ jobs:
   start-tests-gpu-runner:
     name: Start EC2 GPU runner for tests
     needs: [fvdb-reality-capture-build, versions]
+    permissions:
+      contents: read
+      id-token: write # AWS OIDC
     uses: ./.github/workflows/start-ec2-runner.yml
     with:
       instance-type: g6.xlarge # 4 CPU-core, L4 GPU
@@ -200,6 +272,8 @@ jobs:
   fvdb-reality-capture-unit-tests:
     needs: start-tests-gpu-runner # required to start the main job when the runner is ready
     name: fvdb-reality-capture Unit Tests
+    # This job runs PR code. It has no id-token permission and assumes no AWS
+    # role: nothing in the tests uses AWS credentials.
     runs-on: ${{ needs.start-tests-gpu-runner.outputs.label }} # run the job on the newly created runner
     container:
       image: aswf/ci-openvdb:2024-clang17.2
@@ -220,25 +294,29 @@ jobs:
 
       - name: Fetch PR branch
         if: github.event_name == 'pull_request_target'
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
           cd $GITHUB_WORKSPACE
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           git config --global --add safe.directory "$GITHUB_WORKSPACE"
           git config --global --add safe.directory "$(pwd)"
-          git fetch origin pull/${{ github.event.pull_request.number }}/head:pr_branch
+          git fetch origin "pull/${PR_NUMBER}/head:pr_branch"
+          # The approval gate approved the commit in the event payload. Refuse
+          # to build anything else: the PR head may have moved since.
+          FETCHED_SHA="$(git rev-parse pr_branch)"
+          if [ "$FETCHED_SHA" != "$PR_HEAD_SHA" ]; then
+            echo "::error::PR head moved since this run was triggered ($PR_HEAD_SHA -> $FETCHED_SHA). Re-run on the new commit."
+            exit 1
+          fi
 
       - name: Merge PR branch into base
         if: github.event_name == 'pull_request_target'
         run: |
           cd $GITHUB_WORKSPACE
           git merge pr_branch
-
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          role-to-assume: arn:aws:iam::420032683002:role/openvdb-fvdb-github-actions-role
-          aws-region: us-east-2
 
       - name: Clone fvdb-core
         id: clone_fvdb_core
@@ -333,6 +411,9 @@ jobs:
       - fvdb-reality-capture-unit-tests # required to wait when the main job is done
     # Don't try to stop a runner that was never started (docs-only PRs skip start-tests-gpu-runner).
     if: ${{ always() && needs.start-tests-gpu-runner.result != 'skipped' }}
+    permissions:
+      contents: read
+      id-token: write # AWS OIDC
     uses: ./.github/workflows/stop-ec2-runner.yml
     with:
       label: ${{ needs.start-tests-gpu-runner.outputs.label }}

@@ -24,10 +24,10 @@ on:
         type: string
         required: true
       aws-role:
-        description: IAM role to assume via OIDC.
+        description: IAM role to assume via OIDC. Can only start and stop runners.
         type: string
         required: false
-        default: arn:aws:iam::420032683002:role/openvdb-fvdb-github-actions-role
+        default: arn:aws:iam::420032683002:role/openvdb-fvdb-github-actions-ec2-runners
       aws-region:
         description: AWS region to launch in.
         type: string
@@ -60,6 +60,12 @@ jobs:
   start:
     name: Start EC2 runner
     runs-on: ubuntu-latest
+    # The runner role (the aws-role default above) trusts only OIDC tokens
+    # whose subject names the ci-aws environment, and a job's token names an
+    # environment only if the job declares one. ci-aws has no required
+    # reviewers; its deployment-branch policy limits which refs can start a
+    # runner. Approval of external PRs happens earlier, in approval-gate.yml.
+    environment: ci-aws
     # Taken from the attempt that actually SUCCEEDED -- see the select step
     # below for why "first non-empty" is not the same thing.
     outputs:
@@ -67,20 +73,36 @@ jobs:
       ec2-instance-id: ${{ steps.select.outputs.ec2-instance-id }}
     steps:
       - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
+        uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a # v4.3.1
         with:
           role-to-assume: ${{ inputs.aws-role }}
           aws-region: ${{ inputs.aws-region }}
 
+      # Every instance is tagged with the repository and run that launched it.
+      # The runner role's policy refuses RunInstances without the
+      # GitHubRepository tag. The action applies these tags at launch, to the
+      # instance and its volume.
+      - name: Compose EC2 resource tags
+        id: tags
+        env:
+          RUN_ID: ${{ github.run_id }}
+          REPO: ${{ github.repository }}
+        run: |
+          TAGS=$(jq -c -n --arg run_id "${RUN_ID}" --arg repo "${REPO}" \
+            '[{"Key": "GitHubRunId", "Value": $run_id}, {"Key": "GitHubRepository", "Value": $repo}]')
+          echo "Tags: ${TAGS}"
+          echo "tags=${TAGS}" >> "$GITHUB_OUTPUT"
+
       - name: Start EC2 runner (attempt 1)
         id: a1
         continue-on-error: true
-        uses: machulav/ec2-github-runner@v2.4.3
+        uses: machulav/ec2-github-runner@a6dbcefcf8a31a861f5e078bb153ed332130c512 # v2.4.3
         with:
           mode: start
           github-token: ${{ secrets.RUNNER_TOKEN }}
           ec2-instance-type: ${{ inputs.instance-type }}
           availability-zones-config: ${{ inputs.az-config }}
+          aws-resource-tags: ${{ steps.tags.outputs.tags }}
 
       # The action publishes its outputs as soon as the instance launches, i.e.
       # BEFORE it waits for the runner to register. So a failed attempt can still
@@ -88,7 +110,7 @@ jobs:
       - name: Clean up the instance left behind by attempt 1
         if: steps.a1.outcome == 'failure' && steps.a1.outputs.ec2-instance-id != ''
         continue-on-error: true
-        uses: machulav/ec2-github-runner@v2.4.3
+        uses: machulav/ec2-github-runner@a6dbcefcf8a31a861f5e078bb153ed332130c512 # v2.4.3
         with:
           mode: stop
           github-token: ${{ secrets.RUNNER_TOKEN }}
@@ -107,12 +129,13 @@ jobs:
         id: a2
         if: steps.a1.outcome == 'failure'
         continue-on-error: true
-        uses: machulav/ec2-github-runner@v2.4.3
+        uses: machulav/ec2-github-runner@a6dbcefcf8a31a861f5e078bb153ed332130c512 # v2.4.3
         with:
           mode: start
           github-token: ${{ secrets.RUNNER_TOKEN }}
           ec2-instance-type: ${{ inputs.instance-type }}
           availability-zones-config: ${{ inputs.az-config }}
+          aws-resource-tags: ${{ steps.tags.outputs.tags }}
 
       # The action publishes its outputs as soon as the instance launches, i.e.
       # BEFORE it waits for the runner to register. So a failed attempt can still
@@ -120,7 +143,7 @@ jobs:
       - name: Clean up the instance left behind by attempt 2
         if: steps.a2.outcome == 'failure' && steps.a2.outputs.ec2-instance-id != ''
         continue-on-error: true
-        uses: machulav/ec2-github-runner@v2.4.3
+        uses: machulav/ec2-github-runner@a6dbcefcf8a31a861f5e078bb153ed332130c512 # v2.4.3
         with:
           mode: stop
           github-token: ${{ secrets.RUNNER_TOKEN }}
@@ -139,12 +162,13 @@ jobs:
         id: a3
         if: steps.a1.outcome == 'failure' && steps.a2.outcome == 'failure'
         continue-on-error: true
-        uses: machulav/ec2-github-runner@v2.4.3
+        uses: machulav/ec2-github-runner@a6dbcefcf8a31a861f5e078bb153ed332130c512 # v2.4.3
         with:
           mode: start
           github-token: ${{ secrets.RUNNER_TOKEN }}
           ec2-instance-type: ${{ inputs.instance-type }}
           availability-zones-config: ${{ inputs.az-config }}
+          aws-resource-tags: ${{ steps.tags.outputs.tags }}
 
       # The action publishes its outputs as soon as the instance launches, i.e.
       # BEFORE it waits for the runner to register. So a failed attempt can still
@@ -152,7 +176,7 @@ jobs:
       - name: Clean up the instance left behind by attempt 3
         if: steps.a3.outcome == 'failure' && steps.a3.outputs.ec2-instance-id != ''
         continue-on-error: true
-        uses: machulav/ec2-github-runner@v2.4.3
+        uses: machulav/ec2-github-runner@a6dbcefcf8a31a861f5e078bb153ed332130c512 # v2.4.3
         with:
           mode: stop
           github-token: ${{ secrets.RUNNER_TOKEN }}

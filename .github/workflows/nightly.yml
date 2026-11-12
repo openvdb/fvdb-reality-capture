@@ -249,7 +249,7 @@ jobs:
           ref: ${{ github.event.inputs.branch || 'main' }}
 
       - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
+        uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a # v4.3.1
         with:
           role-to-assume: arn:aws:iam::420032683002:role/openvdb-fvdb-github-actions-role
           aws-region: us-east-2
@@ -311,6 +311,23 @@ jobs:
           micromamba activate benchmark
           cd tests/benchmarks
           python download_checkpoints_from_s3.py
+
+      # tests/unit/test_s3.py uses the real fvdb-data bucket and needs AWS
+      # credentials. The PR unit-test job (tests.yml) runs PR code and has no
+      # AWS credentials, so those tests skip there and run here instead.
+      # Run before the benchmarks, while the credentials are fresh. A failure
+      # does not stop the benchmarks; the last step of this job reports it.
+      - name: Run S3 unit tests
+        id: s3-tests
+        continue-on-error: true
+        run: |
+          micromamba activate benchmark
+          # test_s3.py skips itself when boto3 finds no credentials. Here they
+          # must be present, so fail rather than let the tests skip silently.
+          python -c "import boto3, sys; sys.exit(boto3.Session().get_credentials() is None)" \
+            || { echo "::error::No AWS credentials visible to boto3; S3 tests would be skipped."; exit 1; }
+          cd tests
+          pytest -v -rs unit/test_s3.py
 
       - name: Run benchmarks
         run: |
@@ -393,6 +410,12 @@ jobs:
           git add dev/bench/last_run_commits.txt dev/bench/commit_mapping.log
           git commit -m "Save commit hashes for workflow run ${{ github.run_id }}" || echo "No changes to commit"
           git push || { echo "Failed to push commit hashes. This may cause the next run to not skip properly."; exit 1; }
+
+      - name: Report S3 unit test failure
+        if: ${{ !cancelled() && steps.s3-tests.outcome == 'failure' }}
+        run: |
+          echo "::error::S3 unit tests (tests/unit/test_s3.py) failed; see the 'Run S3 unit tests' step."
+          exit 1
 
   ##############################################################################
   # STOP FVDB UNIT BENCHMARKS GPU RUNNER
