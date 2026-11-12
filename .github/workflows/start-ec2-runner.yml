@@ -84,6 +84,10 @@ jobs:
         with:
           role-to-assume: ${{ inputs.aws-role }}
           aws-region: ${{ inputs.aws-region }}
+          # 900s is the STS minimum. The session only has to outlive one
+          # launch attempt, so a leaked session is useful for 15 minutes
+          # instead of the default hour.
+          role-duration-seconds: 900
 
       # Every instance is tagged with the repository and run that launched it.
       # The runner role's policy refuses RunInstances without the
@@ -132,6 +136,17 @@ jobs:
           echo "::warning::Runner start attempt 1 found no capacity; retrying in ${BACKOFF}s."
           sleep "${BACKOFF}"
 
+      # Each 15-minute session covers one attempt and its clean-up. Three
+      # attempts plus the back-off waits can outlast a single session, so
+      # every retry starts with a fresh one.
+      - name: Refresh AWS credentials for attempt 2
+        if: steps.a1.outcome == 'failure'
+        uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          role-to-assume: ${{ inputs.aws-role }}
+          aws-region: ${{ inputs.aws-region }}
+          role-duration-seconds: 900
+
       - name: Start EC2 runner (attempt 2)
         id: a2
         if: steps.a1.outcome == 'failure'
@@ -164,6 +179,14 @@ jobs:
         run: |
           echo "::warning::Runner start attempt 2 found no capacity; retrying in $((BACKOFF * 2))s."
           sleep "$((BACKOFF * 2))"
+
+      - name: Refresh AWS credentials for attempt 3
+        if: steps.a1.outcome == 'failure' && steps.a2.outcome == 'failure'
+        uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          role-to-assume: ${{ inputs.aws-role }}
+          aws-region: ${{ inputs.aws-region }}
+          role-duration-seconds: 900
 
       - name: Start EC2 runner (attempt 3)
         id: a3
