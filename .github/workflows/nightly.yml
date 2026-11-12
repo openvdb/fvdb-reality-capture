@@ -43,7 +43,7 @@ jobs:
       fvdb_reality_capture_commit_hash: ${{ steps.get-commit-hash.outputs.fvdb_reality_capture_commit_hash }}
       should_skip: ${{ steps.check-changes.outputs.should_skip }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           ref: gh-pages
           path: gh-pages
@@ -132,7 +132,7 @@ jobs:
       run:
         shell: bash -el {0}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           fetch-depth: 0
           ref: ${{ github.event.inputs.branch || 'main' }}
@@ -140,7 +140,7 @@ jobs:
       - name: Try to download existing fvdb-core wheel
         id: download_existing_wheel
         continue-on-error: true
-        uses: dawidd6/action-download-artifact@v3
+        uses: dawidd6/action-download-artifact@09f2f74827fd3a8607589e5ad7f9398816f540fe # v3.1.4
         with:
           name: fvdb-wheel-${{ needs.get-fvdb-core-commit-hash.outputs.fvdb_core_commit_hash }}
           path: fvdb-core/dist
@@ -155,7 +155,7 @@ jobs:
 
       - name: Upload downloaded fvdb wheel (make available to this run)
         if: steps.download_existing_wheel.outcome == 'success'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: fvdb-wheel-${{ needs.get-fvdb-core-commit-hash.outputs.fvdb_core_commit_hash }}
           path: fvdb-core/dist/*.whl
@@ -173,7 +173,7 @@ jobs:
 
       - name: Set up fvdb-core conda env
         if: steps.download_existing_wheel.outcome == 'failure'
-        uses: mamba-org/setup-micromamba@v2
+        uses: mamba-org/setup-micromamba@add3a49764cedee8ee24e82dfde87f5bc2914462 # v2.0.7
         with:
           post-cleanup: 'all'
           environment-name: fvdb_build
@@ -189,7 +189,7 @@ jobs:
 
       - name: Upload fvdb wheel
         if: steps.download_existing_wheel.outcome == 'failure'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: fvdb-wheel-${{ needs.get-fvdb-core-commit-hash.outputs.fvdb_core_commit_hash }}
           path: fvdb-core/dist/*.whl
@@ -244,7 +244,7 @@ jobs:
       run:
         shell: bash -el {0}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           ref: ${{ github.event.inputs.branch || 'main' }}
 
@@ -282,7 +282,7 @@ jobs:
           fi
 
       - name: Set up benchmark Conda env
-        uses: mamba-org/setup-micromamba@v2
+        uses: mamba-org/setup-micromamba@add3a49764cedee8ee24e82dfde87f5bc2914462 # v2.0.7
         with:
           cache-environment: false
           post-cleanup: 'all'
@@ -290,7 +290,7 @@ jobs:
           environment-file: tests/benchmarks/comparative/docker/benchmark_environment.yml
 
       - name: Download fvdb-core wheel
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: fvdb-wheel-${{ needs.get-fvdb-core-commit-hash.outputs.fvdb_core_commit_hash }}
           path: ./dist
@@ -365,7 +365,7 @@ jobs:
 
       - name: Store benchmark result
         id: store-benchmark
-        uses: benchmark-action/github-action-benchmark@v1
+        uses: benchmark-action/github-action-benchmark@4322e5726e6334590d251fc4f92bec0efafc45dc # v1.22.2
         with:
             name: fvdb-reality-capture Benchmark with pytest-benchmark
             tool: 'pytest'
@@ -468,7 +468,7 @@ jobs:
       run:
         shell: bash -el {0}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           fetch-depth: 0
           ref: ${{ github.event.inputs.branch || 'main' }}
@@ -501,7 +501,7 @@ jobs:
           fi
 
       - name: Set up benchmark Conda env
-        uses: mamba-org/setup-micromamba@v2
+        uses: mamba-org/setup-micromamba@add3a49764cedee8ee24e82dfde87f5bc2914462 # v2.0.7
         with:
           cache-environment: false
           post-cleanup: 'all'
@@ -509,7 +509,7 @@ jobs:
           environment-file: tests/benchmarks/comparative/docker/benchmark_environment.yml
 
       - name: Download fvdb-core wheel
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: fvdb-wheel-${{ needs.get-fvdb-core-commit-hash.outputs.fvdb_core_commit_hash }}
           path: ./dist
@@ -590,7 +590,7 @@ jobs:
 
       - name: Store quality benchmark results
         if: ${{ github.event.inputs.comparative_matrix == '' || github.event.inputs.comparative_matrix == null || github.event.inputs.comparative_matrix == 'nightly_matrix.yml' }}
-        uses: benchmark-action/github-action-benchmark@v1
+        uses: benchmark-action/github-action-benchmark@4322e5726e6334590d251fc4f92bec0efafc45dc # v1.22.2
         with:
           name: fvdb-reality-capture Comparative Quality
           tool: 'customBiggerIsBetter'
@@ -604,7 +604,7 @@ jobs:
 
       - name: Store performance benchmark results
         if: ${{ github.event.inputs.comparative_matrix == '' || github.event.inputs.comparative_matrix == null || github.event.inputs.comparative_matrix == 'nightly_matrix.yml' }}
-        uses: benchmark-action/github-action-benchmark@v1
+        uses: benchmark-action/github-action-benchmark@4322e5726e6334590d251fc4f92bec0efafc45dc # v1.22.2
         with:
           name: fvdb-reality-capture Comparative Performance
           tool: 'customSmallerIsBetter'
@@ -618,7 +618,7 @@ jobs:
 
       - name: Upload comparative benchmark artifacts
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: comparative-benchmark-results-${{ github.run_id }}
           path: |

@@ -135,7 +135,7 @@ jobs:
       run:
         shell: bash -el {0}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           fetch-depth: 0 # Fetch all history for all branches
           ref: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.base.ref || github.ref }}
@@ -198,7 +198,7 @@ jobs:
           popd
 
       - name: Check if fvdb-core whl exists
-        uses: softwareforgood/check-artifact-v4-existence@v0
+        uses: softwareforgood/check-artifact-v4-existence@aa38f28173867521c7f5a7d26285f2c2d9a014bd # v0.4.5
         id: check_fvdb_core_wheel_artifact
         with:
           name: fvdb-wheel-${{ steps.clone_fvdb_core.outputs.fvdb_core_commit_hash }} # Replace with the actual name of your artifact
@@ -210,7 +210,7 @@ jobs:
 
       - name: Set up fvdb-core conda env
         if: steps.check_fvdb_core_wheel_artifact.outputs.exists == 'false'
-        uses: mamba-org/setup-micromamba@v2
+        uses: mamba-org/setup-micromamba@add3a49764cedee8ee24e82dfde87f5bc2914462 # v2.0.7
         with:
           post-cleanup: 'all'
           environment-name: fvdb_build
@@ -226,7 +226,7 @@ jobs:
 
       - name: Upload fvdb wheel
         if: steps.check_fvdb_core_wheel_artifact.outputs.exists == 'false'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: fvdb-wheel-${{ steps.clone_fvdb_core.outputs.fvdb_core_commit_hash }}
           path: fvdb-core/dist/*.whl
@@ -285,7 +285,7 @@ jobs:
       run:
         shell: bash -el {0}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           fetch-depth: 0 # Fetch all history for all branches
           ref: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.base.ref || github.ref }}
@@ -330,7 +330,7 @@ jobs:
           popd
 
       - name: Set up fvdb Conda env
-        uses: mamba-org/setup-micromamba@v2
+        uses: mamba-org/setup-micromamba@add3a49764cedee8ee24e82dfde87f5bc2914462 # v2.0.7
         with:
           cache-environment: false
           post-cleanup: 'all'
@@ -338,7 +338,7 @@ jobs:
           environment-file: fvdb-core/env/dev_environment.yml
 
       - name: Download fvdb-core wheel
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: fvdb-wheel-${{ steps.clone_fvdb_core.outputs.fvdb_core_commit_hash }}
           path: ./dist
