@@ -23,6 +23,14 @@ on:
         type: string
         required: false
         default: arn:aws:iam::420032683002:role/openvdb-fvdb-github-actions-role
+      ci-aws-environment:
+        description: >-
+          Run the job in the ci-aws environment. Set true together with the CI
+          role (needs.versions.outputs.aws-ci-role), which only accepts tokens
+          from that environment.
+        type: boolean
+        required: false
+        default: false
       aws-region:
         description: AWS region the instance is running in.
         type: string
@@ -41,6 +49,15 @@ jobs:
   stop:
     name: Stop EC2 runner
     runs-on: ubuntu-latest
+    # The CI role (aws.ci_role in versions.json) trusts only OIDC tokens whose
+    # subject names the ci-aws environment, and a job's token names an
+    # environment only if the job declares one. ci-aws has no required
+    # reviewers; approval of external PRs happens earlier, in
+    # approval-gate.yml. Callers that use another role (publish, nightly)
+    # leave ci-aws-environment false and get no environment.
+    # The name is hard-coded: GitHub silently creates an unprotected
+    # environment for any name it has not seen.
+    environment: ${{ inputs.ci-aws-environment && 'ci-aws' || '' }}
     steps:
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4

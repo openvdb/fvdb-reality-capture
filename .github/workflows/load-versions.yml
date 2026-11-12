@@ -7,6 +7,8 @@ on:
     outputs:
       aws-role:
         value: ${{ jobs.load.outputs.aws-role }}
+      aws-ci-role:
+        value: ${{ jobs.load.outputs.aws-ci-role }}
       aws-region:
         value: ${{ jobs.load.outputs.aws-region }}
       aws-cpu-az-config:
@@ -22,6 +24,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       aws-role: ${{ steps.parse.outputs.aws-role }}
+      aws-ci-role: ${{ steps.parse.outputs.aws-ci-role }}
       aws-region: ${{ steps.parse.outputs.aws-region }}
       aws-cpu-az-config: ${{ steps.parse.outputs.aws-cpu-az-config }}
       aws-gpu-az-config: ${{ steps.parse.outputs.aws-gpu-az-config }}
@@ -41,6 +44,7 @@ jobs:
           # instance type no longer fails the whole job.
           {
             echo "aws-role=$(jq -r '.aws.role' $CFG)"
+            echo "aws-ci-role=$(jq -r '.aws.ci_role' $CFG)"
             echo "aws-region=$(jq -r '.aws.region' $CFG)"
             echo "aws-cpu-az-config=$(jq -c '.aws as $a | [$a.subnets[] | {imageId: $a.cpu_ami, subnetId: .id, securityGroupId: $a.security_group}]' $CFG)"
             echo "aws-gpu-az-config=$(jq -c '.aws as $a | [$a.subnets[] | {imageId: $a.gpu_ami, subnetId: .id, securityGroupId: $a.security_group}]' $CFG)"
