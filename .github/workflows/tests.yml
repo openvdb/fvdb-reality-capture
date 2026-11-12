@@ -118,8 +118,6 @@ jobs:
     with:
       instance-type: m6a.8xlarge
       az-config: ${{ needs.versions.outputs.aws-cpu-az-config }}
-      aws-role: ${{ needs.versions.outputs.aws-ci-role }}
-      ci-aws-environment: true
     secrets:
       RUNNER_TOKEN: ${{ secrets.EC2_RUNNERS_ACTION }}
   fvdb-reality-capture-build:
@@ -239,7 +237,6 @@ jobs:
     needs:
       - start-build-runner # required to get output from the start-build-runner job
       - fvdb-reality-capture-build # required to wait when the main job is done
-      - versions # for the AWS role
     # Don't try to stop a runner that was never started (docs-only PRs skip start-build-runner).
     if: ${{ always() && needs.start-build-runner.result != 'skipped' }}
     permissions:
@@ -249,8 +246,6 @@ jobs:
     with:
       label: ${{ needs.start-build-runner.outputs.label }}
       ec2-instance-id: ${{ needs.start-build-runner.outputs.ec2-instance-id }}
-      aws-role: ${{ needs.versions.outputs.aws-ci-role }}
-      ci-aws-environment: true
     secrets:
       RUNNER_TOKEN: ${{ secrets.EC2_RUNNERS_ACTION }}
 
@@ -268,8 +263,6 @@ jobs:
     with:
       instance-type: g6.xlarge # 4 CPU-core, L4 GPU
       az-config: ${{ needs.versions.outputs.aws-gpu-az-config }}
-      aws-role: ${{ needs.versions.outputs.aws-ci-role }}
-      ci-aws-environment: true
     secrets:
       RUNNER_TOKEN: ${{ secrets.EC2_RUNNERS_ACTION }}
 
@@ -416,7 +409,6 @@ jobs:
     needs:
       - start-tests-gpu-runner # required to get output from the start-tests-gpu-runner job
       - fvdb-reality-capture-unit-tests # required to wait when the main job is done
-      - versions # for the AWS role
     # Don't try to stop a runner that was never started (docs-only PRs skip start-tests-gpu-runner).
     if: ${{ always() && needs.start-tests-gpu-runner.result != 'skipped' }}
     permissions:
@@ -426,7 +418,5 @@ jobs:
     with:
       label: ${{ needs.start-tests-gpu-runner.outputs.label }}
       ec2-instance-id: ${{ needs.start-tests-gpu-runner.outputs.ec2-instance-id }}
-      aws-role: ${{ needs.versions.outputs.aws-ci-role }}
-      ci-aws-environment: true
     secrets:
       RUNNER_TOKEN: ${{ secrets.EC2_RUNNERS_ACTION }}

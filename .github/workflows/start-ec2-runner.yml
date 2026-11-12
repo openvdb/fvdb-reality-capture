@@ -24,18 +24,10 @@ on:
         type: string
         required: true
       aws-role:
-        description: IAM role to assume via OIDC.
+        description: IAM role to assume via OIDC. Can only start and stop runners.
         type: string
         required: false
-        default: arn:aws:iam::420032683002:role/openvdb-fvdb-github-actions-role
-      ci-aws-environment:
-        description: >-
-          Run the job in the ci-aws environment. Set true together with the CI
-          role (needs.versions.outputs.aws-ci-role), which only accepts tokens
-          from that environment.
-        type: boolean
-        required: false
-        default: false
+        default: arn:aws:iam::420032683002:role/openvdb-fvdb-github-actions-ec2-runners
       aws-region:
         description: AWS region to launch in.
         type: string
@@ -68,15 +60,12 @@ jobs:
   start:
     name: Start EC2 runner
     runs-on: ubuntu-latest
-    # The CI role (aws.ci_role in versions.json) trusts only OIDC tokens whose
-    # subject names the ci-aws environment, and a job's token names an
+    # The runner role (the aws-role default above) trusts only OIDC tokens
+    # whose subject names the ci-aws environment, and a job's token names an
     # environment only if the job declares one. ci-aws has no required
-    # reviewers; approval of external PRs happens earlier, in
-    # approval-gate.yml. Callers that use another role (publish, nightly)
-    # leave ci-aws-environment false and get no environment.
-    # The name is hard-coded: GitHub silently creates an unprotected
-    # environment for any name it has not seen.
-    environment: ${{ inputs.ci-aws-environment && 'ci-aws' || '' }}
+    # reviewers; its deployment-branch policy limits which refs can start a
+    # runner. Approval of external PRs happens earlier, in approval-gate.yml.
+    environment: ci-aws
     # Taken from the attempt that actually SUCCEEDED -- see the select step
     # below for why "first non-empty" is not the same thing.
     outputs:
