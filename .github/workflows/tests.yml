@@ -8,8 +8,15 @@ on:
   # satisfies the required checks). The push trigger keeps paths-ignore since
   # push builds are not required PR checks.
   pull_request_target:
+    # ready_for_review is not a default type; without it, marking a draft
+    # ready runs nothing until the next push.
+    types: [opened, synchronize, reopened, ready_for_review]
+    # Keep this list in step with the deployment-branch policies of the
+    # ci-trusted and ci-external-approval environments and with the
+    # repository's Actions policy for pull_request_target.
     branches:
-      - '**'
+      - main
+      - 'release/**'
   push:
     branches:
       - main
@@ -32,13 +39,12 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
+# Default for every job. id-token: write (AWS OIDC) is granted per job, only
+# to the jobs that assume the AWS role, so the build job, which runs PR code,
+# cannot request an OIDC token.
 permissions:
-  contents: read
-  deployments: read
-  pull-requests: read
-  issues: read
-  # Need ID token write permission to use OIDC
-  id-token: write
+  contents: read # checkout
+  pull-requests: read # dorny/paths-filter in check-changes.yml
 
 jobs:
   # Approval gate. This workflow runs on pull_request_target, i.e. with this
@@ -46,8 +52,13 @@ jobs:
   # accounts without write access wait here until a maintainer approves the
   # run; see approval-gate.yml. Every other job must depend on this one,
   # directly or through its needs chain, so nothing privileged starts first.
+  #
+  # Draft PRs skip the gate, and through `needs` everything else, so nobody
+  # is asked to approve a run that would do nothing. Marking the PR ready
+  # triggers a new run.
   approve:
     name: Approval
+    if: github.event_name != 'pull_request_target' || github.event.pull_request.draft == false
     permissions:
       actions: read # approval-gate.yml reads the environment's protection rules
     uses: ./.github/workflows/approval-gate.yml
@@ -56,6 +67,9 @@ jobs:
   # skipped job satisfies a required status check. This job turns that into
   # an explicit failure so a PR cannot look green when no tests ran. Add
   # "Approval result" to the required checks on main.
+  #
+  # A draft PR skips the gate on purpose; that is reported as a pass here
+  # (a draft cannot be merged, and marking it ready starts a new run).
   approval-result:
     name: Approval result
     needs: approve
@@ -66,7 +80,12 @@ jobs:
       - name: Fail unless the approval gate passed
         env:
           APPROVE_RESULT: ${{ needs.approve.result }}
+          IS_DRAFT: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.draft == true }}
         run: |
+          if [ "$APPROVE_RESULT" = "skipped" ] && [ "$IS_DRAFT" = "true" ]; then
+            echo "Draft PR: the approval gate and all tests were skipped."
+            exit 0
+          fi
           if [ "$APPROVE_RESULT" != "success" ]; then
             echo "::error::Approval gate result was '${APPROVE_RESULT}'; no tests ran for this commit."
             exit 1
@@ -92,6 +111,9 @@ jobs:
     name: Start CPU-only EC2 runner for build
     needs: [check-changes, versions]
     if: needs.check-changes.outputs.should_test == 'true'
+    permissions:
+      contents: read
+      id-token: write # AWS OIDC
     uses: ./.github/workflows/start-ec2-runner.yml
     with:
       instance-type: m6a.8xlarge
@@ -217,6 +239,9 @@ jobs:
       - fvdb-reality-capture-build # required to wait when the main job is done
     # Don't try to stop a runner that was never started (docs-only PRs skip start-build-runner).
     if: ${{ always() && needs.start-build-runner.result != 'skipped' }}
+    permissions:
+      contents: read
+      id-token: write # AWS OIDC
     uses: ./.github/workflows/stop-ec2-runner.yml
     with:
       label: ${{ needs.start-build-runner.outputs.label }}
@@ -231,6 +256,9 @@ jobs:
   start-tests-gpu-runner:
     name: Start EC2 GPU runner for tests
     needs: [fvdb-reality-capture-build, versions]
+    permissions:
+      contents: read
+      id-token: write # AWS OIDC
     uses: ./.github/workflows/start-ec2-runner.yml
     with:
       instance-type: g6.xlarge # 4 CPU-core, L4 GPU
@@ -244,6 +272,11 @@ jobs:
   fvdb-reality-capture-unit-tests:
     needs: start-tests-gpu-runner # required to start the main job when the runner is ready
     name: fvdb-reality-capture Unit Tests
+    # This job runs PR code and also assumes the AWS role (Configure AWS
+    # credentials below), so it still needs id-token: write.
+    permissions:
+      contents: read
+      id-token: write # AWS OIDC
     runs-on: ${{ needs.start-tests-gpu-runner.outputs.label }} # run the job on the newly created runner
     container:
       image: aswf/ci-openvdb:2024-clang17.2
@@ -387,6 +420,9 @@ jobs:
       - fvdb-reality-capture-unit-tests # required to wait when the main job is done
     # Don't try to stop a runner that was never started (docs-only PRs skip start-tests-gpu-runner).
     if: ${{ always() && needs.start-tests-gpu-runner.result != 'skipped' }}
+    permissions:
+      contents: read
+      id-token: write # AWS OIDC
     uses: ./.github/workflows/stop-ec2-runner.yml
     with:
       label: ${{ needs.start-tests-gpu-runner.outputs.label }}
