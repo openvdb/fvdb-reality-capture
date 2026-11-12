@@ -21,7 +21,7 @@ jobs:
     name: Make an artifact with the commit hash
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0 # Fetch all history for all branches
 
@@ -37,7 +37,7 @@ jobs:
           popd
 
       - name: Upload fvdb-core wheel
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: fvdb-wheel-${{ steps.clone_fvdb_core.outputs.fvdb_core_commit_hash }}
           path: fvdb-core/build.sh
