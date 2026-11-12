@@ -394,7 +394,7 @@ jobs:
       instance-type: g6.xlarge
       az-config: ${{ needs.versions.outputs.aws-gpu-az-config }}
     secrets:
-      RUNNER_TOKEN: ${{ secrets.GH_PERSONAL_ACCESS_TOKEN }}
+      RUNNER_TOKEN: ${{ secrets.EC2_RUNNERS_ACTION }}
 
   validate-smoke-test:
     name: Smoke test fvdb-core + fvdb-reality-capture
@@ -532,4 +532,4 @@ jobs:
       label: ${{ needs.start-validation-runner.outputs.label }}
       ec2-instance-id: ${{ needs.start-validation-runner.outputs.ec2-instance-id }}
     secrets:
-      RUNNER_TOKEN: ${{ secrets.GH_PERSONAL_ACCESS_TOKEN }}
+      RUNNER_TOKEN: ${{ secrets.EC2_RUNNERS_ACTION }}
