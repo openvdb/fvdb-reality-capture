@@ -29,9 +29,11 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
+# Read-only by default. id-token: write (AWS OIDC, PyPI trusted publishing) is
+# granted per job, so the build job, which runs the code of the chosen branch,
+# cannot request cloud credentials.
 permissions:
   contents: read
-  id-token: write
 
 jobs:
   versions:
@@ -93,6 +95,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          persist-credentials: false
           fetch-depth: 0
           ref: ${{ inputs.branch || github.ref }}
 
@@ -165,6 +168,8 @@ jobs:
   # PUBLISH TO S3 SIMPLE INDEX
   ##############################################################################
   publish-to-s3:
+    permissions:
+      id-token: write # AWS OIDC, to upload to the package index
     name: Publish to S3 Simple Index
     needs: [pr-flags, fvdb-rc-build]
     if: ${{ !cancelled() && needs.pr-flags.outputs.s3 == 'true' && needs.fvdb-rc-build.result == 'success' }}
@@ -297,6 +302,8 @@ jobs:
   # GPU VALIDATION: DISCOVER FVDB-CORE VERSIONS + SMOKE TEST + UNIT TESTS
   ##############################################################################
   discover-fvdb-core:
+    permissions:
+      id-token: write # AWS OIDC, to list fvdb-core wheels in the package index
     name: Discover fvdb-core versions from S3 staging
     needs: [pr-flags, fvdb-rc-build]
     if: ${{ !cancelled() && needs.fvdb-rc-build.result == 'success' && (needs.pr-flags.outputs.release_push == 'true' || inputs.run_validation == true) }}
@@ -386,6 +393,9 @@ jobs:
           echo "core_wheel_url=$CORE_WHEEL_URL" >> $GITHUB_OUTPUT
 
   start-validation-runner:
+    permissions:
+      contents: read
+      id-token: write # AWS OIDC, to start or stop the runner
     name: Start GPU EC2 runner for validation
     needs: [pr-flags, fvdb-rc-build, discover-fvdb-core, versions]
     if: ${{ !cancelled() && needs.discover-fvdb-core.result == 'success' }}
@@ -457,7 +467,19 @@ jobs:
           "
 
   validate-unit-tests:
+    permissions:
+      contents: read
+      id-token: write # AWS OIDC, for the S3 unit tests
     name: Full unit tests
+    # Runs the code of the chosen branch with AWS credentials, so it uses a
+    # role that can only read fvdb-data/fvdb-reality-capture and write the S3
+    # unit test's scratch key (no access to the package index). That role
+    # trusts only tokens issued for the ci-s3-tests environment, which only
+    # this job and the unit benchmark job in nightly.yml declare; ci-s3-tests limits it to main, release/v*
+    # branches and v* tags.
+    environment:
+      name: ci-s3-tests
+      deployment: false
     needs: [start-validation-runner, discover-fvdb-core, validate-smoke-test, pr-flags]
     if: ${{ !cancelled() && needs.validate-smoke-test.result == 'success' && (needs.pr-flags.outputs.release_push == 'true' || inputs.run_validation == true) }}
     runs-on: ${{ needs.start-validation-runner.outputs.label }}
@@ -476,6 +498,7 @@ jobs:
 
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          persist-credentials: false
           fetch-depth: 0
           ref: ${{ inputs.branch || github.ref }}
 
@@ -511,7 +534,7 @@ jobs:
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
         with:
-          role-to-assume: arn:aws:iam::420032683002:role/openvdb-fvdb-github-actions-role
+          role-to-assume: arn:aws:iam::420032683002:role/openvdb-fvdb-github-actions-test-data
           aws-region: us-east-2
 
       - name: Run unit and benchmark contract tests
@@ -520,6 +543,9 @@ jobs:
           ../.venv/bin/python -m pytest -v unit benchmarks/test_benchmark_contract.py benchmarks/test_comparison_benchmark.py
 
   stop-validation-runner:
+    permissions:
+      contents: read
+      id-token: write # AWS OIDC, to start or stop the runner
     name: Stop GPU EC2 runner for validation
     needs:
       - start-validation-runner
