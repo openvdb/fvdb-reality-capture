@@ -42,6 +42,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          persist-credentials: false
           ref: gh-pages
           path: gh-pages
 
@@ -233,10 +234,14 @@ jobs:
   ##############################################################################
   # RUN FVDB REALITY CAPTURE UNIT BENCHMARKS
   ##############################################################################
+  # Runs the code of the chosen branch, so it gets no write token: results go
+  # to an artifact, and publish-unit-benchmark-results pushes them to gh-pages.
   fvdb-reality-capture-unit-benchmarks:
     permissions:
-      contents: write # push benchmark results to gh-pages and comment on alerts
+      contents: read
       id-token: write # AWS OIDC, for the benchmark data and S3 tests
+    outputs:
+      results-uploaded: ${{ steps.mark-uploaded.outputs.uploaded }}
     if: ${{ github.repository == 'openvdb/fvdb-reality-capture' }}
     needs:
       - get-fvdb-core-commit-hash
@@ -258,12 +263,6 @@ jobs:
         with:
           persist-credentials: false
           ref: ${{ github.event.inputs.branch || 'main' }}
-
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
-        with:
-          role-to-assume: arn:aws:iam::420032683002:role/openvdb-fvdb-github-actions-role
-          aws-region: us-east-2
 
       - name: Generate benchmark env from fvdb-core pins
         env:
@@ -317,6 +316,14 @@ jobs:
           micromamba activate benchmark
           frgs download mipnerf360 --download-path ./data
 
+      # Credentials are configured only now, after the environment and package
+      # installs, which need no AWS access.
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          role-to-assume: arn:aws:iam::420032683002:role/openvdb-fvdb-github-actions-role
+          aws-region: us-east-2
+
       - name: Download config and checkpoints from S3
         run: |
           micromamba activate benchmark
@@ -366,13 +373,52 @@ jobs:
               json.dump(data, f, indent=2)
           EOF
 
-      - name: Clean up modified benchmark_config.yaml
+      - name: Upload benchmark results
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: unit-benchmark-results-${{ github.run_id }}
+          path: tests/benchmarks/output.json
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: Mark results uploaded
+        id: mark-uploaded
+        run: echo "uploaded=true" >> "$GITHUB_OUTPUT"
+
+      - name: Report S3 unit test failure
+        if: ${{ !cancelled() && steps.s3-tests.outcome == 'failure' }}
         run: |
-          # Remove the locally modified benchmark_config.yaml to avoid conflicts when switching branches
-          # This file is downloaded and modified by download_checkpoints_from_s3.py
-          git checkout -- tests/benchmarks/benchmark_config.yaml || true
-          # Clean up but exclude output.json which contains benchmark results
-          git clean -fd tests/benchmarks/ -e tests/benchmarks/output.json || true
+          echo "::error::S3 unit tests (tests/unit/test_s3.py) failed; see the 'Run S3 unit tests' step."
+          exit 1
+
+  ##############################################################################
+  # PUBLISH FVDB REALITY CAPTURE UNIT BENCHMARK RESULTS
+  ##############################################################################
+  # The only job that can push the unit benchmark results. It checks out this
+  # workflow's own commit (never the "branch" input) and runs no repository
+  # code, so code from the benchmarked branch never shares a job with the
+  # contents: write token.
+  publish-unit-benchmark-results:
+    permissions:
+      contents: write # push benchmark results to gh-pages and comment on alerts
+    if: ${{ !cancelled() && github.repository == 'openvdb/fvdb-reality-capture' && needs.fvdb-reality-capture-unit-benchmarks.outputs.results-uploaded == 'true' }}
+    needs:
+      - get-fvdb-core-commit-hash
+      - fvdb-reality-capture-unit-benchmarks
+    name: Publish unit benchmark results
+    runs-on: ubuntu-latest
+    steps:
+      # github-action-benchmark needs a clone to switch to gh-pages in. It uses
+      # its github-token input for the fetch and push, so nothing is persisted.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Download benchmark results
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: unit-benchmark-results-${{ github.run_id }}
+          path: ${{ runner.temp }}/unit-benchmark-results
 
       - name: Store benchmark result
         id: store-benchmark
@@ -380,7 +426,7 @@ jobs:
         with:
             name: fvdb-reality-capture Benchmark with pytest-benchmark
             tool: 'pytest'
-            output-file-path: tests/benchmarks/output.json
+            output-file-path: ${{ runner.temp }}/unit-benchmark-results/output.json
             github-token: ${{ secrets.GITHUB_TOKEN }}
             auto-push: true
             # Show alert with commit comment on detecting possible performance regression
@@ -395,38 +441,35 @@ jobs:
         if: steps.store-benchmark.outcome == 'success' || steps.store-benchmark.outcome == 'failure'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          RUN_ID: ${{ github.run_id }}
+          FVDB_CORE_SHA: ${{ needs.get-fvdb-core-commit-hash.outputs.fvdb_core_commit_hash }}
+          FVDB_RC_SHA: ${{ needs.get-fvdb-core-commit-hash.outputs.fvdb_reality_capture_commit_hash }}
         run: |
-          # Check out gh-pages branch with token authentication
+          set -euo pipefail
+          # Authenticate with a per-command header rather than a token in the
+          # remote URL, so the token is not written to .git/config.
+          auth="AUTHORIZATION: basic $(printf 'x-access-token:%s' "$GITHUB_TOKEN" | base64 -w0)"
           rm -rf gh-pages-repo
-          git clone --branch gh-pages https://x-access-token:${GITHUB_TOKEN}@github.com/${{ github.repository }}.git gh-pages-repo
+          git -c "http.https://github.com/.extraheader=${auth}" \
+            clone --branch gh-pages "https://github.com/${REPO}.git" gh-pages-repo
           cd gh-pages-repo
 
-          # Create directory if it doesn't exist
           mkdir -p dev/bench
 
           # Save current commit hashes for skip detection
-          cat > dev/bench/last_run_commits.txt << EOF
-          fvdb_core: ${{ needs.get-fvdb-core-commit-hash.outputs.fvdb_core_commit_hash }}
-          fvdb_reality_capture: ${{ needs.get-fvdb-core-commit-hash.outputs.fvdb_reality_capture_commit_hash }}
-          EOF
+          printf 'fvdb_core: %s\nfvdb_reality_capture: %s\n' "$FVDB_CORE_SHA" "$FVDB_RC_SHA" > dev/bench/last_run_commits.txt
 
           # Append to commit mapping log (for historical tracking)
-          echo "$(date -Iseconds) | fvdb-reality-capture: ${{ needs.get-fvdb-core-commit-hash.outputs.fvdb_reality_capture_commit_hash }} | fvdb-core: ${{ needs.get-fvdb-core-commit-hash.outputs.fvdb_core_commit_hash }}" >> dev/bench/commit_mapping.log
+          echo "$(date -Iseconds) | fvdb-reality-capture: ${FVDB_RC_SHA} | fvdb-core: ${FVDB_CORE_SHA}" >> dev/bench/commit_mapping.log
 
-          # Configure git
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
-          # Commit and push
           git add dev/bench/last_run_commits.txt dev/bench/commit_mapping.log
-          git commit -m "Save commit hashes for workflow run ${{ github.run_id }}" || echo "No changes to commit"
-          git push || { echo "Failed to push commit hashes. This may cause the next run to not skip properly."; exit 1; }
-
-      - name: Report S3 unit test failure
-        if: ${{ !cancelled() && steps.s3-tests.outcome == 'failure' }}
-        run: |
-          echo "::error::S3 unit tests (tests/unit/test_s3.py) failed; see the 'Run S3 unit tests' step."
-          exit 1
+          git commit -m "Save commit hashes for workflow run ${RUN_ID}" || echo "No changes to commit"
+          git -c "http.https://github.com/.extraheader=${auth}" push \
+            || { echo "Failed to push commit hashes. This may cause the next run to not skip properly."; exit 1; }
 
   ##############################################################################
   # STOP FVDB UNIT BENCHMARKS GPU RUNNER
@@ -465,9 +508,11 @@ jobs:
   ##############################################################################
   # RUN COMPARATIVE BENCHMARKS
   ##############################################################################
+  # Runs the code of the chosen branch, so it gets no write token: results go
+  # to an artifact, and publish-comparative-benchmark-results pushes them.
   fvdb-reality-capture-comparative-benchmarks:
     permissions:
-      contents: write # push benchmark results to gh-pages and comment on alerts
+      contents: read
     if: ${{ github.repository == 'openvdb/fvdb-reality-capture' }}
     needs:
       - get-fvdb-core-commit-hash
@@ -585,10 +630,14 @@ jobs:
           echo "Warmup complete."
 
       - name: Run comparative benchmark
+        env:
+          # Passed through the environment, not interpolated into the script:
+          # the input is free text from whoever dispatched the run.
+          MATRIX: ${{ github.event.inputs.comparative_matrix || 'nightly_matrix.yml' }}
         run: |
           micromamba activate benchmark
           cd tests/benchmarks/comparative
-          python comparison_benchmark.py --matrix ${{ github.event.inputs.comparative_matrix || 'nightly_matrix.yml' }}
+          python comparison_benchmark.py --matrix "$MATRIX"
 
       - name: Convert results to benchmark format
         if: ${{ github.event.inputs.comparative_matrix == '' || github.event.inputs.comparative_matrix == null || github.event.inputs.comparative_matrix == 'nightly_matrix.yml' }}
@@ -598,41 +647,6 @@ jobs:
           python format_for_gh_benchmark.py \
             results/nightly_benchmark/summary/summary_data.json \
             --output-dir results/nightly_benchmark/summary
-
-      - name: Clean up modified files
-        if: ${{ github.event.inputs.comparative_matrix == '' || github.event.inputs.comparative_matrix == null || github.event.inputs.comparative_matrix == 'nightly_matrix.yml' }}
-        run: |
-          git checkout -- tests/benchmarks/ || true
-          git clean -fd tests/benchmarks/ \
-            -e tests/benchmarks/comparative/results/ || true
-
-      - name: Store quality benchmark results
-        if: ${{ github.event.inputs.comparative_matrix == '' || github.event.inputs.comparative_matrix == null || github.event.inputs.comparative_matrix == 'nightly_matrix.yml' }}
-        uses: benchmark-action/github-action-benchmark@4322e5726e6334590d251fc4f92bec0efafc45dc # v1.22.2
-        with:
-          name: fvdb-reality-capture Comparative Quality
-          tool: 'customBiggerIsBetter'
-          output-file-path: tests/benchmarks/comparative/results/nightly_benchmark/summary/benchmark_quality.json
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          auto-push: true
-          alert-threshold: '110%'
-          comment-on-alert: true
-          fail-on-alert: false
-          alert-comment-cc-users: '@openvdb/fvdb-dev'
-
-      - name: Store performance benchmark results
-        if: ${{ github.event.inputs.comparative_matrix == '' || github.event.inputs.comparative_matrix == null || github.event.inputs.comparative_matrix == 'nightly_matrix.yml' }}
-        uses: benchmark-action/github-action-benchmark@4322e5726e6334590d251fc4f92bec0efafc45dc # v1.22.2
-        with:
-          name: fvdb-reality-capture Comparative Performance
-          tool: 'customSmallerIsBetter'
-          output-file-path: tests/benchmarks/comparative/results/nightly_benchmark/summary/benchmark_performance.json
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          auto-push: true
-          alert-threshold: '150%'
-          comment-on-alert: true
-          fail-on-alert: false
-          alert-comment-cc-users: '@openvdb/fvdb-dev'
 
       - name: Upload comparative benchmark artifacts
         if: always()
@@ -645,6 +659,69 @@ jobs:
             tests/benchmarks/comparative/results/*/*.json
             tests/benchmarks/comparative/results/*/benchmark.log
           retention-days: 90
+
+  ##############################################################################
+  # PUBLISH COMPARATIVE BENCHMARK RESULTS
+  ##############################################################################
+  # The only job that can push the comparative results; like
+  # publish-unit-benchmark-results, it runs no code from the benchmarked branch.
+  # Results are only published for the nightly matrix.
+  publish-comparative-benchmark-results:
+    permissions:
+      contents: write # push benchmark results to gh-pages and comment on alerts
+    if: ${{ !cancelled() && github.repository == 'openvdb/fvdb-reality-capture' && needs.fvdb-reality-capture-comparative-benchmarks.result != 'skipped' && (github.event.inputs.comparative_matrix == '' || github.event.inputs.comparative_matrix == null || github.event.inputs.comparative_matrix == 'nightly_matrix.yml') }}
+    needs:
+      - fvdb-reality-capture-comparative-benchmarks
+    name: Publish comparative benchmark results
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Download comparative benchmark results
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: comparative-benchmark-results-${{ github.run_id }}
+          path: ${{ runner.temp }}/comparative-results
+
+      - name: Check for formatted results
+        id: results
+        run: |
+          RESULTS="${RUNNER_TEMP}/comparative-results/nightly_benchmark/summary"
+          if [ -f "$RESULTS/benchmark_quality.json" ] && [ -f "$RESULTS/benchmark_performance.json" ]; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::warning::No formatted comparative results in the artifact; nothing to publish."
+          fi
+
+      - name: Store quality benchmark results
+        if: steps.results.outputs.present == 'true'
+        uses: benchmark-action/github-action-benchmark@4322e5726e6334590d251fc4f92bec0efafc45dc # v1.22.2
+        with:
+          name: fvdb-reality-capture Comparative Quality
+          tool: 'customBiggerIsBetter'
+          output-file-path: ${{ runner.temp }}/comparative-results/nightly_benchmark/summary/benchmark_quality.json
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          auto-push: true
+          alert-threshold: '110%'
+          comment-on-alert: true
+          fail-on-alert: false
+          alert-comment-cc-users: '@openvdb/fvdb-dev'
+
+      - name: Store performance benchmark results
+        if: steps.results.outputs.present == 'true'
+        uses: benchmark-action/github-action-benchmark@4322e5726e6334590d251fc4f92bec0efafc45dc # v1.22.2
+        with:
+          name: fvdb-reality-capture Comparative Performance
+          tool: 'customSmallerIsBetter'
+          output-file-path: ${{ runner.temp }}/comparative-results/nightly_benchmark/summary/benchmark_performance.json
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          auto-push: true
+          alert-threshold: '150%'
+          comment-on-alert: true
+          fail-on-alert: false
+          alert-comment-cc-users: '@openvdb/fvdb-dev'
 
   ##############################################################################
   # STOP COMPARATIVE BENCHMARKS GPU RUNNER
