@@ -390,6 +390,7 @@ jobs:
     needs: [pr-flags, fvdb-rc-build, discover-fvdb-core, versions]
     if: ${{ !cancelled() && needs.discover-fvdb-core.result == 'success' }}
     uses: ./.github/workflows/start-ec2-runner.yml
+    secrets: inherit # zizmor: ignore[secrets-inherit] the runner App key reaches the runner jobs this way; see start-ec2-runner.yml
     with:
       instance-type: g6.xlarge
       az-config: ${{ needs.versions.outputs.aws-gpu-az-config }}
@@ -526,6 +527,7 @@ jobs:
       - validate-unit-tests
     if: ${{ always() && needs.start-validation-runner.result != 'skipped' }}
     uses: ./.github/workflows/stop-ec2-runner.yml
+    secrets: inherit # zizmor: ignore[secrets-inherit] the runner App key reaches the runner jobs this way; see start-ec2-runner.yml
     with:
       label: ${{ needs.start-validation-runner.outputs.label }}
       ec2-instance-id: ${{ needs.start-validation-runner.outputs.ec2-instance-id }}

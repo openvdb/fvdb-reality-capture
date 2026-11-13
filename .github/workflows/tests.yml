@@ -122,6 +122,7 @@ jobs:
       contents: read
       id-token: write # AWS OIDC
     uses: ./.github/workflows/start-ec2-runner.yml
+    secrets: inherit # zizmor: ignore[secrets-inherit] the runner App key reaches the runner jobs this way; see start-ec2-runner.yml
     with:
       instance-type: m6a.8xlarge
       az-config: ${{ needs.versions.outputs.aws-cpu-az-config }}
@@ -269,6 +270,7 @@ jobs:
       contents: read
       id-token: write # AWS OIDC
     uses: ./.github/workflows/stop-ec2-runner.yml
+    secrets: inherit # zizmor: ignore[secrets-inherit] the runner App key reaches the runner jobs this way; see start-ec2-runner.yml
     with:
       label: ${{ needs.start-build-runner.outputs.label }}
       ec2-instance-id: ${{ needs.start-build-runner.outputs.ec2-instance-id }}
@@ -284,6 +286,7 @@ jobs:
       contents: read
       id-token: write # AWS OIDC
     uses: ./.github/workflows/start-ec2-runner.yml
+    secrets: inherit # zizmor: ignore[secrets-inherit] the runner App key reaches the runner jobs this way; see start-ec2-runner.yml
     with:
       instance-type: g6.xlarge # 4 CPU-core, L4 GPU
       az-config: ${{ needs.versions.outputs.aws-gpu-az-config }}
@@ -437,6 +440,7 @@ jobs:
       contents: read
       id-token: write # AWS OIDC
     uses: ./.github/workflows/stop-ec2-runner.yml
+    secrets: inherit # zizmor: ignore[secrets-inherit] the runner App key reaches the runner jobs this way; see start-ec2-runner.yml
     with:
       label: ${{ needs.start-tests-gpu-runner.outputs.label }}
       ec2-instance-id: ${{ needs.start-tests-gpu-runner.outputs.ec2-instance-id }}
