@@ -19,14 +19,11 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+# Read-only by default. Each job below is granted only what it needs, so the
+# jobs that build and run repository code do not all hold a write token and
+# the ability to request AWS credentials.
 permissions:
-  contents: write  # Required to push benchmark results to gh-pages
-  deployments: read
-  pull-requests: read
-  issues: read
-  actions: read  # Required to download artifacts from previous workflow runs
-  # Need ID token write permission to use OIDC
-  id-token: write
+  contents: read
 
 jobs:
   versions:
@@ -105,6 +102,9 @@ jobs:
   # BUILD FVDB
   ##############################################################################
   start-build-runner:
+    permissions:
+      contents: read
+      id-token: write # AWS OIDC, to start or stop the runner
     if: ${{ github.repository == 'openvdb/fvdb-reality-capture' && needs.get-fvdb-core-commit-hash.outputs.should_skip != 'true' }}
     name: Start CPU-only EC2 runner for build
     needs: [get-fvdb-core-commit-hash, versions]
@@ -114,6 +114,9 @@ jobs:
       instance-type: m6a.8xlarge
       az-config: ${{ needs.versions.outputs.aws-cpu-az-config }}
   fvdb-reality-capture-build:
+    permissions:
+      contents: read
+      actions: read # download the fvdb-core wheel artifact from an earlier run
     if: ${{ github.repository == 'openvdb/fvdb-reality-capture' }}
     name: fvdb-reality-capture Build
     needs:
@@ -133,6 +136,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          persist-credentials: false
           fetch-depth: 0
           ref: ${{ github.event.inputs.branch || 'main' }}
 
@@ -195,6 +199,9 @@ jobs:
           retention-days: 30
 
   fvdb-build-stop-runner:
+    permissions:
+      contents: read
+      id-token: write # AWS OIDC, to start or stop the runner
     if: ${{ always() && github.repository == 'openvdb/fvdb-reality-capture' && needs.start-build-runner.result != 'skipped' }}
     name: Stop CPU-only EC2 runner for build
     needs:
@@ -211,6 +218,9 @@ jobs:
   # START FVDB REALITY CAPTURE BENCHMARKS GPU RUNNER
   ##############################################################################
   start-benchmarks-gpu-runner:
+    permissions:
+      contents: read
+      id-token: write # AWS OIDC, to start or stop the runner
     if: ${{ github.repository == 'openvdb/fvdb-reality-capture' }}
     name: Start EC2 GPU runner for benchmarks
     needs: [fvdb-reality-capture-build, versions]
@@ -224,6 +234,9 @@ jobs:
   # RUN FVDB REALITY CAPTURE UNIT BENCHMARKS
   ##############################################################################
   fvdb-reality-capture-unit-benchmarks:
+    permissions:
+      contents: write # push benchmark results to gh-pages and comment on alerts
+      id-token: write # AWS OIDC, for the benchmark data and S3 tests
     if: ${{ github.repository == 'openvdb/fvdb-reality-capture' }}
     needs:
       - get-fvdb-core-commit-hash
@@ -243,6 +256,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          persist-credentials: false
           ref: ${{ github.event.inputs.branch || 'main' }}
 
       - name: Configure AWS credentials
@@ -418,6 +432,9 @@ jobs:
   # STOP FVDB UNIT BENCHMARKS GPU RUNNER
   ##############################################################################
   fvdb-benchmarks-stop-gpu-runner:
+    permissions:
+      contents: read
+      id-token: write # AWS OIDC, to start or stop the runner
     if: ${{ always() && github.repository == 'openvdb/fvdb-reality-capture' && needs.start-benchmarks-gpu-runner.result != 'skipped' }}
     name: Stop GPU EC2 runner for unit benchmarks
     needs:
@@ -433,6 +450,9 @@ jobs:
   # START COMPARATIVE BENCHMARKS GPU RUNNER
   ##############################################################################
   start-comparative-gpu-runner:
+    permissions:
+      contents: read
+      id-token: write # AWS OIDC, to start or stop the runner
     if: ${{ github.repository == 'openvdb/fvdb-reality-capture' }}
     name: Start EC2 GPU runner for comparative benchmarks
     needs: [fvdb-reality-capture-build, versions]
@@ -446,6 +466,8 @@ jobs:
   # RUN COMPARATIVE BENCHMARKS
   ##############################################################################
   fvdb-reality-capture-comparative-benchmarks:
+    permissions:
+      contents: write # push benchmark results to gh-pages and comment on alerts
     if: ${{ github.repository == 'openvdb/fvdb-reality-capture' }}
     needs:
       - get-fvdb-core-commit-hash
@@ -465,6 +487,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          persist-credentials: false
           fetch-depth: 0
           ref: ${{ github.event.inputs.branch || 'main' }}
 
@@ -627,6 +650,9 @@ jobs:
   # STOP COMPARATIVE BENCHMARKS GPU RUNNER
   ##############################################################################
   fvdb-comparative-stop-gpu-runner:
+    permissions:
+      contents: read
+      id-token: write # AWS OIDC, to start or stop the runner
     if: ${{ always() && github.repository == 'openvdb/fvdb-reality-capture' && needs.start-comparative-gpu-runner.result != 'skipped' }}
     name: Stop GPU EC2 runner for comparative benchmarks
     needs:
