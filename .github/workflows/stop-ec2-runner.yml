@@ -30,7 +30,6 @@ on:
         default: us-east-2
 
 permissions:
-  contents: read
   id-token: write # Need ID token write permission to use OIDC
 
 jobs:

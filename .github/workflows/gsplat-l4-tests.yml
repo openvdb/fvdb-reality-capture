@@ -18,9 +18,9 @@ concurrency:
   group: gsplat-l4-tests
   cancel-in-progress: true
 
+# Read-only by default; only the runner start and stop calls get id-token.
 permissions:
   contents: read
-  id-token: write
 
 jobs:
   versions:
@@ -28,6 +28,9 @@ jobs:
     uses: ./.github/workflows/load-versions.yml
 
   start-gpu-runner:
+    permissions:
+      contents: read
+      id-token: write # AWS OIDC, to start or stop the runner
     if: ${{ github.repository == 'openvdb/fvdb-reality-capture' }}
     name: Start L4 GPU runner
     needs: versions
@@ -52,6 +55,8 @@ jobs:
         shell: bash -el {0}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Set up Conda env
         uses: mamba-org/setup-micromamba@f457c30a868e4760d3a6fcea5f25dc655b8edf39 # v3.2.1
@@ -104,6 +109,9 @@ jobs:
           retention-days: 30
 
   stop-gpu-runner:
+    permissions:
+      contents: read
+      id-token: write # AWS OIDC, to start or stop the runner
     if: ${{ always() && github.repository == 'openvdb/fvdb-reality-capture' && needs.start-gpu-runner.result != 'skipped' }}
     name: Stop L4 GPU runner
     needs:
