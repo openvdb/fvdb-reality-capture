@@ -1,15 +1,9 @@
 name: fvdb-reality-capture Unit Tests
 
 on:
-  # No paths-ignore here: this workflow provides required status checks, and a
-  # workflow skipped via paths-ignore never reports them, leaving docs-only PRs
-  # blocked forever. Instead the check-changes job below detects docs-only
-  # changes and the expensive jobs are gated on it (reporting "skipped", which
-  # satisfies the required checks). The push trigger keeps paths-ignore since
-  # push builds are not required PR checks.
-  pull_request_target:
-    branches:
-      - '**'
+  # pull_request_target was removed from this release branch: its workflows
+  # predate the approval gate on main, and pull_request_target runs PR code
+  # with this repository's privileges. Run manually with workflow_dispatch.
   push:
     branches:
       - main
