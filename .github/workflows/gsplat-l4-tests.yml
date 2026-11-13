@@ -35,8 +35,6 @@ jobs:
     with:
       instance-type: g6.xlarge
       az-config: ${{ needs.versions.outputs.aws-gpu-az-config }}
-    secrets:
-      RUNNER_TOKEN: ${{ secrets.EC2_RUNNERS_ACTION }}
 
   gsplat-tests:
     if: ${{ github.repository == 'openvdb/fvdb-reality-capture' }}
@@ -114,5 +112,3 @@ jobs:
     with:
       label: ${{ needs.start-gpu-runner.outputs.label }}
       ec2-instance-id: ${{ needs.start-gpu-runner.outputs.ec2-instance-id }}
-    secrets:
-      RUNNER_TOKEN: ${{ secrets.EC2_RUNNERS_ACTION }}

@@ -112,8 +112,6 @@ jobs:
     with:
       instance-type: m6a.8xlarge
       az-config: ${{ needs.versions.outputs.aws-cpu-az-config }}
-    secrets:
-      RUNNER_TOKEN: ${{ secrets.EC2_RUNNERS_ACTION }}
   fvdb-reality-capture-build:
     if: ${{ github.repository == 'openvdb/fvdb-reality-capture' }}
     name: fvdb-reality-capture Build
@@ -205,8 +203,6 @@ jobs:
     with:
       label: ${{ needs.start-build-runner.outputs.label }}
       ec2-instance-id: ${{ needs.start-build-runner.outputs.ec2-instance-id }}
-    secrets:
-      RUNNER_TOKEN: ${{ secrets.EC2_RUNNERS_ACTION }}
 
 
   ##############################################################################
@@ -220,8 +216,6 @@ jobs:
     with:
       instance-type: g6.xlarge # 4 CPU-core, L4 GPU
       az-config: ${{ needs.versions.outputs.aws-gpu-az-config }}
-    secrets:
-      RUNNER_TOKEN: ${{ secrets.EC2_RUNNERS_ACTION }}
 
   ##############################################################################
   # RUN FVDB REALITY CAPTURE UNIT BENCHMARKS
@@ -430,8 +424,6 @@ jobs:
     with:
       label: ${{ needs.start-benchmarks-gpu-runner.outputs.label }}
       ec2-instance-id: ${{ needs.start-benchmarks-gpu-runner.outputs.ec2-instance-id }}
-    secrets:
-      RUNNER_TOKEN: ${{ secrets.EC2_RUNNERS_ACTION }}
 
   ##############################################################################
   # START COMPARATIVE BENCHMARKS GPU RUNNER
@@ -444,8 +436,6 @@ jobs:
     with:
       instance-type: g6.xlarge # 4 CPU-core, L4 GPU
       az-config: ${{ needs.versions.outputs.aws-gpu-az-config }}
-    secrets:
-      RUNNER_TOKEN: ${{ secrets.EC2_RUNNERS_ACTION }}
 
   ##############################################################################
   # RUN COMPARATIVE BENCHMARKS
@@ -641,5 +631,3 @@ jobs:
     with:
       label: ${{ needs.start-comparative-gpu-runner.outputs.label }}
       ec2-instance-id: ${{ needs.start-comparative-gpu-runner.outputs.ec2-instance-id }}
-    secrets:
-      RUNNER_TOKEN: ${{ secrets.EC2_RUNNERS_ACTION }}

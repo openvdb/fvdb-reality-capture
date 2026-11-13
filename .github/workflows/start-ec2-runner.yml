@@ -40,10 +40,6 @@ on:
         type: number
         required: false
         default: 90
-    secrets:
-      RUNNER_TOKEN:
-        description: Token used to register the runner with this repository.
-        required: true
     outputs:
       label:
         description: Runner label to pass as `runs-on` in the job being provisioned.
@@ -89,6 +85,20 @@ jobs:
           # instead of the default hour.
           role-duration-seconds: 900
 
+      # The runner action needs a token that can register and remove this
+      # repository's self-hosted runners (Administration: write). It comes from
+      # the fvdb-ec2-runners GitHub App: minted for this job, limited to this
+      # repository, and revoked when the job ends. The App's private key is a
+      # secret of the ci-aws environment, so only jobs that declare ci-aws, on
+      # refs its deployment-branch policy allows, can read it.
+      - name: Mint a runner-registration token
+        id: runner-app-token
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          client-id: ${{ vars.RUNNER_APP_CLIENT_ID }}
+          private-key: ${{ secrets.RUNNER_APP_KEY }}
+          permission-administration: write
+
       # Every instance is tagged with the repository and run that launched it.
       # The runner role's policy refuses RunInstances without the
       # GitHubRepository tag. The action applies these tags at launch, to the
@@ -110,7 +120,7 @@ jobs:
         uses: machulav/ec2-github-runner@343a1b2ae682e681c3cec9a235d882da17ff04ef # v2.6.1
         with:
           mode: start
-          github-token: ${{ secrets.RUNNER_TOKEN }}
+          github-token: ${{ steps.runner-app-token.outputs.token }}
           ec2-instance-type: ${{ inputs.instance-type }}
           availability-zones-config: ${{ inputs.az-config }}
           aws-resource-tags: ${{ steps.tags.outputs.tags }}
@@ -124,7 +134,7 @@ jobs:
         uses: machulav/ec2-github-runner@343a1b2ae682e681c3cec9a235d882da17ff04ef # v2.6.1
         with:
           mode: stop
-          github-token: ${{ secrets.RUNNER_TOKEN }}
+          github-token: ${{ steps.runner-app-token.outputs.token }}
           label: ${{ steps.a1.outputs.label }}
           ec2-instance-id: ${{ steps.a1.outputs.ec2-instance-id }}
 
@@ -154,7 +164,7 @@ jobs:
         uses: machulav/ec2-github-runner@343a1b2ae682e681c3cec9a235d882da17ff04ef # v2.6.1
         with:
           mode: start
-          github-token: ${{ secrets.RUNNER_TOKEN }}
+          github-token: ${{ steps.runner-app-token.outputs.token }}
           ec2-instance-type: ${{ inputs.instance-type }}
           availability-zones-config: ${{ inputs.az-config }}
           aws-resource-tags: ${{ steps.tags.outputs.tags }}
@@ -168,7 +178,7 @@ jobs:
         uses: machulav/ec2-github-runner@343a1b2ae682e681c3cec9a235d882da17ff04ef # v2.6.1
         with:
           mode: stop
-          github-token: ${{ secrets.RUNNER_TOKEN }}
+          github-token: ${{ steps.runner-app-token.outputs.token }}
           label: ${{ steps.a2.outputs.label }}
           ec2-instance-id: ${{ steps.a2.outputs.ec2-instance-id }}
 
@@ -195,7 +205,7 @@ jobs:
         uses: machulav/ec2-github-runner@343a1b2ae682e681c3cec9a235d882da17ff04ef # v2.6.1
         with:
           mode: start
-          github-token: ${{ secrets.RUNNER_TOKEN }}
+          github-token: ${{ steps.runner-app-token.outputs.token }}
           ec2-instance-type: ${{ inputs.instance-type }}
           availability-zones-config: ${{ inputs.az-config }}
           aws-resource-tags: ${{ steps.tags.outputs.tags }}
@@ -209,7 +219,7 @@ jobs:
         uses: machulav/ec2-github-runner@343a1b2ae682e681c3cec9a235d882da17ff04ef # v2.6.1
         with:
           mode: stop
-          github-token: ${{ secrets.RUNNER_TOKEN }}
+          github-token: ${{ steps.runner-app-token.outputs.token }}
           label: ${{ steps.a3.outputs.label }}
           ec2-instance-id: ${{ steps.a3.outputs.ec2-instance-id }}
 
