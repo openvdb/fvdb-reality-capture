@@ -1,5 +1,12 @@
 name: fvdb-reality-capture Unit Tests
 
+# ok-to-test.yml finds this workflow's held PR runs by this exact title,
+# together with the run's head commit, repository and branch, so keep it in
+# step with that file. It is built only from fields the PR author cannot
+# choose.
+# Push and manual runs keep a readable title.
+run-name: "${{ github.event_name == 'pull_request_target' && format('PR #{0} @ {1}', github.event.pull_request.number, github.event.pull_request.head.sha) || github.event.head_commit.message || github.workflow }}"
+
 on:
   # No paths-ignore here: this workflow provides required status checks, and a
   # workflow skipped via paths-ignore never reports them, leaving docs-only PRs
