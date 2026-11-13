@@ -247,6 +247,15 @@ jobs:
       - get-fvdb-core-commit-hash
       - start-benchmarks-gpu-runner # required to start the main job when the runner is ready
     name: fvdb-reality-capture Unit Benchmarks
+    # Runs the code of the chosen branch with AWS credentials, so it uses a
+    # role that can only read fvdb-data/fvdb-reality-capture and write the S3
+    # unit test's scratch key (no access to the package index). That role
+    # trusts only tokens issued for the ci-s3-tests environment, which only
+    # this job and validate-unit-tests in publish.yml declare; ci-s3-tests limits it to main, release/v*
+    # branches and v* tags.
+    environment:
+      name: ci-s3-tests
+      deployment: false
     runs-on: ${{ needs.start-benchmarks-gpu-runner.outputs.label }} # run the job on the newly created runner
     container:
       image: aswf/ci-openvdb:2024-clang17.2
@@ -321,7 +330,7 @@ jobs:
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
         with:
-          role-to-assume: arn:aws:iam::420032683002:role/openvdb-fvdb-github-actions-role
+          role-to-assume: arn:aws:iam::420032683002:role/openvdb-fvdb-github-actions-test-data
           aws-region: us-east-2
 
       - name: Download config and checkpoints from S3
