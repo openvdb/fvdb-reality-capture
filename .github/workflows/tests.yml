@@ -197,11 +197,32 @@ jobs:
           echo "fvdb_core_commit_hash=$FVDB_CORE_COMMIT_HASH" >> "$GITHUB_OUTPUT"
           popd
 
-      - name: Check if fvdb-core whl exists
-        uses: softwareforgood/check-artifact-v4-existence@aa38f28173867521c7f5a7d26285f2c2d9a014bd # v0.4.5
-        id: check_fvdb_core_wheel_artifact
+      # Reuse this run's fvdb-core wheel for this commit if one was already
+      # uploaded (for example by an earlier attempt). This used
+      # softwareforgood/check-artifact-v4-existence, but that composite action
+      # calls actions/download-artifact by tag, and the repository requires
+      # every action, nested ones included, to be pinned to a commit SHA, so
+      # the job failed at "Set up job". The same logic, inline: try the
+      # download and record whether it worked.
+      - name: Try to download an existing fvdb-core wheel
+        id: download_fvdb_core_wheel
+        continue-on-error: true
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
-          name: fvdb-wheel-${{ steps.clone_fvdb_core.outputs.fvdb_core_commit_hash }} # Replace with the actual name of your artifact
+          name: fvdb-wheel-${{ steps.clone_fvdb_core.outputs.fvdb_core_commit_hash }}
+          path: fvdb-wheel-check/
+
+      - name: Check if fvdb-core whl exists
+        id: check_fvdb_core_wheel_artifact
+        env:
+          OUTCOME: ${{ steps.download_fvdb_core_wheel.outcome }}
+        run: |
+          rm -rf fvdb-wheel-check/
+          if [ "$OUTCOME" = success ]; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Log if fvdb-core wheel already exists
         if: steps.check_fvdb_core_wheel_artifact.outputs.exists == 'true'
