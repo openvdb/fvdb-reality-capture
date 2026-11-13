@@ -104,7 +104,6 @@ jobs:
   ##############################################################################
   start-build-runner:
     permissions:
-      contents: read
       id-token: write # AWS OIDC, to start or stop the runner
     if: ${{ github.repository == 'openvdb/fvdb-reality-capture' && needs.get-fvdb-core-commit-hash.outputs.should_skip != 'true' }}
     name: Start CPU-only EC2 runner for build
@@ -201,9 +200,8 @@ jobs:
 
   fvdb-build-stop-runner:
     permissions:
-      contents: read
       id-token: write # AWS OIDC, to start or stop the runner
-    if: ${{ always() && github.repository == 'openvdb/fvdb-reality-capture' && needs.start-build-runner.result != 'skipped' }}
+    if: ${{ always() && github.repository == 'openvdb/fvdb-reality-capture' && needs.start-build-runner.result != 'skipped' && needs.start-build-runner.outputs.ec2-instance-id != '' }}
     name: Stop CPU-only EC2 runner for build
     needs:
       - start-build-runner # required to get output from the start-build-runner job
@@ -220,7 +218,6 @@ jobs:
   ##############################################################################
   start-benchmarks-gpu-runner:
     permissions:
-      contents: read
       id-token: write # AWS OIDC, to start or stop the runner
     if: ${{ github.repository == 'openvdb/fvdb-reality-capture' }}
     name: Start EC2 GPU runner for benchmarks
@@ -485,9 +482,8 @@ jobs:
   ##############################################################################
   fvdb-benchmarks-stop-gpu-runner:
     permissions:
-      contents: read
       id-token: write # AWS OIDC, to start or stop the runner
-    if: ${{ always() && github.repository == 'openvdb/fvdb-reality-capture' && needs.start-benchmarks-gpu-runner.result != 'skipped' }}
+    if: ${{ always() && github.repository == 'openvdb/fvdb-reality-capture' && needs.start-benchmarks-gpu-runner.result != 'skipped' && needs.start-benchmarks-gpu-runner.outputs.ec2-instance-id != '' }}
     name: Stop GPU EC2 runner for unit benchmarks
     needs:
       - start-benchmarks-gpu-runner
@@ -503,7 +499,6 @@ jobs:
   ##############################################################################
   start-comparative-gpu-runner:
     permissions:
-      contents: read
       id-token: write # AWS OIDC, to start or stop the runner
     if: ${{ github.repository == 'openvdb/fvdb-reality-capture' }}
     name: Start EC2 GPU runner for comparative benchmarks
@@ -737,9 +732,8 @@ jobs:
   ##############################################################################
   fvdb-comparative-stop-gpu-runner:
     permissions:
-      contents: read
       id-token: write # AWS OIDC, to start or stop the runner
-    if: ${{ always() && github.repository == 'openvdb/fvdb-reality-capture' && needs.start-comparative-gpu-runner.result != 'skipped' }}
+    if: ${{ always() && github.repository == 'openvdb/fvdb-reality-capture' && needs.start-comparative-gpu-runner.result != 'skipped' && needs.start-comparative-gpu-runner.outputs.ec2-instance-id != '' }}
     name: Stop GPU EC2 runner for comparative benchmarks
     needs:
       - start-comparative-gpu-runner

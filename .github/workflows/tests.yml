@@ -107,6 +107,8 @@ jobs:
   # Detect whether the PR touches source files or only docs/non-code paths.
   # The expensive build/test jobs are gated on this so docs-only PRs skip the
   # work while still reporting the required status checks (skipped == passed).
+  # Needs pull-requests: read (granted at the workflow level above); see
+  # check-changes.yml. A caller that grants less fails to start.
   check-changes:
     needs: approve
     uses: ./.github/workflows/check-changes.yml
@@ -119,7 +121,6 @@ jobs:
     needs: [check-changes, versions]
     if: needs.check-changes.outputs.should_test == 'true'
     permissions:
-      contents: read
       id-token: write # AWS OIDC
     uses: ./.github/workflows/start-ec2-runner.yml
     secrets: inherit # zizmor: ignore[secrets-inherit] the runner App key reaches the runner jobs this way; see start-ec2-runner.yml
@@ -266,9 +267,8 @@ jobs:
       - start-build-runner # required to get output from the start-build-runner job
       - fvdb-reality-capture-build # required to wait when the main job is done
     # Don't try to stop a runner that was never started (docs-only PRs skip start-build-runner).
-    if: ${{ always() && needs.start-build-runner.result != 'skipped' }}
+    if: ${{ always() && needs.start-build-runner.result != 'skipped' && needs.start-build-runner.outputs.ec2-instance-id != '' }}
     permissions:
-      contents: read
       id-token: write # AWS OIDC
     uses: ./.github/workflows/stop-ec2-runner.yml
     secrets: inherit # zizmor: ignore[secrets-inherit] the runner App key reaches the runner jobs this way; see start-ec2-runner.yml
@@ -284,7 +284,6 @@ jobs:
     name: Start EC2 GPU runner for tests
     needs: [fvdb-reality-capture-build, versions]
     permissions:
-      contents: read
       id-token: write # AWS OIDC
     uses: ./.github/workflows/start-ec2-runner.yml
     secrets: inherit # zizmor: ignore[secrets-inherit] the runner App key reaches the runner jobs this way; see start-ec2-runner.yml
@@ -437,9 +436,8 @@ jobs:
       - start-tests-gpu-runner # required to get output from the start-tests-gpu-runner job
       - fvdb-reality-capture-unit-tests # required to wait when the main job is done
     # Don't try to stop a runner that was never started (docs-only PRs skip start-tests-gpu-runner).
-    if: ${{ always() && needs.start-tests-gpu-runner.result != 'skipped' }}
+    if: ${{ always() && needs.start-tests-gpu-runner.result != 'skipped' && needs.start-tests-gpu-runner.outputs.ec2-instance-id != '' }}
     permissions:
-      contents: read
       id-token: write # AWS OIDC
     uses: ./.github/workflows/stop-ec2-runner.yml
     secrets: inherit # zizmor: ignore[secrets-inherit] the runner App key reaches the runner jobs this way; see start-ec2-runner.yml

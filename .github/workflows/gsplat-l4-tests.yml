@@ -18,9 +18,9 @@ concurrency:
   group: gsplat-l4-tests
   cancel-in-progress: true
 
+# Read-only by default; only the runner start and stop calls get id-token.
 permissions:
   contents: read
-  id-token: write
 
 jobs:
   versions:
@@ -28,6 +28,8 @@ jobs:
     uses: ./.github/workflows/load-versions.yml
 
   start-gpu-runner:
+    permissions:
+      id-token: write # AWS OIDC, to start or stop the runner
     if: ${{ github.repository == 'openvdb/fvdb-reality-capture' }}
     name: Start L4 GPU runner
     needs: versions
@@ -52,6 +54,8 @@ jobs:
         shell: bash -el {0}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Set up Conda env
         uses: mamba-org/setup-micromamba@f457c30a868e4760d3a6fcea5f25dc655b8edf39 # v3.2.1
@@ -62,12 +66,23 @@ jobs:
           environment-file: tests/benchmarks/comparative/docker/benchmark_environment.yml
 
       - name: Clone and build GSplat
+        env:
+          # Passed through the environment, not interpolated into the script:
+          # the input is free text from whoever dispatched the run.
+          GSPLAT_COMMIT: ${{ inputs.gsplat_commit }}
         run: |
           micromamba activate gsplat-test
           mkdir -p /workspace
-          GSPLAT_COMMIT="${{ inputs.gsplat_commit }}"
           git clone https://github.com/nerfstudio-project/gsplat.git /workspace/gsplat
-          cd /workspace/gsplat && git checkout "${GSPLAT_COMMIT}" && git submodule update --init --recursive
+          cd /workspace/gsplat
+          # Resolve the input to a commit before using it, so a value that git
+          # would read as an option (e.g. "-f") or that is not a commit fails
+          # here instead of building some other tree.
+          if ! SHA=$(git rev-parse --verify --quiet --end-of-options "${GSPLAT_COMMIT}^{commit}"); then
+            echo "::error::gsplat_commit is not a commit in gsplat: ${GSPLAT_COMMIT}"
+            exit 1
+          fi
+          git -c advice.detachedHead=false checkout --detach "$SHA" && git submodule update --init --recursive
           echo "GSplat commit: $(git rev-parse HEAD)"
           archs=$(nvidia-smi --query-gpu=compute_cap --format=csv,noheader 2>/dev/null \
                   | awk NF | sort -u | sed 's/$/+PTX/')
@@ -104,7 +119,9 @@ jobs:
           retention-days: 30
 
   stop-gpu-runner:
-    if: ${{ always() && github.repository == 'openvdb/fvdb-reality-capture' && needs.start-gpu-runner.result != 'skipped' }}
+    permissions:
+      id-token: write # AWS OIDC, to start or stop the runner
+    if: ${{ always() && github.repository == 'openvdb/fvdb-reality-capture' && needs.start-gpu-runner.result != 'skipped' && needs.start-gpu-runner.outputs.ec2-instance-id != '' }}
     name: Stop L4 GPU runner
     needs:
       - start-gpu-runner
