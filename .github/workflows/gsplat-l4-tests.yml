@@ -67,10 +67,13 @@ jobs:
           environment-file: tests/benchmarks/comparative/docker/benchmark_environment.yml
 
       - name: Clone and build GSplat
+        env:
+          # Passed through the environment, not interpolated into the script:
+          # the input is free text from whoever dispatched the run.
+          GSPLAT_COMMIT: ${{ inputs.gsplat_commit }}
         run: |
           micromamba activate gsplat-test
           mkdir -p /workspace
-          GSPLAT_COMMIT="${{ inputs.gsplat_commit }}"
           git clone https://github.com/nerfstudio-project/gsplat.git /workspace/gsplat
           cd /workspace/gsplat && git checkout "${GSPLAT_COMMIT}" && git submodule update --init --recursive
           echo "GSplat commit: $(git rev-parse HEAD)"
