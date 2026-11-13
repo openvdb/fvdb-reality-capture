@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1793978988746,
+  "lastUpdate": 1794570187449,
   "repoUrl": "https://github.com/openvdb/fvdb-reality-capture",
   "entries": {
     "fvdb-reality-capture Benchmark with pytest-benchmark": [
@@ -19203,6 +19203,133 @@ window.BENCHMARK_DATA = {
             "unit": "iter/sec",
             "range": "stddev: 0.00020557067256124056",
             "extra": "mean: 12.684370749990524 msec\nrounds: 88"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "Jonathan Swartz",
+            "username": "swahtz",
+            "email": "jonathan@jswartz.info"
+          },
+          "committer": {
+            "name": "GitHub",
+            "username": "web-flow",
+            "email": "noreply@github.com"
+          },
+          "id": "b733fb3c2ab483f45b702e65c9d74f033ecd505d",
+          "message": "CI: declare minimal permissions in the remaining workflows (#369)\n\n## Summary\n\nLow-priority cleanup from a permissions audit of the workflows;\nfollow-up to #368, which has since merged (`main` is merged into this\nbranch).\n\n- **`codestyle.yml`, `docs-build-test.yml`**: had no `permissions` block\nand fell back to the repository default. They now declare `contents:\nread`.\n- **`gsplat-l4-tests.yml`**:\n  - drops workflow-level `id-token: write`;\n- `gsplat_commit` reaches the build script through `env:`, not\ninterpolation (template injection, raised in review of #368);\n- the input is resolved with `git rev-parse --verify --end-of-options\n\"<input>^{commit}\"` before checkout. A value that git would read as an\noption (`-f`, `--orphan=x`), or that isn't a commit, now fails with an\nerror instead of building another tree.\n- **`start-ec2-runner.yml`, `stop-ec2-runner.yml`**: drop `contents:\nread`, since they check nothing out.\n- **Runner start/stop calls** in `tests.yml`, `nightly.yml`,\n`publish.yml` and `gsplat-l4-tests.yml`:\n- each grants only `id-token: write`, which is all those workflows\nrequest;\n- each stop job is skipped when its start job produced no instance ID.\nStopping with an empty ID and label can't terminate anything, and only\nadded a second, misleading failure.\n- **`check-changes.yml`**: declares only `pull-requests: read`.\n`dorny/paths-filter` runs only on `pull_request_target`, where it lists\nchanged files through the REST API, and the job checks nothing out. The\ncomment now says callers must grant these scopes, matching\nfvdb-core#865. `tests.yml` points to this on its `check-changes` job.\n- **`debug.yml`**: deleted. It never ran, ignored its `branch` input,\nand only uploaded fvdb-core's `build.sh` as a stand-in wheel artifact.\n- `persist-credentials: false` on the checkouts in these workflows.\n\n## Test plan\n\n- [x] actionlint passes. The only shellcheck warnings (SC2155 in\n`nightly.yml`, SC2001 in `publish.yml`) are already on `main`.\n- [x] zizmor findings across `.github/workflows` drop from 93 on `main`\nto 68, with nothing new.\n- [x] The `gsplat_commit` resolution was tested against a gsplat clone:\n  - accepted: the default SHA, a short SHA and `main`;\n- rejected with the error: `-f`, `--orphan=x`, `--help`, `nonexistent`,\nempty, and `HEAD; echo pwned`.\n- [x] Code Style and Documentation Build Test run on this PR from these\nfiles.\n- [ ] After merge: the next PR run starts and stops its runners, and\n\"Check for relevant changes\" passes with only `pull-requests: read`.\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n\n---------\n\nSigned-off-by: Jonathan Swartz <jonathan@jswartz.info>\nCo-authored-by: Claude Fable 5.2 <noreply@anthropic.com>",
+          "timestamp": "2026-11-13T05:20:46Z",
+          "url": "https://github.com/openvdb/fvdb-reality-capture/commit/b733fb3c2ab483f45b702e65c9d74f033ecd505d"
+        },
+        "date": 1794570186219,
+        "tool": "pytest",
+        "benches": [
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_project_gaussians[garden-00000664]",
+            "value": 7534.708316153768,
+            "unit": "iter/sec",
+            "range": "stddev: 0.000010070193819717183",
+            "extra": "mean: 132.71913895539737 usec\nrounds: 6808"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_render_gaussians[garden-00000664]",
+            "value": 898.3319762142277,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00003305188122584676",
+            "extra": "mean: 1.113174223424868 msec\nrounds: 1016"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_forward[garden-00000664]",
+            "value": 800.1079878032915,
+            "unit": "iter/sec",
+            "range": "stddev: 0.000020246292924341117",
+            "extra": "mean: 1.2498312918303878 msec\nrounds: 771"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_backward[garden-00000664]",
+            "value": 207.93580742385888,
+            "unit": "iter/sec",
+            "range": "stddev: 0.0005429097185614653",
+            "extra": "mean: 4.809176506870642 msec\nrounds: 2109"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_project_gaussians[garden-00006640]",
+            "value": 339.48139772377027,
+            "unit": "iter/sec",
+            "range": "stddev: 0.0005161414106938472",
+            "extra": "mean: 2.9456695026738444 msec\nrounds: 6360"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_render_gaussians[garden-00006640]",
+            "value": 149.2494487748099,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00008877529334674613",
+            "extra": "mean: 6.700192250015053 msec\nrounds: 168"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_forward[garden-00006640]",
+            "value": 103.72786825034059,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00008745846715825325",
+            "extra": "mean: 9.640610733333148 msec\nrounds: 105"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_backward[garden-00006640]",
+            "value": 28.742581830661784,
+            "unit": "iter/sec",
+            "range": "stddev: 0.004041661084094949",
+            "extra": "mean: 34.79158573476611 msec\nrounds: 1772"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_project_gaussians[garden-00016600]",
+            "value": 276.96370848918224,
+            "unit": "iter/sec",
+            "range": "stddev: 0.0006349663756344215",
+            "extra": "mean: 3.6105813482023703 msec\nrounds: 6367"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_render_gaussians[garden-00016600]",
+            "value": 111.56483479753331,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00013074301191544729",
+            "extra": "mean: 8.963397846774834 msec\nrounds: 124"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_forward[garden-00016600]",
+            "value": 79.83933856953651,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00008319879921388261",
+            "extra": "mean: 12.525153864207486 msec\nrounds: 81"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_backward[garden-00016600]",
+            "value": 22.433672573093865,
+            "unit": "iter/sec",
+            "range": "stddev: 0.004937540470848",
+            "extra": "mean: 44.57584894946554 msec\nrounds: 1979"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_forward_mcmc[garden-00000664]",
+            "value": 773.6672186323992,
+            "unit": "iter/sec",
+            "range": "stddev: 0.000027327962340998313",
+            "extra": "mean: 1.2925453940877656 msec\nrounds: 845"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_forward_mcmc[garden-00006640]",
+            "value": 102.72328187800531,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00017730570174081227",
+            "extra": "mean: 9.734891464893082 msec\nrounds: 114"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_forward_mcmc[garden-00016600]",
+            "value": 80.31454532917799,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00019628399977879348",
+            "extra": "mean: 12.451044775281865 msec\nrounds: 89"
           }
         ]
       }
