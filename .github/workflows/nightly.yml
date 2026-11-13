@@ -109,6 +109,7 @@ jobs:
     name: Start CPU-only EC2 runner for build
     needs: [get-fvdb-core-commit-hash, versions]
     uses: ./.github/workflows/start-ec2-runner.yml
+    secrets: inherit # zizmor: ignore[secrets-inherit] the runner App key reaches the runner jobs this way; see start-ec2-runner.yml
     with:
       instance-type: m6a.8xlarge
       az-config: ${{ needs.versions.outputs.aws-cpu-az-config }}
@@ -200,6 +201,7 @@ jobs:
       - start-build-runner # required to get output from the start-build-runner job
       - fvdb-reality-capture-build # required to wait when the main job is done
     uses: ./.github/workflows/stop-ec2-runner.yml
+    secrets: inherit # zizmor: ignore[secrets-inherit] the runner App key reaches the runner jobs this way; see start-ec2-runner.yml
     with:
       label: ${{ needs.start-build-runner.outputs.label }}
       ec2-instance-id: ${{ needs.start-build-runner.outputs.ec2-instance-id }}
@@ -213,6 +215,7 @@ jobs:
     name: Start EC2 GPU runner for benchmarks
     needs: [fvdb-reality-capture-build, versions]
     uses: ./.github/workflows/start-ec2-runner.yml
+    secrets: inherit # zizmor: ignore[secrets-inherit] the runner App key reaches the runner jobs this way; see start-ec2-runner.yml
     with:
       instance-type: g6.xlarge # 4 CPU-core, L4 GPU
       az-config: ${{ needs.versions.outputs.aws-gpu-az-config }}
@@ -421,6 +424,7 @@ jobs:
       - start-benchmarks-gpu-runner
       - fvdb-reality-capture-unit-benchmarks
     uses: ./.github/workflows/stop-ec2-runner.yml
+    secrets: inherit # zizmor: ignore[secrets-inherit] the runner App key reaches the runner jobs this way; see start-ec2-runner.yml
     with:
       label: ${{ needs.start-benchmarks-gpu-runner.outputs.label }}
       ec2-instance-id: ${{ needs.start-benchmarks-gpu-runner.outputs.ec2-instance-id }}
@@ -433,6 +437,7 @@ jobs:
     name: Start EC2 GPU runner for comparative benchmarks
     needs: [fvdb-reality-capture-build, versions]
     uses: ./.github/workflows/start-ec2-runner.yml
+    secrets: inherit # zizmor: ignore[secrets-inherit] the runner App key reaches the runner jobs this way; see start-ec2-runner.yml
     with:
       instance-type: g6.xlarge # 4 CPU-core, L4 GPU
       az-config: ${{ needs.versions.outputs.aws-gpu-az-config }}
@@ -628,6 +633,7 @@ jobs:
       - start-comparative-gpu-runner
       - fvdb-reality-capture-comparative-benchmarks
     uses: ./.github/workflows/stop-ec2-runner.yml
+    secrets: inherit # zizmor: ignore[secrets-inherit] the runner App key reaches the runner jobs this way; see start-ec2-runner.yml
     with:
       label: ${{ needs.start-comparative-gpu-runner.outputs.label }}
       ec2-instance-id: ${{ needs.start-comparative-gpu-runner.outputs.ec2-instance-id }}

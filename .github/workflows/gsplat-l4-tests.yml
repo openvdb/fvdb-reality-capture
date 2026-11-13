@@ -32,6 +32,7 @@ jobs:
     name: Start L4 GPU runner
     needs: versions
     uses: ./.github/workflows/start-ec2-runner.yml
+    secrets: inherit # zizmor: ignore[secrets-inherit] the runner App key reaches the runner jobs this way; see start-ec2-runner.yml
     with:
       instance-type: g6.xlarge
       az-config: ${{ needs.versions.outputs.aws-gpu-az-config }}
@@ -109,6 +110,7 @@ jobs:
       - start-gpu-runner
       - gsplat-tests
     uses: ./.github/workflows/stop-ec2-runner.yml
+    secrets: inherit # zizmor: ignore[secrets-inherit] the runner App key reaches the runner jobs this way; see start-ec2-runner.yml
     with:
       label: ${{ needs.start-gpu-runner.outputs.label }}
       ec2-instance-id: ${{ needs.start-gpu-runner.outputs.ec2-instance-id }}
