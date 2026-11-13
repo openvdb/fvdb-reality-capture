@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1794583764582,
+  "lastUpdate": 1794583767142,
   "repoUrl": "https://github.com/openvdb/fvdb-reality-capture",
   "entries": {
     "fvdb-reality-capture Benchmark with pytest-benchmark": [
@@ -37902,6 +37902,88 @@ window.BENCHMARK_DATA = {
           {
             "name": "garden/fvdb_mcmc - peak_gpu_memory_gb",
             "value": 3.6367,
+            "unit": "GB"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "Jonathan Swartz",
+            "username": "swahtz",
+            "email": "jonathan@jswartz.info"
+          },
+          "committer": {
+            "name": "GitHub",
+            "username": "web-flow",
+            "email": "noreply@github.com"
+          },
+          "id": "b733fb3c2ab483f45b702e65c9d74f033ecd505d",
+          "message": "CI: declare minimal permissions in the remaining workflows (#369)\n\n## Summary\n\nLow-priority cleanup from a permissions audit of the workflows;\nfollow-up to #368, which has since merged (`main` is merged into this\nbranch).\n\n- **`codestyle.yml`, `docs-build-test.yml`**: had no `permissions` block\nand fell back to the repository default. They now declare `contents:\nread`.\n- **`gsplat-l4-tests.yml`**:\n  - drops workflow-level `id-token: write`;\n- `gsplat_commit` reaches the build script through `env:`, not\ninterpolation (template injection, raised in review of #368);\n- the input is resolved with `git rev-parse --verify --end-of-options\n\"<input>^{commit}\"` before checkout. A value that git would read as an\noption (`-f`, `--orphan=x`), or that isn't a commit, now fails with an\nerror instead of building another tree.\n- **`start-ec2-runner.yml`, `stop-ec2-runner.yml`**: drop `contents:\nread`, since they check nothing out.\n- **Runner start/stop calls** in `tests.yml`, `nightly.yml`,\n`publish.yml` and `gsplat-l4-tests.yml`:\n- each grants only `id-token: write`, which is all those workflows\nrequest;\n- each stop job is skipped when its start job produced no instance ID.\nStopping with an empty ID and label can't terminate anything, and only\nadded a second, misleading failure.\n- **`check-changes.yml`**: declares only `pull-requests: read`.\n`dorny/paths-filter` runs only on `pull_request_target`, where it lists\nchanged files through the REST API, and the job checks nothing out. The\ncomment now says callers must grant these scopes, matching\nfvdb-core#865. `tests.yml` points to this on its `check-changes` job.\n- **`debug.yml`**: deleted. It never ran, ignored its `branch` input,\nand only uploaded fvdb-core's `build.sh` as a stand-in wheel artifact.\n- `persist-credentials: false` on the checkouts in these workflows.\n\n## Test plan\n\n- [x] actionlint passes. The only shellcheck warnings (SC2155 in\n`nightly.yml`, SC2001 in `publish.yml`) are already on `main`.\n- [x] zizmor findings across `.github/workflows` drop from 93 on `main`\nto 68, with nothing new.\n- [x] The `gsplat_commit` resolution was tested against a gsplat clone:\n  - accepted: the default SHA, a short SHA and `main`;\n- rejected with the error: `-f`, `--orphan=x`, `--help`, `nonexistent`,\nempty, and `HEAD; echo pwned`.\n- [x] Code Style and Documentation Build Test run on this PR from these\nfiles.\n- [ ] After merge: the next PR run starts and stops its runners, and\n\"Check for relevant changes\" passes with only `pull-requests: read`.\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n\n---------\n\nSigned-off-by: Jonathan Swartz <jonathan@jswartz.info>\nCo-authored-by: Claude Fable 5.2 <noreply@anthropic.com>",
+          "timestamp": "2026-11-13T05:20:46Z",
+          "url": "https://github.com/openvdb/fvdb-reality-capture/commit/b733fb3c2ab483f45b702e65c9d74f033ecd505d"
+        },
+        "date": 1794583766627,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "bicycle/fvdb_default - training_time",
+            "value": 669.53,
+            "unit": "seconds"
+          },
+          {
+            "name": "bicycle/fvdb_default - peak_gpu_memory_gb",
+            "value": 4.5493,
+            "unit": "GB"
+          },
+          {
+            "name": "bicycle/fvdb_mcmc - training_time",
+            "value": 334.19,
+            "unit": "seconds"
+          },
+          {
+            "name": "bicycle/fvdb_mcmc - peak_gpu_memory_gb",
+            "value": 1.4436,
+            "unit": "GB"
+          },
+          {
+            "name": "bonsai/fvdb_default - training_time",
+            "value": 448.75,
+            "unit": "seconds"
+          },
+          {
+            "name": "bonsai/fvdb_default - peak_gpu_memory_gb",
+            "value": 1.6096,
+            "unit": "GB"
+          },
+          {
+            "name": "bonsai/fvdb_mcmc - training_time",
+            "value": 595.35,
+            "unit": "seconds"
+          },
+          {
+            "name": "bonsai/fvdb_mcmc - peak_gpu_memory_gb",
+            "value": 1.5552,
+            "unit": "GB"
+          },
+          {
+            "name": "garden/fvdb_default - training_time",
+            "value": 876.9,
+            "unit": "seconds"
+          },
+          {
+            "name": "garden/fvdb_default - peak_gpu_memory_gb",
+            "value": 5.5961,
+            "unit": "GB"
+          },
+          {
+            "name": "garden/fvdb_mcmc - training_time",
+            "value": 692.01,
+            "unit": "seconds"
+          },
+          {
+            "name": "garden/fvdb_mcmc - peak_gpu_memory_gb",
+            "value": 3.6368,
             "unit": "GB"
           }
         ]
