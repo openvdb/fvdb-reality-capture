@@ -29,7 +29,6 @@ jobs:
 
   start-gpu-runner:
     permissions:
-      contents: read
       id-token: write # AWS OIDC, to start or stop the runner
     if: ${{ github.repository == 'openvdb/fvdb-reality-capture' }}
     name: Start L4 GPU runner
@@ -75,7 +74,15 @@ jobs:
           micromamba activate gsplat-test
           mkdir -p /workspace
           git clone https://github.com/nerfstudio-project/gsplat.git /workspace/gsplat
-          cd /workspace/gsplat && git checkout "${GSPLAT_COMMIT}" && git submodule update --init --recursive
+          cd /workspace/gsplat
+          # Resolve the input to a commit before using it, so a value that git
+          # would read as an option (e.g. "-f") or that is not a commit fails
+          # here instead of building some other tree.
+          if ! SHA=$(git rev-parse --verify --quiet --end-of-options "${GSPLAT_COMMIT}^{commit}"); then
+            echo "::error::gsplat_commit is not a commit in gsplat: ${GSPLAT_COMMIT}"
+            exit 1
+          fi
+          git -c advice.detachedHead=false checkout --detach "$SHA" && git submodule update --init --recursive
           echo "GSplat commit: $(git rev-parse HEAD)"
           archs=$(nvidia-smi --query-gpu=compute_cap --format=csv,noheader 2>/dev/null \
                   | awk NF | sort -u | sed 's/$/+PTX/')
@@ -113,9 +120,8 @@ jobs:
 
   stop-gpu-runner:
     permissions:
-      contents: read
       id-token: write # AWS OIDC, to start or stop the runner
-    if: ${{ always() && github.repository == 'openvdb/fvdb-reality-capture' && needs.start-gpu-runner.result != 'skipped' }}
+    if: ${{ always() && github.repository == 'openvdb/fvdb-reality-capture' && needs.start-gpu-runner.result != 'skipped' && needs.start-gpu-runner.outputs.ec2-instance-id != '' }}
     name: Stop L4 GPU runner
     needs:
       - start-gpu-runner

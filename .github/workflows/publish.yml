@@ -394,7 +394,6 @@ jobs:
 
   start-validation-runner:
     permissions:
-      contents: read
       id-token: write # AWS OIDC, to start or stop the runner
     name: Start GPU EC2 runner for validation
     needs: [pr-flags, fvdb-rc-build, discover-fvdb-core, versions]
@@ -544,14 +543,13 @@ jobs:
 
   stop-validation-runner:
     permissions:
-      contents: read
       id-token: write # AWS OIDC, to start or stop the runner
     name: Stop GPU EC2 runner for validation
     needs:
       - start-validation-runner
       - validate-smoke-test
       - validate-unit-tests
-    if: ${{ always() && needs.start-validation-runner.result != 'skipped' }}
+    if: ${{ always() && needs.start-validation-runner.result != 'skipped' && needs.start-validation-runner.outputs.ec2-instance-id != '' }}
     uses: ./.github/workflows/stop-ec2-runner.yml
     secrets: inherit # zizmor: ignore[secrets-inherit] the runner App key reaches the runner jobs this way; see start-ec2-runner.yml
     with:
