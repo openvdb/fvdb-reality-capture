@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1794583767142,
+  "lastUpdate": 1794656504931,
   "repoUrl": "https://github.com/openvdb/fvdb-reality-capture",
   "entries": {
     "fvdb-reality-capture Benchmark with pytest-benchmark": [
@@ -19330,6 +19330,133 @@ window.BENCHMARK_DATA = {
             "unit": "iter/sec",
             "range": "stddev: 0.00019628399977879348",
             "extra": "mean: 12.451044775281865 msec\nrounds: 89"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "Jonathan Swartz",
+            "username": "swahtz",
+            "email": "jonathan@jswartz.info"
+          },
+          "committer": {
+            "name": "GitHub",
+            "username": "web-flow",
+            "email": "noreply@github.com"
+          },
+          "id": "23d46a14e4d19aada6f559e0ae4fa9528d2c8269",
+          "message": "CI: post /ok-to-test instructions on held external PRs (#371)\n\n## Summary\n\nWhen a PR from an external contributor is held at the approval gate, a\nnew `notify` job in `approval-gate.yml` posts a comment on the PR\ntelling maintainers what to do:\n\n> **CI is waiting for maintainer approval.**\n>\n> Maintainers: after reviewing the changes up to `<head sha>`, comment\n> ```\n> /ok-to-test <head sha>\n> ```\n> Each new push needs a new `/ok-to-test`. This comment is updated to\nthe latest commit.\n\n- There is one comment per PR, found by a hidden `<!-- ok-to-test-notice\n-->` marker and posted as `github-actions[bot]`. Later pushes edit it to\nshow the new head SHA rather than adding new comments.\n- It runs only for untrusted `pull_request_target` runs. Trusted runs\nand draft PRs get no comment, since the gate is skipped for drafts.\n- It runs no PR code: the comment is built only from the PR number and\nhead SHA in the event payload, passed through `env:`.\n- The job is `continue-on-error` and nothing depends on it, so it can't\nblock or fail the gate.\n- The calling `approve` job now also grants `pull-requests: write` (the\nreusable workflow's caller requirement is documented in its header).\n\n## Test plan\n\n- [x] Tested in `openvdb/fvdb-ok-to-test-sandbox` PR #3 with an external\naccount: the comment was posted with the head SHA; a second push edited\nthe same comment to the new SHA; `/ok-to-test <sha>` copied from it\nreleased both held runs.\n- [x] `actionlint` (with the repo's shellcheck excludes) and `zizmor\n--offline` report nothing new.\n- [ ] After merge: a trusted PR run still passes the gate with no\ncomment (this PR's own run uses `main`'s workflow files, because the\ntrigger is `pull_request_target`, so it does not exercise the change).\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n\nSigned-off-by: Jonathan Swartz <jonathan@jswartz.info>\nCo-authored-by: Claude Opus 5.5 <noreply@anthropic.com>",
+          "timestamp": "2026-11-13T22:45:50Z",
+          "url": "https://github.com/openvdb/fvdb-reality-capture/commit/23d46a14e4d19aada6f559e0ae4fa9528d2c8269"
+        },
+        "date": 1794656503382,
+        "tool": "pytest",
+        "benches": [
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_project_gaussians[garden-00000664]",
+            "value": 7240.83488050832,
+            "unit": "iter/sec",
+            "range": "stddev: 0.000013212321945918153",
+            "extra": "mean: 138.10562131335305 usec\nrounds: 6541"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_render_gaussians[garden-00000664]",
+            "value": 884.1590604089806,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00004409131321553154",
+            "extra": "mean: 1.1310182124214567 msec\nrounds: 998"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_forward[garden-00000664]",
+            "value": 792.7330055130857,
+            "unit": "iter/sec",
+            "range": "stddev: 0.000019604014534395898",
+            "extra": "mean: 1.2614587673850712 msec\nrounds: 748"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_backward[garden-00000664]",
+            "value": 203.1719703891666,
+            "unit": "iter/sec",
+            "range": "stddev: 0.0005806813372398734",
+            "extra": "mean: 4.921938779668011 msec\nrounds: 1938"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_project_gaussians[garden-00006640]",
+            "value": 339.30561379544247,
+            "unit": "iter/sec",
+            "range": "stddev: 0.0005125716913802552",
+            "extra": "mean: 2.947195564535726 msec\nrounds: 6446"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_render_gaussians[garden-00006640]",
+            "value": 145.81583464129787,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00009045109005878221",
+            "extra": "mean: 6.857965751524634 msec\nrounds: 165"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_forward[garden-00006640]",
+            "value": 101.8772905582838,
+            "unit": "iter/sec",
+            "range": "stddev: 0.0000664468913210033",
+            "extra": "mean: 9.815730223291538 msec\nrounds: 103"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_backward[garden-00006640]",
+            "value": 28.25742004206904,
+            "unit": "iter/sec",
+            "range": "stddev: 0.003829333109865938",
+            "extra": "mean: 35.38893495978124 msec\nrounds: 2039"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_project_gaussians[garden-00016600]",
+            "value": 276.64172237845327,
+            "unit": "iter/sec",
+            "range": "stddev: 0.0006237144482543992",
+            "extra": "mean: 3.614783740508864 msec\nrounds: 6532"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_render_gaussians[garden-00016600]",
+            "value": 109.06515331750272,
+            "unit": "iter/sec",
+            "range": "stddev: 0.0001254109242862606",
+            "extra": "mean: 9.16883137814762 msec\nrounds: 119"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_forward[garden-00016600]",
+            "value": 78.32759146466597,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00008628742939813003",
+            "extra": "mean: 12.766893265843693 msec\nrounds: 79"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_backward[garden-00016600]",
+            "value": 21.9103425251279,
+            "unit": "iter/sec",
+            "range": "stddev: 0.004991119333431513",
+            "extra": "mean: 45.640546187406656 msec\nrounds: 2033"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_forward_mcmc[garden-00000664]",
+            "value": 749.0198368137619,
+            "unit": "iter/sec",
+            "range": "stddev: 0.000035771235849645424",
+            "extra": "mean: 1.3350781259063536 msec\nrounds: 826"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_forward_mcmc[garden-00006640]",
+            "value": 101.86013407216474,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00014896636297775557",
+            "extra": "mean: 9.817383504438853 msec\nrounds: 113"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_forward_mcmc[garden-00016600]",
+            "value": 79.87726806939177,
+            "unit": "iter/sec",
+            "range": "stddev: 0.0001961172001348038",
+            "extra": "mean: 12.519206329531325 msec\nrounds: 88"
           }
         ]
       }
