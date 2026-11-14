@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1794669976691,
+  "lastUpdate": 1794669979342,
   "repoUrl": "https://github.com/openvdb/fvdb-reality-capture",
   "entries": {
     "fvdb-reality-capture Benchmark with pytest-benchmark": [
@@ -38193,6 +38193,88 @@ window.BENCHMARK_DATA = {
           {
             "name": "garden/fvdb_mcmc - peak_gpu_memory_gb",
             "value": 3.6368,
+            "unit": "GB"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "Jonathan Swartz",
+            "username": "swahtz",
+            "email": "jonathan@jswartz.info"
+          },
+          "committer": {
+            "name": "GitHub",
+            "username": "web-flow",
+            "email": "noreply@github.com"
+          },
+          "id": "23d46a14e4d19aada6f559e0ae4fa9528d2c8269",
+          "message": "CI: post /ok-to-test instructions on held external PRs (#371)\n\n## Summary\n\nWhen a PR from an external contributor is held at the approval gate, a\nnew `notify` job in `approval-gate.yml` posts a comment on the PR\ntelling maintainers what to do:\n\n> **CI is waiting for maintainer approval.**\n>\n> Maintainers: after reviewing the changes up to `<head sha>`, comment\n> ```\n> /ok-to-test <head sha>\n> ```\n> Each new push needs a new `/ok-to-test`. This comment is updated to\nthe latest commit.\n\n- There is one comment per PR, found by a hidden `<!-- ok-to-test-notice\n-->` marker and posted as `github-actions[bot]`. Later pushes edit it to\nshow the new head SHA rather than adding new comments.\n- It runs only for untrusted `pull_request_target` runs. Trusted runs\nand draft PRs get no comment, since the gate is skipped for drafts.\n- It runs no PR code: the comment is built only from the PR number and\nhead SHA in the event payload, passed through `env:`.\n- The job is `continue-on-error` and nothing depends on it, so it can't\nblock or fail the gate.\n- The calling `approve` job now also grants `pull-requests: write` (the\nreusable workflow's caller requirement is documented in its header).\n\n## Test plan\n\n- [x] Tested in `openvdb/fvdb-ok-to-test-sandbox` PR #3 with an external\naccount: the comment was posted with the head SHA; a second push edited\nthe same comment to the new SHA; `/ok-to-test <sha>` copied from it\nreleased both held runs.\n- [x] `actionlint` (with the repo's shellcheck excludes) and `zizmor\n--offline` report nothing new.\n- [ ] After merge: a trusted PR run still passes the gate with no\ncomment (this PR's own run uses `main`'s workflow files, because the\ntrigger is `pull_request_target`, so it does not exercise the change).\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n\nSigned-off-by: Jonathan Swartz <jonathan@jswartz.info>\nCo-authored-by: Claude Opus 5.5 <noreply@anthropic.com>",
+          "timestamp": "2026-11-13T22:45:50Z",
+          "url": "https://github.com/openvdb/fvdb-reality-capture/commit/23d46a14e4d19aada6f559e0ae4fa9528d2c8269"
+        },
+        "date": 1794669978666,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "bicycle/fvdb_default - training_time",
+            "value": 659.46,
+            "unit": "seconds"
+          },
+          {
+            "name": "bicycle/fvdb_default - peak_gpu_memory_gb",
+            "value": 4.5462,
+            "unit": "GB"
+          },
+          {
+            "name": "bicycle/fvdb_mcmc - training_time",
+            "value": 330.45,
+            "unit": "seconds"
+          },
+          {
+            "name": "bicycle/fvdb_mcmc - peak_gpu_memory_gb",
+            "value": 1.4438,
+            "unit": "GB"
+          },
+          {
+            "name": "bonsai/fvdb_default - training_time",
+            "value": 441.14,
+            "unit": "seconds"
+          },
+          {
+            "name": "bonsai/fvdb_default - peak_gpu_memory_gb",
+            "value": 1.6137,
+            "unit": "GB"
+          },
+          {
+            "name": "bonsai/fvdb_mcmc - training_time",
+            "value": 587.69,
+            "unit": "seconds"
+          },
+          {
+            "name": "bonsai/fvdb_mcmc - peak_gpu_memory_gb",
+            "value": 1.555,
+            "unit": "GB"
+          },
+          {
+            "name": "garden/fvdb_default - training_time",
+            "value": 843.45,
+            "unit": "seconds"
+          },
+          {
+            "name": "garden/fvdb_default - peak_gpu_memory_gb",
+            "value": 5.5565,
+            "unit": "GB"
+          },
+          {
+            "name": "garden/fvdb_mcmc - training_time",
+            "value": 684.62,
+            "unit": "seconds"
+          },
+          {
+            "name": "garden/fvdb_mcmc - peak_gpu_memory_gb",
+            "value": 3.6365,
             "unit": "GB"
           }
         ]
