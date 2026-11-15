@@ -303,7 +303,7 @@ jobs:
   ##############################################################################
   discover-fvdb-core:
     permissions:
-      id-token: write # AWS OIDC, to list fvdb-core wheels in the package index
+      id-token: write # AWS OIDC, to list and download fvdb-core staging wheels
     name: Discover fvdb-core versions from S3 staging
     needs: [pr-flags, fvdb-rc-build]
     if: ${{ !cancelled() && needs.fvdb-rc-build.result == 'success' && (needs.pr-flags.outputs.release_push == 'true' || inputs.run_validation == true) }}
@@ -313,7 +313,6 @@ jobs:
       cuda-tag: ${{ steps.discover.outputs.cuda_tag }}
       cuda-image-tag: ${{ steps.discover.outputs.cuda_image_tag }}
       pytorch-index: ${{ steps.discover.outputs.pytorch_index }}
-      core-wheel-url: ${{ steps.discover.outputs.core_wheel_url }}
     steps:
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
@@ -380,17 +379,29 @@ jobs:
             exit 1
           fi
 
-          S3_BASE="https://fvdb-packages.s3.us-east-2.amazonaws.com/simple-staging/fvdb-core"
-          CP312_ENCODED=$(echo "$CP312_WHEEL" | sed 's/+/%2B/g')
-          CORE_WHEEL_URL="${S3_BASE}/${CP312_ENCODED}"
+          # Download the wheel here, with the job's AWS credentials, and pass
+          # it to the validation jobs as an artifact. The bucket is not
+          # publicly readable (the public index is served through
+          # CloudFront), and CloudFront may still be caching an older staging
+          # wheel uploaded under the same name, so neither a direct S3 URL
+          # nor a CloudFront URL is reliable here.
+          mkdir -p core-wheel
+          aws s3 cp "s3://fvdb-packages/simple-staging/fvdb-core/${CP312_WHEEL}" core-wheel/ --only-show-errors
 
           echo "Discovered: torch=$TORCH_VERSION cuda=$CUDA_TAG image=$CUDA_IMAGE_TAG"
-          echo "Core wheel URL: $CORE_WHEEL_URL"
+          echo "Core wheel: $CP312_WHEEL"
           echo "torch_version=$TORCH_VERSION" >> $GITHUB_OUTPUT
           echo "cuda_tag=$CUDA_TAG" >> $GITHUB_OUTPUT
           echo "cuda_image_tag=$CUDA_IMAGE_TAG" >> $GITHUB_OUTPUT
           echo "pytorch_index=$PYTORCH_INDEX" >> $GITHUB_OUTPUT
-          echo "core_wheel_url=$CORE_WHEEL_URL" >> $GITHUB_OUTPUT
+
+      - name: Upload the fvdb-core wheel
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: fvdb-core-staging-wheel
+          path: core-wheel/*.whl
+          if-no-files-found: error
+          retention-days: 7
 
   start-validation-runner:
     permissions:
@@ -437,13 +448,18 @@ jobs:
           name: fvdb-rc-dist
           path: dist
 
+      - name: Download the fvdb-core wheel
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: fvdb-core-staging-wheel
+          path: core-wheel
+
       - name: Install fvdb-core from S3 staging and fvdb-reality-capture wheel
         run: |
           uv pip install --no-cache \
             torch==${{ needs.discover-fvdb-core.outputs.torch-version }} torchvision \
             --extra-index-url ${{ needs.discover-fvdb-core.outputs.pytorch-index }}
-          uv pip install --no-cache \
-            "${{ needs.discover-fvdb-core.outputs.core-wheel-url }}"
+          uv pip install --no-cache core-wheel/fvdb_core-*.whl
           uv pip install dist/fvdb_reality_capture-*.whl
 
       - name: Smoke test
@@ -517,13 +533,18 @@ jobs:
           name: fvdb-rc-dist
           path: dist
 
+      - name: Download the fvdb-core wheel
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: fvdb-core-staging-wheel
+          path: core-wheel
+
       - name: Install fvdb-core from S3 staging
         run: |
           uv pip install --no-cache \
             torch==${{ needs.discover-fvdb-core.outputs.torch-version }} torchvision \
             --extra-index-url ${{ needs.discover-fvdb-core.outputs.pytorch-index }}
-          uv pip install --no-cache \
-            "${{ needs.discover-fvdb-core.outputs.core-wheel-url }}"
+          uv pip install --no-cache core-wheel/fvdb_core-*.whl
 
       - name: Install fvdb-reality-capture with test dependencies
         run: |
