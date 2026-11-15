@@ -73,7 +73,8 @@ def download_example_data(dataset="all", download_path: str | pathlib.Path = pat
 
     # dataset urls
     dataset_urls = {
-        "mipnerf360": "https://d184pg3x235vug.cloudfront.net/fvdb-reality-capture/360_v2.zip",
+        # Mip-NeRF 360, from Google Research (https://jonbarron.info/mipnerf360/).
+        "mipnerf360": "https://storage.googleapis.com/gresearch/refraw360/360_v2.zip",
         "gettysburg": "https://d184pg3x235vug.cloudfront.net/fvdb-reality-capture/gettysburg.zip",
         "safety_park": "https://d184pg3x235vug.cloudfront.net/fvdb-reality-capture/safety_park.zip",
         "miris_factory": "https://d184pg3x235vug.cloudfront.net/fvdb-reality-capture/miris_factory.zip",

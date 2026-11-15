@@ -680,7 +680,11 @@ class LPIPSNetwork(torch.nn.Module):
         self.lins = torch.nn.ModuleList(self.lins)
 
         if pretrained:
-            weights_url = f"https://d184pg3x235vug.cloudfront.net/fvdb-reality-capture/{backbone}.pth"
+            # The LPIPS authors' v0.1 weights (BSD-2-Clause), pinned to a commit.
+            weights_url = (
+                "https://raw.githubusercontent.com/richzhang/PerceptualSimilarity/"
+                f"c33f89e9f46522a584cf41d8880eb0afa982708b/lpips/weights/v0.1/{backbone}.pth"
+            )
             path_to_weights = get_weights_path_for_model(f"{backbone}.pth", weights_url, model_name=backbone)
             self.load_state_dict(torch.load(path_to_weights, map_location="cpu", weights_only=False), strict=False)
 

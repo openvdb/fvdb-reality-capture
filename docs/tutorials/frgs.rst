@@ -28,7 +28,7 @@ This will output a progress bar as the dataset is downloaded and extracted to a 
 
 .. code-block:: bash
 
-   INFO - Downloading dataset mipnerf360 from https://d184pg3x235vug.cloudfront.net/fvdb-reality-capture/360_v2.zip to /home/fwilliams/projects/openvdb/fvdb-reality-capture/data/360_v2/360_v2.zip
+   INFO - Downloading dataset mipnerf360 from https://storage.googleapis.com/gresearch/refraw360/360_v2.zip to /home/fwilliams/projects/openvdb/fvdb-reality-capture/data/360_v2/360_v2.zip
    Downloading dataset mipnerf360:   100%|████████████████████████████| 728M/12.5G [10:11<00:00, 18.8MB/s]
    INFO - Extracting dataset mipnerf360 to /home/fwilliams/projects/openvdb/fvdb-reality-capture/data/360_v2/
    INFO - Dataset mipnerf360 downloaded and extracted to /home/fwilliams/projects/openvdb/fvdb-reality-capture/data/360_v2/

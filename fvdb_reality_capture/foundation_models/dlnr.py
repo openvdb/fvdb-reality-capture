@@ -31,8 +31,12 @@ class DLNRModel:
             backbone (str): Backbone to use for the DLNR model. Options are "middleburry" or "sceneflow".
             device (torch.device | str): Device to load the model on (default is "cuda:0").
         """
-        middleburry_weights_url = "https://d184pg3x235vug.cloudfront.net/fvdb-reality-capture/DLNR_Middlebury.pth"
-        sceneflow_weights_url = "https://d184pg3x235vug.cloudfront.net/fvdb-reality-capture/DLNR_SceneFlow.pth"
+        # Released by the DLNR authors (MIT license).
+        dlnr_release = (
+            "https://github.com/David-Zhao-1997/High-frequency-Stereo-Matching-Network/releases/download/v1.0.0/"
+        )
+        middleburry_weights_url = dlnr_release + "DLNR_Middlebury.pth"
+        sceneflow_weights_url = dlnr_release + "DLNR_SceneFlow.pth"
 
         self._logger = logging.getLogger(f"{self.__class__.__module__}.{self.__class__.__name__}")
         if backbone == "middleburry":
