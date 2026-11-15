@@ -4,7 +4,7 @@ Welcome to ƒVDB-Reality-Capture!
 .. raw:: html
 
   <video autoplay loop controls muted width="90%" style="display: block; margin: 0 auto;">
-     <source src="https://fvdb-data.s3.us-east-2.amazonaws.com/fvdb-reality-capture/rc_intro_480p.mp4" type="video/mp4" />
+     <source src="https://d184pg3x235vug.cloudfront.net/fvdb-reality-capture/rc_intro_480p.mp4" type="video/mp4" />
   </video>
 
 |
@@ -20,7 +20,7 @@ The videos below show large-scale reconstructions of complex scenes using ƒVDB-
    <p style="text-align: center; font-weight: bold; font-style: italic; text-decoration: underline; font-size: medium; text-decoration-skip-ink: none; margin-bottom: 0.5em;">
    100 million 3D Gaussians reconstructed from 400 high-resolution images, rendered in a browser</p>
   <video autoplay loop controls muted width="90%"  style="display: block; margin: 0 auto;">
-     <source src="https://fvdb-data.s3.us-east-2.amazonaws.com/fvdb-reality-capture/large_recon_480p.mp4" type="video/mp4" />
+     <source src="https://d184pg3x235vug.cloudfront.net/fvdb-reality-capture/large_recon_480p.mp4" type="video/mp4" />
   </video>
 
 |
@@ -30,7 +30,7 @@ The videos below show large-scale reconstructions of complex scenes using ƒVDB-
    <p style="text-align: center; font-weight: bold; font-style: italic; text-decoration: underline; font-size: medium; text-decoration-skip-ink: none; margin-bottom: 0.5em;">
    Reconstructing a high quality Gaussian splat radiance field and mesh from 177 images</p>
   <video autoplay loop controls muted width="90%" style="display: block; margin: 0 auto;">
-     <source src="https://fvdb-data.s3.us-east-2.amazonaws.com/fvdb-reality-capture/airport_viz_480p.mp4" type="video/mp4" />
+     <source src="https://d184pg3x235vug.cloudfront.net/fvdb-reality-capture/airport_viz_480p.mp4" type="video/mp4" />
   </video>
 
 |
@@ -76,7 +76,7 @@ A common reality capture pipeline typically resembles the figure below:
 
 .. raw:: html
 
-  <img src="https://fvdb-data.s3.us-east-2.amazonaws.com/fvdb-reality-capture/meshing_med.gif"
+  <img src="https://d184pg3x235vug.cloudfront.net/fvdb-reality-capture/meshing_med.gif"
        alt="Reality Capture Pipeline"
        style="display: block; margin-left: auto; margin-right: auto; width: 100%;" />
 

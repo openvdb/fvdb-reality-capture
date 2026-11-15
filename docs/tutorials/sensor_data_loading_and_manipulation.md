@@ -64,7 +64,7 @@ frc.download_example_data(dataset="mipnerf360", download_path="./data")
     Viewer Info: Running on server 127.0.0.1:8080
 
 
-    2025-10-20 11:48:34,069 - fvdb_reality_capture.tools._download_example_data.download_example_data - INFO - Downloading dataset mipnerf360 from https://fvdb-data.s3.us-east-2.amazonaws.com/fvdb-reality-capture/360_v2.zip to data/360_v2/360_v2.zip
+    2025-10-20 11:48:34,069 - fvdb_reality_capture.tools._download_example_data.download_example_data - INFO - Downloading dataset mipnerf360 from https://d184pg3x235vug.cloudfront.net/fvdb-reality-capture/360_v2.zip to data/360_v2/360_v2.zip
     Downloading dataset mipnerf360: 100%|██████████| 12.5G/12.5G [10:18<00:00, 20.3MB/s]
     2025-10-20 11:58:52,303 - fvdb_reality_capture.tools._download_example_data.download_example_data - INFO - Dataset downloaded successfully.
     2025-10-20 11:58:52,303 - fvdb_reality_capture.tools._download_example_data.download_example_data - INFO - Extracting archive 360_v2.zip to data/360_v2.
@@ -172,7 +172,7 @@ fvdb.viz.show()
 
 
 <video autoplay loop controls muted width="100%">
-    <source src="https://fvdb-data.s3.us-east-2.amazonaws.com/fvdb-reality-capture/view_sfm_scene_data_tutorial.mp4" type="video/mp4" />
+    <source src="https://d184pg3x235vug.cloudfront.net/fvdb-reality-capture/view_sfm_scene_data_tutorial.mp4" type="video/mp4" />
 </video>
 
 
@@ -497,7 +497,7 @@ fvdb.viz.show()
 
 
 <video autoplay loop controls muted width="100%">
-    <source src="https://fvdb-data.s3.us-east-2.amazonaws.com/fvdb-reality-capture/view_normalization.mp4" type="video/mp4" />
+    <source src="https://d184pg3x235vug.cloudfront.net/fvdb-reality-capture/view_normalization.mp4" type="video/mp4" />
 </video>
 
 
