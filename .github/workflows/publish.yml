@@ -170,6 +170,7 @@ jobs:
   publish-to-s3:
     permissions:
       id-token: write # AWS OIDC, to upload to the package index
+      attestations: write # Store the wheels' build provenance
     name: Publish to S3 Simple Index
     needs: [pr-flags, fvdb-rc-build]
     if: ${{ !cancelled() && needs.pr-flags.outputs.s3 == 'true' && needs.fvdb-rc-build.result == 'success' }}
@@ -228,6 +229,16 @@ jobs:
             fi
           done <<< "$LISTING"
           echo "Pruned $DELETED old staging wheel(s)"
+
+      # Signed SLSA build provenance for each wheel, recorded in GitHub's
+      # attestation store and the public Sigstore log. Anyone can check a
+      # wheel with: gh attestation verify <wheel> --repo openvdb/fvdb-reality-capture
+      # verify-package-index.yml (fvdb-core) checks that every wheel in the
+      # release index has one.
+      - name: Attest build provenance
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-path: dist/*.whl
 
       - name: Check out the publish script
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
