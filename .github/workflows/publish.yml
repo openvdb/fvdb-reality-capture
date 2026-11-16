@@ -229,56 +229,26 @@ jobs:
           done <<< "$LISTING"
           echo "Pruned $DELETED old staging wheel(s)"
 
-      - name: Upload wheels to S3
+      - name: Check out the publish script
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          path: src
+          sparse-checkout: .github/scripts/publish_simple_index.py
+          sparse-checkout-cone-mode: false
+
+      # Uploads the wheels and rewrites the project index. Hashes of wheels not
+      # built in this run are copied from the current index, never recomputed
+      # from S3, so a wheel replaced in S3 fails pip's hash check instead of
+      # being vouched for. Release wheels (prefix simple) are write-once.
+      - name: Upload wheels and update the project index
+        env:
+          PROJECT: ${{ steps.proj.outputs.normalized }}
+          TITLE: Links for ${{ steps.proj.outputs.project_name }}
         run: |
-          set -euo pipefail
-          DEST="s3://${S3_BUCKET}/${SIMPLE_PREFIX}/${{ steps.proj.outputs.normalized }}/"
-          echo "Uploading wheels to $DEST"
-          shopt -s nullglob
-          upload_failed=0
-          for pkg in dist/*.whl; do
-            echo "Uploading $pkg"
-            if aws s3 cp "$pkg" "$DEST"; then
-              echo "Successfully uploaded $pkg"
-            else
-              echo "FAILED to upload $pkg"
-              upload_failed=1
-            fi
-          done
-          if [ $upload_failed -eq 1 ]; then
-            echo "ERROR: One or more uploads failed"
-            exit 1
-          fi
-          echo "All wheels uploaded successfully"
-          sleep 2
-
-      - name: Generate project index.html
-        run: |
-          set -euo pipefail
-          OUTDIR="dist/index-gen/${{ steps.proj.outputs.normalized }}"
-          mkdir -p "$OUTDIR"
-          INDEX_FILE="$OUTDIR/index.html"
-          TITLE="Links for ${{ steps.proj.outputs.project_name }}"
-          wheels=$(aws s3 ls "s3://${S3_BUCKET}/${SIMPLE_PREFIX}/${{ steps.proj.outputs.normalized }}/" | { grep -E '\.whl$' || true; } | awk '{print $4}')
-
-          {
-            echo "<!DOCTYPE html>";
-            echo "<html><head><meta charset=\"utf-8\"><title>${TITLE}</title></head><body>";
-            echo "<h1>${TITLE}</h1>";
-            for pkg in $wheels; do
-              if [ -f "dist/$pkg" ]; then
-                sha=$(sha256sum "dist/$pkg" | awk '{print $1}')
-              else
-                aws s3 cp "s3://${S3_BUCKET}/${SIMPLE_PREFIX}/${{ steps.proj.outputs.normalized }}/$pkg" "/tmp/$pkg" --only-show-errors
-                sha=$(sha256sum "/tmp/$pkg" | awk '{print $1}')
-                rm "/tmp/$pkg"
-              fi
-              echo "<a href=\"${pkg}#sha256=${sha}\">${pkg}</a><br/>";
-            done;
-            echo "</body></html>";
-          } > "$INDEX_FILE"
-
-          aws s3 cp "$INDEX_FILE" "s3://${S3_BUCKET}/${SIMPLE_PREFIX}/${{ steps.proj.outputs.normalized }}/index.html" --content-type text/html --only-show-errors
+          python3 src/.github/scripts/publish_simple_index.py \
+            --bucket "$S3_BUCKET" --prefix "$SIMPLE_PREFIX" --project "$PROJECT" \
+            --title "$TITLE" --dist dist
 
       - name: Generate root simple index.html
         run: |
