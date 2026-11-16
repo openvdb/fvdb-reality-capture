@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1794829338893,
+  "lastUpdate": 1794843195875,
   "repoUrl": "https://github.com/openvdb/fvdb-reality-capture",
   "entries": {
     "fvdb-reality-capture Benchmark with pytest-benchmark": [
@@ -28980,6 +28980,88 @@ window.BENCHMARK_DATA = {
           {
             "name": "garden/fvdb_mcmc - PSNR",
             "value": 27.689,
+            "unit": "dB"
+          },
+          {
+            "name": "garden/fvdb_mcmc - SSIM",
+            "value": 0.8666,
+            "unit": ""
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "Jonathan Swartz",
+            "username": "swahtz",
+            "email": "jonathan@jswartz.info"
+          },
+          "committer": {
+            "name": "GitHub",
+            "username": "web-flow",
+            "email": "noreply@github.com"
+          },
+          "id": "7b3264827e782959f55a6536acb2db1d5e8b2ce1",
+          "message": "CI: attest published wheels (#376)\n\n## Summary\n\nThe S3 publish job now runs `actions/attest` (v4.2.2, SHA-pinned) on\n`dist/*.whl` before uploading. Each wheel gets a signed SLSA build\nprovenance attestation in this repository's attestation store and the\npublic Sigstore log. Anyone can check a wheel with:\n\n```\ngh attestation verify <wheel> --repo openvdb/fvdb-reality-capture\n```\n\nThe job gains `attestations: write`.\n\nThe daily check that relies on these attestations lives in fvdb-core:\nhttps://github.com/openvdb/fvdb-core/pull/873. It requires every\nfvdb-reality-capture wheel released from now on to have an attestation\nfrom this repository's `.github/workflows/publish.yml`.\n\n## Test plan\n\n- [x] actionlint and zizmor: nothing new.\n- [ ] Next publish: the attestation step succeeds.\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n\nSigned-off-by: Jonathan Swartz <jonathan@jswartz.info>\nCo-authored-by: Claude Opus 5.5 <noreply@anthropic.com>",
+          "timestamp": "2026-11-16T00:32:10Z",
+          "url": "https://github.com/openvdb/fvdb-reality-capture/commit/7b3264827e782959f55a6536acb2db1d5e8b2ce1"
+        },
+        "date": 1794843194585,
+        "tool": "customBiggerIsBetter",
+        "benches": [
+          {
+            "name": "bicycle/fvdb_default - PSNR",
+            "value": 25.15,
+            "unit": "dB"
+          },
+          {
+            "name": "bicycle/fvdb_default - SSIM",
+            "value": 0.7453,
+            "unit": ""
+          },
+          {
+            "name": "bicycle/fvdb_mcmc - PSNR",
+            "value": 24.997,
+            "unit": "dB"
+          },
+          {
+            "name": "bicycle/fvdb_mcmc - SSIM",
+            "value": 0.7297,
+            "unit": ""
+          },
+          {
+            "name": "bonsai/fvdb_default - PSNR",
+            "value": 32.543,
+            "unit": "dB"
+          },
+          {
+            "name": "bonsai/fvdb_default - SSIM",
+            "value": 0.9555,
+            "unit": ""
+          },
+          {
+            "name": "bonsai/fvdb_mcmc - PSNR",
+            "value": 32.777,
+            "unit": "dB"
+          },
+          {
+            "name": "bonsai/fvdb_mcmc - SSIM",
+            "value": 0.9594,
+            "unit": ""
+          },
+          {
+            "name": "garden/fvdb_default - PSNR",
+            "value": 27.558,
+            "unit": "dB"
+          },
+          {
+            "name": "garden/fvdb_default - SSIM",
+            "value": 0.865,
+            "unit": ""
+          },
+          {
+            "name": "garden/fvdb_mcmc - PSNR",
+            "value": 27.698,
             "unit": "dB"
           },
           {
