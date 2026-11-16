@@ -12,7 +12,7 @@ The videos below show large-scale reconstructions of complex scenes using fVDB-R
 
 
   <video autoplay loop controls muted width="100%">
-     <source src="https://fvdb-data.s3.us-east-2.amazonaws.com/fvdb-reality-capture/Large_World_480p.mp4" type="video/mp4" />
+     <source src="https://d184pg3x235vug.cloudfront.net/fvdb-reality-capture/Large_World_480p.mp4" type="video/mp4" />
   </video>
 
 ----

@@ -3,7 +3,7 @@
 In this notebook, we'll walk through how to reconstruct a Gaussian Splat radiance field, and high quality triangle mesh from an input drone capture. The capture consists of a collection of posed images along with sparse points.  We'll show how you can visualize this radiance field interactively in a notebook or browser, how to save the radiance field to common formats like PLY and USDZ, and how to use the radiance field to construct a high quality triangle mesh. Along the way, we'll get a tour of the basic components of the `fvdb_reality_capture` library.
 
 The notebook walks through a common reality capture pipeline like in the figure below:
-<img src="https://fvdb-data.s3.us-east-2.amazonaws.com/fvdb-reality-capture/meshing_med.gif"
+<img src="https://d184pg3x235vug.cloudfront.net/fvdb-reality-capture/meshing_med.gif"
        alt="Reality Capture Pipeline"
        style="display: block; margin-left: auto; margin-right: auto; width: 100%; margin-top: -4em; margin-bottom: -2em" />
 
@@ -58,7 +58,7 @@ frc.tools.download_example_data(dataset="safety_park", download_path="./data")
     Viewer Info: Running on server 127.0.0.1:8080
 
 
-    2025-10-19 17:35:13,310 - fvdb_reality_capture.tools._download_example_data.download_example_data - INFO - Downloading dataset safety_park from https://fvdb-data.s3.us-east-2.amazonaws.com/fvdb-reality-capture/safety_park.zip to data/safety_park/safety_park.zip
+    2025-10-19 17:35:13,310 - fvdb_reality_capture.tools._download_example_data.download_example_data - INFO - Downloading dataset safety_park from https://d184pg3x235vug.cloudfront.net/fvdb-reality-capture/safety_park.zip to data/safety_park/safety_park.zip
     Downloading dataset safety_park: 100%|██████████| 1.05G/1.05G [00:50<00:00, 21.0MB/s]
     2025-10-19 17:36:03,335 - fvdb_reality_capture.tools._download_example_data.download_example_data - INFO - Dataset downloaded successfully.
     2025-10-19 17:36:03,335 - fvdb_reality_capture.tools._download_example_data.download_example_data - INFO - Extracting archive safety_park.zip to data/safety_park.
@@ -187,7 +187,7 @@ fvdb.viz.show()
 
 
 <video autoplay loop controls muted width="100%">
-    <source src="https://fvdb-data.s3.us-east-2.amazonaws.com/fvdb-reality-capture/view_sfm_scene.mp4" type="video/mp4" />
+    <source src="https://d184pg3x235vug.cloudfront.net/fvdb-reality-capture/view_sfm_scene.mp4" type="video/mp4" />
 </video>
 
 
@@ -243,7 +243,7 @@ visualize_sfm_scene(cleaned_sfm_scene, "Cleaned SfmScene", center_scene=False)
     Cleaned scene has 168661 points and 124 images
 
   <video autoplay loop controls muted width="100%">
-     <source src="https://fvdb-data.s3.us-east-2.amazonaws.com/fvdb-reality-capture/view_sfm_scene_cleaned.mp4" type="video/mp4" />
+     <source src="https://d184pg3x235vug.cloudfront.net/fvdb-reality-capture/view_sfm_scene_cleaned.mp4" type="video/mp4" />
   </video>
 
 Note how the cleaned up scene has fewer noisy points and is aligned with the coordinate axes of the viewer.
@@ -294,7 +294,7 @@ A [radiance field](https://radiancefields.com/) is a 3D scene representation tha
 At a high level, reconstructing an `frc.GaussianSplat3d` from an `SfmScene` works as follows. We initialize a set of 3D Gaussians directly using the `SfmScene`'s points. Then, we iteratively optimize the Gaussians in in two steps: First, we render images from the Gaussian splat by volume rendering the 3D gaussians using the algorithm first proposed in [\[1\]](#references). Second, we calculate a loss between the rendered images from the Gaussian Splat and the ground truth images in the `SfmScene`. Finally, we update the Gaussian's parameters to reduce this loss via gradient descent. During this optimization, we periodically add new Gaussians to capture regions with high detail, and remove Gaussians in regions of low detail. The figure below illustrates this procedure pictorially.
 
 <div>
-<img src="https://fvdb-data.s3.us-east-2.amazonaws.com/fvdb-reality-capture/doc_figures/fvdb_gs_opt.jpg" width="100%"/>
+<img src="https://d184pg3x235vug.cloudfront.net/fvdb-reality-capture/doc_figures/fvdb_gs_opt.jpg" width="100%"/>
 </div>
 
 The core API for Gaussian Splat reconstruction is the `fvdb_reality_capture.GaussianSplatReconstruction` class. It accepts an input `SfmScene` and optional config parameters, and produces an `frc.GaussianSplat3d` reconstructing the scene. Let's see how to use it below to reconstruct a Gaussian splat radiance field from our cleaned up scene.
@@ -353,7 +353,7 @@ fvdb.viz.show()
 
 
   <video autoplay loop controls muted width="100%">
-     <source src="https://fvdb-data.s3.us-east-2.amazonaws.com/fvdb-reality-capture/view_splats.mp4" type="video/mp4" />
+     <source src="https://d184pg3x235vug.cloudfront.net/fvdb-reality-capture/view_splats.mp4" type="video/mp4" />
   </video>
 
 
@@ -497,7 +497,7 @@ Note how the final voxel count for tsdf fusion was over 140 million! The sparse 
 If you open the saved mesh in your favorite editor you get something like this:
 
 <div>
-<img src="https://fvdb-data.s3.us-east-2.amazonaws.com/fvdb-reality-capture/doc_figures/worse_mesh_recon.png" width="100%"/>
+<img src="https://d184pg3x235vug.cloudfront.net/fvdb-reality-capture/doc_figures/worse_mesh_recon.png" width="100%"/>
 </div>
 This looks good from far, but is far from good. The depth maps produced by Gaussian splats are generally pretty noisy. The result is that the TSDF fusion algorithm produces a bumpy surface like the one in the image above. Fortunately, we can do better, by estimating better depth maps from our splats.
 
@@ -544,7 +544,7 @@ If you open the saved mesh in your favorite editor, you'll see something like th
 Details are preserved, and there isn't much noise in the reconstruction. In general, if you can afford the weight, you should stick to `fvdb_reality_capture.tools.mesh_from_splats_dlnr` for high quality mesh reconstructions.
 
 <div>
-<img src="https://fvdb-data.s3.us-east-2.amazonaws.com/fvdb-reality-capture/doc_figures/better_mesh_recon.png" width="100%"/>
+<img src="https://d184pg3x235vug.cloudfront.net/fvdb-reality-capture/doc_figures/better_mesh_recon.png" width="100%"/>
 </div>
 
 ## References

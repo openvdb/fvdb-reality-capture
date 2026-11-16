@@ -28,7 +28,7 @@ This will output a progress bar as the dataset is downloaded and extracted to a 
 
 .. code-block:: bash
 
-   INFO - Downloading dataset mipnerf360 from https://fvdb-data.s3.us-east-2.amazonaws.com/fvdb-reality-capture/360_v2.zip to /home/fwilliams/projects/openvdb/fvdb-reality-capture/data/360_v2/360_v2.zip
+   INFO - Downloading dataset mipnerf360 from https://storage.googleapis.com/gresearch/refraw360/360_v2.zip to /home/fwilliams/projects/openvdb/fvdb-reality-capture/data/360_v2/360_v2.zip
    Downloading dataset mipnerf360:   100%|████████████████████████████| 728M/12.5G [10:11<00:00, 18.8MB/s]
    INFO - Extracting dataset mipnerf360 to /home/fwilliams/projects/openvdb/fvdb-reality-capture/data/360_v2/
    INFO - Dataset mipnerf360 downloaded and extracted to /home/fwilliams/projects/openvdb/fvdb-reality-capture/data/360_v2/
@@ -50,7 +50,7 @@ You can navigate the scene using mouse controls (left-click to rotate, right-cli
 .. raw:: html
 
   <video autoplay loop controls muted width="100%">
-     <source src="https://fvdb-data.s3.us-east-2.amazonaws.com/fvdb-reality-capture/frgs_points.mov" type="video/mp4" />
+     <source src="https://d184pg3x235vug.cloudfront.net/fvdb-reality-capture/frgs_points.mov" type="video/mp4" />
   </video>
 
 
@@ -102,7 +102,7 @@ You can visualize the reconstructed Gaussian splat radiance field using the ``fr
 .. raw:: html
 
   <video autoplay loop controls muted width="100%">
-     <source src="https://fvdb-data.s3.us-east-2.amazonaws.com/fvdb-reality-capture/frgs_recon.mov" type="video/mp4" />
+     <source src="https://d184pg3x235vug.cloudfront.net/fvdb-reality-capture/frgs_recon.mov" type="video/mp4" />
   </video>
 
 which will pop up a viewer in your browser where you can explore the reconstructed scene.
@@ -129,7 +129,7 @@ This produces a mesh which looks something like this:
 
 .. raw:: html
 
-  <img src="https://fvdb-data.s3.us-east-2.amazonaws.com/fvdb-reality-capture/room_mesh.png"
+  <img src="https://d184pg3x235vug.cloudfront.net/fvdb-reality-capture/room_mesh.png"
        alt="Reality Capture Pipeline"
        style="display: block; margin-left: auto; margin-right: auto; width: 100%;" />
 
