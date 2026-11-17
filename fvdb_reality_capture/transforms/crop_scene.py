@@ -313,7 +313,7 @@ class CropScene(BaseTransform):
         self._logger = logging.getLogger(f"{self.__class__.__module__}.{self.__class__.__name__}")
         if not len(bbox) == 6:
             raise ValueError("Bounding box must be a tuple of the form (min_x, min_y, min_z, max_x, max_y, max_z).")
-        self._bbox = np.asarray(bbox).astype(np.float32)
+        self._bbox = np.asarray(bbox).astype(np.float64)
         self._mask_format = mask_format
         if self._mask_format not in ["png", "jpg", "npy"]:
             raise ValueError(
@@ -381,7 +381,7 @@ class CropScene(BaseTransform):
             output_scene (SfmScene): The cropped scene.
         """
         # Ensure the bounding box is a numpy array of length 6
-        bbox = np.asarray(self._bbox, dtype=np.float32)
+        bbox = np.asarray(self._bbox, dtype=np.float64)
         if bbox.shape != (6,):
             raise ValueError("Bounding box must be a 1D array of shape (6,)")
 
@@ -566,7 +566,7 @@ class CropSceneToPoints(BaseTransform):
                 points_max[1],
                 points_max[2],
             ],
-            dtype=np.float32,
+            dtype=np.float64,
         )
 
         if bbox.shape != (6,):
