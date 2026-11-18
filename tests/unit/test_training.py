@@ -501,3 +501,45 @@ class GaussianSplatReconstructionTests(unittest.TestCase):
         self.assertTrue(torch.isfinite(log_scales).all())
         expected = float(np.log(np.sqrt(1e-7) * optimizer_config.initial_covariance_scale))
         torch.testing.assert_close(log_scales[:4], torch.full((4, 3), expected))
+
+    def _init_model_from_points(self, points: np.ndarray):
+        training_dataset = types.SimpleNamespace(
+            points=points, points_rgb=np.full((points.shape[0], 3), 128, dtype=np.uint8)
+        )
+        return frc.radiance_fields.GaussianSplatReconstruction._init_model(
+            frc.radiance_fields.GaussianSplatReconstructionConfig(),
+            frc.radiance_fields.GaussianSplatOptimizerConfig(),
+            "cuda",
+            training_dataset,  # type: ignore
+        )
+
+    def test_init_model_fewer_than_four_points_get_finite_scales(self):
+        if not torch.cuda.is_available():
+            self.skipTest("GaussianSplat3d initialization test requires CUDA")
+
+        # With fewer than 4 points a k=4 kNN query returns inf for the missing neighbors, which would give inf scales
+        for num_points in (2, 3):
+            points = np.arange(num_points * 3, dtype=np.float64).reshape(num_points, 3)
+            model = self._init_model_from_points(points)
+            self.assertTrue(torch.isfinite(model.log_scales).all(), f"non-finite log-scales for {num_points} points")
+
+    def test_init_model_rejects_single_point(self):
+        with self.assertRaises(ValueError):
+            self._init_model_from_points(np.zeros((1, 3), dtype=np.float64))
+
+    def test_reconstruction_metadata_keeps_float64_normalization_transform(self):
+        # A georeference-sized translation: float32 spacing at 6.4e6 is 0.5 m, so the .123 m part would be lost
+        translation = np.eye(4)
+        translation[:3, 3] = [1100000.123, -4780000.123, 4050000.123]
+        scene = self.sfm_scene.apply_transformation_matrix(translation)
+
+        runner = frc.radiance_fields.GaussianSplatReconstruction.from_sfm_scene(
+            scene,
+            config=frc.radiance_fields.GaussianSplatReconstructionConfig(max_epochs=1, eval_at_percent=[]),
+            use_every_n_as_val=2,
+        )
+
+        normalization_transform = runner.reconstruction_metadata["normalization_transform"]
+        assert isinstance(normalization_transform, torch.Tensor)
+        self.assertEqual(normalization_transform.dtype, torch.float64)
+        np.testing.assert_array_equal(normalization_transform.numpy(), scene.transformation_matrix)

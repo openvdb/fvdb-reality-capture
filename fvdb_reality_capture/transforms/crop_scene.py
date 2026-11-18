@@ -41,15 +41,16 @@ def _crop_scene_to_bbox(
         description=f"Image masks ({mask_format}) for cropping to bounding box {bbox}",
     )
 
-    # Create a mask over all the points which are inside the bounding box
+    # Create a mask over all the points which are inside the bounding box. The bounds are inclusive so that points
+    # lying on the box (e.g. the extreme points used to build the box in CropSceneToPoints) are kept.
     points_mask = np.logical_and.reduce(
         [
-            input_scene.points[:, 0] > bbox[0],
-            input_scene.points[:, 0] < bbox[3],
-            input_scene.points[:, 1] > bbox[1],
-            input_scene.points[:, 1] < bbox[4],
-            input_scene.points[:, 2] > bbox[2],
-            input_scene.points[:, 2] < bbox[5],
+            input_scene.points[:, 0] >= bbox[0],
+            input_scene.points[:, 0] <= bbox[3],
+            input_scene.points[:, 1] >= bbox[1],
+            input_scene.points[:, 1] <= bbox[4],
+            input_scene.points[:, 2] >= bbox[2],
+            input_scene.points[:, 2] <= bbox[5],
         ]
     )
 
@@ -86,7 +87,9 @@ def _crop_scene_to_bbox(
             )
             output_cache.clear_current_folder()
             regenerate_cache = True
-        elif not np.allclose(cached_transform, input_scene.transformation_matrix):
+        # Use an absolute tolerance only: with the default rtol, translations at ECEF magnitudes (~6.4e6 m) would
+        # match within tens of meters, and stale masks would be reused.
+        elif not np.allclose(cached_transform, input_scene.transformation_matrix, rtol=0.0, atol=1e-6):
             logger.info(
                 f"Cached transform does not match input scene transform. Clearing the cache and regenerating transform."
             )
@@ -313,7 +316,7 @@ class CropScene(BaseTransform):
         self._logger = logging.getLogger(f"{self.__class__.__module__}.{self.__class__.__name__}")
         if not len(bbox) == 6:
             raise ValueError("Bounding box must be a tuple of the form (min_x, min_y, min_z, max_x, max_y, max_z).")
-        self._bbox = np.asarray(bbox).astype(np.float64)
+        self._bbox = bbox
         self._mask_format = mask_format
         if self._mask_format not in ["png", "jpg", "npy"]:
             raise ValueError(
@@ -381,7 +384,7 @@ class CropScene(BaseTransform):
             output_scene (SfmScene): The cropped scene.
         """
         # Ensure the bounding box is a numpy array of length 6
-        bbox = np.asarray(self._bbox, dtype=np.float64)
+        bbox = self._bbox
         if bbox.shape != (6,):
             raise ValueError("Bounding box must be a 1D array of shape (6,)")
 
@@ -554,7 +557,8 @@ class CropSceneToPoints(BaseTransform):
         points_min = input_scene.points.min(axis=0)
         points_max = input_scene.points.max(axis=0)
         box_size = points_max - points_min
-        padding = self._margin * box_size / 0.5
+        # The margin is a fraction of the box size split evenly between both sides (see the class docstring).
+        padding = 0.5 * self._margin * box_size
         points_min -= padding
         points_max += padding
         bbox = np.array(

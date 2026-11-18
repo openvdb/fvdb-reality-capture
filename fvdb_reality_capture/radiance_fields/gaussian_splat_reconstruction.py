@@ -1026,8 +1026,10 @@ class GaussianSplatReconstruction:
         training_image_sizes = torch.from_numpy(self._training_dataset.image_sizes.astype(np.int32))
         training_camera_models = torch.from_numpy(self._training_dataset.camera_models.astype(np.int32))
         training_distortion_coeffs = torch.from_numpy(self._training_dataset.distortion_coeffs.astype(np.float32))
+        # Keep the normalization transform in float64: for georeferenced (e.g. ECEF -> ENU) scenes its translation
+        # is ~6.4e6 m, where float32 spacing is 0.25-0.5 m.
         normalization_transform = torch.from_numpy(self.training_dataset.sfm_scene.transformation_matrix).to(
-            torch.float32
+            torch.float64
         )
 
         return {
@@ -1156,8 +1158,16 @@ class GaussianSplatReconstruction:
             return (rgb - 0.5) / C0
 
         num_gaussians = training_dataset.points.shape[0]
+        if num_gaussians < 2:
+            raise ValueError(
+                f"Cannot initialize Gaussians from {num_gaussians} point(s). At least 2 points are required to "
+                "estimate initial scales from nearest-neighbor distances."
+            )
 
-        dist2_avg = (_knn(training_dataset.points, 4)[:, 1:] ** 2).mean(dim=-1).clamp_min(1e-7)  # [N,]
+        # Query at most num_gaussians neighbors: cKDTree returns inf distances for missing neighbors, which would
+        # survive the clamp below and produce infinite log-scales.
+        num_neighbors = min(4, num_gaussians)
+        dist2_avg = (_knn(training_dataset.points, num_neighbors)[:, 1:] ** 2).mean(dim=-1).clamp_min(1e-7)  # [N,]
         dist_avg = torch.sqrt(dist2_avg)
 
         log_scales = (
