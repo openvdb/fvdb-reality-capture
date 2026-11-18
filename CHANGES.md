@@ -46,7 +46,7 @@ This release tracks fVDB 0.7.0 and adds a composable, differentiable Gaussian sp
 - Switched Python formatting from Black to Ruff and pinned benchmark pytest below 9.2 (#347, #348 - @matthewdcong, @harrism).
 - Gated external PR tests on maintainer approval via `/ok-to-test`, switched EC2 runner registration to a GitHub App token, and tightened AWS sessions and workflow permissions. Updated and pinned workflow actions and removed the personal access token from issue triage (#353, #354, #355, #358, #359, #360, #365, #366, #368, #369, #371 - @harrism, @swahtz).
 - Reused the staging fVDB-core wheel as an artifact for validation, improved wheel availability checks, preserved published wheel hashes when rewriting the index, fixed root index generation, and added wheel attestations (#361, #372, #374, #375, #376 - @swahtz).
-- Moved project data downloads to CloudFront and fetched third-party files from their upstream sources (#373 - @swahtz).
+- Fetch third-party data files directly from their upstream sources (#373 - @swahtz).
 
 ## Version 0.6.0 - September 18, 2026
 
