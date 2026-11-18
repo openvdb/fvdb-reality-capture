@@ -1,6 +1,53 @@
 fVDB-Reality-Capture Version History
 ====================================
 
+## Version 0.7.0 - In Development
+
+*29 commits, 103 files changed, 4 contributors.*
+
+This release tracks fVDB 0.7.0 and adds a composable, differentiable Gaussian splatting API. It fixes optimizer scaling and learning-rate scheduling for batched training, preserves precision in georeferenced COLMAP scenes, and improves wheel publishing and benchmark infrastructure.
+
+**Highlights:**
+
+- Added differentiable Gaussian rendering stages in `fvdb_reality_capture.functional`, backed by the public fVDB-core kernels.
+- Corrected the means learning-rate schedule and Adam momentum scaling for batched reconstruction.
+- Preserved double precision for COLMAP points and saved scene georeferencing data.
+- Reduced runtime dependencies and added provenance attestations for published wheels.
+
+**Contributors:** @swahtz, @matthewdcong, @harrism, @jamesfisher-geo
+
+---
+
+### Gaussian Splatting API & Rendering
+
+- Added composable projection, spherical harmonics, tile intersection, rasterization, and contributor queries in `fvdb_reality_capture.functional`. `GaussianSplat3d` uses the same stages, and `GaussianRenderMode` selects features, depth, or both. `CameraModel` and `RollingShutterType` are re-exported from fVDB-core (#338 - @swahtz).
+- Retained the pixel `JaggedTensor` on the sparse rasterizer's autograd context for backward (#344 - @swahtz).
+
+---
+
+### Reconstruction & Scene Handling
+
+- Switched to exponential Adam momentum scaling to keep momentum coefficients valid at large batch sizes (#341 - @matthewdcong).
+- Fixed means learning-rate decay to use the planned number of optimizer steps, accounting for batch size and `max_steps` for both standard and MCMC optimizers (#342 - @swahtz).
+- Kept COLMAP points in float64 through scene normalization, and preserved point, bounding-box, and transform precision on scene reload. This avoids collapsing nearby ECEF points and shifting a saved scene's georeference (#340 - @jamesfisher-geo).
+
+---
+
+### Dependencies & Documentation
+
+- Raised the minimum fVDB-core version to `0.7.0dev0` and requested its `viewer` extra. Moved development dependencies out of the runtime install, removed the unused `nanovdb-editor` requirement, and made S3 development imports lazy (#338, #345, #346 - @swahtz, @matthewdcong).
+- Documented the functional Gaussian rendering API and fixed segmentation typing imports on Python 3.10 (#338, #343 - @swahtz, @matthewdcong).
+- Adopted the 0.6.0 release metadata (#336 - @swahtz).
+
+---
+
+### Benchmarks, Tests & CI
+
+- Switched Python formatting from Black to Ruff and pinned benchmark pytest below 9.2 (#347, #348 - @matthewdcong, @harrism).
+- Gated external PR tests on maintainer approval via `/ok-to-test`, switched EC2 runner registration to a GitHub App token, and tightened AWS sessions and workflow permissions. Updated and pinned workflow actions and removed the personal access token from issue triage (#353, #354, #355, #358, #359, #360, #365, #366, #368, #369, #371 - @harrism, @swahtz).
+- Reused the staging fVDB-core wheel as an artifact for validation, improved wheel availability checks, preserved published wheel hashes when rewriting the index, fixed root index generation, and added wheel attestations (#361, #372, #374, #375, #376 - @swahtz).
+- Moved project data downloads to CloudFront and fetched third-party files from their upstream sources (#373 - @swahtz).
+
 ## Version 0.6.0 - September 18, 2026
 
 *19 commits, 131 files changed, 3 contributors.*
