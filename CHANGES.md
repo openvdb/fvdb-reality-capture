@@ -37,7 +37,6 @@ This release tracks fVDB 0.7.0 and adds a composable, differentiable Gaussian sp
 
 - Raised the minimum fVDB-core version to `0.7.0dev0` and requested its `viewer` extra. Moved development dependencies out of the runtime install, removed the unused `nanovdb-editor` requirement, and made S3 development imports lazy (#338, #345, #346 - @swahtz, @matthewdcong).
 - Documented the functional Gaussian rendering API and fixed segmentation typing imports on Python 3.10 (#338, #343 - @swahtz, @matthewdcong).
-- Adopted the 0.6.0 release metadata (#336 - @swahtz).
 
 ---
 
