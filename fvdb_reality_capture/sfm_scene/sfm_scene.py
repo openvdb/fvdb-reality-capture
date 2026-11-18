@@ -132,11 +132,15 @@ class SfmScene:
         self._logger = logging.getLogger(f"{self.__class__.__module__}.{self.__class__.__name__}")
         self._cameras = cameras
         self._images = list(images)
-        self._points = points
+        # Coordinates are always stored in float64. Georeferenced scenes (e.g. ECEF) have magnitudes of ~6.4e6 m,
+        # where float32 spacing is 0.125-0.5 m, enough to collapse distinct points onto each other.
+        self._points = np.asarray(points, dtype=np.float64)
         self._points_err = points_err
         self._points_rgb = points_rgb
-        self._transformation_matrix = transformation_matrix if transformation_matrix is not None else np.eye(4)
-        self._scene_bbox = scene_bbox
+        self._transformation_matrix = (
+            np.asarray(transformation_matrix, dtype=np.float64) if transformation_matrix is not None else np.eye(4)
+        )
+        self._scene_bbox = np.asarray(scene_bbox, dtype=np.float64) if scene_bbox is not None else None
         self._cache = cache
         self._attributes: dict[str, SceneAttribute] = dict(attributes) if attributes else {}
 

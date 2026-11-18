@@ -411,7 +411,7 @@ class CropScenePrecisionTest(unittest.TestCase):
         np.testing.assert_array_equal(cropped.points, inside_point[np.newaxis, :])
 
     def test_crop_scene_to_points_bbox_keeps_float64_precision(self):
-        # In float32 the min y of -4780000.2 rounds up to -4780000.0, which would drop the middle point.
+        # In float32 the min y of -4780000.2 rounds up to -4780000.0, which would drop the first two points.
         points = self.ecef_base + np.array([[0.0, -0.2, 0.0], [0.1, -0.1, 0.1], [0.2, 0.0, 0.2]])
 
         cropped = CropSceneToPoints(margin=0.0)(self.make_scene_without_images(points))
@@ -419,8 +419,20 @@ class CropScenePrecisionTest(unittest.TestCase):
         expected_bbox = np.concatenate([points.min(axis=0), points.max(axis=0)])
         self.assertEqual(cropped.scene_bbox.dtype, np.float64)
         np.testing.assert_array_equal(cropped.scene_bbox, expected_bbox)
-        # With margin 0 the extreme points sit on the (strict) bbox boundary, so only the middle point remains
-        np.testing.assert_array_equal(cropped.points, points[1:2])
+        # With margin 0 the bbox is exactly the points' extent, and its bounds are inclusive, so every point is kept
+        np.testing.assert_array_equal(cropped.points, points)
+
+    def test_crop_scene_to_points_margin_matches_docstring(self):
+        # A unit cube: margin 0.1 expands the box by 10% of its size, 5% on each side
+        points = np.array([[0.0, 0.0, 0.0], [1.0, 1.0, 1.0], [0.5, 0.5, 0.5]])
+
+        expanded = CropSceneToPoints(margin=0.1)(self.make_scene_without_images(points))
+        np.testing.assert_allclose(expanded.scene_bbox, [-0.05, -0.05, -0.05, 1.05, 1.05, 1.05])
+        np.testing.assert_array_equal(expanded.points, points)
+
+        shrunk = CropSceneToPoints(margin=-0.1)(self.make_scene_without_images(points))
+        np.testing.assert_allclose(shrunk.scene_bbox, [0.05, 0.05, 0.05, 0.95, 0.95, 0.95])
+        np.testing.assert_array_equal(shrunk.points, points[2:3])
 
 
 if __name__ == "__main__":

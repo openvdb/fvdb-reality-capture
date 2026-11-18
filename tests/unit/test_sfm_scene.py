@@ -331,6 +331,24 @@ class LargeCoordinatePrecisionTest(unittest.TestCase):
         np.testing.assert_array_equal(loaded_scene.transformation_matrix, scene.transformation_matrix)
         np.testing.assert_array_equal(loaded_scene.points, scene.points)
 
+    def test_constructor_stores_coordinates_as_float64(self):
+        # Loaders and callers may hand in float32 arrays; the scene must still hold coordinates in float64
+        num_points = len(self.points)
+        scene = SfmScene(
+            cameras={},
+            images=[],
+            points=np.zeros((num_points, 3), dtype=np.float32),
+            points_err=np.zeros((num_points,), dtype=np.float32),
+            points_rgb=np.zeros((num_points, 3), dtype=np.uint8),
+            scene_bbox=np.array([-1, -1, -1, 1, 1, 1], dtype=np.float32),
+            transformation_matrix=np.eye(4, dtype=np.float32),
+            cache=SfmCache.get_cache(self.root / "cache_root", "precision_test_cache", "Precision test cache"),
+        )
+
+        self.assertEqual(scene.points.dtype, np.float64)
+        self.assertEqual(scene.scene_bbox.dtype, np.float64)
+        self.assertEqual(scene.transformation_matrix.dtype, np.float64)
+
     def test_ecef2enu_preserves_point_spacing(self):
         scene = NormalizeScene(normalization_type="ecef2enu")(self._make_scene())
 
