@@ -8,8 +8,6 @@ from dataclasses import dataclass
 from typing import Annotated
 
 import numpy as np
-import point_cloud_utils as pcu
-import torch
 import tyro
 from fvdb.types import to_VecNf
 from tyro.conf import arg
@@ -17,7 +15,7 @@ from tyro.conf import arg
 from fvdb_reality_capture.cli import BaseCommand
 from fvdb_reality_capture.tools import mesh_from_splats_dlnr
 
-from ._common import load_camera_metadata, load_splats_from_file
+from ._common import load_camera_metadata, load_splats_from_file, save_colored_mesh
 
 
 @dataclass
@@ -138,9 +136,8 @@ class MeshDLNR(BaseCommand):
             show_progress=True,
         )
 
-        v, f, c = v.to(torch.float32).cpu().numpy(), f.cpu().numpy(), c.to(torch.float32).cpu().numpy()
         logger.info(f"Extracted mesh with {v.shape[0]} vertices and {f.shape[0]} faces.")
 
         logger.info(f"Saving mesh to {self.output_path}")
-        pcu.save_mesh_vfc(str(self.output_path), v, f, c)
+        save_colored_mesh(self.output_path, v, f, c)
         logger.info("Mesh saved successfully.")

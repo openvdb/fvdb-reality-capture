@@ -5,7 +5,9 @@
 import pathlib
 from typing import Literal
 
+import numpy as np
 import torch
+import trimesh
 from fvdb.types import to_Mat33fBatch, to_Mat44fBatch, to_Vec2iBatch
 
 from fvdb_reality_capture import GaussianSplat3d
@@ -28,10 +30,14 @@ NearFarUnits = Literal["absolute", "camera_extent", "median_depth"]
 __all__ = [
     "DatasetType",
     "NearFarUnits",
+    "colors_to_uint8",
     "load_camera_metadata",
+    "load_mesh",
     "load_sfm_scene",
     "load_splats_from_file",
     "near_far_for_units",
+    "save_colored_mesh",
+    "save_colored_points",
     "save_model_from_runner",
     "save_model_from_splats",
 ]
@@ -180,3 +186,75 @@ def load_camera_metadata(metadata: dict) -> tuple[torch.Tensor, torch.Tensor, to
         distortion_coeffs = torch.zeros((camera_to_world_matrices.shape[0], 12), dtype=torch.float32)
 
     return camera_to_world_matrices, projection_matrices, image_sizes, camera_models, distortion_coeffs
+
+
+def colors_to_uint8(colors: torch.Tensor) -> torch.Tensor:
+    """
+    Convert per-vertex colors to ``uint8`` RGB for writing to mesh/point cloud files.
+
+    ``uint8`` colors are returned unchanged. Floating point colors are expected in ``[0, 1]``: they are clamped to
+    that range, scaled by 255, and truncated (not rounded), matching the conversion point_cloud_utils used.
+
+    Args:
+        colors (torch.Tensor): An ``(N, 3)``-shaped tensor of ``uint8`` or floating point colors.
+
+    Returns:
+        torch.Tensor: An ``(N, 3)``-shaped ``uint8`` tensor of colors.
+    """
+    if colors.dtype == torch.uint8:
+        return colors
+    return (colors.to(torch.float32).clamp(0.0, 1.0) * 255.0).to(torch.uint8)
+
+
+def save_colored_points(path: pathlib.Path, positions: torch.Tensor, colors: torch.Tensor) -> None:
+    """
+    Save a colored point cloud. The file format is inferred from the extension of ``path`` (e.g. ``.ply``).
+
+    Args:
+        path (pathlib.Path): Output file path.
+        positions (torch.Tensor): An ``(N, 3)``-shaped tensor of point positions (written as ``float32``).
+        colors (torch.Tensor): An ``(N, 3)``-shaped tensor of colors; see :func:`colors_to_uint8`.
+    """
+    positions_np = positions.to(torch.float32).cpu().numpy()
+    colors_np = colors_to_uint8(colors).cpu().numpy()
+    trimesh.PointCloud(positions_np, colors=colors_np).export(str(path))
+
+
+def save_colored_mesh(path: pathlib.Path, vertices: torch.Tensor, faces: torch.Tensor, colors: torch.Tensor) -> None:
+    """
+    Save a triangle mesh with per-vertex colors. The file format is inferred from the extension of ``path``.
+
+    Vertices and faces are written as given: no vertices are merged or reordered.
+
+    Args:
+        path (pathlib.Path): Output file path.
+        vertices (torch.Tensor): A ``(V, 3)``-shaped tensor of vertex positions (written as ``float32``).
+        faces (torch.Tensor): An ``(F, 3)``-shaped integer tensor of vertex indices.
+        colors (torch.Tensor): A ``(V, 3)``-shaped tensor of per-vertex colors; see :func:`colors_to_uint8`.
+    """
+    mesh = trimesh.Trimesh(
+        vertices=vertices.to(torch.float32).cpu().numpy(),
+        faces=faces.cpu().numpy(),
+        vertex_colors=colors_to_uint8(colors).cpu().numpy(),
+        process=False,
+    )
+    mesh.export(str(path))
+
+
+def load_mesh(path: pathlib.Path) -> tuple[np.ndarray, np.ndarray]:
+    """
+    Load a triangle mesh from any format trimesh supports (e.g. ``.ply``, ``.obj``, ``.stl``).
+
+    Vertices and faces are returned as stored: no vertices are merged, reordered, or dropped (including vertices
+    that no face references).
+
+    Args:
+        path (pathlib.Path): Path to the mesh file.
+
+    Returns:
+        vertices (np.ndarray): A ``(V, 3)``-shaped ``float32`` array of vertex positions.
+        faces (np.ndarray): An ``(F, 3)``-shaped ``int32`` array of vertex indices.
+    """
+    # maintain_order stops the OBJ loader from dropping and reordering vertices; other formats ignore it.
+    mesh = trimesh.load_mesh(path, process=False, maintain_order=True)
+    return mesh.vertices.astype(np.float32), mesh.faces.astype(np.int32)

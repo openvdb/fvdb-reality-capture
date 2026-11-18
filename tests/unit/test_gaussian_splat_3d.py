@@ -7,9 +7,9 @@ import unittest
 
 import numpy as np
 import OpenImageIO as oiio
-import point_cloud_utils as pcu
 import torch
 import torch.nn.functional as nnf
+import trimesh
 from fvdb import Grid, JaggedTensor
 from fvdb.utils.tests import (
     create_uniform_grid_points_at_depth,
@@ -27,6 +27,12 @@ from fvdb_reality_capture import (
     evaluate_spherical_harmonics,
     gaussian_render_jagged,
 )
+
+
+def load_ply_vertex_attributes(path: str) -> np.ndarray:
+    """Return the per-vertex properties of a PLY file as a numpy structured array keyed by property name."""
+    # Copy so the fields are writable (torch.from_numpy warns on read-only arrays).
+    return np.array(trimesh.load(path, process=False).metadata["_ply_raw"]["vertex"]["data"])
 
 
 def compare_images(pixels_or_path_a, pixels_or_path_b):
@@ -1168,9 +1174,8 @@ class TestLoadAndSavePly(BaseGaussianTestCase):
         # since we set it to NaN
         gs3d_without_nan = self.nan_gs3d[1:]
 
-        loaded = pcu.load_triangle_mesh(tf.name)
-        attribs = loaded.vertex_data.custom_attributes
-        means_loaded = torch.from_numpy(loaded.vertex_data.positions).to(self.device)
+        attribs = load_ply_vertex_attributes(tf.name)
+        means_loaded = torch.from_numpy(np.stack([attribs["x"], attribs["y"], attribs["z"]], axis=-1)).to(self.device)
         self.assertTrue(torch.allclose(means_loaded, gs3d_without_nan.means))
 
         scales_loaded = torch.from_numpy(
@@ -1207,9 +1212,8 @@ class TestLoadAndSavePly(BaseGaussianTestCase):
 
         self.gs3d.save_ply(tf.name)
 
-        loaded = pcu.load_triangle_mesh(tf.name)
-        attribs = loaded.vertex_data.custom_attributes
-        means_loaded = torch.from_numpy(loaded.vertex_data.positions).to(self.device)
+        attribs = load_ply_vertex_attributes(tf.name)
+        means_loaded = torch.from_numpy(np.stack([attribs["x"], attribs["y"], attribs["z"]], axis=-1)).to(self.device)
         self.assertTrue(torch.allclose(means_loaded, self.gs3d.means))
 
         scales_loaded = torch.from_numpy(
