@@ -56,6 +56,9 @@ benchmark = [
 dev = [
     "boto3",
     "matplotlib",
+    # Only for make_mesh_watertight in scripts/create_isaac_ready_files.py. Limited to platforms with
+    # point-cloud-utils wheels on PyPI (no Python 3.14 or Linux aarch64 wheels), since source builds often fail.
+    "point-cloud-utils ; python_version < '3.14' and platform_machine != 'aarch64'",
     "types-usd",
 ]
 test = [

@@ -142,7 +142,8 @@ def _prepare_mesh(
             import point_cloud_utils as pcu
         except ImportError as e:
             raise ImportError(
-                "Making the mesh watertight requires point_cloud_utils (pip install point-cloud-utils), "
+                "Making the mesh watertight requires point_cloud_utils (install the dev extra or "
+                "pip install point-cloud-utils), "
                 "or pass --no-watertight to skip this step."
             ) from e
         vertices, faces = pcu.make_mesh_watertight(vertices, faces, resolution=resolution)
