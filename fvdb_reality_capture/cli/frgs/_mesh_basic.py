@@ -7,8 +7,6 @@ import pathlib
 from dataclasses import dataclass
 from typing import Annotated
 
-import point_cloud_utils as pcu
-import torch
 import tyro
 from tyro.conf import arg
 
@@ -20,6 +18,7 @@ from ._common import (
     load_camera_metadata,
     load_splats_from_file,
     near_far_for_units,
+    save_colored_mesh,
 )
 
 
@@ -144,9 +143,8 @@ class MeshBasic(BaseCommand):
             show_progress=True,
         )
 
-        v, f, c = v.to(torch.float32).cpu().numpy(), f.cpu().numpy(), c.to(torch.float32).cpu().numpy()
         logger.info(f"Extracted mesh with {v.shape[0]} vertices and {f.shape[0]} faces.")
 
         logger.info(f"Saving mesh to {self.output_path}")
-        pcu.save_mesh_vfc(str(self.output_path), v, f, c)
+        save_colored_mesh(self.output_path, v, f, c)
         logger.info("Mesh saved successfully.")

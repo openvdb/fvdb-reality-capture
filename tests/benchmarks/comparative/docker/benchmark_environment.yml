@@ -80,9 +80,9 @@ dependencies:
   - pyproj
   - pyyaml
   - scikit-image
+  - trimesh
   - viser
   - pip:
-    - point-cloud-utils
     - pytest-markdown-docs
     - oiio-static-python
     - dlnr_lite

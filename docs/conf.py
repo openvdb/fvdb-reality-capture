@@ -93,7 +93,6 @@ autodoc_mock_imports = [
     "dlnr_lite",
     "fvdb",
     "open_clip",
-    "point_cloud_utils",
     "pxr",
     "pye57",
     "sam2",

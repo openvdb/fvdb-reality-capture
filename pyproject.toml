@@ -27,7 +27,6 @@ dependencies = [
     "numpy>=2.0.0",
     "opencv-python-headless",
     "open-clip-torch==3.2.0",
-    "point-cloud-utils",
     "pye57",
     "pycolmap>=3.11",
     "pyproj",
@@ -40,6 +39,7 @@ dependencies = [
     "torch>=2.8.0",
     "torchvision",
     "tqdm",
+    "trimesh",
     "tyro",
     "typing_extensions>=4.0.0",
     "usd-core>=26.3 ; platform_machine != 'aarch64'",
@@ -56,6 +56,9 @@ benchmark = [
 dev = [
     "boto3",
     "matplotlib",
+    # Only for make_mesh_watertight in scripts/create_isaac_ready_files.py. Limited to platforms with
+    # point-cloud-utils wheels on PyPI (no Python 3.14 or Linux aarch64 wheels), since source builds often fail.
+    "point-cloud-utils ; python_version < '3.14' and platform_machine != 'aarch64'",
     "types-usd",
 ]
 test = [

@@ -5,7 +5,9 @@
 import pathlib
 from typing import Literal
 
+import numpy as np
 import torch
+import trimesh
 from fvdb.types import to_Mat33fBatch, to_Mat44fBatch, to_Vec2iBatch
 
 from fvdb_reality_capture import GaussianSplat3d
@@ -28,10 +30,14 @@ NearFarUnits = Literal["absolute", "camera_extent", "median_depth"]
 __all__ = [
     "DatasetType",
     "NearFarUnits",
+    "colors_to_uint8",
     "load_camera_metadata",
+    "load_mesh",
     "load_sfm_scene",
     "load_splats_from_file",
     "near_far_for_units",
+    "save_colored_mesh",
+    "save_colored_points",
     "save_model_from_runner",
     "save_model_from_splats",
 ]
@@ -180,3 +186,147 @@ def load_camera_metadata(metadata: dict) -> tuple[torch.Tensor, torch.Tensor, to
         distortion_coeffs = torch.zeros((camera_to_world_matrices.shape[0], 12), dtype=torch.float32)
 
     return camera_to_world_matrices, projection_matrices, image_sizes, camera_models, distortion_coeffs
+
+
+def colors_to_uint8(colors: torch.Tensor) -> torch.Tensor:
+    """
+    Convert per-vertex colors to ``uint8`` RGB for writing to mesh/point cloud files.
+
+    ``uint8`` colors are returned unchanged. Floating point colors are expected in ``[0, 1]``: they are clamped to
+    that range, scaled by 255, and truncated (not rounded), matching the conversion point_cloud_utils used.
+
+    Args:
+        colors (torch.Tensor): An ``(N, 3)``-shaped tensor of ``uint8`` or floating point colors.
+
+    Returns:
+        torch.Tensor: An ``(N, 3)``-shaped ``uint8`` tensor of colors.
+    """
+    if colors.dtype == torch.uint8:
+        return colors
+    return (colors.to(torch.float32).clamp(0.0, 1.0) * 255.0).to(torch.uint8)
+
+
+def save_colored_points(path: pathlib.Path, positions: torch.Tensor, colors: torch.Tensor) -> None:
+    """
+    Save a colored point cloud. The file format is inferred from the extension of ``path`` (e.g. ``.ply``).
+
+    Args:
+        path (pathlib.Path): Output file path.
+        positions (torch.Tensor): An ``(N, 3)``-shaped tensor of point positions (written as ``float32``).
+        colors (torch.Tensor): An ``(N, 3)``-shaped tensor of colors; see :func:`colors_to_uint8`.
+    """
+    positions_np = positions.to(torch.float32).cpu().numpy()
+    colors_np = colors_to_uint8(colors).cpu().numpy()
+    trimesh.PointCloud(positions_np, colors=colors_np).export(str(path))
+
+
+def save_colored_mesh(path: pathlib.Path, vertices: torch.Tensor, faces: torch.Tensor, colors: torch.Tensor) -> None:
+    """
+    Save a triangle mesh with per-vertex colors. The file format is inferred from the extension of ``path``.
+
+    Vertices and faces are written as given: no vertices are merged or reordered.
+
+    Args:
+        path (pathlib.Path): Output file path.
+        vertices (torch.Tensor): A ``(V, 3)``-shaped tensor of vertex positions (written as ``float32``).
+        faces (torch.Tensor): An ``(F, 3)``-shaped integer tensor of vertex indices.
+        colors (torch.Tensor): A ``(V, 3)``-shaped tensor of per-vertex colors; see :func:`colors_to_uint8`.
+    """
+    mesh = trimesh.Trimesh(
+        vertices=vertices.to(torch.float32).cpu().numpy(),
+        faces=faces.cpu().numpy(),
+        vertex_colors=colors_to_uint8(colors).cpu().numpy(),
+        process=False,
+    )
+    mesh.export(str(path))
+
+
+def _load_obj(path: pathlib.Path) -> tuple[np.ndarray, np.ndarray]:
+    """
+    Read vertex positions and faces from a Wavefront OBJ file, exactly as stored.
+
+    trimesh's OBJ loader splits a mesh by material (``usemtl``) and joins the pieces back together, which
+    duplicates and renumbers the vertices on material boundaries. Reading the ``v`` and ``f`` lines directly keeps
+    the vertex list and indices as they are in the file. Texture coordinates, normals, materials, groups, and
+    per-vertex colors are ignored. Polygons with more than three vertices are split into a triangle fan.
+
+    Args:
+        path (pathlib.Path): Path to the ``.obj`` file.
+
+    Returns:
+        vertices (np.ndarray): A ``(V, 3)``-shaped ``float64`` array of vertex positions.
+        faces (np.ndarray): An ``(F, 3)``-shaped ``int64`` array of zero-based vertex indices.
+    """
+    vertices: list[list[str]] = []  # coordinates are parsed as strings and converted by numpy at the end
+    triangles: list[int] = []  # flat list of 1-based vertex indices, three per triangle
+    pending = ""
+    with open(path, "r", encoding="utf-8", errors="replace") as f:
+        for line_number, line in enumerate(f, start=1):
+            if "#" in line:
+                line = line.split("#", 1)[0]
+            if pending or line.rstrip().endswith("\\"):  # line continuation
+                line = pending + line.rstrip()
+                if line.endswith("\\"):
+                    pending = line[:-1] + " "
+                    continue
+                pending = ""
+            tokens = line.split()
+            if not tokens:
+                continue
+            if tokens[0] == "v":
+                if len(tokens) < 4:
+                    raise ValueError(f"{path}:{line_number}: vertex has fewer than 3 coordinates")
+                vertices.append(tokens[1:4])
+            elif tokens[0] == "f":
+                num_corners = len(tokens) - 1
+                if num_corners < 3:
+                    raise ValueError(f"{path}:{line_number}: face has fewer than 3 vertices")
+                # Each face vertex is v, v/vt, v//vn, or v/vt/vn. Indices are 1-based, or negative to count back
+                # from the most recently defined vertex (-1 is the last one).
+                indices = [int(token.split("/", 1)[0]) for token in tokens[1:]]
+                if min(indices) < 0:
+                    num_vertices = len(vertices)
+                    indices = [i if i >= 0 else num_vertices + i + 1 for i in indices]
+                if num_corners == 3:
+                    triangles.extend(indices)
+                else:
+                    for k in range(1, num_corners - 1):
+                        triangles += (indices[0], indices[k], indices[k + 1])
+
+    vertices_np = np.array(vertices, dtype=np.float64).reshape(-1, 3)
+    faces_np = np.array(triangles, dtype=np.int64).reshape(-1, 3) - 1
+    if faces_np.size > 0 and (faces_np.min() < 0 or faces_np.max() >= vertices_np.shape[0]):
+        raise ValueError(f"{path} has face indices outside the range of its {vertices_np.shape[0]} vertices")
+    return vertices_np, faces_np
+
+
+def load_mesh(path: pathlib.Path) -> tuple[np.ndarray, np.ndarray]:
+    """
+    Load a triangle mesh from a ``.obj`` file or any format trimesh supports (e.g. ``.ply``, ``.stl``, ``.glb``).
+
+    For OBJ and PLY files, vertices and faces are returned as stored: no vertices are merged, reordered, split, or
+    dropped (including vertices that no face references). Polygons with more than three vertices are triangulated.
+
+    Args:
+        path (pathlib.Path): Path to the mesh file.
+
+    Returns:
+        vertices (np.ndarray): A ``(V, 3)``-shaped ``float32`` array of vertex positions.
+        faces (np.ndarray): An ``(F, 3)``-shaped ``int32`` array of vertex indices.
+
+    Raises:
+        ValueError: If the file does not contain a mesh with at least one face (e.g. it is a point cloud).
+    """
+    path = pathlib.Path(path)
+    if path.suffix.lower() == ".obj":
+        vertices, faces = _load_obj(path)
+    else:
+        # process=False stops trimesh from merging duplicate vertices and dropping unreferenced ones.
+        mesh = trimesh.load_mesh(path, process=False)
+        if not isinstance(mesh, trimesh.Trimesh):
+            raise ValueError(f"{path} does not contain a triangle mesh (loaded as {type(mesh).__name__})")
+        vertices, faces = np.asarray(mesh.vertices), np.asarray(mesh.faces)
+    # trimesh loads a PLY with vertices but no faces (a point cloud) as an empty mesh, so check for faces explicitly.
+    if faces.shape[0] == 0:
+        raise ValueError(f"{path} contains no faces; expected a triangle mesh, not a point cloud")
+    return vertices.astype(np.float32), faces.astype(np.int32)

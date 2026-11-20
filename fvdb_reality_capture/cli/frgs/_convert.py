@@ -6,7 +6,6 @@ import logging
 import pathlib
 from dataclasses import dataclass
 
-import point_cloud_utils as pcu
 import torch
 import tyro
 
@@ -18,6 +17,8 @@ from fvdb_reality_capture.radiance_fields.checkpoint import (
     GAUSSIAN_SPLAT_RECONSTRUCTION_METHOD,
 )
 from fvdb_reality_capture.tools import export_splats_to_usd
+
+from ._common import load_mesh
 
 
 @dataclass
@@ -152,9 +153,7 @@ class Convert(BaseCommand):
         if self.mesh_path is not None:
             if not self.mesh_path.is_file():
                 raise FileNotFoundError(f"Mesh file not found: {self.mesh_path}")
-            vertices, faces = pcu.load_mesh_vf(str(self.mesh_path))
-            mesh_vertices = vertices.astype("float32")
-            mesh_faces = faces.astype("int32")
+            mesh_vertices, mesh_faces = load_mesh(self.mesh_path)
             logger.info(
                 "Loaded mesh with %d vertices and %d faces from %s",
                 mesh_vertices.shape[0],

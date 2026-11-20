@@ -2,12 +2,14 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 
+import json
 import pathlib
 import tempfile
 import unittest
 
 import cv2
 import numpy as np
+import trimesh
 from scipy.spatial.transform import Rotation as R
 
 from fvdb_reality_capture import CameraModel
@@ -338,6 +340,92 @@ class LargeCoordinatePrecisionTest(unittest.TestCase):
         self.assertEqual(len(np.unique(scene.points, axis=0)), len(self.points))
         enu_distances = np.linalg.norm(scene.points[1:] - scene.points[0], axis=1)
         np.testing.assert_allclose(enu_distances, [0.05, 0.05, 0.05], atol=1e-6)
+
+
+class FromSimpleDirectoryTest(unittest.TestCase):
+    """Tests for reading the points and colors in ``pointcloud.ply`` with ``SfmScene.from_simple_directory``."""
+
+    def setUp(self):
+        self.temp_dir = tempfile.TemporaryDirectory()
+        self.root = pathlib.Path(self.temp_dir.name)
+        (self.root / "images").mkdir()
+        cv2.imwrite(str(self.root / "images" / "000.png"), np.zeros((8, 8, 3), dtype=np.uint8))
+        cameras = [
+            {
+                "camera_name": "cam0",
+                "width": 8,
+                "height": 8,
+                "camera_intrinsics": [4.0, 0.0, 3.5, 0.0, 4.0, 3.5, 0.0, 0.0, 1.0],
+                "world_to_camera": np.eye(4).ravel().tolist(),
+                "image_path": "000.png",
+            }
+        ]
+        (self.root / "cameras.json").write_text(json.dumps(cameras))
+        self.ply_path = self.root / "pointcloud.ply"
+
+        rng = np.random.default_rng(0)
+        self.points = rng.normal(size=(100, 3)).astype(np.float32)
+        self.points[1] = self.points[0]  # duplicate points must be kept
+        self.colors = rng.integers(0, 256, size=(100, 3), dtype=np.uint8)
+
+    def tearDown(self):
+        self.temp_dir.cleanup()
+
+    def test_loads_points_and_colors(self):
+        trimesh.PointCloud(self.points, colors=self.colors).export(self.ply_path)
+
+        scene = SfmScene.from_simple_directory(self.root)
+
+        self.assertEqual(scene.points.dtype, np.float64)
+        np.testing.assert_array_equal(scene.points, self.points)
+        self.assertEqual(scene.points_rgb.dtype, np.uint8)
+        self.assertEqual(scene.points_rgb.shape, (100, 3))
+        np.testing.assert_array_equal(scene.points_rgb, self.colors)
+
+    def test_preserves_double_precision_points(self):
+        # Georeferenced points at ECEF magnitudes, 5 cm apart. All four collapse to one point in float32.
+        base = np.array([4751250.750213, 2171520.520182, 3647132.026718], dtype=np.float64)
+        points = base + np.array([[0.0, 0.0, 0.0], [0.05, 0.0, 0.0], [0.0, 0.05, 0.0], [0.0, 0.0, 0.05]])
+        colors = np.array([[255, 0, 0], [0, 255, 0], [0, 0, 255], [10, 20, 30]], dtype=np.uint8)
+        vertex = np.empty(
+            4, dtype=[("x", "<f8"), ("y", "<f8"), ("z", "<f8"), ("red", "u1"), ("green", "u1"), ("blue", "u1")]
+        )
+        vertex["x"], vertex["y"], vertex["z"] = points.T
+        vertex["red"], vertex["green"], vertex["blue"] = colors.T
+        header = (
+            "ply\nformat binary_little_endian 1.0\nelement vertex 4\n"
+            "property double x\nproperty double y\nproperty double z\n"
+            "property uchar red\nproperty uchar green\nproperty uchar blue\nend_header\n"
+        )
+        self.ply_path.write_bytes(header.encode("ascii") + vertex.tobytes())
+
+        scene = SfmScene.from_simple_directory(self.root)
+
+        np.testing.assert_array_equal(scene.points, points)
+        np.testing.assert_array_equal(scene.points_rgb, colors)
+
+    def test_loads_vertex_colors_from_mesh_ply(self):
+        # A PLY with faces is still a valid point source: its vertices and vertex colors are used.
+        faces = np.array([[0, 1, 2], [2, 3, 4]])
+        trimesh.Trimesh(self.points, faces, vertex_colors=self.colors, process=False).export(self.ply_path)
+
+        scene = SfmScene.from_simple_directory(self.root)
+
+        np.testing.assert_array_equal(scene.points, self.points)
+        np.testing.assert_array_equal(scene.points_rgb, self.colors)
+
+    def test_point_cloud_without_colors_raises(self):
+        trimesh.PointCloud(self.points).export(self.ply_path)
+
+        with self.assertRaisesRegex(ValueError, "No colors found"):
+            SfmScene.from_simple_directory(self.root)
+
+    def test_mesh_without_vertex_colors_raises(self):
+        # trimesh assigns default colors to meshes without vertex colors. These must not be used as point colors.
+        trimesh.Trimesh(self.points, np.array([[0, 1, 2]]), process=False).export(self.ply_path)
+
+        with self.assertRaisesRegex(ValueError, "No colors found"):
+            SfmScene.from_simple_directory(self.root)
 
 
 if __name__ == "__main__":

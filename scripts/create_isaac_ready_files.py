@@ -22,10 +22,10 @@ from pathlib import Path
 from typing import Optional
 
 import numpy as np
-import point_cloud_utils as pcu
 import torch
 
 from fvdb_reality_capture import GaussianSplat3d
+from fvdb_reality_capture.cli.frgs._common import load_mesh
 from fvdb_reality_capture.tools import export_splats_to_usd
 
 
@@ -105,7 +105,7 @@ def _prepare_mesh(
     watertight: bool = True,
 ) -> tuple[np.ndarray, np.ndarray]:
     """Load and optionally crop a mesh; vertices stay in the training frame."""
-    vertices, faces = pcu.load_mesh_vf(str(input_path))
+    vertices, faces = load_mesh(input_path)
     logger.info("Preparing mesh from %s", input_path)
 
     if bbox is not None:
@@ -137,6 +137,14 @@ def _prepare_mesh(
         )
 
     if watertight:
+        try:
+            import point_cloud_utils as pcu
+        except ImportError as e:
+            raise ImportError(
+                "Making the mesh watertight requires point_cloud_utils (install the dev extra or "
+                "pip install point-cloud-utils), "
+                "or pass --no-watertight to skip this step."
+            ) from e
         vertices, faces = pcu.make_mesh_watertight(vertices, faces, resolution=resolution)
         logger.info(
             "Watertight mesh: %d vertices, %d faces",

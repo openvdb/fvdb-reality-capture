@@ -466,7 +466,7 @@ Let's see how to reconstruct a mesh using the `fvdb_reality_capture.tools` modul
 
 ```python
 from fvdb_reality_capture.tools import mesh_from_splats
-import point_cloud_utils as pcu
+import trimesh
 
 # The truncation margin determines the width of the narrow band around the surface in which we compute the TSDF.
 # A larger margin will produce coarser voxels, while a smaller margin will produce finer voxels but may miss some surface details.
@@ -478,8 +478,9 @@ truncation_margin = 0.5
 # and the colors have shape (num_vertices, 3). The colors are in the range [0, 1].
 v, f, c = mesh_from_splats(model, cleaned_sfm_scene.camera_to_world_matrices, cleaned_sfm_scene.projection_matrices, cleaned_sfm_scene.image_sizes, truncation_margin)
 
-# Save the mesh as a PLY file for viewing in external tools using point_cloud_utils (https://fwilliams.info/point-cloud-utils/) [3]
-pcu.save_mesh_vfc("reconstructed_mesh.ply", v.cpu().numpy(), f.cpu().numpy(), c.cpu().numpy())
+# Save the mesh as a PLY file for viewing in external tools using trimesh (https://trimesh.org/) [3]
+colors = (c.clamp(0.0, 1.0) * 255.0).to(torch.uint8).cpu().numpy()  # trimesh expects uint8 colors
+trimesh.Trimesh(vertices=v.cpu().numpy(), faces=f.cpu().numpy(), vertex_colors=colors, process=False).export("reconstructed_mesh.ply")
 
 print(f"Reconstructed mesh with {v.shape[0]:,} vertices and {f.shape[0]:,} faces")
 ```
@@ -510,7 +511,7 @@ Let's see how to use this function to do mesh reconstruction:
 
 ```python
 from fvdb_reality_capture.tools import mesh_from_splats_dlnr
-import point_cloud_utils as pcu
+import trimesh
 
 # The truncation margin determines the width of the narrow band around the surface in which we compute the TSDF.
 # A larger margin will produce coarser voxels, while a smaller margin will produce finer voxels but may miss some surface details.
@@ -523,8 +524,9 @@ truncation_margin = 0.5
 # and the colors have shape (num_vertices, 3). The colors are in the range [0, 1].
 v, f, c = mesh_from_splats_dlnr(model, cleaned_sfm_scene.camera_to_world_matrices, cleaned_sfm_scene.projection_matrices, cleaned_sfm_scene.image_sizes, truncation_margin)
 
-# Save the mesh as a PLY file for viewing in external tools using point_cloud_utils (https://fwilliams.info/point-cloud-utils/) [3]
-pcu.save_mesh_vfc("reconstructed_mesh_dlnr.ply", v.cpu().numpy(), f.cpu().numpy(), c.cpu().numpy())
+# Save the mesh as a PLY file for viewing in external tools using trimesh (https://trimesh.org/) [3]
+colors = (c.clamp(0.0, 1.0) * 255.0).to(torch.uint8).cpu().numpy()  # trimesh expects uint8 colors
+trimesh.Trimesh(vertices=v.cpu().numpy(), faces=f.cpu().numpy(), vertex_colors=colors, process=False).export("reconstructed_mesh_dlnr.ply")
 
 print(f"Reconstructed mesh with {v.shape[0]:,} vertices and {f.shape[0]:,} faces")
 ```
@@ -551,5 +553,5 @@ Details are preserved, and there isn't much noise in the reconstruction. In gene
 * _\[1\] Kerbl, Kopanas et.al. - ["3D Gaussian Splatting
 for Real-Time Radiance Field Rendering"](https://repo-sam.inria.fr/fungraph/3d-gaussian-splatting/)_
 * _\[2\] Newcombe et.al. - ["KinectFusion: Real-Time Dense Surface Mapping and Tracking"](https://www.microsoft.com/en-us/research/wp-content/uploads/2016/02/ismar2011.pdf)_
-* _\[3\] Williams - [Point Cloud Utils](https://fwilliams.info/point-cloud-utils/)_
+* _\[3\] Dawson-Haggerty et al. - [trimesh](https://trimesh.org/)_
 * _\[4\] Zhao, Zhou et.al. - [High Frequency Stereo Matching](https://openaccess.thecvf.com/content/CVPR2023/papers/Zhao_High-Frequency_Stereo_Matching_Network_CVPR_2023_paper.pdf)_
