@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1795015017026,
+  "lastUpdate": 1795174884276,
   "repoUrl": "https://github.com/openvdb/fvdb-reality-capture",
   "entries": {
     "fvdb-reality-capture Benchmark with pytest-benchmark": [
@@ -19711,6 +19711,133 @@ window.BENCHMARK_DATA = {
             "unit": "iter/sec",
             "range": "stddev: 0.00018583684012971402",
             "extra": "mean: 12.601082685388688 msec\nrounds: 89"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "James Fisher",
+            "username": "jamesfisher-geo",
+            "email": "85769594+jamesfisher-geo@users.noreply.github.com"
+          },
+          "committer": {
+            "name": "GitHub",
+            "username": "web-flow",
+            "email": "noreply@github.com"
+          },
+          "id": "fd6eda9e16bdf3bd673fd19af62279cf07fae5e0",
+          "message": "Keep SfM points in float64 to avoid ECEF precision loss (#340)\n\n---\n\nFixes #339\n\n## The bug\n\nThe COLMAP loader cast SfM points to float32 before any normalization\nran (_load_colmap_scene.py):\n\npoints = points3D.astype(np.float32)\n\nfloat32 has 24 significant bits, so the spacing between representable\nvalues grows with magnitude. ECEF coordinates are millions of metres,\nand there that spacing is 0.25–0.5 m. Every point is rounded onto that\ngrid, and nearby points collapse into exact duplicates.\nNormalizeScene(\"ecef2enu\") can't recover the lost precision, because it\nruns after the rounding. Camera poses are never cast, so the cameras\nstay exact while the points are off by up to half a metre.\n\nIn one case, 2,173 distinct points spread over 55.9 cm all became the\nsame float32 point:\n\nf64 [4751250.750213 2171520.520182 3647132.026718]\nf64 [4751250.750255 2171520.557300 3647132.069657]\n... 2,171 more ...\n                    ↓ float32\n    [4751251.0      2171520.5      3647132.0     ]\n\nGaussian initialization sets each scale from the 3-nearest-neighbour\ndistance, so these points start with log(0) = -inf scales.\n\nSfmScene.from_state_dict had the same cast on points, scene_bbox and\ntransformation_matrix. For an ecef2enu scene, the transformation\nmatrix's translation is about 6.4e6 m, so saving and reloading a scene\nshifted its georeference by up to about 0.5 m.\n\n## The fix\n\nKeep points (and the bbox and transformation matrix on reload) as\nfloat64 on the CPU. The GPU already receives float32:\nGaussianSplatReconstruction converts means and the kNN distances to\nfloat32 when it uploads them, and by then the points are in a normalized\nframe where float32 is precise to micrometres. Point errors stay\nfloat32, since they're small values.\n\nMemory cost is 12 extra bytes per point on the host only. For the\n1.26M-point model above, that's about 15 MB.\n\n## Tests\n\nThe existing save/load tests didn't catch this. sfm_scenes_match\ncompares with np.allclose at the default rtol=1e-5, which allows about\n60 m of difference at ECEF magnitudes. The new tests compare exactly,\nusing four points 5 cm apart at ECEF magnitude. All four round to the\nsame float32 point.\n\n-\ntest_load_colmap_scene.py::test_load_colmap_scene_preserves_float64_precision_for_ecef_coordinates:\nthe loader returns float64 points equal to the input.\n- test_sfm_scene.py::LargeCoordinatePrecisionTest:\n- ECEF points survive a state_dict() / from_state_dict() round trip\nexactly.\n  - The ecef2enu transformation matrix survives a round trip exactly.\n  - After ecef2enu, the points are still distinct and 5 cm apart.\n\n- [x] New tests pass.\n- [x] Full unit suite passes.\n\n🤖 Generated with Claude Code\n\n---------\n\nSigned-off-by: jamesfisher-geo <jafisher32@gmail.com>\nSigned-off-by: Mark Harris <mharris@nvidia.com>\nCo-authored-by: Mark Harris <mharris@nvidia.com>\nCo-authored-by: Claude Opus 5.5 <noreply@anthropic.com>",
+          "timestamp": "2026-11-17T23:48:24Z",
+          "url": "https://github.com/openvdb/fvdb-reality-capture/commit/fd6eda9e16bdf3bd673fd19af62279cf07fae5e0"
+        },
+        "date": 1795174883150,
+        "tool": "pytest",
+        "benches": [
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_project_gaussians[garden-00000664]",
+            "value": 7438.586461110393,
+            "unit": "iter/sec",
+            "range": "stddev: 0.000010970352579512573",
+            "extra": "mean: 134.4341435335989 usec\nrounds: 6556"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_render_gaussians[garden-00000664]",
+            "value": 897.3151080850158,
+            "unit": "iter/sec",
+            "range": "stddev: 0.000031560749712499685",
+            "extra": "mean: 1.1144357104764755 msec\nrounds: 1012"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_forward[garden-00000664]",
+            "value": 802.262029300468,
+            "unit": "iter/sec",
+            "range": "stddev: 0.000019193993122984736",
+            "extra": "mean: 1.2464755447443394 msec\nrounds: 771"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_backward[garden-00000664]",
+            "value": 206.8047712496118,
+            "unit": "iter/sec",
+            "range": "stddev: 0.0005552985596626643",
+            "extra": "mean: 4.835478378750786 msec\nrounds: 2033"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_project_gaussians[garden-00006640]",
+            "value": 339.8734550409498,
+            "unit": "iter/sec",
+            "range": "stddev: 0.0005187186821068291",
+            "extra": "mean: 2.94227155774644 msec\nrounds: 6286"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_render_gaussians[garden-00006640]",
+            "value": 148.0003397591401,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00008395793214337312",
+            "extra": "mean: 6.756741245509491 msec\nrounds: 167"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_forward[garden-00006640]",
+            "value": 103.27466167067463,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00008675034498608064",
+            "extra": "mean: 9.682917221155662 msec\nrounds: 104"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_backward[garden-00006640]",
+            "value": 28.571654336984725,
+            "unit": "iter/sec",
+            "range": "stddev: 0.0037669206105172166",
+            "extra": "mean: 34.99972343937904 msec\nrounds: 2062"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_project_gaussians[garden-00016600]",
+            "value": 276.4826571382144,
+            "unit": "iter/sec",
+            "range": "stddev: 0.0006186966950456091",
+            "extra": "mean: 3.6168633879270677 msec\nrounds: 6692"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_render_gaussians[garden-00016600]",
+            "value": 109.7904381060691,
+            "unit": "iter/sec",
+            "range": "stddev: 0.0001246035592188461",
+            "extra": "mean: 9.10826131355715 msec\nrounds: 118"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_forward[garden-00016600]",
+            "value": 79.16481884028784,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00007311402389210066",
+            "extra": "mean: 12.631873787489667 msec\nrounds: 80"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_backward[garden-00016600]",
+            "value": 22.128241596962315,
+            "unit": "iter/sec",
+            "range": "stddev: 0.004881565337283987",
+            "extra": "mean: 45.191119033031356 msec\nrounds: 2089"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_forward_mcmc[garden-00000664]",
+            "value": 764.1488938972636,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00003269505075881371",
+            "extra": "mean: 1.3086454851748375 msec\nrounds: 843"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_forward_mcmc[garden-00006640]",
+            "value": 102.0062167464599,
+            "unit": "iter/sec",
+            "range": "stddev: 0.0001863256470102206",
+            "extra": "mean: 9.803324070782233 msec\nrounds: 113"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_forward_mcmc[garden-00016600]",
+            "value": 79.75636467997737,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00019409185997173862",
+            "extra": "mean: 12.538184306826205 msec\nrounds: 88"
           }
         ]
       }
