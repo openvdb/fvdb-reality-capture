@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1795188455404,
+  "lastUpdate": 1795188457876,
   "repoUrl": "https://github.com/openvdb/fvdb-reality-capture",
   "entries": {
     "fvdb-reality-capture Benchmark with pytest-benchmark": [
@@ -39066,6 +39066,88 @@ window.BENCHMARK_DATA = {
           {
             "name": "garden/fvdb_mcmc - peak_gpu_memory_gb",
             "value": 3.6345,
+            "unit": "GB"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "James Fisher",
+            "username": "jamesfisher-geo",
+            "email": "85769594+jamesfisher-geo@users.noreply.github.com"
+          },
+          "committer": {
+            "name": "GitHub",
+            "username": "web-flow",
+            "email": "noreply@github.com"
+          },
+          "id": "fd6eda9e16bdf3bd673fd19af62279cf07fae5e0",
+          "message": "Keep SfM points in float64 to avoid ECEF precision loss (#340)\n\n---\n\nFixes #339\n\n## The bug\n\nThe COLMAP loader cast SfM points to float32 before any normalization\nran (_load_colmap_scene.py):\n\npoints = points3D.astype(np.float32)\n\nfloat32 has 24 significant bits, so the spacing between representable\nvalues grows with magnitude. ECEF coordinates are millions of metres,\nand there that spacing is 0.25–0.5 m. Every point is rounded onto that\ngrid, and nearby points collapse into exact duplicates.\nNormalizeScene(\"ecef2enu\") can't recover the lost precision, because it\nruns after the rounding. Camera poses are never cast, so the cameras\nstay exact while the points are off by up to half a metre.\n\nIn one case, 2,173 distinct points spread over 55.9 cm all became the\nsame float32 point:\n\nf64 [4751250.750213 2171520.520182 3647132.026718]\nf64 [4751250.750255 2171520.557300 3647132.069657]\n... 2,171 more ...\n                    ↓ float32\n    [4751251.0      2171520.5      3647132.0     ]\n\nGaussian initialization sets each scale from the 3-nearest-neighbour\ndistance, so these points start with log(0) = -inf scales.\n\nSfmScene.from_state_dict had the same cast on points, scene_bbox and\ntransformation_matrix. For an ecef2enu scene, the transformation\nmatrix's translation is about 6.4e6 m, so saving and reloading a scene\nshifted its georeference by up to about 0.5 m.\n\n## The fix\n\nKeep points (and the bbox and transformation matrix on reload) as\nfloat64 on the CPU. The GPU already receives float32:\nGaussianSplatReconstruction converts means and the kNN distances to\nfloat32 when it uploads them, and by then the points are in a normalized\nframe where float32 is precise to micrometres. Point errors stay\nfloat32, since they're small values.\n\nMemory cost is 12 extra bytes per point on the host only. For the\n1.26M-point model above, that's about 15 MB.\n\n## Tests\n\nThe existing save/load tests didn't catch this. sfm_scenes_match\ncompares with np.allclose at the default rtol=1e-5, which allows about\n60 m of difference at ECEF magnitudes. The new tests compare exactly,\nusing four points 5 cm apart at ECEF magnitude. All four round to the\nsame float32 point.\n\n-\ntest_load_colmap_scene.py::test_load_colmap_scene_preserves_float64_precision_for_ecef_coordinates:\nthe loader returns float64 points equal to the input.\n- test_sfm_scene.py::LargeCoordinatePrecisionTest:\n- ECEF points survive a state_dict() / from_state_dict() round trip\nexactly.\n  - The ecef2enu transformation matrix survives a round trip exactly.\n  - After ecef2enu, the points are still distinct and 5 cm apart.\n\n- [x] New tests pass.\n- [x] Full unit suite passes.\n\n🤖 Generated with Claude Code\n\n---------\n\nSigned-off-by: jamesfisher-geo <jafisher32@gmail.com>\nSigned-off-by: Mark Harris <mharris@nvidia.com>\nCo-authored-by: Mark Harris <mharris@nvidia.com>\nCo-authored-by: Claude Opus 5.5 <noreply@anthropic.com>",
+          "timestamp": "2026-11-17T23:48:24Z",
+          "url": "https://github.com/openvdb/fvdb-reality-capture/commit/fd6eda9e16bdf3bd673fd19af62279cf07fae5e0"
+        },
+        "date": 1795188457555,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "bicycle/fvdb_default - training_time",
+            "value": 645.39,
+            "unit": "seconds"
+          },
+          {
+            "name": "bicycle/fvdb_default - peak_gpu_memory_gb",
+            "value": 4.5597,
+            "unit": "GB"
+          },
+          {
+            "name": "bicycle/fvdb_mcmc - training_time",
+            "value": 335.22,
+            "unit": "seconds"
+          },
+          {
+            "name": "bicycle/fvdb_mcmc - peak_gpu_memory_gb",
+            "value": 1.4419,
+            "unit": "GB"
+          },
+          {
+            "name": "bonsai/fvdb_default - training_time",
+            "value": 453.26,
+            "unit": "seconds"
+          },
+          {
+            "name": "bonsai/fvdb_default - peak_gpu_memory_gb",
+            "value": 1.6092,
+            "unit": "GB"
+          },
+          {
+            "name": "bonsai/fvdb_mcmc - training_time",
+            "value": 592.79,
+            "unit": "seconds"
+          },
+          {
+            "name": "bonsai/fvdb_mcmc - peak_gpu_memory_gb",
+            "value": 1.5548,
+            "unit": "GB"
+          },
+          {
+            "name": "garden/fvdb_default - training_time",
+            "value": 858.09,
+            "unit": "seconds"
+          },
+          {
+            "name": "garden/fvdb_default - peak_gpu_memory_gb",
+            "value": 5.5738,
+            "unit": "GB"
+          },
+          {
+            "name": "garden/fvdb_mcmc - training_time",
+            "value": 686.04,
+            "unit": "seconds"
+          },
+          {
+            "name": "garden/fvdb_mcmc - peak_gpu_memory_gb",
+            "value": 3.6347,
             "unit": "GB"
           }
         ]
