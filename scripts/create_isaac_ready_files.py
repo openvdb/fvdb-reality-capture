@@ -23,9 +23,9 @@ from typing import Optional
 
 import numpy as np
 import torch
-import trimesh
 
 from fvdb_reality_capture import GaussianSplat3d
+from fvdb_reality_capture.cli.frgs._common import load_mesh
 from fvdb_reality_capture.tools import export_splats_to_usd
 
 
@@ -105,8 +105,7 @@ def _prepare_mesh(
     watertight: bool = True,
 ) -> tuple[np.ndarray, np.ndarray]:
     """Load and optionally crop a mesh; vertices stay in the training frame."""
-    mesh = trimesh.load_mesh(input_path, process=False, maintain_order=True)
-    vertices, faces = np.asarray(mesh.vertices), np.asarray(mesh.faces)
+    vertices, faces = load_mesh(input_path)
     logger.info("Preparing mesh from %s", input_path)
 
     if bbox is not None:

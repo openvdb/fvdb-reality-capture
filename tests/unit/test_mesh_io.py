@@ -193,13 +193,69 @@ class TestLoadMesh(unittest.TestCase):
         save_colored_mesh(path, self.vertices, self.faces, colors)
         self._check(*load_mesh(path))
 
-    def test_load_obj(self):
+    def _write_obj(self, name: str, face_lines: list[str], header: list[str] | None = None) -> pathlib.Path:
         # Write the OBJ by hand so the test does not depend on trimesh's OBJ exporter.
-        path = self.root / "mesh.obj"
-        lines = [f"v {x!r} {y!r} {z!r}" for x, y, z in self.vertices.tolist()]
-        lines += [f"f {a + 1} {b + 1} {c + 1}" for a, b, c in self.faces.tolist()]
+        path = self.root / name
+        lines = list(header or [])
+        lines += [f"v {x!r} {y!r} {z!r}" for x, y, z in self.vertices.tolist()]
+        lines += face_lines
         path.write_text("\n".join(lines) + "\n")
+        return path
+
+    def test_load_obj(self):
+        path = self._write_obj("mesh.obj", [f"f {a + 1} {b + 1} {c + 1}" for a, b, c in self.faces.tolist()])
         self._check(*load_mesh(path))
+
+    def test_load_obj_with_multiple_materials(self):
+        # trimesh's OBJ loader splits meshes by material and duplicates the vertices on the boundaries.
+        faces = self.faces.tolist()
+        face_lines = []
+        for i, (a, b, c) in enumerate(faces):
+            face_lines += [f"usemtl material_{i % 2}", f"f {a + 1} {b + 1} {c + 1}"]
+        path = self._write_obj("mesh.obj", face_lines, header=["mtllib missing.mtl", "o object"])
+        self._check(*load_mesh(path))
+
+    def test_load_obj_face_syntax(self):
+        # v/vt, v//vn, v/vt/vn, negative (relative) indices, comments, and line continuations.
+        num_vertices = self.vertices.shape[0]
+        (a0, b0, c0), (a1, b1, c1), (a2, b2, c2), (a3, b3, c3) = self.faces.tolist()
+        face_lines = [
+            "vt 0 0",
+            "vn 0 0 1",
+            f"f {a0 + 1}/1 {b0 + 1}/1 {c0 + 1}/1  # comment",
+            f"f {a1 + 1}//1 {b1 + 1}//1 {c1 + 1}//1",
+            f"f {a2 + 1}/1/1 \\",
+            f"  {b2 + 1}/1/1 {c2 + 1}/1/1",
+            f"f {a3 - num_vertices} {b3 - num_vertices} {c3 - num_vertices}",
+        ]
+        path = self._write_obj("mesh.OBJ", face_lines)
+        self._check(*load_mesh(path))
+
+    def test_load_obj_triangulates_polygons(self):
+        path = self._write_obj("mesh.obj", ["f 1 2 4 3", "f 2 7 4 5 1"])
+        vertices, faces = load_mesh(path)
+        np.testing.assert_array_equal(vertices, self.vertices.numpy())
+        np.testing.assert_array_equal(faces, [[0, 1, 3], [0, 3, 2], [1, 6, 3], [1, 3, 4], [1, 4, 0]])
+
+    def test_load_obj_rejects_out_of_range_indices(self):
+        num_vertices = self.vertices.shape[0]
+        for bad_index in (num_vertices + 1, 0, -(num_vertices + 1)):  # OBJ indices are 1-based
+            with self.subTest(bad_index=bad_index):
+                path = self._write_obj("mesh.obj", [f"f 1 2 {bad_index}"])
+                with self.assertRaises(ValueError):
+                    load_mesh(path)
+
+    def test_load_obj_without_faces_raises(self):
+        path = self._write_obj("points.obj", [])
+        with self.assertRaises(ValueError):
+            load_mesh(path)
+
+    def test_load_point_cloud_ply_raises(self):
+        # trimesh loads a PLY without faces as an empty mesh, which must not be mistaken for a valid mesh.
+        path = self.root / "points.ply"
+        save_colored_points(path, self.vertices, torch.rand(self.vertices.shape[0], 3))
+        with self.assertRaises(ValueError):
+            load_mesh(path)
 
 
 if __name__ == "__main__":
