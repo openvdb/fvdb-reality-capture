@@ -113,11 +113,19 @@ class BasicSfmSceneTransformTest(unittest.TestCase):
         scene: SfmScene = SfmScene.from_colmap(self.dataset_path)
 
         transformed_scene = transform(scene)
-
-        for i, image_metadata in enumerate(transformed_scene.images):
-            self.assertIsInstance(image_metadata, SfmPosedImageMetadata)
-            expected_c2w = transformed_scene.transformation_matrix @ scene.camera_to_world_matrices[i]
-            self.assertTrue(np.allclose(image_metadata.camera_to_world_matrix, expected_c2w))
+        similarity = transformed_scene.transformation_matrix
+        rotation = similarity[:3, :3] / np.linalg.norm(similarity[:3, 0])
+        for original, transformed in zip(scene.images, transformed_scene.images, strict=True):
+            expected_center = similarity[:3, :3] @ original.origin + similarity[:3, 3]
+            np.testing.assert_allclose(transformed.origin, expected_center, atol=1e-7)
+            np.testing.assert_allclose(
+                transformed.camera_to_world_matrix[:3, :3],
+                rotation @ original.camera_to_world_matrix[:3, :3],
+                atol=1e-7,
+            )
+            # Both world-space rays and view-dependent colors recover the camera center from the rigid pose.
+            view = transformed.world_to_camera_matrix
+            np.testing.assert_allclose(-view[:3, :3].T @ view[:3, 3], expected_center, atol=1e-7)
 
     def test_normalize_scene_ecef2enu(self):
         transform = NormalizeScene(normalization_type="ecef2enu")

@@ -530,10 +530,11 @@ class SfmPosedImageMetadata:
         """
         Return a new :class:`SfmImageMetadata` object with the camera pose transformed by the given transformation matrix.
 
-        This transformation applies to the left of the camera to world transformation matrix,
-        meaning it transforms the camera in world space.
+        For perspective cameras, an orientation-preserving similarity transforms the camera center with
+        the full matrix and rotates the camera axes without scaling them. Orthographic cameras retain
+        scale in the pose to preserve projections with unchanged intrinsics. Other transforms are
+        composed directly with the pose.
 
-        *i.e.* ``new_camera_to_world_matrix = transformation_matrix @ self.camera_to_world_matrix``
         Args:
             transformation_matrix (np.ndarray): A 4x4 transformation matrix to apply.
 
@@ -541,6 +542,18 @@ class SfmPosedImageMetadata:
             SfmImageMetadata: A new :class:`SfmImageMetadata` object with the transformed matrices.
         """
         new_camera_to_world_matrix = transformation_matrix @ self.camera_to_world_matrix
+        linear = transformation_matrix[:3, :3]
+        scales = np.linalg.svd(linear, compute_uv=False)
+        if (
+            self.camera_metadata.camera_model != CameraModel.ORTHOGRAPHIC
+            and np.array_equal(transformation_matrix[3], [0, 0, 0, 1])
+            and np.linalg.det(linear) > 0
+            and np.allclose(scales, scales[0], rtol=1e-6, atol=0)
+        ):
+            # Directions rotate, while the camera center follows the same similarity as the points.
+            scale = scales.mean()
+            column_scales = np.array([scale, scale, scale, 1], dtype=scales.dtype)
+            new_camera_to_world_matrix = new_camera_to_world_matrix / column_scales
         new_world_to_camera_matrix = np.linalg.inv(new_camera_to_world_matrix)
 
         return SfmPosedImageMetadata(
