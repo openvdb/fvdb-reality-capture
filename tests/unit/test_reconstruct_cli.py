@@ -10,6 +10,7 @@ import logging
 import pathlib
 import tempfile
 import unittest
+from types import SimpleNamespace
 from unittest import mock
 
 import numpy as np
@@ -18,7 +19,11 @@ import tyro
 
 from fvdb_reality_capture import CameraModel, GaussianSplat3d
 from fvdb_reality_capture.cli.frgs._reconstruct import Reconstruct
-from fvdb_reality_capture.radiance_fields import GaussianSplatReconstruction
+from fvdb_reality_capture.radiance_fields import (
+    GaussianSplatOptimizerConfig,
+    GaussianSplatReconstruction,
+    GaussianSplatReconstructionConfig,
+)
 from fvdb_reality_capture.sfm_scene import (
     SfmCache,
     SfmCameraMetadata,
@@ -198,12 +203,17 @@ class ChunkedReconstructionTest(unittest.TestCase):
 
     def test_few_points_initialize_finite_scales(self):
         # With fewer points than the nearest-neighbor query asks for, initialization uses the neighbors that exist.
+        # This calls model initialization directly: the full from_sfm_scene loads images, and these scenes have none.
         for num_points in (2, 3):
             with self.subTest(num_points=num_points):
-                scene = _make_scene(self.root / f"few_cache_{num_points}", self.points[:num_points])
-                runner = GaussianSplatReconstruction.from_sfm_scene(scene, writer=mock.MagicMock(), device=self.device)
-                self.assertEqual(runner.model.num_gaussians, num_points)
-                self.assertTrue(torch.isfinite(runner.model.log_scales).all())
+                dataset = SimpleNamespace(
+                    points=self.points[:num_points], points_rgb=np.full((num_points, 3), 128, dtype=np.uint8)
+                )
+                model = GaussianSplatReconstruction._init_model(
+                    GaussianSplatReconstructionConfig(), GaussianSplatOptimizerConfig(), self.device, dataset
+                )
+                self.assertEqual(model.num_gaussians, num_points)
+                self.assertTrue(torch.isfinite(model.log_scales).all())
 
     def test_single_reconstruction_with_zero_gaussians_raises(self):
         out_path = self.root / "single.ply"
