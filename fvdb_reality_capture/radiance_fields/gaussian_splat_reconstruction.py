@@ -15,7 +15,7 @@ import torch
 import torch.nn.functional as nnf
 import torch.utils.data
 import tqdm
-from fvdb.utils.metrics import psnr, ssim
+from fvdb.utils.metrics import fused_l1_ssim_loss, psnr, ssim
 from fvdb.viz import Scene
 from scipy.spatial import cKDTree  # type: ignore
 from torch.utils import _pytree
@@ -1426,8 +1426,10 @@ class GaussianSplatReconstruction:
                 for pixels, mask_pixels, crop, is_last in crop_image_batch(
                     image.permute(0, 2, 3, 1), mask, self.config.crops_per_image
                 ):
-                    # Actual pixels to compute the loss on, normalized to [0, 1]
-                    pixels = pixels.permute(0, 3, 1, 2).contiguous().to(device=self.device) / 255.0  # [B, 3, H, W]
+                    # Unmasked targets are normalized by the fused loss.
+                    pixels = pixels.permute(0, 3, 1, 2).contiguous()  # [B, 3, H, W]
+                    if mask_pixels is not None:
+                        pixels = pixels.to(device=self.device)
 
                     # Render an image from the gaussian splats
                     # possibly using a crop of the full image
@@ -1453,13 +1455,16 @@ class GaussianSplatReconstruction:
                     if mask_pixels is not None:
                         # set the ground truth pixel values to match render, thus loss is zero at mask pixels and not updated
                         mask_pixels = mask_pixels.to(self.device)
+                        pixels = pixels / 255.0
                         pixels.permute(0, 2, 3, 1)[~mask_pixels] = image.detach()[~mask_pixels]
 
                     # Convert the render once for both losses; targets are already contiguous NCHW.
                     image_nchw = image.permute(0, 3, 1, 2).contiguous()
-                    l1loss = nnf.l1_loss(image_nchw, pixels)
-                    ssimloss = 1.0 - ssim(image_nchw, pixels)
-                    loss = torch.lerp(l1loss, ssimloss, self.config.ssim_lambda)  # type: ignore
+                    if mask_pixels is None:
+                        pixels = torch.ops.fvdb._copy_image_to_device.default(pixels, self.device)
+                    loss = fused_l1_ssim_loss(
+                        image_nchw, pixels, self.config.ssim_lambda, normalize_target=mask_pixels is None
+                    )
 
                     # Apply any additional regularization to the model for the given
                     # optimizer.
@@ -1577,8 +1582,6 @@ class GaussianSplatReconstruction:
                     mem_allocated = torch.cuda.memory_allocated(self.device) / (1024**3)
                     mem_reserved = torch.cuda.memory_reserved(self.device) / (1024**3)
                     self._writer.log_metric(self._global_step, f"{log_tag}/loss", loss.item())
-                    self._writer.log_metric(self._global_step, f"{log_tag}/l1loss", l1loss.item())
-                    self._writer.log_metric(self._global_step, f"{log_tag}/ssimloss", ssimloss.item())
                     self._writer.log_metric(
                         self._global_step,
                         f"{log_tag}/depth_loss",
