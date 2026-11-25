@@ -28,7 +28,7 @@ from fvdb_reality_capture.radiance_fields import (
     GaussianSplatReconstructionWriter,
     GaussianSplatReconstructionWriterConfig,
 )
-from fvdb_reality_capture.radiance_fields.gaussian_splat_reconstruction import _INIT_KNN_K
+from fvdb_reality_capture.radiance_fields.gaussian_splat_reconstruction import _INIT_MIN_POINTS
 from fvdb_reality_capture.sfm_scene import SfmScene
 from fvdb_reality_capture.transforms import (
     BaseTransform,
@@ -47,7 +47,7 @@ from ._common import (
 )
 
 # Model initialization needs at least this many points, so chunks with fewer are skipped instead of trained.
-_MIN_POINTS_PER_CHUNK = _INIT_KNN_K
+_MIN_POINTS_PER_CHUNK = _INIT_MIN_POINTS
 
 
 @dataclass

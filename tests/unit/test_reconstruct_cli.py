@@ -179,7 +179,7 @@ class ChunkedReconstructionTest(unittest.TestCase):
 
     def test_sparse_chunk_is_skipped_before_training(self):
         # The right-hand chunk has too few points to initialize a model, so it must not be trained at all.
-        points = np.concatenate([self.points[:10], [[1.5, 0.0, 0.0], [2.0, 0.5, 0.5]]])
+        points = np.concatenate([self.points[:10], [[1.5, 0.0, 0.0]]])
         scene = _make_scene(self.root / "sparse_cache", points)
         out_path = self.root / "merged.ply"
         chunk_scenes = self._run(self._command(out_path), scene=scene)
@@ -192,9 +192,18 @@ class ChunkedReconstructionTest(unittest.TestCase):
 
     def test_too_few_points_to_initialize_raises(self):
         # The single (unchunked) path and library callers get an error instead of a model with infinite scales.
-        scene = _make_scene(self.root / "tiny_cache", self.points[:3])
-        with self.assertRaisesRegex(ValueError, "at least 4 are required"):
+        scene = _make_scene(self.root / "tiny_cache", self.points[:1])
+        with self.assertRaisesRegex(ValueError, "at least 2 are required"):
             GaussianSplatReconstruction.from_sfm_scene(scene, writer=mock.MagicMock(), device=self.device)
+
+    def test_few_points_initialize_finite_scales(self):
+        # With fewer points than the nearest-neighbor query asks for, initialization uses the neighbors that exist.
+        for num_points in (2, 3):
+            with self.subTest(num_points=num_points):
+                scene = _make_scene(self.root / f"few_cache_{num_points}", self.points[:num_points])
+                runner = GaussianSplatReconstruction.from_sfm_scene(scene, writer=mock.MagicMock(), device=self.device)
+                self.assertEqual(runner.model.num_gaussians, num_points)
+                self.assertTrue(torch.isfinite(runner.model.log_scales).all())
 
     def test_single_reconstruction_with_zero_gaussians_raises(self):
         out_path = self.root / "single.ply"
