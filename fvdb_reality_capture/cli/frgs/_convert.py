@@ -16,9 +16,7 @@ from fvdb_reality_capture.radiance_fields import GaussianSplatReconstruction
 from fvdb_reality_capture.radiance_fields.checkpoint import (
     GAUSSIAN_SPLAT_RECONSTRUCTION_METHOD,
 )
-from fvdb_reality_capture.tools import export_splats_to_usd
-
-from ._common import load_mesh
+from fvdb_reality_capture.tools import export_splats_to_usd, load_mesh
 
 
 @dataclass

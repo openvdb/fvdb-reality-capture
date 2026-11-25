@@ -262,7 +262,7 @@ class SfmScene:
             - ``"world_to_camera"``: The world-to-camera transformation matrix.
             - ``"image_path"``: The path to the image file relative to the images directory.
 
-        - **points.ply**: A PLY file containing 3D points.
+        - **pointcloud.ply**: A PLY file containing 3D points.
 
         Args:
             data_path (str | pathlib.Path): The path to the data directory.

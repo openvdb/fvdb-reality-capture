@@ -7,15 +7,14 @@ import pathlib
 from dataclasses import dataclass
 from typing import Annotated
 
-import numpy as np
 import tyro
-from fvdb.types import to_VecNf
 from tyro.conf import arg
 
 from fvdb_reality_capture.cli import BaseCommand
 from fvdb_reality_capture.tools import mesh_from_splats_dlnr
+from fvdb_reality_capture.tools._mesh_io import save_colored_mesh
 
-from ._common import load_camera_metadata, load_splats_from_file, save_colored_mesh
+from ._common import load_camera_metadata, load_splats_from_file
 
 
 @dataclass

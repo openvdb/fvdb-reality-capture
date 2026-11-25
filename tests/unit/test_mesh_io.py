@@ -17,7 +17,7 @@ import numpy as np
 import torch
 import trimesh
 
-from fvdb_reality_capture.cli.frgs._common import (
+from fvdb_reality_capture.tools._mesh_io import (
     colors_to_uint8,
     load_mesh,
     save_colored_mesh,
@@ -76,6 +76,17 @@ class TestColorsToUint8(unittest.TestCase):
         colors = torch.arange(256, dtype=torch.uint8).repeat(3, 1).T.contiguous()
         self.assertTrue(torch.equal(colors_to_uint8(colors), colors))
 
+    def test_integer_colors_raise(self):
+        # int64 colors in [0, 255] must not be treated as floats in [0, 1] and clamped to 0 or 255.
+        for dtype in (torch.int64, torch.int32, torch.bool):
+            with self.subTest(dtype=dtype):
+                with self.assertRaises(TypeError):
+                    colors_to_uint8(torch.zeros(2, 3, dtype=dtype))
+
+    def test_nan_colors_raise(self):
+        with self.assertRaises(ValueError):
+            colors_to_uint8(torch.tensor([[0.5, float("nan"), 0.5]]))
+
     def test_uint8_float_round_trip_is_lossless(self):
         # Every uint8 value must survive a conversion to float in [0, 1] and back.
         colors = torch.arange(256, dtype=torch.uint8).repeat(3, 1).T.contiguous()
@@ -128,6 +139,60 @@ class TestSaveColoredMesh(unittest.TestCase):
         np.testing.assert_array_equal(loaded.vertices, self.vertices.numpy())
         np.testing.assert_array_equal(loaded.faces, self.faces.numpy())
 
+    def test_mismatched_colors_raise(self):
+        # trimesh silently drops vertex colors whose count does not match the vertices.
+        for colors in (self.colors[:-1], self.colors[:, :2], self.colors.reshape(-1)):
+            with self.subTest(shape=tuple(colors.shape)):
+                with self.assertRaises(ValueError):
+                    save_colored_mesh(self.path, self.vertices, self.faces, colors)
+        self.assertFalse(self.path.exists())
+
+    def test_bad_shapes_raise(self):
+        with self.assertRaises(ValueError):
+            save_colored_mesh(self.path, self.vertices[:, :2], self.faces, self.colors[:, :2])
+        with self.assertRaises(ValueError):
+            save_colored_mesh(self.path, self.vertices, self.faces[:, :2], self.colors)
+
+    def test_out_of_range_faces_raise(self):
+        num_vertices = self.vertices.shape[0]
+        for bad_index in (num_vertices, -1):
+            with self.subTest(bad_index=bad_index):
+                faces = self.faces.clone()
+                faces[1, 2] = bad_index
+                with self.assertRaises(ValueError):
+                    save_colored_mesh(self.path, self.vertices, faces, self.colors)
+        self.assertFalse(self.path.exists())
+
+    def test_float_faces_raise(self):
+        for dtype in (torch.float32, torch.bool, torch.complex64):
+            with self.subTest(dtype=dtype):
+                with self.assertRaises(TypeError):
+                    save_colored_mesh(self.path, self.vertices, self.faces.to(dtype), self.colors)
+
+    def test_unsigned_faces(self):
+        for dtype in (torch.uint8, torch.uint16, torch.uint32, torch.uint64):
+            with self.subTest(dtype=dtype):
+                save_colored_mesh(self.path, self.vertices, self.faces.to(dtype), self.colors)
+                loaded = trimesh.load(self.path, process=False)
+                np.testing.assert_array_equal(loaded.faces, self.faces.numpy())
+
+    def test_empty_faces_raise(self):
+        # load_mesh rejects a file without faces, so save_colored_mesh must not write one.
+        with self.assertRaises(ValueError):
+            save_colored_mesh(self.path, self.vertices, self.faces[:0], self.colors)
+        self.assertFalse(self.path.exists())
+
+    def test_bad_vertices_raise(self):
+        vertices = self.vertices.clone()
+        vertices[2, 1] = float("nan")
+        with self.assertRaises(ValueError):
+            save_colored_mesh(self.path, vertices, self.faces, self.colors)
+        with self.assertRaises(ValueError):  # finite in float64 but not in float32
+            save_colored_mesh(self.path, self.vertices.to(torch.float64) * 1e300, self.faces, self.colors)
+        with self.assertRaises(TypeError):
+            save_colored_mesh(self.path, self.vertices.to(torch.complex64), self.faces, self.colors)
+        self.assertFalse(self.path.exists())
+
 
 class TestSaveColoredPoints(unittest.TestCase):
     def setUp(self):
@@ -166,6 +231,25 @@ class TestSaveColoredPoints(unittest.TestCase):
         loaded = trimesh.load(self.path, process=False)
         np.testing.assert_array_equal(loaded.colors[:, :3], self.colors.numpy())
 
+    def test_mismatched_colors_raise(self):
+        # trimesh silently drops point colors whose count does not match the points.
+        for colors in (self.colors[:-1], self.colors[:, :2]):
+            with self.subTest(shape=tuple(colors.shape)):
+                with self.assertRaises(ValueError):
+                    save_colored_points(self.path, self.positions, colors)
+        with self.assertRaises(ValueError):
+            save_colored_points(self.path, self.positions[:, :2], self.colors[:, :2])
+        self.assertFalse(self.path.exists())
+
+    def test_bad_positions_raise(self):
+        positions = self.positions.clone()
+        positions[3, 0] = float("inf")
+        with self.assertRaises(ValueError):
+            save_colored_points(self.path, positions, self.colors)
+        with self.assertRaises(TypeError):
+            save_colored_points(self.path, self.positions.to(torch.bool), self.colors)
+        self.assertFalse(self.path.exists())
+
 
 class TestLoadMesh(unittest.TestCase):
     def setUp(self):
@@ -189,8 +273,8 @@ class TestLoadMesh(unittest.TestCase):
 
     def test_load_colored_ply(self):
         path = self.root / "mesh.ply"
-        colors = torch.rand(self.vertices.shape[0], 3)
-        save_colored_mesh(path, self.vertices, self.faces, colors)
+        colors = np.random.default_rng(0).integers(0, 256, (self.vertices.shape[0], 3), dtype=np.uint8)
+        trimesh.Trimesh(self.vertices.numpy(), self.faces.numpy(), vertex_colors=colors, process=False).export(path)
         self._check(*load_mesh(path))
 
     def _write_obj(self, name: str, face_lines: list[str], header: list[str] | None = None) -> pathlib.Path:
@@ -242,6 +326,44 @@ class TestLoadMesh(unittest.TestCase):
         for bad_index in (num_vertices + 1, 0, -(num_vertices + 1)):  # OBJ indices are 1-based
             with self.subTest(bad_index=bad_index):
                 path = self._write_obj("mesh.obj", [f"f 1 2 {bad_index}"])
+                with self.assertRaises(ValueError):
+                    load_mesh(path)
+
+    def test_load_obj_non_finite_vertices_raises(self):
+        for bad in ("nan", "inf", "1e300"):  # 1e300 is finite in float64 but not in float32
+            with self.subTest(bad=bad):
+                path = self._write_obj("mesh.obj", ["f 1 2 3"], header=[f"v {bad} 0 0"])
+                with self.assertRaises(ValueError):
+                    load_mesh(path)
+
+    def test_load_obj_unterminated_continuation_raises(self):
+        path = self._write_obj("mesh.obj", ["f 1 2 3", "f 1 2 \\"])
+        with self.assertRaises(ValueError):
+            load_mesh(path)
+
+    def test_load_ply_rejects_out_of_range_indices(self):
+        # trimesh does not check face indices when loading, so load_mesh must check them for non-OBJ formats too.
+        # The PLY is written by hand because trimesh will not export a mesh with invalid faces.
+        num_vertices = self.vertices.shape[0]
+        for bad_index in (num_vertices, num_vertices + 100):
+            with self.subTest(bad_index=bad_index):
+                faces = self.faces.tolist()
+                faces[1][2] = bad_index
+                lines = [
+                    "ply",
+                    "format ascii 1.0",
+                    f"element vertex {num_vertices}",
+                    "property float x",
+                    "property float y",
+                    "property float z",
+                    f"element face {len(faces)}",
+                    "property list uchar int vertex_indices",
+                    "end_header",
+                ]
+                lines += [f"{x!r} {y!r} {z!r}" for x, y, z in self.vertices.tolist()]
+                lines += [f"3 {a} {b} {c}" for a, b, c in faces]
+                path = self.root / "mesh.ply"
+                path.write_text("\n".join(lines) + "\n")
                 with self.assertRaises(ValueError):
                     load_mesh(path)
 

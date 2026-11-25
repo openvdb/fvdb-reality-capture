@@ -2,11 +2,9 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 import json
-import logging
 import pathlib
 
 import numpy as np
-import tqdm
 import trimesh
 
 from ..enums import CameraModel
@@ -29,7 +27,7 @@ def load_simple_scene(data_path: pathlib.Path):
                 - camera_intrinsics: The perspective projection matrix
                 - world_to_camera: The world-to-camera transformation matrix.
                 - image_path: The path to the image file relative to the images directory.
-        - points.ply: A PLY file containing 3D points.
+        - pointcloud.ply: A PLY file containing 3D points.
     Args:
         data_ (pathlib.Path): The path to the data
 

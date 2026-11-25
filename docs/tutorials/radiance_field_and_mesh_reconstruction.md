@@ -470,7 +470,7 @@ import trimesh
 
 # The truncation margin determines the width of the narrow band around the surface in which we compute the TSDF.
 # A larger margin will produce coarser voxels, while a smaller margin will produce finer voxels but may miss some surface details.
-# Here we pick a truncation margin of 0.25 world units in our scene.
+# Here we pick a truncation margin of 0.5 world units in our scene.
 truncation_margin = 0.5
 
 # This function returns a tensor of vertices, faces, and colors for the mesh.
@@ -479,7 +479,7 @@ truncation_margin = 0.5
 v, f, c = mesh_from_splats(model, cleaned_sfm_scene.camera_to_world_matrices, cleaned_sfm_scene.projection_matrices, cleaned_sfm_scene.image_sizes, truncation_margin)
 
 # Save the mesh as a PLY file for viewing in external tools using trimesh (https://trimesh.org/) [3]
-colors = (c.clamp(0.0, 1.0) * 255.0).to(torch.uint8).cpu().numpy()  # trimesh expects uint8 colors
+colors = (c.clamp(0.0, 1.0) * 255.0).to(torch.uint8).cpu().numpy()  # truncate to uint8 like frgs mesh-basic (trimesh would round floats)
 trimesh.Trimesh(vertices=v.cpu().numpy(), faces=f.cpu().numpy(), vertex_colors=colors, process=False).export("reconstructed_mesh.ply")
 
 print(f"Reconstructed mesh with {v.shape[0]:,} vertices and {f.shape[0]:,} faces")
@@ -515,7 +515,7 @@ import trimesh
 
 # The truncation margin determines the width of the narrow band around the surface in which we compute the TSDF.
 # A larger margin will produce coarser voxels, while a smaller margin will produce finer voxels but may miss some surface details.
-# Here we pick a truncation margin of 0.25 world units in our scene.
+# Here we pick a truncation margin of 0.5 world units in our scene.
 truncation_margin = 0.5
 
 # This function has virtually the same interface as `mesh_from_splats`.
@@ -525,7 +525,7 @@ truncation_margin = 0.5
 v, f, c = mesh_from_splats_dlnr(model, cleaned_sfm_scene.camera_to_world_matrices, cleaned_sfm_scene.projection_matrices, cleaned_sfm_scene.image_sizes, truncation_margin)
 
 # Save the mesh as a PLY file for viewing in external tools using trimesh (https://trimesh.org/) [3]
-colors = (c.clamp(0.0, 1.0) * 255.0).to(torch.uint8).cpu().numpy()  # trimesh expects uint8 colors
+colors = (c.clamp(0.0, 1.0) * 255.0).to(torch.uint8).cpu().numpy()  # truncate to uint8 like frgs mesh-basic (trimesh would round floats)
 trimesh.Trimesh(vertices=v.cpu().numpy(), faces=f.cpu().numpy(), vertex_colors=colors, process=False).export("reconstructed_mesh_dlnr.ply")
 
 print(f"Reconstructed mesh with {v.shape[0]:,} vertices and {f.shape[0]:,} faces")

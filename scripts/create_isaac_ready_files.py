@@ -25,8 +25,7 @@ import numpy as np
 import torch
 
 from fvdb_reality_capture import GaussianSplat3d
-from fvdb_reality_capture.cli.frgs._common import load_mesh
-from fvdb_reality_capture.tools import export_splats_to_usd
+from fvdb_reality_capture.tools import export_splats_to_usd, load_mesh
 
 
 def _crop_splat_model(
@@ -141,9 +140,9 @@ def _prepare_mesh(
             import point_cloud_utils as pcu
         except ImportError as e:
             raise ImportError(
-                "Making the mesh watertight requires point_cloud_utils (install the dev extra or "
-                "pip install point-cloud-utils), "
-                "or pass --no-watertight to skip this step."
+                "Making the mesh watertight requires point_cloud_utils: pip install point-cloud-utils (the dev "
+                "extra includes it on Python < 3.14 and non-aarch64 platforms), or pass --no-watertight to skip "
+                "this step."
             ) from e
         vertices, faces = pcu.make_mesh_watertight(vertices, faces, resolution=resolution)
         logger.info(
