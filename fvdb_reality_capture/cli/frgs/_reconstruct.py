@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Annotated, Literal
 
 import fvdb.viz as fviz
+import numpy as np
 import torch
 import tqdm
 from tyro.conf import Positional, arg
@@ -27,9 +28,11 @@ from fvdb_reality_capture.radiance_fields import (
     GaussianSplatReconstructionWriter,
     GaussianSplatReconstructionWriterConfig,
 )
+from fvdb_reality_capture.radiance_fields.gaussian_splat_reconstruction import _INIT_MIN_POINTS
 from fvdb_reality_capture.sfm_scene import SfmScene
 from fvdb_reality_capture.transforms import (
     BaseTransform,
+    CropScene,
     NormalizeScene,
 )
 from fvdb_reality_capture.transforms import (
@@ -42,6 +45,9 @@ from ._common import (
     save_model_from_runner,
     save_model_from_splats,
 )
+
+# Model initialization needs at least this many points, so chunks with fewer are skipped instead of trained.
+_MIN_POINTS_PER_CHUNK = _INIT_MIN_POINTS
 
 
 @dataclass
@@ -145,23 +151,45 @@ class Reconstruct(BaseCommand):
     # If set to (1, 1, 1), the dataset will not be chunked.
     nchunks: Annotated[tuple[int, int, int], arg(aliases=["-nc"])] = (1, 1, 1)
 
-    # Percentage of overlap between chunks if reconstructing in chunks. Must be in [0, 1].
-    # Only used if nchunks is not (1, 1, 1).
+    # Percentage of overlap between chunks if reconstructing in chunks. Must be in [0, 1).
+    # Only affects reconstruction if nchunks is not (1, 1, 1), but is always validated.
     # Default is 0.1 (10% overlap).
     chunk_overlap_pct: Annotated[float, arg(aliases=["-nco"])] = 0.1
+
+    def _validate_chunking(self) -> None:
+        """
+        Check that ``nchunks`` and ``chunk_overlap_pct`` are valid.
+
+        Raises:
+            ValueError: If ``nchunks`` does not have 3 entries that are all at least 1, or ``chunk_overlap_pct`` is not
+                in [0, 1).
+        """
+        if len(self.nchunks) != 3 or any(n < 1 for n in self.nchunks):
+            raise ValueError(f"nchunks must be a tuple of 3 positive integers, got {self.nchunks}")
+        if not 0.0 <= self.chunk_overlap_pct < 1.0:
+            raise ValueError(f"chunk_overlap_pct must be in the range [0, 1), got {self.chunk_overlap_pct}")
 
     def get_crop_bboxes(self, sfm_scene: SfmScene) -> list[tuple[float, float, float, float, float, float]]:
         """
         Compute a list of crop bounding boxes for each chunk.
 
-        Each bounding box is a tuple of the form (xmin, ymin, zmin, xmax, ymax, zmax).
+        Each bounding box is a tuple of the form (xmin, ymin, zmin, xmax, ymax, zmax). Every face is padded outward by
+        a small margin because :class:`~fvdb_reality_capture.transforms.CropScene` only keeps points strictly inside
+        the box, so without it points on the scene's outer faces (and on chunk boundaries when
+        ``chunk_overlap_pct`` is 0) would end up in no chunk.
 
         Args:
             sfm_scene (SfmScene): The SfM scene to compute the bounding boxes for.
         Returns:
             list[tuple[float, float, float, float, float, float]]: List of crop bounding boxes for each chunk.
+
+        Raises:
+            ValueError: If ``nchunks`` or ``chunk_overlap_pct`` is invalid, or the scene has no points.
         """
+        self._validate_chunking()
         scene_points = sfm_scene.points
+        if scene_points.shape[0] == 0:
+            raise ValueError("Cannot split a scene with no points into chunks")
         nx, ny, nz = self.nchunks
         overlap_percent = self.chunk_overlap_pct
 
@@ -173,16 +201,21 @@ class Reconstruct(BaseCommand):
         chunk_size_x = (xmax - xmin) / nx
         chunk_size_y = (ymax - ymin) / ny
         chunk_size_z = (zmax - zmin) / nz
+        # The margin must be large enough to survive rounding at the points' magnitude and precision (e.g. float32
+        # ECEF coordinates), not just relative to the scene's extent.
+        extent = float(np.max(scene_points.max(axis=0) - scene_points.min(axis=0)))
+        magnitude = np.abs(scene_points).max().astype(scene_points.dtype)
+        pad = max(1e-6 * extent, 4.0 * float(np.spacing(magnitude)))
         for i, j, k in itertools.product(range(nx), range(ny), range(nz)):
             # Calculate the bounding box for the current chunk
             # with overlap based on the specified percentage
             crop_bbox = (
-                float(xmin + i * chunk_size_x - 0.5 * chunk_size_x * overlap_percent),
-                float(ymin + j * chunk_size_y - 0.5 * chunk_size_y * overlap_percent),
-                float(zmin + k * chunk_size_z - 0.5 * chunk_size_z * overlap_percent),
-                float(xmin + (i + 1) * chunk_size_x + 0.5 * chunk_size_x * overlap_percent),
-                float(ymin + (j + 1) * chunk_size_y + 0.5 * chunk_size_y * overlap_percent),
-                float(zmin + (k + 1) * chunk_size_z + 0.5 * chunk_size_z * overlap_percent),
+                float(xmin + i * chunk_size_x - 0.5 * chunk_size_x * overlap_percent - pad),
+                float(ymin + j * chunk_size_y - 0.5 * chunk_size_y * overlap_percent - pad),
+                float(zmin + k * chunk_size_z - 0.5 * chunk_size_z * overlap_percent - pad),
+                float(xmin + (i + 1) * chunk_size_x + 0.5 * chunk_size_x * overlap_percent + pad),
+                float(ymin + (j + 1) * chunk_size_y + 0.5 * chunk_size_y * overlap_percent + pad),
+                float(zmin + (k + 1) * chunk_size_z + 0.5 * chunk_size_z * overlap_percent + pad),
             )
             crops_bboxes.append(crop_bbox)
         return crops_bboxes
@@ -207,7 +240,7 @@ class Reconstruct(BaseCommand):
         crop_bboxes = self.get_crop_bboxes(sfm_scene)
         num_chunks = len(crop_bboxes)
 
-        with tempfile.TemporaryDirectory(delete=True) as ply_temp_dir:
+        with tempfile.TemporaryDirectory() as ply_temp_dir:
             # TODO: Stripe accross GPUs
             chunk_ply_paths: list[pathlib.Path] = []
             for i, bbox in enumerate(crop_bboxes):
@@ -215,8 +248,15 @@ class Reconstruct(BaseCommand):
                 chunk_transform = CropScene(bbox=bbox)
 
                 scene_chunk = chunk_transform(sfm_scene)
-                # This is important to ensure that gaussians are not
-                # initialized outside the chunk bbox
+                num_chunk_points = scene_chunk.points.shape[0]
+                if num_chunk_points < _MIN_POINTS_PER_CHUNK:
+                    self.logger.warning(
+                        f"Chunk {i + 1}/{num_chunks} contains {num_chunk_points} points (fewer than {_MIN_POINTS_PER_CHUNK}). This "
+                        "chunk will be skipped."
+                    )
+                    continue
+                # CropScene sets the chunk's scene bbox to the crop bbox, so this removes gaussians that end up
+                # outside the chunk during refinement.
                 self.cfg.remove_gaussians_outside_scene_bbox = True
 
                 runner = GaussianSplatReconstruction.from_sfm_scene(
@@ -234,12 +274,15 @@ class Reconstruct(BaseCommand):
 
                 if runner.model.num_gaussians == 0:
                     self.logger.warning(
-                        f"Chunk {i} resulted in a model with 0 gaussians. This chunk will be skipped during merging."
+                        f"Chunk {i + 1}/{num_chunks} resulted in a model with 0 gaussians. This chunk will be skipped during merging."
                     )
+                    continue
                 chunk_ply_path = pathlib.Path(ply_temp_dir) / f"chunk_{i:04d}.ply"
                 runner.model.save_ply(chunk_ply_path, {})
                 chunk_ply_paths.append(chunk_ply_path)
 
+            if not chunk_ply_paths:
+                raise RuntimeError(f"None of the {num_chunks} chunks produced any gaussians; nothing to save.")
             self.logger.info("All chunks have been processed. Merging splats...")
 
             splats = []
@@ -282,6 +325,8 @@ class Reconstruct(BaseCommand):
 
         runner.optimize()
 
+        if runner.model.num_gaussians == 0:
+            raise RuntimeError("Reconstruction resulted in a model with 0 gaussians; nothing to save.")
         self.logger.info(f"Saving final model to {self.out_path}")
         save_model_from_runner(self.out_path, runner)
 
@@ -294,6 +339,7 @@ class Reconstruct(BaseCommand):
             raise ValueError("Output path must end in .ply, .usdc, or .usdz")
         if self.out_path.exists():
             raise ValueError(f"Output path {self.out_path} already exists")
+        self._validate_chunking()
 
         self.logger.info(f"Loading dataset from {self.dataset_path}")
         sfm_scene = load_sfm_scene(self.dataset_path, self.dataset_type)
@@ -314,11 +360,6 @@ class Reconstruct(BaseCommand):
             config=self.io,
             exist_ok=False,
         )
-
-        if self.nchunks[0] < 1 or self.nchunks[1] < 1 or self.nchunks[2] < 1:
-            raise ValueError("nchunks must be a tuple of 3 positive integers")
-        if self.chunk_overlap_pct < 0.0 or self.chunk_overlap_pct >= 1.0:
-            raise ValueError("chunk_overlap_pct must be in the range [0, 1)")
 
         if self.nchunks == (1, 1, 1):
             self._run_single_reconstruction(sfm_scene, writer, viz_scene)

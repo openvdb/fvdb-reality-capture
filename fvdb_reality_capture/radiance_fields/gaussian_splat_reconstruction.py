@@ -41,6 +41,12 @@ from .gaussian_splat_reconstruction_writer import (
 )
 from .gaussian_splatting import GaussianSplat3d
 
+# Each initial gaussian's scale comes from the mean distance to (up to) its 3 nearest neighbors. The k-nearest-neighbor
+# query returns the point itself plus k - 1 neighbors, so k is 4.
+_INIT_KNN_K = 4
+# Initialization needs at least one neighbor per point to estimate a scale.
+_INIT_MIN_POINTS = 2
+
 
 def _collate_cached_sfm_batch(batch: list[dict[str, Any]]) -> dict[str, Any]:
     """Add a batch dimension to shared rasters without copying their storage.
@@ -1146,7 +1152,7 @@ class GaussianSplatReconstruction:
                             for the Gaussians.
         """
 
-        def _knn(x_np: np.ndarray, k: int = 4) -> torch.Tensor:
+        def _knn(x_np: np.ndarray, k: int) -> torch.Tensor:
             kd_tree = cKDTree(x_np)  # type: ignore
             distances, _ = kd_tree.query(x_np, k=k)
             return torch.from_numpy(distances).to(device=device, dtype=torch.float32)
@@ -1156,8 +1162,16 @@ class GaussianSplatReconstruction:
             return (rgb - 0.5) / C0
 
         num_gaussians = training_dataset.points.shape[0]
+        if num_gaussians < _INIT_MIN_POINTS:
+            raise ValueError(
+                f"Cannot initialize a model from {num_gaussians} points; at least {_INIT_MIN_POINTS} are required to "
+                "estimate initial gaussian scales."
+            )
 
-        dist2_avg = (_knn(training_dataset.points, 4)[:, 1:] ** 2).mean(dim=-1).clamp_min(1e-7)  # [N,]
+        # With fewer than _INIT_KNN_K points, use every other point as a neighbor. Querying for more neighbors than
+        # exist would return infinite distances and so infinite scales.
+        knn_k = min(_INIT_KNN_K, num_gaussians)
+        dist2_avg = (_knn(training_dataset.points, knn_k)[:, 1:] ** 2).mean(dim=-1).clamp_min(1e-7)  # [N,]
         dist_avg = torch.sqrt(dist2_avg)
 
         log_scales = (
