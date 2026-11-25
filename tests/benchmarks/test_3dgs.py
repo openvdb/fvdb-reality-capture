@@ -126,12 +126,12 @@ class Benchmark3dgs:
         self.projection_mats = minibatch["projection"].to(device)  # [B, 3, 3]
         self.camera_model = CameraModel(int(minibatch["camera_model"].item()))
         self.distortion_coeffs = minibatch["distortion_coeffs"].to(device)
-        self.image = minibatch["image"]  # [B, H, W, 3]
+        self.image = minibatch["image"]  # [B, 3, H, W]
         self.mask = minibatch["mask"] if "mask" in minibatch else None
-        self.image_height, self.image_width = self.image.shape[1:3]
+        self.image_height, self.image_width = self.image.shape[-2:]
 
         # Actual pixels to compute the loss on, normalized to [0, 1]
-        self.pixels = self.image.to(device) / 255.0  # [1, H, W, 3]
+        self.pixels = self.image.to(device) / 255.0  # [B, 3, H, W]
 
         # Progressively use higher spherical harmonic degree as we optimize
         increase_sh_degree_every_step: int = int(
@@ -177,7 +177,7 @@ class Benchmark3dgs:
 
     def run_backward(self):
         # Compute loss and backward pass with retain_graph=True to allow multiple calls
-        loss = F.l1_loss(self.colors, self.pixels)
+        loss = F.l1_loss(self.colors.permute(0, 3, 1, 2).contiguous(), self.pixels)
         loss.backward(retain_graph=True)
 
 

@@ -348,7 +348,7 @@ class ImageSpaceRenderBackend:
                 world_to_camera = world_to_camera.contiguous()
                 projection = projection.contiguous()
                 distortion_coeffs = distortion_coeffs.contiguous()
-                height, width = datum["image"].shape[:2]
+                height, width = datum["image"].shape[-2:]
                 camera_model_enum = CameraModel(camera_model)
                 distortion_coeffs_arg = _distortion_coeffs_for_batch(camera_model_enum, distortion_coeffs, model.device)
                 if render_depth:
@@ -429,7 +429,7 @@ class WorldSpaceRenderBackend:
                 world_to_camera = world_to_camera.contiguous()
                 projection = projection.contiguous()
                 distortion_coeffs = distortion_coeffs.contiguous()
-                height, width = datum["image"].shape[:2]
+                height, width = datum["image"].shape[-2:]
                 camera_model_enum = CameraModel(camera_model)
                 distortion_coeffs_arg = _distortion_coeffs_for_batch(camera_model_enum, distortion_coeffs, model.device)
                 render_function = (

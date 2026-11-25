@@ -186,16 +186,18 @@ class SegmentationDataset(SfmDataset):
             mask_cdf, mask_ids, scales = self._get_mask_data(index)
 
             with nvtx.range("build_segmentation_data_item"):
+                # SfmDataset returns CHW images; segmentation masks and pixel sampling use HWC.
+                image = torch.from_numpy(sfm_item["image"]).permute(1, 2, 0).contiguous()
                 return SegmentationDataItem(
-                    image=torch.from_numpy(sfm_item["image"]),
+                    image=image,
                     projection=sfm_item["projection"],
                     camera_to_world=sfm_item["camera_to_world"],
                     world_to_camera=sfm_item["world_to_camera"],
                     scales=scales,
                     mask_cdf=mask_cdf,
                     mask_ids=mask_ids,
-                    image_h=sfm_item["image"].shape[0],
-                    image_w=sfm_item["image"].shape[1],
+                    image_h=image.shape[0],
+                    image_w=image.shape[1],
                 )
 
     def per_image_scales(self) -> list[torch.Tensor]:

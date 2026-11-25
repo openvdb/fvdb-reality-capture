@@ -215,7 +215,7 @@ def test_benchmark_smoke_pipeline_on_gpu(tmp_path: pathlib.Path):
     camera_model = CameraModel(int(sample["camera_model"]))
     distortion_coeffs = sample["distortion_coeffs"].unsqueeze(0).cuda()
     image = torch.from_numpy(sample["image"]).unsqueeze(0).cuda() / 255.0
-    height, width = image.shape[1:3]
+    height, width = image.shape[-2:]
 
     projected = runner.model.project_gaussians_for_images(
         world_to_camera_matrices=world_to_camera,
@@ -239,7 +239,7 @@ def test_benchmark_smoke_pipeline_on_gpu(tmp_path: pathlib.Path):
         crop_origin_h=0,
         tile_size=runner.config.tile_size,
     )
-    loss = torch.nn.functional.l1_loss(colors, image)
+    loss = torch.nn.functional.l1_loss(colors.permute(0, 3, 1, 2).contiguous(), image)
     loss.backward()
 
     # Round-trip checkpoint load

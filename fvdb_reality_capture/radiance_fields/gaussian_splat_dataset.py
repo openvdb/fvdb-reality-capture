@@ -29,8 +29,8 @@ class SfmDataset(torch.utils.data.Dataset, Iterable):
     This class provides an interface to load and manipulate datasets from SfM pipelines
     (e.g. those generated from COLMAP).
 
-    Each item in the dataset is an image with a corresponding camera pose, projection matrix,
-    and optionally mask and depth information.
+    Each item in the dataset is a contiguous CHW image with a corresponding camera pose,
+    projection matrix, and optionally HW mask and depth information.
 
     The class also provides methods to access camera to world matrices, projection matrices,
     scene scale, and 3D points within the SFM scene.
@@ -129,26 +129,26 @@ class SfmDataset(torch.utils.data.Dataset, Iterable):
 
     @staticmethod
     def _decode_raster(path: str, *, is_mask: bool) -> torch.Tensor:
-        """Decode an image or mask into a contiguous CPU tensor."""
+        """Decode a CHW image or HW mask into a contiguous CPU tensor."""
         path_lower = path.lower()
         if path_lower.endswith((".jpg", ".jpeg", ".png")):
             encoded = torchvision.io.read_file(path)
             raster = torchvision.io.decode_image(encoded)
-            raster = raster[0] if is_mask else raster.permute(1, 2, 0)
+            if is_mask:
+                raster = raster[0]
         else:
             raster_np = cv2.imread(path, cv2.IMREAD_GRAYSCALE if is_mask else cv2.IMREAD_UNCHANGED)
             assert raster_np is not None, f"Failed to load {'mask' if is_mask else 'image'}: {path}"
             if not is_mask:
                 raster_np = cv2.cvtColor(raster_np, cv2.COLOR_BGR2RGB)
             raster = torch.from_numpy(raster_np)
-
-        if not is_mask and raster.ndim == 2:
-            raster = raster[:, :, None]
+            if not is_mask:
+                raster = raster.permute(2, 0, 1)
         return raster.contiguous()
 
     @classmethod
     def _decode_image(cls, path: str) -> torch.Tensor:
-        """Decode an image into a contiguous HWC RGB tensor on the CPU."""
+        """Decode an image into a contiguous CHW RGB tensor on the CPU."""
         return cls._decode_raster(path, is_mask=False)
 
     @classmethod
@@ -369,7 +369,7 @@ class SfmDataset(torch.utils.data.Dataset, Iterable):
          - projection: The projection matrix for the camera.
          - camera_to_world: The camera to world transformation matrix.
          - world_to_camera: The world to camera transformation matrix.
-         - image: The image tensor.
+         - image: The contiguous CHW image (a tensor when cached, otherwise a NumPy array).
          - image_id: The global index of the image in the ``SfmScene``.
          - image_path: The file path of the image.
          - points (Optional): The projected points in the image (if return_visible_points is True).
@@ -396,10 +396,11 @@ class SfmDataset(torch.utils.data.Dataset, Iterable):
 
         if self.patch_size is not None:
             # Random crop.
-            h, w = image.shape[:2]
+            h, w = image.shape[-2:]
             x = np.random.randint(0, max(w - self.patch_size, 1))
             y = np.random.randint(0, max(h - self.patch_size, 1))
-            image = image[y : y + self.patch_size, x : x + self.patch_size]
+            image = image[:, y : y + self.patch_size, x : x + self.patch_size]
+            image = image.contiguous() if isinstance(image, torch.Tensor) else np.ascontiguousarray(image)
             projection_matrix[0, 2] -= x
             projection_matrix[1, 2] -= y
 
@@ -442,9 +443,9 @@ class SfmDataset(torch.utils.data.Dataset, Iterable):
             # filter out points outside the image
             selector = (
                 (points[:, 0] >= 0)
-                & (points[:, 0] < image.shape[1])
+                & (points[:, 0] < image.shape[2])
                 & (points[:, 1] >= 0)
-                & (points[:, 1] < image.shape[0])
+                & (points[:, 1] < image.shape[1])
                 & (depths > 0)
             )
             points = points[selector]

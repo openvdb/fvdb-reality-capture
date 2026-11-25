@@ -32,7 +32,7 @@ if __name__ == "__main__":
 
     imsize = None
     for i, data in tqdm.tqdm(enumerate(dataset), desc="Plotting points"):
-        image = data["image"].astype(np.uint8)
+        image = np.ascontiguousarray(data["image"].transpose(1, 2, 0), dtype=np.uint8)
         # Make sure all images we write are the same size. We use the first image to determine the size of the video.
         # This is done because some images have slightly different sizes due to undistortion.
         imsize = image.shape if imsize is None else imsize
