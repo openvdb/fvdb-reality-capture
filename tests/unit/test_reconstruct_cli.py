@@ -18,12 +18,16 @@ import tyro
 
 from fvdb_reality_capture import CameraModel, GaussianSplat3d
 from fvdb_reality_capture.cli.frgs._reconstruct import Reconstruct
+from fvdb_reality_capture.radiance_fields import GaussianSplatReconstruction
 from fvdb_reality_capture.sfm_scene import (
     SfmCache,
     SfmCameraMetadata,
     SfmPosedImageMetadata,
     SfmScene,
 )
+from fvdb_reality_capture.transforms import CropScene
+
+_FROM_SFM_SCENE = "fvdb_reality_capture.cli.frgs._reconstruct.GaussianSplatReconstruction.from_sfm_scene"
 
 
 def _make_scene(cache_dir: pathlib.Path, points: np.ndarray) -> SfmScene:
@@ -67,6 +71,15 @@ def _make_scene(cache_dir: pathlib.Path, points: np.ndarray) -> SfmScene:
     )
 
 
+def _command(root: pathlib.Path, out_path: pathlib.Path, *extra_args: str) -> Reconstruct:
+    command = tyro.cli(
+        Reconstruct,
+        args=[str(root / "dataset"), "--out-path", str(out_path), "--device", "cuda:0", *extra_args],
+    )
+    command.logger = logging.getLogger(__name__)
+    return command
+
+
 def _splats_at(points: np.ndarray, device: torch.device) -> GaussianSplat3d:
     num_points = points.shape[0]
     return GaussianSplat3d.from_tensors(
@@ -97,28 +110,16 @@ class ChunkedReconstructionTest(unittest.TestCase):
     def tearDown(self):
         self.temp_dir.cleanup()
 
-    def _command(self, out_path: pathlib.Path) -> Reconstruct:
-        command = tyro.cli(
-            Reconstruct,
-            args=[
-                str(self.root / "dataset"),
-                "--out-path",
-                str(out_path),
-                "--nchunks",
-                "2",
-                "1",
-                "1",
-                "--device",
-                "cuda:0",
-            ],
-        )
-        command.logger = logging.getLogger(__name__)
-        return command
+    def _command(self, out_path: pathlib.Path, *extra_args: str) -> Reconstruct:
+        return _command(self.root, out_path, "--nchunks", "2", "1", "1", *extra_args)
 
-    def _run(self, command: Reconstruct, empty_chunks: tuple[int, ...] = ()) -> list[SfmScene]:
+    def _run(
+        self, command: Reconstruct, empty_chunks: tuple[int, ...] = (), scene: SfmScene | None = None
+    ) -> list[SfmScene]:
         """
         Run the chunked reconstruction with training mocked out: the "optimized" model for a chunk has one splat at
-        each of its points, or no splats if the chunk's index is in ``empty_chunks``. Returns the chunk scenes.
+        each of its points, or no splats if the chunk is the n-th one trained and n is in ``empty_chunks``. Returns
+        the scenes of the chunks that were trained.
         """
         chunk_scenes: list[SfmScene] = []
 
@@ -130,11 +131,10 @@ class ChunkedReconstructionTest(unittest.TestCase):
             runner.reconstruction_metadata = {}
             return runner
 
-        with mock.patch(
-            "fvdb_reality_capture.cli.frgs._reconstruct.GaussianSplatReconstruction.from_sfm_scene",
-            side_effect=fake_from_sfm_scene,
-        ):
-            command._run_chunked_reconstruction(self.scene, writer=mock.MagicMock(), viz_scene=None)
+        with mock.patch(_FROM_SFM_SCENE, side_effect=fake_from_sfm_scene):
+            command._run_chunked_reconstruction(
+                self.scene if scene is None else scene, writer=mock.MagicMock(), viz_scene=None
+            )
         return chunk_scenes
 
     def _merged_means(self, out_path: pathlib.Path) -> np.ndarray:
@@ -173,9 +173,89 @@ class ChunkedReconstructionTest(unittest.TestCase):
 
     def test_all_chunks_empty_raises(self):
         out_path = self.root / "merged.ply"
-        with self.assertRaisesRegex(RuntimeError, "All 2 chunks resulted in models with 0 gaussians"):
+        with self.assertRaisesRegex(RuntimeError, "None of the 2 chunks produced any gaussians"):
             self._run(self._command(out_path), empty_chunks=(0, 1))
         self.assertFalse(out_path.exists())
+
+    def test_sparse_chunk_is_skipped_before_training(self):
+        # The right-hand chunk has too few points to initialize a model, so it must not be trained at all.
+        points = np.concatenate([self.points[:10], [[1.5, 0.0, 0.0], [2.0, 0.5, 0.5]]])
+        scene = _make_scene(self.root / "sparse_cache", points)
+        out_path = self.root / "merged.ply"
+        chunk_scenes = self._run(self._command(out_path), scene=scene)
+
+        self.assertEqual(len(chunk_scenes), 1)
+        merged_means = self._merged_means(out_path)
+        np.testing.assert_allclose(
+            np.sort(merged_means, axis=0), np.sort(points[:10], axis=0).astype(np.float32), rtol=0, atol=1e-6
+        )
+
+    def test_too_few_points_to_initialize_raises(self):
+        # The single (unchunked) path and library callers get an error instead of a model with infinite scales.
+        scene = _make_scene(self.root / "tiny_cache", self.points[:3])
+        with self.assertRaisesRegex(ValueError, "at least 4 are required"):
+            GaussianSplatReconstruction.from_sfm_scene(scene, writer=mock.MagicMock(), device=self.device)
+
+    def test_single_reconstruction_with_zero_gaussians_raises(self):
+        out_path = self.root / "single.ply"
+        command = _command(self.root, out_path)
+        runner = mock.MagicMock()
+        runner.model = _splats_at(self.points[:0], self.device)
+        with mock.patch(_FROM_SFM_SCENE, return_value=runner):
+            with self.assertRaisesRegex(RuntimeError, "0 gaussians"):
+                command._run_single_reconstruction(self.scene, writer=mock.MagicMock(), viz_scene=None)
+        runner.save_ply.assert_not_called()
+        self.assertFalse(out_path.exists())
+
+
+class CropBboxesTest(unittest.TestCase):
+    def setUp(self):
+        self.temp_dir = tempfile.TemporaryDirectory()
+        self.root = pathlib.Path(self.temp_dir.name)
+
+    def tearDown(self):
+        self.temp_dir.cleanup()
+
+    def _command(self, *args: str) -> Reconstruct:
+        return _command(self.root, self.root / "out.ply", *args)
+
+    def _assert_every_point_in_a_chunk(self, points: np.ndarray, command: Reconstruct):
+        scene = _make_scene(self.root / f"cache_{points.dtype}", points)
+        bboxes = command.get_crop_bboxes(scene)
+        in_any_chunk = np.zeros(points.shape[0], dtype=bool)
+        for bbox in bboxes:
+            cropped = CropScene(bbox=bbox)(scene).points
+            in_any_chunk |= (points[:, None, :] == cropped[None, :, :]).all(axis=-1).any(axis=1)
+        self.assertTrue(in_any_chunk.all(), f"points in no chunk: {points[~in_any_chunk]}")
+
+    def test_zero_overlap_keeps_every_point(self):
+        # Points on the scene's outer faces and one exactly on the boundary between the two chunks (x = 0).
+        points = np.array(
+            [[-1.0, -1.0, -1.0], [1.0, 1.0, 1.0], [0.0, 0.0, 0.0], [-0.5, 0.2, 0.3], [0.5, -0.2, -0.3]],
+            dtype=np.float64,
+        )
+        command = self._command("--nchunks", "2", "1", "1", "--chunk-overlap-pct", "0")
+        self._assert_every_point_in_a_chunk(points, command)
+
+    def test_zero_overlap_keeps_every_point_at_large_float32_coordinates(self):
+        # ECEF-scale coordinates in float32, where a margin relative to the scene extent alone would round away.
+        offset = np.array([6.0e6, 1.0e6, 3.0e6])
+        points = (offset + np.array([[-1.0, -1.0, -1.0], [1.0, 1.0, 1.0], [0.0, 0.5, 0.5]])).astype(np.float32)
+        command = self._command("--nchunks", "2", "2", "2", "--chunk-overlap-pct", "0")
+        self._assert_every_point_in_a_chunk(points, command)
+
+    def test_invalid_chunking_raises(self):
+        scene = _make_scene(self.root / "cache", np.zeros((4, 3)))
+        for args in (("--nchunks", "0", "1", "1"), ("--chunk-overlap-pct", "1.0"), ("--chunk-overlap-pct", "-0.1")):
+            with self.subTest(args=args):
+                command = self._command(*args)
+                with self.assertRaises(ValueError):
+                    command.get_crop_bboxes(scene)
+                # execute() rejects the flags before loading the dataset or creating any output.
+                with mock.patch("fvdb_reality_capture.cli.frgs._reconstruct.load_sfm_scene") as load_sfm_scene:
+                    with self.assertRaises(ValueError):
+                        command.execute()
+                    load_sfm_scene.assert_not_called()
 
 
 if __name__ == "__main__":
