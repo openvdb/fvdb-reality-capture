@@ -5,9 +5,10 @@
 import unittest
 
 import numpy as np
+import pytest
 
 from fvdb_reality_capture import CameraModel
-from fvdb_reality_capture.sfm_scene import SfmCameraMetadata
+from fvdb_reality_capture.sfm_scene import SfmCameraMetadata, SfmPosedImageMetadata
 from fvdb_reality_capture.sfm_scene.sfm_metadata import (
     _as_packed_distortion_coeffs,
     _legacy_camera_type_to_camera_model,
@@ -306,6 +307,39 @@ class SfmCameraMetadataTests(unittest.TestCase):
             camera.resize(new_width=0, new_height=10)
         with self.assertRaisesRegex(ValueError, "positive integers"):
             camera.resize(new_width=10, new_height=-1)
+
+
+@pytest.mark.parametrize("camera_model", [CameraModel.PINHOLE, CameraModel.ORTHOGRAPHIC])
+@pytest.mark.parametrize("scale", [0.5, 1.0, 2.5])
+def test_similarity_preserves_image_projections(camera_model, scale):
+    camera = SfmCameraMetadataTests._make_camera(camera_model)
+    pose = np.array([[0.0, 0.0, 1.0, 3.0], [0.0, 1.0, 0.0, -2.0], [-1.0, 0.0, 0.0, 1.0], [0.0, 0.0, 0.0, 1.0]])
+    image = SfmPosedImageMetadata(
+        world_to_camera_matrix=np.linalg.inv(pose),
+        camera_to_world_matrix=pose,
+        camera_metadata=camera,
+        camera_id=1,
+        image_path="image.png",
+        mask_path="",
+        point_indices=None,
+        image_id=0,
+    )
+    transform = np.array(
+        [[0.0, -scale, 0.0, 4.0], [scale, 0.0, 0.0, 1.0], [0.0, 0.0, scale, -3.0], [0.0, 0.0, 0.0, 1.0]]
+    )
+    transformed = image.transform(transform)
+    points = np.array([[-1.0, 0.5, 4.0, 1.0], [2.0, -1.0, 6.0, 1.0]])
+    actual = (transformed.world_to_camera_matrix @ transform @ pose @ points.T).T
+
+    # Matching camera-plane coordinates with unchanged intrinsics preserves pixel projections.
+    assert transformed.camera_metadata is camera
+    expected_xy, actual_xy = points[:, :2], actual[:, :2]
+    if camera_model == CameraModel.PINHOLE:
+        expected_xy = expected_xy / points[:, 2:3]
+        actual_xy = actual_xy / actual[:, 2:3]
+        rotation = transformed.camera_to_world_matrix[:3, :3]
+        np.testing.assert_allclose(rotation.T @ rotation, np.eye(3), atol=1e-12)
+    np.testing.assert_allclose(actual_xy, expected_xy, atol=1e-12)
 
 
 if __name__ == "__main__":
