@@ -30,6 +30,7 @@ from fvdb_reality_capture.radiance_fields import (
 from fvdb_reality_capture.sfm_scene import SfmScene
 from fvdb_reality_capture.transforms import (
     BaseTransform,
+    CropScene,
     NormalizeScene,
 )
 from fvdb_reality_capture.transforms import (
@@ -145,7 +146,7 @@ class Reconstruct(BaseCommand):
     # If set to (1, 1, 1), the dataset will not be chunked.
     nchunks: Annotated[tuple[int, int, int], arg(aliases=["-nc"])] = (1, 1, 1)
 
-    # Percentage of overlap between chunks if reconstructing in chunks. Must be in [0, 1].
+    # Percentage of overlap between chunks if reconstructing in chunks. Must be in [0, 1).
     # Only used if nchunks is not (1, 1, 1).
     # Default is 0.1 (10% overlap).
     chunk_overlap_pct: Annotated[float, arg(aliases=["-nco"])] = 0.1
@@ -207,7 +208,7 @@ class Reconstruct(BaseCommand):
         crop_bboxes = self.get_crop_bboxes(sfm_scene)
         num_chunks = len(crop_bboxes)
 
-        with tempfile.TemporaryDirectory(delete=True) as ply_temp_dir:
+        with tempfile.TemporaryDirectory() as ply_temp_dir:
             # TODO: Stripe accross GPUs
             chunk_ply_paths: list[pathlib.Path] = []
             for i, bbox in enumerate(crop_bboxes):
@@ -215,8 +216,8 @@ class Reconstruct(BaseCommand):
                 chunk_transform = CropScene(bbox=bbox)
 
                 scene_chunk = chunk_transform(sfm_scene)
-                # This is important to ensure that gaussians are not
-                # initialized outside the chunk bbox
+                # CropScene sets the chunk's scene bbox to the crop bbox, so this removes gaussians that end up
+                # outside the chunk during refinement.
                 self.cfg.remove_gaussians_outside_scene_bbox = True
 
                 runner = GaussianSplatReconstruction.from_sfm_scene(
@@ -236,10 +237,13 @@ class Reconstruct(BaseCommand):
                     self.logger.warning(
                         f"Chunk {i} resulted in a model with 0 gaussians. This chunk will be skipped during merging."
                     )
+                    continue
                 chunk_ply_path = pathlib.Path(ply_temp_dir) / f"chunk_{i:04d}.ply"
                 runner.model.save_ply(chunk_ply_path, {})
                 chunk_ply_paths.append(chunk_ply_path)
 
+            if not chunk_ply_paths:
+                raise RuntimeError(f"All {num_chunks} chunks resulted in models with 0 gaussians; nothing to save.")
             self.logger.info("All chunks have been processed. Merging splats...")
 
             splats = []
