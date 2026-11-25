@@ -2,12 +2,10 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 import json
-import logging
 import pathlib
 
 import numpy as np
-import point_cloud_utils as pcu
-import tqdm
+import trimesh
 
 from ..enums import CameraModel
 from .sfm_cache import SfmCache
@@ -29,7 +27,7 @@ def load_simple_scene(data_path: pathlib.Path):
                 - camera_intrinsics: The perspective projection matrix
                 - world_to_camera: The world-to-camera transformation matrix.
                 - image_path: The path to the image file relative to the images directory.
-        - points.ply: A PLY file containing 3D points.
+        - pointcloud.ply: A PLY file containing 3D points.
     Args:
         data_ (pathlib.Path): The path to the data
 
@@ -99,17 +97,23 @@ def load_simple_scene(data_path: pathlib.Path):
             )
         )
 
-    points, colors = pcu.load_mesh_vc(points_path)
-    if points is None:
+    loaded = trimesh.load(points_path, process=False)
+    if isinstance(loaded, trimesh.PointCloud):
+        colors = np.asarray(loaded.colors)
+    elif isinstance(loaded, trimesh.Trimesh):
+        # trimesh fills in a default color for meshes without vertex colors, so only accept explicit ones.
+        colors = np.asarray(loaded.visual.vertex_colors) if loaded.visual.kind == "vertex" else np.empty((0, 4))
+    else:
         raise ValueError(f"Failed to load points from {points_path}")
+    points = np.asarray(loaded.vertices)
     if points.shape[0] == 0:
         raise ValueError(f"No points found in {points_path}")
-    if colors is None:
+    if colors.shape[0] == 0:
         raise ValueError(f"No colors found in {points_path}")
     if colors.shape[0] != points.shape[0]:
         raise ValueError(f"Number of colors does not match number of points in {points_path}")
     errors = np.zeros((points.shape[0],), dtype=np.float32)
-    colors = colors[:, :3]  # Drop alpha channel if present
+    colors = colors[:, :3].astype(np.uint8)  # uint8 RGB in [0, 255]; drop the alpha channel
 
     cache = SfmCache.get_cache(data_path / "_cache", "sfm_dataset_cache", "Cache for SFM dataset")
 

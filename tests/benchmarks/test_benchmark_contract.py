@@ -6,9 +6,9 @@ import pathlib
 
 import cv2
 import numpy as np
-import point_cloud_utils as pcu
 import pytest
 import torch
+import trimesh
 
 from fvdb_reality_capture import CameraModel
 from fvdb_reality_capture.radiance_fields import (
@@ -183,8 +183,8 @@ def test_benchmark_smoke_pipeline_on_gpu(tmp_path: pathlib.Path):
 
     # Create pointcloud.ply
     points = np.array([[0.0, 0.0, 1.0], [0.1, 0.0, 1.0], [0.0, 0.1, 1.0]], dtype=np.float32)
-    colors = np.array([[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]], dtype=np.float32)
-    pcu.save_mesh_vc(str(data_dir / "pointcloud.ply"), points, colors)
+    colors = np.array([[255, 0, 0], [0, 255, 0], [0, 0, 255]], dtype=np.uint8)
+    trimesh.PointCloud(points, colors=colors).export(str(data_dir / "pointcloud.ply"))
 
     # Build scene
     sfm_scene = SfmScene.from_simple_directory(data_dir)

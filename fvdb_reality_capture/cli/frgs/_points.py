@@ -6,13 +6,12 @@ import pathlib
 from dataclasses import dataclass
 from typing import Annotated
 
-import point_cloud_utils as pcu
-import torch
 import tyro
 from tyro.conf import arg
 
 from fvdb_reality_capture.cli import BaseCommand
 from fvdb_reality_capture.tools import point_cloud_from_splats
+from fvdb_reality_capture.tools._mesh_io import save_colored_points
 
 from ._common import (
     NearFarUnits,
@@ -128,9 +127,6 @@ class Points(BaseCommand):
         )
 
         logger.info(f"Extracted {positions.shape[0]:,} points with colors.")
-        colors = colors.to(torch.float32) / 255.0
-        positions, colors = positions.to(torch.float32).cpu().numpy(), colors.cpu().numpy()
-
         logger.info(f"Saving point cloud to {self.output_path}")
-        pcu.save_mesh_vc(str(self.output_path), positions, colors)
+        save_colored_points(self.output_path, positions, colors)
         logger.info("Point cloud saved successfully.")

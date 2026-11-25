@@ -23,8 +23,9 @@ NearFarUnits = Literal["absolute", "camera_extent", "median_depth"]
 
 # ``load_splats_from_file`` is implemented in the library layer (``radiance_fields``) because the
 # GARfVDB trainer's public resume API also needs it and must not depend on CLI internals. It is
-# re-exported here so all of the CLI load/save helpers remain importable from one place. Listing it in
-# ``__all__`` marks the re-export as intentional so it is not stripped by an unused-import pass.
+# re-exported here so the CLI's scene and model load/save helpers remain importable from one place. Listing it
+# in ``__all__`` marks the re-export as intentional so it is not stripped by an unused-import pass. Mesh and point
+# cloud file I/O lives in ``fvdb_reality_capture.tools._mesh_io``.
 __all__ = [
     "DatasetType",
     "NearFarUnits",

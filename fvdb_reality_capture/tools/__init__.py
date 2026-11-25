@@ -12,6 +12,7 @@ from ._filter_splats import (
 )
 from ._mesh_from_splats import mesh_from_splats
 from ._mesh_from_splats_dlnr import mesh_from_splats_dlnr
+from ._mesh_io import load_mesh
 from ._point_cloud_from_splats import point_cloud_from_splats
 from ._tsdf_from_splats import tsdf_from_splats
 from ._tsdf_from_splats_dlnr import tsdf_from_splats_dlnr
@@ -28,4 +29,5 @@ __all__ = [
     "filter_splats_above_scale",
     "filter_splats_below_scale",
     "export_splats_to_usd",
+    "load_mesh",
 ]
