@@ -1283,7 +1283,7 @@ class TestSfmDatasetRasterAttributePatchCrop(unittest.TestCase):
             np.random.seed(42)
             datum = dataset[0]
 
-            self.assertEqual(datum["image"].shape[:2], (patch_size, patch_size))
+            self.assertEqual(datum["image"].shape, (3, patch_size, patch_size))
             self.assertEqual(tuple(datum["raster"].shape[:2]), (patch_size, patch_size))
 
     def test_raster_content_matches_crop(self):

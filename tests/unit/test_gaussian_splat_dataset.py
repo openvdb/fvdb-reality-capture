@@ -107,7 +107,8 @@ class GaussianSplatDatasetTests(unittest.TestCase):
         self.assertIsInstance(first["mask"], torch.Tensor)
         self.assertTrue(first["image"].is_shared())
         self.assertTrue(first["mask"].is_shared())
-        self.assertEqual(tuple(first["image"].shape), (8, 10, 3))
+        self.assertEqual(tuple(first["image"].shape), (3, 8, 10))
+        self.assertTrue(first["image"].is_contiguous())
         self.assertEqual(tuple(first["mask"].shape), (8, 10))
         self.assertTrue(torch.all(first["image"] == 0))
         self.assertTrue(torch.all(first["mask"][:4]))
@@ -124,6 +125,8 @@ class GaussianSplatDatasetTests(unittest.TestCase):
 
         uncached = SfmDataset(scene)[0]
         self.assertIsInstance(uncached["image"], np.ndarray)
+        self.assertEqual(uncached["image"].shape, (3, 8, 10))
+        self.assertTrue(uncached["image"].flags.c_contiguous)
         self.assertTrue(np.all(uncached["image"] == 255))
         self.assertFalse(np.any(uncached["mask"]))
 
@@ -133,7 +136,8 @@ class GaussianSplatDatasetTests(unittest.TestCase):
 
         collated = _collate_cached_sfm_batch([datum])
 
-        self.assertEqual(tuple(collated["image"].shape), (1, 8, 10, 3))
+        self.assertEqual(tuple(collated["image"].shape), (1, 3, 8, 10))
+        self.assertTrue(collated["image"].is_contiguous())
         self.assertEqual(tuple(collated["mask"].shape), (1, 8, 10))
         self.assertEqual(collated["image"].data_ptr(), datum["image"].data_ptr())
         self.assertEqual(collated["mask"].data_ptr(), datum["mask"].data_ptr())

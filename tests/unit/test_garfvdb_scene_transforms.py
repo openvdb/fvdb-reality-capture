@@ -25,6 +25,7 @@ from fvdb_reality_capture.instance_segmentation.scene_transforms import (
 from fvdb_reality_capture.instance_segmentation.training.dataset import (
     SegmentationDataset,
 )
+from fvdb_reality_capture.instance_segmentation.training.dataset_transforms import RandomSamplePixels
 from fvdb_reality_capture.sfm_scene import (
     PerImageValueAttribute,
     SfmCache,
@@ -98,6 +99,30 @@ def _mask_data(index: int) -> dict[str, torch.Tensor | int]:
         "pixel_to_mask_id": torch.zeros((6, 8, 1), dtype=torch.int16),
         "mask_cdf": torch.ones((6, 8, 1)),
     }
+
+
+@pytest.mark.parametrize("cache_images,warmup", [(False, False), (True, False), (True, True)])
+def test_segmentation_dataset_image_layout_and_pixel_sampling(tmp_path, cache_images, warmup):
+    scene = _make_scene(tmp_path, num_images=1)
+    rgb = np.arange(6 * 8 * 3, dtype=np.uint8).reshape(6, 8, 3)
+    assert cv2.imwrite(scene.images[0].image_path, rgb[:, :, ::-1])
+    mask_path = tmp_path / "masks.pt"
+    torch.save(_mask_data(0), mask_path)
+    scene = scene.with_attributes(**{GARFVDB_MASK_ATTRIBUTE_NAME: GARfVDBMaskAttribute([mask_path])})
+    dataset = SegmentationDataset(scene, cache_images=cache_images)
+    if warmup:
+        dataset.warmup_cache()
+
+    item = dataset[0]
+    assert (item["image_h"], item["image_w"]) == (6, 8)
+    torch.testing.assert_close(item["image"], torch.from_numpy(rgb))
+
+    sampled = RandomSamplePixels(num_samples_per_image=6 * 8)(item)
+    rows, cols = sampled["pixel_coords"].unbind(dim=-1)
+    assert sampled["image"].shape == (6 * 8, 3)
+    torch.testing.assert_close(sampled["image"], torch.from_numpy(rgb)[rows, cols])
+    assert sampled["mask_ids"].shape == (6 * 8, 1)
+    assert torch.count_nonzero(sampled["mask_ids"]) == 0
 
 
 def test_garfvdb_mask_attribute_round_trip_and_scene_operations():

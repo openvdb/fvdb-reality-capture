@@ -286,6 +286,7 @@ class GettysburgGaussianSplatTestCase:  # intentionally not typed as unittest.Te
         camera_model = CameraModel(int(data_item["camera_model"]))
         distortion_coeffs = data_item["distortion_coeffs"].to(device=self.device).unsqueeze(0)
         gt_image = torch.from_numpy(data_item["image"]).to(device=self.device).unsqueeze(0).float() / 255.0
+        gt_image = gt_image.permute(0, 2, 3, 1)
 
         pred_image, alphas = model.render_images(
             world_to_camera_matrices=world_to_camera_matrix,
