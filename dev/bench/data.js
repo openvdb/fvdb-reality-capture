@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1795706598990,
+  "lastUpdate": 1795779732906,
   "repoUrl": "https://github.com/openvdb/fvdb-reality-capture",
   "entries": {
     "fvdb-reality-capture Benchmark with pytest-benchmark": [
@@ -19965,6 +19965,133 @@ window.BENCHMARK_DATA = {
             "unit": "iter/sec",
             "range": "stddev: 0.00022663608423950803",
             "extra": "mean: 12.564104325829145 msec\nrounds: 89"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "Jonathan Swartz",
+            "username": "swahtz",
+            "email": "jonathan@jswartz.info"
+          },
+          "committer": {
+            "name": "GitHub",
+            "username": "web-flow",
+            "email": "noreply@github.com"
+          },
+          "id": "6ef068b49085d44e12cb60c02339e5d279eacad1",
+          "message": "Fix NameError in frgs reconstruct --nchunks and skip empty chunks (#381)\n\nFixes #380\n\n## Why\n\nGARfVDB (#308) moved `SceneTransformConfig` out of\n`cli/frgs/_reconstruct.py` and dropped `CropScene` from its imports, but\n`_run_chunked_reconstruction` still uses it. Every chunked\nreconstruction (`frgs reconstruct --nchunks` with anything other than `1\n1 1`) has failed with `NameError: name 'CropScene' is not defined` since\nthen.\n\n## What changed\n\n- **Restore the `CropScene` import.** This is the fix for #380.\n- **Actually skip chunks with 0 Gaussians.** The code logged \"This chunk\nwill be skipped during merging\" but still saved and merged the chunk,\nand merging an empty model crashes (`RuntimeError: tensor does not have\na device`). The chunk is now left out, and if every chunk is empty the\ncommand raises a clear `RuntimeError` instead of crashing in the merge.\n- **Skip chunks with too few points before training them.** Corner\nchunks in a 3D grid are often empty. Before, they went through model\nsetup and training anyway. A chunk with fewer than 2 points is now\nskipped with a warning before training starts.\n- **Fix infinite starting sizes for tiny scenes.** Model setup sizes\neach starting Gaussian from its 3 nearest neighbours. With 2 or 3 points\nthere aren't 3 neighbours, so it got infinite sizes and trained on\ngarbage without any error. It now uses the neighbours that exist. A\nscene with 0 or 1 points has no neighbours at all, so\n`GaussianSplatReconstruction` model setup now raises a `ValueError` for\nit. This covers unchunked runs and library callers, and the CLI's chunk\nskip uses the same threshold.\n- **Keep points on chunk edges.** `CropScene` keeps only points strictly\ninside its box. With `--chunk-overlap-pct 0`, the scene's outermost\npoints, and any point exactly on a boundary between chunks, ended up in\nno chunk. `get_crop_bboxes` now pads every face by a small margin, sized\nso it doesn't round away for large float32 (ECEF) coordinates.\n- **Same 0-Gaussian handling in unchunked runs.** An unchunked run that\nends with 0 Gaussians now raises the same kind of error as the chunked\npath, instead of writing an empty file.\n- **Check chunking flags before doing any work.** `--nchunks` and\n`--chunk-overlap-pct` were checked only after the dataset had loaded and\nthe log directory had been created, so a bad flag left that directory\nbehind. They're now checked first in `execute()`, and also in\n`get_crop_bboxes`.\n- **Drop `delete=True` from `tempfile.TemporaryDirectory()`.** It's the\ndefault, and the keyword only exists from Python 3.12 (ruff targets\n3.11).\n- **Comment and log fixes.** Log messages now number chunks the same way\nthroughout (`i/N`). The overlap range is `[0, 1)`, which is what\n`execute()` checks, not `[0, 1]`. `remove_gaussians_outside_scene_bbox`\nremoves Gaussians during refinement; it doesn't stop them being\ninitialized outside the chunk.\n\nEverything after the import fix is in the same code path, which couldn't\nrun before it, or is the matching check in the unchunked path.\n\n## Tests\n\n`tests/unit/test_reconstruct_cli.py` (new) runs\n`_run_chunked_reconstruction` on a small synthetic scene: two point\nclusters, three cameras, and no images on disk. Training is mocked, so\nthe stand-in \"optimized\" model has one splat per point in the chunk. The\nreal `CropScene` cropping, the per-chunk PLY save, the merge, and the\nfinal save all run. No dataset download is needed, and the tests take\nabout 6 seconds.\n\n- `test_chunks_are_cropped_and_merged`: with `--nchunks 2 1 1`, each\nchunk holds only the points inside its bounding box, every point lands\nin exactly one chunk, and the merged PLY holds all of them.\n- `test_empty_chunk_is_skipped`: when one chunk produces 0 Gaussians,\nthe merged PLY holds only the other chunk's splats.\n- `test_all_chunks_empty_raises`: when every chunk is empty, the command\nraises the new error and writes no output.\n- `test_sparse_chunk_is_skipped_before_training`: a chunk with 1 point\nis never trained, and the merged PLY holds the other chunk.\n- `test_too_few_points_to_initialize_raises`: building a reconstruction\n(real `from_sfm_scene`, not mocked) from 1 point raises `ValueError`.\n- `test_few_points_initialize_finite_scales`: model setup (called\ndirectly, since the synthetic scene has no images to load) gives finite\nstarting sizes for 2 and 3 points.\n- `test_single_reconstruction_with_zero_gaussians_raises`: an unchunked\nrun with 0 Gaussians raises and writes nothing.\n- `CropBboxesTest` (no CUDA needed): with overlap 0, points on the outer\nfaces and on the chunk boundary all land in a chunk, including at\nfloat32 ECEF-scale coordinates. Invalid `--nchunks` and overlap values\nraise in `get_crop_bboxes`, and in `execute()` before the dataset is\nloaded.\n\nI checked that the tests catch the bugs:\n\n| Change reverted | Result |\n|---|---|\n| `CropScene` import removed (current `main`) | All three tests fail\nwith `NameError` |\n| Empty-chunk `continue` removed | `test_empty_chunk_is_skipped` fails\n(`tensor does not have a device`) |\n| No bbox padding | Both overlap-0 tests fail |\n| Padding relative to scene size only | The float32 ECEF test fails |\n| Too-few-points chunk skip removed |\n`test_sparse_chunk_is_skipped_before_training` fails |\n| Too-few-points check in model setup removed |\n`test_too_few_points_to_initialize_raises` fails |\n\nThe table above was run before the tiny-scene follow-up commit.\n`test_few_points_initialize_finite_scales` and the updated point counts\nin the two tests above haven't been run locally; CI runs them.\n| Unchunked 0-Gaussian check removed |\n`test_single_reconstruction_with_zero_gaussians_raises` fails |\n| Early flag check in `execute()` removed |\n`test_invalid_chunking_raises` fails |\n\n## Not in this PR\n\n- CI only runs ruff's formatting and import-order checks, which is why\nthis wasn't caught. Adding `F821` (undefined name) would catch it, but\nthat first needs a fix to two string annotations in\n`sfm_scene/scene_attribute.py`.\n\n## Test plan\n\n```\nruff check --select I .\nruff format --check .\ncd tests && pytest -v unit/test_reconstruct_cli.py unit/test_garfvdb_cli.py\n```\n\nAll pass locally (CUDA available).\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n\n---------\n\nSigned-off-by: Jonathan Swartz <jonathan@jswartz.info>\nCo-authored-by: Claude Opus 5.5 <noreply@anthropic.com>",
+          "timestamp": "2026-11-25T23:09:38Z",
+          "url": "https://github.com/openvdb/fvdb-reality-capture/commit/6ef068b49085d44e12cb60c02339e5d279eacad1"
+        },
+        "date": 1795779731765,
+        "tool": "pytest",
+        "benches": [
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_project_gaussians[garden-00000664]",
+            "value": 7618.4061801674525,
+            "unit": "iter/sec",
+            "range": "stddev: 0.000009158051738044334",
+            "extra": "mean: 131.26105071730635 usec\nrounds: 6625"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_render_gaussians[garden-00000664]",
+            "value": 902.3461699163803,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00002996665462091555",
+            "extra": "mean: 1.1082221361815823 msec\nrounds: 1006"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_forward[garden-00000664]",
+            "value": 808.4998847780196,
+            "unit": "iter/sec",
+            "range": "stddev: 0.000027243605895541645",
+            "extra": "mean: 1.2368585559842822 msec\nrounds: 777"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_backward[garden-00000664]",
+            "value": 208.20115225467492,
+            "unit": "iter/sec",
+            "range": "stddev: 0.0005504124661782935",
+            "extra": "mean: 4.8030473855244775 msec\nrounds: 2031"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_project_gaussians[garden-00006640]",
+            "value": 339.65047051044786,
+            "unit": "iter/sec",
+            "range": "stddev: 0.0005199863389608894",
+            "extra": "mean: 2.9442031936453312 msec\nrounds: 6264"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_render_gaussians[garden-00006640]",
+            "value": 149.66225558423932,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00007896130086145019",
+            "extra": "mean: 6.681711404764558 msec\nrounds: 168"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_forward[garden-00006640]",
+            "value": 103.72350388023584,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00008469523488330286",
+            "extra": "mean: 9.641016380960753 msec\nrounds: 105"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_backward[garden-00006640]",
+            "value": 28.638023297317716,
+            "unit": "iter/sec",
+            "range": "stddev: 0.0037021762617959323",
+            "extra": "mean: 34.91861116314063 msec\nrounds: 2127"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_project_gaussians[garden-00016600]",
+            "value": 276.81625465136165,
+            "unit": "iter/sec",
+            "range": "stddev: 0.0006293344410672718",
+            "extra": "mean: 3.612504624265861 msec\nrounds: 6470"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_render_gaussians[garden-00016600]",
+            "value": 111.18904217250777,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00011840608710917048",
+            "extra": "mean: 8.99369200832325 msec\nrounds: 120"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_forward[garden-00016600]",
+            "value": 79.44536308455709,
+            "unit": "iter/sec",
+            "range": "stddev: 0.0000833267662744615",
+            "extra": "mean: 12.58726703704101 msec\nrounds: 81"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_backward[garden-00016600]",
+            "value": 22.250129915221837,
+            "unit": "iter/sec",
+            "range": "stddev: 0.004895553407754529",
+            "extra": "mean: 44.94355780439181 msec\nrounds: 2050"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_forward_mcmc[garden-00000664]",
+            "value": 775.8994466394422,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00002996547579124924",
+            "extra": "mean: 1.2888267987961286 msec\nrounds: 830"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_forward_mcmc[garden-00006640]",
+            "value": 102.5080868608099,
+            "unit": "iter/sec",
+            "range": "stddev: 0.0001487410436580785",
+            "extra": "mean: 9.755327902644844 msec\nrounds: 113"
+          },
+          {
+            "name": "tests/benchmarks/test_3dgs.py::test_forward_mcmc[garden-00016600]",
+            "value": 80.0360675973441,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00020004037048312564",
+            "extra": "mean: 12.49436697753481 msec\nrounds: 89"
           }
         ]
       }
